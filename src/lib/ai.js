@@ -43,12 +43,12 @@ async function normalizeImage(file) {
 }
 
 // Один файл — зворотня сумісність
-export async function extractDocument(file) {
-  return extractDocumentMulti([file])
+export async function extractDocument(file, articles) {
+  return extractDocumentMulti([file], articles)
 }
 
 // Кілька файлів — всі сторінки в одному запиті
-export async function extractDocumentMulti(files) {
+export async function extractDocumentMulti(files, articles) {
   if (!files?.length) throw new Error('Немає файлів')
 
   const contentBlocks = []
@@ -103,6 +103,11 @@ export async function extractDocumentMulti(files) {
 - Якщо в документі ПОСТАЧАЛЬНИК = наша компанія (ЄДРПОУ 45505924 або "ЕЙМ СКІЛ") → це ВИХІДНИЙ документ від нас до клієнта. В полі "contractor" вкажи ПОКУПЦЯ (не нашу компанію), "suggestedDirection" = "Доходи", "docRole" = "outgoing".
 - Якщо в документі ПОСТАЧАЛЬНИК = інша компанія → це ВХІДНИЙ документ. В полі "contractor" вкажи ПОСТАЧАЛЬНИКА, "suggestedDirection" = "Витрати", "docRole" = "incoming".
 
+СТАТТІ ОБЛІКУ — обирай ТІЛЬКИ з цього списку:
+${articles?.length ? articles.map(a => `- ${a.name} (${a.type})`).join('\n') : '(статті не задані — вкажи null)'}
+
+Для поля "suggestedArticle" обери найбільш відповідну статтю ТІЛЬКИ з наведеного списку вище. Якщо жодна не підходить — вкажи null. НЕ ВИГАДУЙ нових назв статтей.
+
 Поверни ТІЛЬКИ валідний JSON без markdown та пояснень:
 {
   "docType": "рахунок-фактура|видаткова накладна|акт наданих послуг|прибуткова накладна|інше",
@@ -116,7 +121,7 @@ export async function extractDocumentMulti(files) {
   "currency": "UAH",
   "description": "опис товарів/послуг до 100 символів",
   "suggestedDirection": "Витрати|Доходи|Інше",
-  "suggestedArticle": "назва статті або null",
+  "suggestedArticle": "назва статті зі списку вище або null",
   "docRole": "incoming|outgoing",
   "items": [
     {

@@ -131,7 +131,7 @@ export default function AddDocument({ user, onSaved }) {
     setError(null)
     setStep('extracting')
     try {
-      const d = await extractDocumentMulti(filesToProcess)
+      const d = await extractDocumentMulti(filesToProcess, articles)
       setExtracted(d)
       setForm(prev => ({
         ...prev,

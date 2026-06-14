@@ -117,7 +117,7 @@ export default function BatchUpload({ user, onSaved }) {
     const card = cards.find(c => c.id === cardId)
     if (!card) return
     try {
-      const data = await extractDocumentMulti([card.file])
+      const data = await extractDocumentMulti([card.file], articles)
 
       // Check DB for existing duplicate
       const dbDup = await findDbDuplicate(data)

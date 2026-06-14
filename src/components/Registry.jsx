@@ -257,7 +257,7 @@ export default function Registry({ user }) {
           continue
         }
         // Extract items
-        const extracted = await extractDocumentMulti(files)
+        const extracted = await extractDocumentMulti(files, articles)
         const items = (extracted.items || []).filter(it => it.name)
         if (items.length > 0) {
           await supabase.from('transaction_items').insert(
