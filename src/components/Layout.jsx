@@ -96,7 +96,6 @@ export default function Layout({ page, onPage, user, children }) {
             <i className="ti ti-menu-2" />
           </button>
           <img src={LOGO} alt="AiM Skills" style={{ height: 28, width: 'auto', filter: 'brightness(0)' }} />
-          <div style={{ width:44 }} />
         </div>
 
         <div className="page-inner">{children}</div>
