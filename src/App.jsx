@@ -255,8 +255,13 @@ export default function App() {
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [page, setPage] = useState('dashboard')
+  const [page, setPage] = useState(() => {
+    const saved = sessionStorage.getItem('aim-page')
+    return saved || 'dashboard'
+  })
   const [toast, setToast] = useState(null)
+
+  useEffect(() => { sessionStorage.setItem('aim-page', page) }, [page])
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
