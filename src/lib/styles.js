@@ -299,6 +299,10 @@ export const css = `
   .pl-table .result td { font-weight: 700; font-size: 14px; background: var(--surface2); }
   .pl-table .total-col { background: #F0FDF4 !important; font-weight: 700; }
 
+  /* ═══ REGISTRY: desktop table visible, mobile list hidden ═══ */
+  .reg-mobile-list { display: none; }
+  .reg-desktop-table { display: block; }
+
   /* ═══ DESKTOP RESPONSIVE ═══ */
   @media (max-width: 1024px) {
     .page-inner { padding: 24px; }
@@ -501,6 +505,12 @@ export const mobileCss = `
     /* ── PROJ CARD ── */
     .proj-card { max-width: 100%; overflow: hidden; }
     .proj-card:hover { border-color: var(--border); }
+
+    /* ── REGISTRY MOBILE ── */
+    .reg-desktop-table { display: none !important; }
+    .reg-mobile-list { display: block !important; }
+    .reg-actions { flex-direction: column; }
+    .reg-actions .btn { width: 100%; }
 
     /* ── INLINE STYLE OVERRIDES for Dashboard grids ── */
     div[style*="grid-template-columns: repeat(3"] { grid-template-columns: 1fr 1fr !important; gap: 12px !important; }

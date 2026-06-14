@@ -410,79 +410,78 @@ export default function Registry({ user }) {
     whiteSpace: 'nowrap',
   })
 
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768
+
   return (
-    <div style={{ display:'flex', flexDirection:'column', height:'100%' }}>
-      <div className="page-header" style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-        <div>
-          <h1>Реєстр операцій</h1>
-          <p>{total} операцій у базі</p>
-        </div>
-        <div style={{ display:'flex', gap:8 }}>
-          <button
-            className="btn btn-secondary"
-            onClick={() => { setShowRecover(true); loadRecoverList() }}
-            style={{ display:'flex', alignItems:'center', gap:6, whiteSpace:'nowrap' }}
-          >
-            <i className="ti ti-packages" style={{ fontSize:15 }} />
-            Відновити позиції
-          </button>
-          <button
-            className="btn btn-secondary"
-            onClick={dupResults.length > 0 ? () => setShowDupModal(true) : runDupCheck}
-            disabled={dupChecking}
-            style={{ display:'flex', alignItems:'center', gap:6, whiteSpace:'nowrap' }}
-          >
-            <i className={`ti ${dupChecking ? 'ti-loader-2' : 'ti-copy-check'}`} style={{ fontSize:15 }} />
-            {dupChecking ? 'Перевіряємо...' : dupResults.length > 0 ? `Дублікати (${dupResults.length})` : 'Перевірити дублікати'}
-          </button>
-        </div>
+    <div className="reg-page" style={{ display:'flex', flexDirection:'column', height:'100%' }}>
+      <div className="page-header">
+        <h1>Реєстр операцій</h1>
+        <p>{total} операцій у базі</p>
       </div>
 
-      {/* Search bar */}
-      <div style={{ display:'flex', gap:8, marginBottom:10 }}>
-        <div style={{ flex:1, position:'relative' }}>
-          <i className="ti ti-search" style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--text3)', fontSize:16 }} />
-          <input
-            className="form-input"
-            style={{ width:'100%', paddingLeft:34 }}
-            placeholder="Пошук по контрагенту, ЄДРПОУ, № документу, призначенню..."
-            value={filters.search}
-            onChange={e => setF('search', e.target.value)}
-          />
-        </div>
-        {/* Швидкий фільтр — без статті */}
+      {/* Action buttons */}
+      <div className="reg-actions" style={{ display:'flex', gap:8, marginBottom:12, flexWrap:'wrap' }}>
         <button
-          className={`btn ${filters.noArticle ? 'btn-primary' : 'btn-secondary'}`}
-          onClick={() => setF('noArticle', !filters.noArticle)}
-          style={{ whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:6 }}
-          title="Показати тільки операції без статті"
+          className="btn btn-secondary"
+          onClick={() => { setShowRecover(true); loadRecoverList() }}
         >
-          <i className="ti ti-tag-off" style={{ fontSize:15 }} />
+          <i className="ti ti-packages" style={{ fontSize:15 }} />
+          Відновити позиції
+        </button>
+        <button
+          className="btn btn-secondary"
+          onClick={dupResults.length > 0 ? () => setShowDupModal(true) : runDupCheck}
+          disabled={dupChecking}
+        >
+          <i className={`ti ${dupChecking ? 'ti-loader-2' : 'ti-copy-check'}`} style={{ fontSize:15 }} />
+          {dupChecking ? 'Перевіряємо...' : dupResults.length > 0 ? `Дублікати (${dupResults.length})` : 'Перевірити дублікати'}
+        </button>
+      </div>
+
+      {/* Search — full width */}
+      <div style={{ position:'relative', marginBottom:10 }}>
+        <i className="ti ti-search" style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'var(--text3)', fontSize:16 }} />
+        <input
+          className="form-input"
+          style={{ width:'100%', paddingLeft:38 }}
+          placeholder="Пошук по контрагенту, ЄДРПОУ, № документу..."
+          value={filters.search}
+          onChange={e => setF('search', e.target.value)}
+        />
+      </div>
+
+      {/* Quick filters row */}
+      <div className="reg-quick-filters" style={{ display:'flex', gap:8, marginBottom:10, flexWrap:'wrap' }}>
+        <button
+          className={`btn btn-sm ${filters.noArticle ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setF('noArticle', !filters.noArticle)}
+          style={{ flex:'1 1 calc(50% - 4px)', minWidth:0 }}
+        >
+          <i className="ti ti-tag-off" style={{ fontSize:14 }} />
           Без статті
         </button>
         <select
           className="form-input"
-          style={{ width:180 }}
+          style={{ flex:'1 1 calc(50% - 4px)', minWidth:0 }}
           value={filters.docStatus}
           onChange={e => setF('docStatus', e.target.value)}
-          title="Фільтр по статусу документів"
         >
           <option value="">Всі статуси</option>
-          <option value="full">📄🏦 Документ + Банк</option>
-          <option value="has_doc">📄 Є документ</option>
+          <option value="full">Документ + Банк</option>
+          <option value="has_doc">Є документ</option>
           <option value="no_doc">Без документу</option>
-          <option value="has_bank">🏦 Є банк</option>
+          <option value="has_bank">Є банк</option>
           <option value="no_bank">Без банку</option>
-          <option value="empty">— Нічого немає</option>
+          <option value="empty">Нічого немає</option>
         </select>
         <button
-          className={`btn ${activeFilterCount > 0 ? 'btn-primary' : 'btn-secondary'}`}
+          className={`btn btn-sm ${activeFilterCount > 0 ? 'btn-primary' : 'btn-secondary'}`}
           onClick={() => setShowFilters(f => !f)}
-          style={{ whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:6 }}
+          style={{ flex:'1 1 100%' }}
         >
-          <i className="ti ti-adjustments-horizontal" />
+          <i className="ti ti-adjustments-horizontal" style={{ fontSize:14 }} />
           Фільтри
-          {activeFilterCount > 0 && <span style={{ background:'#fff', color:'var(--blue)', borderRadius:'50%', width:18, height:18, display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700 }}>{activeFilterCount}</span>}
+          {activeFilterCount > 0 && <span style={{ background:'#fff', color:'#000', borderRadius:'50%', width:20, height:20, display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, marginLeft:4 }}>{activeFilterCount}</span>}
         </button>
       </div>
 
@@ -533,12 +532,32 @@ export default function Registry({ user }) {
         </div>
       )}
 
-      {/* Summary chips */}
-      <div className="chips">
-        <span className="chip chip-cnt">{total} операцій</span>
-        {inc > 0 && <span className="chip chip-inc">+{fmt(inc)} грн</span>}
-        {exp < 0 && <span className="chip chip-exp">−{fmt(Math.abs(exp))} грн</span>}
-        <span className="chip chip-pfd">Сальдо: {inc+exp >= 0?'+':''}{fmt(inc+exp)} грн</span>
+      {/* Summary stats card */}
+      <div style={{
+        background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12,
+        padding:16, marginBottom:12
+      }}>
+        <div style={{ fontSize:14, fontWeight:600, marginBottom:10 }}>{total} операцій</div>
+        <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+          {inc > 0 && (
+            <div style={{ flex:'1 1 calc(50% - 6px)', minWidth:0 }}>
+              <div style={{ fontSize:12, color:'var(--text3)', marginBottom:2 }}>Прихід</div>
+              <div style={{ fontSize:16, fontWeight:700, color:'var(--green)' }}>+{fmt(inc)} грн</div>
+            </div>
+          )}
+          {exp < 0 && (
+            <div style={{ flex:'1 1 calc(50% - 6px)', minWidth:0 }}>
+              <div style={{ fontSize:12, color:'var(--text3)', marginBottom:2 }}>Витрата</div>
+              <div style={{ fontSize:16, fontWeight:700, color:'var(--red)' }}>-{fmt(Math.abs(exp))} грн</div>
+            </div>
+          )}
+        </div>
+        <div style={{ borderTop:'1px solid var(--border)', marginTop:10, paddingTop:10 }}>
+          <div style={{ fontSize:12, color:'var(--text3)', marginBottom:2 }}>Сальдо</div>
+          <div style={{ fontSize:18, fontWeight:700, color: inc+exp >= 0 ? 'var(--green)' : 'var(--red)' }}>
+            {inc+exp >= 0 ? '+' : ''}{fmt(inc+exp)} грн
+          </div>
+        </div>
       </div>
 
       {/* Bulk action bar */}
@@ -569,115 +588,125 @@ export default function Registry({ user }) {
         </div>
       )}
 
-      {/* Table */}
-      <div className="tbl-wrap" style={{ flex:1 }}>
-        <table style={{ tableLayout:'fixed', width:'100%' }}>
-          <colgroup>
-            <col style={{ width:36 }} />
-            <col style={{ width:96 }} />
-            <col style={{ width:'20%' }} />
-            <col style={{ width:110 }} />
-            <col style={{ width:100 }} />
-            <col style={{ width:'24%' }} />
-            <col style={{ width:'12%' }} />
-            <col style={{ width:80 }} />
-            <col style={{ width:72 }} />
-          </colgroup>
-          <thead>
-            <tr>
-              <th style={{ padding:'8px 6px' }}>
-                <input type="checkbox" checked={allChecked} onChange={toggleAll}
-                  style={{ width:15, height:15, cursor:'pointer', accentColor:'var(--blue)' }} />
-              </th>
-              <th style={thStyle('date')} onClick={() => toggleSort('date')}>Дата<SortIcon col="date" /></th>
-              <th style={thStyle('contractor')} onClick={() => toggleSort('contractor')}>Контрагент<SortIcon col="contractor" /></th>
-              <th style={{ ...thStyle('amount'), textAlign:'right' }} onClick={() => toggleSort('amount')}>Сума, грн<SortIcon col="amount" /></th>
-              <th style={thStyle('direction')} onClick={() => toggleSort('direction')}>Напрям<SortIcon col="direction" /></th>
-              <th style={thStyle('article')} onClick={() => toggleSort('article')}>Стаття<SortIcon col="article" /></th>
-              <th>Проєкт</th>
-              <th style={{ textAlign:'center' }}>Статус</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && <tr><td colSpan={8} style={{ textAlign:'center', padding:24, color:'var(--text2)' }}>Завантаження...</td></tr>}
-            {!loading && transactions.length === 0 && <tr><td colSpan={8} style={{ textAlign:'center', padding:32, color:'var(--text3)' }}>Операцій не знайдено</td></tr>}
-            {transactions.map(tx => {
-              const isChecked = checkedIds.has(tx.id)
-              const noArticle = !tx.article
-              return (
-                <tr key={tx.id}
-                  style={{ cursor:'pointer', background: isChecked ? 'var(--blue-bg)' : noArticle ? '#fffbeb' : '' }}
-                  onClick={() => openDetail(tx)}
-                >
-                  <td style={{ padding:'8px 6px' }} onClick={e => toggleCheck(tx.id, e)}>
-                    <input type="checkbox" checked={isChecked} onChange={() => {}}
-                      style={{ width:15, height:15, cursor:'pointer', accentColor:'var(--blue)' }} />
-                  </td>
-                  <td style={{ color:'var(--text2)', fontSize:12, whiteSpace:'nowrap' }}>{tx.date}</td>
-                  <td>
-                    <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, fontWeight:500 }} title={tx.contractor}>{tx.contractor}</div>
-                    {tx.description && <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:11, color:'var(--text3)' }} title={tx.description}>{tx.description}</div>}
-                  </td>
-                  <td style={{ textAlign:'right', fontWeight:600, fontVariantNumeric:'tabular-nums', color: tx.amount > 0 ? 'var(--green)' : tx.amount < 0 ? 'var(--red)' : 'var(--text3)', whiteSpace:'nowrap' }}>
-                    {tx.amount > 0 ? '+' : ''}{fmt(tx.amount)}
-                  </td>
-                  <td><DirBadge dir={tx.direction} /></td>
-                  <td style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:12, color: noArticle ? 'var(--amber)' : 'var(--text2)' }} title={tx.article}>
-                    {noArticle ? <span style={{ display:'flex', alignItems:'center', gap:4 }}><i className="ti ti-tag-off" style={{ fontSize:12 }} />без статті</span> : tx.article}
-                  </td>
-                  <td style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:12, color:'var(--text2)' }} title={tx.projects?.name}>{tx.projects?.name || '—'}</td>
-                  <td style={{ textAlign:'center' }} title={
-                    tx.documents?.length > 0 && tx.bank_transactions?.length > 0 ? 'Є документ + підтверджено банком' :
-                    tx.documents?.length > 0 ? 'Є документ, банку немає' :
-                    tx.bank_transactions?.length > 0 ? 'Підтверджено банком, документа немає' :
-                    'Немає документів і банківської виписки'
-                  }>
-                    <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:12 }}>
-                      {tx.documents?.length > 0 ? (
-                        <span style={{ display:'inline-flex', alignItems:'center', gap:2 }}>
-                          <span style={{ fontSize:13 }}>📄</span>
-                          <span style={{ fontWeight:600, color:'var(--text2)' }}>{tx.documents.length}</span>
-                        </span>
-                      ) : (
-                        <span style={{ fontSize:11, color:'var(--text3)' }}>—</span>
-                      )}
-                      {tx.bank_transactions?.length > 0 && (
-                        <span title="Підтверджено банком" style={{ fontSize:13 }}>🏦</span>
-                      )}
-                    </span>
-                  </td>
-                  <td onClick={e => e.stopPropagation()}>
-                    <div style={{ display:'flex', gap:3 }}>
-                      <button
-                        style={{ background:'none', border:'1px solid var(--border2)', borderRadius:6, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text2)' }}
-                        onClick={() => openEdit(tx)} title="Редагувати"
-                      ><i className="ti ti-pencil" style={{ fontSize:14 }} /></button>
-                      <button
-                        style={{ background:'none', border:'1px solid #fca5a5', borderRadius:6, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--red)' }}
-                        onClick={() => handleDelete(tx.id)} title="Видалити"
-                      ><i className="ti ti-trash" style={{ fontSize:14 }} /></button>
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+      {/* Desktop table */}
+      <div className="reg-desktop-table" style={{ flex:1 }}>
+        <div className="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style={{ padding:'8px 6px', width:36 }}>
+                  <input type="checkbox" checked={allChecked} onChange={toggleAll}
+                    style={{ width:15, height:15, cursor:'pointer', accentColor:'var(--text)' }} />
+                </th>
+                <th style={thStyle('date')} onClick={() => toggleSort('date')}>Дата<SortIcon col="date" /></th>
+                <th style={thStyle('contractor')} onClick={() => toggleSort('contractor')}>Контрагент<SortIcon col="contractor" /></th>
+                <th style={{ ...thStyle('amount'), textAlign:'right' }} onClick={() => toggleSort('amount')}>Сума, грн<SortIcon col="amount" /></th>
+                <th style={thStyle('direction')} onClick={() => toggleSort('direction')}>Напрям<SortIcon col="direction" /></th>
+                <th style={thStyle('article')} onClick={() => toggleSort('article')}>Стаття<SortIcon col="article" /></th>
+                <th>Проєкт</th>
+                <th style={{ textAlign:'center' }}>Статус</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && <tr><td colSpan={9} style={{ textAlign:'center', padding:24, color:'var(--text2)' }}>Завантаження...</td></tr>}
+              {!loading && transactions.length === 0 && <tr><td colSpan={9} style={{ textAlign:'center', padding:32, color:'var(--text3)' }}>Операцій не знайдено</td></tr>}
+              {transactions.map(tx => {
+                const isChecked = checkedIds.has(tx.id)
+                const noArticle = !tx.article
+                return (
+                  <tr key={tx.id}
+                    style={{ cursor:'pointer', background: isChecked ? '#F0FDF4' : noArticle ? '#FFFBEB' : '' }}
+                    onClick={() => openDetail(tx)}
+                  >
+                    <td style={{ padding:'8px 6px' }} onClick={e => toggleCheck(tx.id, e)}>
+                      <input type="checkbox" checked={isChecked} onChange={() => {}}
+                        style={{ width:15, height:15, cursor:'pointer', accentColor:'var(--text)' }} />
+                    </td>
+                    <td style={{ color:'var(--text2)', fontSize:13, whiteSpace:'nowrap' }}>{tx.date}</td>
+                    <td>
+                      <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:14, fontWeight:500, maxWidth:200 }} title={tx.contractor}>{tx.contractor}</div>
+                      {tx.description && <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:12, color:'var(--text3)', maxWidth:200 }}>{tx.description}</div>}
+                    </td>
+                    <td style={{ textAlign:'right', fontWeight:600, fontVariantNumeric:'tabular-nums', color: tx.amount > 0 ? 'var(--green)' : tx.amount < 0 ? 'var(--red)' : 'var(--text3)', whiteSpace:'nowrap' }}>
+                      {tx.amount > 0 ? '+' : ''}{fmt(tx.amount)}
+                    </td>
+                    <td><DirBadge dir={tx.direction} /></td>
+                    <td style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color: noArticle ? 'var(--amber)' : 'var(--text2)', maxWidth:180 }} title={tx.article}>
+                      {noArticle ? <span style={{ display:'flex', alignItems:'center', gap:4 }}><i className="ti ti-tag-off" style={{ fontSize:13 }} />без статті</span> : tx.article}
+                    </td>
+                    <td style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color:'var(--text2)', maxWidth:120 }}>{tx.projects?.name || '—'}</td>
+                    <td style={{ textAlign:'center' }}>
+                      <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:13 }}>
+                        {tx.documents?.length > 0 && <span>📄{tx.documents.length > 1 ? tx.documents.length : ''}</span>}
+                        {tx.bank_transactions?.length > 0 && <span>🏦</span>}
+                        {!tx.documents?.length && !tx.bank_transactions?.length && <span style={{ color:'var(--text3)' }}>—</span>}
+                      </span>
+                    </td>
+                    <td onClick={e => e.stopPropagation()}>
+                      <div style={{ display:'flex', gap:4 }}>
+                        <button style={{ background:'none', border:'1px solid var(--border)', borderRadius:8, width:32, height:32, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text2)' }}
+                          onClick={() => openEdit(tx)} title="Редагувати"><i className="ti ti-pencil" style={{ fontSize:14 }} /></button>
+                        <button style={{ background:'none', border:'1px solid #FCA5A5', borderRadius:8, width:32, height:32, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--red)' }}
+                          onClick={() => handleDelete(tx.id)} title="Видалити"><i className="ti ti-trash" style={{ fontSize:14 }} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Mobile card list */}
+      <div className="reg-mobile-list">
+        {loading && <div style={{ textAlign:'center', padding:24, color:'var(--text2)' }}>Завантаження...</div>}
+        {!loading && transactions.length === 0 && <div style={{ textAlign:'center', padding:32, color:'var(--text3)' }}>Операцій не знайдено</div>}
+        {!loading && transactions.map(tx => (
+          <div key={tx.id}
+            onClick={() => openDetail(tx)}
+            style={{
+              display:'flex', alignItems:'center', gap:12,
+              padding:'14px 0', borderBottom:'1px solid var(--border)',
+              cursor:'pointer', minHeight:64,
+            }}
+          >
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', gap:8, marginBottom:4 }}>
+                <span style={{ fontSize:13, color:'var(--text2)' }}>{tx.date}</span>
+                <span style={{ fontSize:15, fontWeight:700, fontVariantNumeric:'tabular-nums', color: tx.amount > 0 ? 'var(--green)' : tx.amount < 0 ? 'var(--red)' : 'var(--text3)', whiteSpace:'nowrap', flexShrink:0 }}>
+                  {tx.amount > 0 ? '+' : ''}{fmt(tx.amount)} <span style={{ fontSize:12, fontWeight:500 }}>грн</span>
+                </span>
+              </div>
+              <div style={{ fontSize:14, fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:4 }}>{tx.contractor}</div>
+              <DirBadge dir={tx.direction} />
+            </div>
+            <i className="ti ti-chevron-right" style={{ fontSize:16, color:'var(--text3)', flexShrink:0 }} />
+          </div>
+        ))}
       </div>
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="pagination">
-          <span>{total} записів</span>
-          <button className="pg-btn" disabled={page<=1} onClick={() => setPage(p=>p-1)}>
-            <i className="ti ti-chevron-left" style={{ fontSize:14 }} />
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:4, marginTop:16, flexWrap:'wrap' }}>
+          <button className="pg-btn" disabled={page<=1} onClick={() => setPage(p=>p-1)} style={{ width:40, height:40, borderRadius:8, padding:0 }}>
+            <i className="ti ti-chevron-left" style={{ fontSize:16 }} />
           </button>
-          {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => i+1).map(p => (
-            <button key={p} className={`pg-btn ${p===page?'active':''}`} onClick={() => setPage(p)}>{p}</button>
-          ))}
-          <button className="pg-btn" disabled={page>=totalPages} onClick={() => setPage(p=>p+1)}>
-            <i className="ti ti-chevron-right" style={{ fontSize:14 }} />
+          {(() => {
+            const pages = []
+            const maxShow = 5
+            let start = Math.max(1, page - 2)
+            let end = Math.min(totalPages, start + maxShow - 1)
+            if (end - start < maxShow - 1) start = Math.max(1, end - maxShow + 1)
+            for (let p = start; p <= end; p++) pages.push(p)
+            return pages.map(p => (
+              <button key={p} className={`pg-btn ${p===page?'active':''}`} onClick={() => setPage(p)}
+                style={{ width:40, height:40, borderRadius:8, padding:0 }}>{p}</button>
+            ))
+          })()}
+          <button className="pg-btn" disabled={page>=totalPages} onClick={() => setPage(p=>p+1)} style={{ width:40, height:40, borderRadius:8, padding:0 }}>
+            <i className="ti ti-chevron-right" style={{ fontSize:16 }} />
           </button>
         </div>
       )}
