@@ -5,10 +5,10 @@ const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).fo
 const fmt2 = n => n != null ? new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(n) : '—'
 
 const DIR_COLORS = {
-  'Доходи':   { bg: '#dcfce7', color: '#15803d' },
-  'Витрати':  { bg: '#fee2e2', color: '#b91c1c' },
-  'ПФД':      { bg: '#dbeafe', color: '#1d4ed8' },
-  'Інше':     { bg: '#f3f4f6', color: '#6b7280' },
+  'Доходи':   { bg: '#EFF5EF', color: '#4A7C59' },
+  'Витрати':  { bg: '#F5EDED', color: '#9B3A3A' },
+  'ПФД':      { bg: '#EFF4FF', color: '#2563EB' },
+  'Інше':     { bg: '#F0F2F5', color: '#6B6B6B' },
 }
 
 export default function TransactionModal({ txId, tx: initialTx, onClose }) {
@@ -54,11 +54,11 @@ export default function TransactionModal({ txId, tx: initialTx, onClose }) {
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16 }}>
             <div>
               <div style={{ fontSize:16, fontWeight:600, marginBottom:4 }}>{tx.contractor}</div>
-              <span style={{ background: dirStyle.bg, color: dirStyle.color, padding:'2px 10px', borderRadius:4, fontSize:12, fontWeight:500 }}>{tx.direction}</span>
+              <span style={{ background: dirStyle.bg, color: dirStyle.color, padding:'2px 10px', borderRadius:6, fontSize:12, fontWeight:500 }}>{tx.direction}</span>
             </div>
             <div style={{ display:'flex', alignItems:'center', gap:12 }}>
               <div style={{ textAlign:'right' }}>
-                <div style={{ fontSize:22, fontWeight:700, color: tx.amount >= 0 ? 'var(--green)' : 'var(--red)', fontVariantNumeric:'tabular-nums' }}>
+                <div style={{ fontSize:22, fontWeight:500, color: tx.amount >= 0 ? 'var(--green)' : 'var(--red)', fontVariantNumeric:'tabular-nums' }}>
                   {tx.amount >= 0 ? '+' : ''}{fmt(tx.amount)} грн
                 </div>
                 <div style={{ fontSize:12, color:'var(--text3)' }}>{tx.date}</div>
@@ -104,7 +104,7 @@ export default function TransactionModal({ txId, tx: initialTx, onClose }) {
                   </thead>
                   <tbody>
                     {items.map(it => (
-                      <tr key={it.id} style={{ borderBottom:'1px solid #f3f4f6' }}>
+                      <tr key={it.id} style={{ borderBottom:'1px solid var(--bg)' }}>
                         <td style={{ padding:'7px 10px' }}>{it.name}</td>
                         <td style={{ padding:'7px 10px', textAlign:'right' }}>{fmt2(it.quantity)}</td>
                         <td style={{ padding:'7px 10px', color:'var(--text2)' }}>{it.unit || '—'}</td>

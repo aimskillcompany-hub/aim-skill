@@ -98,7 +98,7 @@ function Dashboard({ user }) {
         <div className="kpi">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
             <div style={{
-              width: 40, height: 40, borderRadius: 10, background: '#F0F0EC',
+              width: 40, height: 40, borderRadius: 10, background: 'var(--bg)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
             }}>
               <i className="ti ti-building-bank" style={{ fontSize: 20, color: 'var(--text2)' }} />
@@ -108,7 +108,7 @@ function Dashboard({ user }) {
               <div style={{ fontSize: 11, color: 'var(--text3)' }}>за імпортованими виписками</div>
             </div>
           </div>
-          <div style={{ fontSize: 28, fontWeight: 700, color: stats.bankFlow >= 0 ? 'var(--green)' : 'var(--red)' }}>
+          <div style={{ fontSize: 28, fontWeight: 500, color: stats.bankFlow >= 0 ? 'var(--green)' : 'var(--red)' }}>
             {stats.bankFlow >= 0 ? '+' : '−'}{fmt(stats.bankFlow)} <span style={{ fontSize: 14, fontWeight: 500 }}>грн</span>
           </div>
         </div>
@@ -116,14 +116,14 @@ function Dashboard({ user }) {
         <div className="kpi">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
             <div style={{
-              width: 40, height: 40, borderRadius: 10, background: '#F0F0EC',
+              width: 40, height: 40, borderRadius: 10, background: 'var(--bg)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
             }}>
               <i className="ti ti-cash" style={{ fontSize: 20, color: 'var(--text2)' }} />
             </div>
             <div style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 500 }}>Залишок каси</div>
           </div>
-          <div style={{ fontSize: 28, fontWeight: 700, color: stats.cashBalance >= 0 ? 'var(--green)' : 'var(--red)' }}>
+          <div style={{ fontSize: 28, fontWeight: 500, color: stats.cashBalance >= 0 ? 'var(--green)' : 'var(--red)' }}>
             {stats.cashBalance >= 0 ? '+' : '−'}{fmt(stats.cashBalance)} <span style={{ fontSize: 14, fontWeight: 500 }}>грн</span>
           </div>
         </div>
@@ -163,8 +163,8 @@ function Dashboard({ user }) {
                   <td>
                     <span style={{
                       fontSize: 12, padding: '4px 10px', borderRadius: 6, fontWeight: 600,
-                      background: tx.direction === 'Доходи' ? '#DCFCE7' : tx.direction === 'Витрати' ? '#FFE4E4' : '#F0F0EC',
-                      color: tx.direction === 'Доходи' ? '#16A34A' : tx.direction === 'Витрати' ? '#DC2626' : '#6B6B6B',
+                      background: tx.direction === 'Доходи' ? 'var(--green-bg)' : tx.direction === 'Витрати' ? 'var(--red-bg)' : 'var(--surface2)',
+                      color: tx.direction === 'Доходи' ? 'var(--green)' : tx.direction === 'Витрати' ? 'var(--red)' : 'var(--text2)',
                     }}>{tx.direction}</span>
                   </td>
                   <td style={{ color: 'var(--text2)', fontSize: 12 }}>{tx.projects?.name || '—'}</td>

@@ -603,7 +603,7 @@ export default function Bank({ user }) {
       {tab === 'import' && (
         <div>
           {parseError && (
-            <div style={{ background:'var(--red-bg)', border:'1px solid #fca5a5', borderRadius:10, padding:'14px 16px', marginBottom:14 }}>
+            <div style={{ background:'var(--red-bg)', border:'1px solid #E2E8F0', borderRadius:12, padding:'14px 16px', marginBottom:14 }}>
               <div style={{ fontWeight:600, color:'var(--red)', marginBottom:6, display:'flex', alignItems:'center', gap:6 }}>
                 <i className="ti ti-alert-circle" style={{ fontSize:16 }} />
                 Не вдалося розпарсити файл
@@ -656,7 +656,7 @@ export default function Bank({ user }) {
                     <div style={{ fontWeight:600 }}>
                       Знайдено {parsed.txs.length} транзакцій
                       {parsed.txs.filter(t=>t._match).length > 0 && <span style={{ color:'var(--green)', marginLeft:8 }}>· {parsed.txs.filter(t=>t._match).length} з автозбігом</span>}
-                      {parsed.txs.filter(t=>t._isDuplicate).length > 0 && <span style={{ color:'#c2410c', marginLeft:8 }}>· {parsed.txs.filter(t=>t._isDuplicate).length} дублікатів</span>}
+                      {parsed.txs.filter(t=>t._isDuplicate).length > 0 && <span style={{ color:'#6B6B6B', marginLeft:8 }}>· {parsed.txs.filter(t=>t._isDuplicate).length} дублікатів</span>}
                     </div>
                     <div style={{ fontSize:12, color:'var(--text2)', marginTop:2 }}>{parsed.fileName}</div>
                   </div>
@@ -691,7 +691,7 @@ export default function Bank({ user }) {
                     <tbody>
                       {parsed.txs.map((tx, i) => (
                         <tr key={i} style={{
-                          background: tx._isDuplicate ? '#fff7ed' : tx._match ? '#f0fdf4' : undefined,
+                          background: tx._isDuplicate ? '#F0F2F5' : tx._match ? '#EFF5EF' : undefined,
                           opacity: tx._isDuplicate ? 0.75 : 1,
                         }}>
                           <td><input type="checkbox" checked={tx._selected} onChange={() => toggleSelect(i)} /></td>
@@ -705,11 +705,11 @@ export default function Bank({ user }) {
                           <td style={{ fontSize:11.5, color:'var(--text2)', wordBreak:'break-word' }} title={tx.description}>{tx.description}</td>
                           <td>
                             {tx._isDuplicate
-                              ? <span style={{ fontSize:11, background:'#fff7ed', color:'#c2410c', padding:'2px 8px', borderRadius:4, fontWeight:500, border:'1px solid #fed7aa', whiteSpace:'nowrap' }}>
+                              ? <span style={{ fontSize:11, background:'#F0F2F5', color:'#6B6B6B', padding:'2px 8px', borderRadius:6, fontWeight:500, border:'1px solid #E2E8F0', whiteSpace:'nowrap' }}>
                                   <i className="ti ti-copy" style={{ marginRight:3, fontSize:11 }} />Дублікат
                                 </span>
                               : tx._match
-                                ? <span style={{ fontSize:11, background:'#dcfce7', color:'var(--green)', padding:'2px 8px', borderRadius:4, fontWeight:500, whiteSpace:'nowrap' }}>
+                                ? <span style={{ fontSize:11, background:'#EFF5EF', color:'var(--green)', padding:'2px 8px', borderRadius:6, fontWeight:500, whiteSpace:'nowrap' }}>
                                     <i className="ti ti-check" style={{ marginRight:3, fontSize:11 }} />{tx._match.contractor?.substring(0,18)}
                                   </span>
                                 : <span style={{ fontSize:11, color:'var(--text3)' }}>Нова</span>
@@ -792,7 +792,7 @@ export default function Bank({ user }) {
 
                 {/* Bulk action bar */}
                 {someSelected && (
-                  <div style={{ display:'flex', alignItems:'center', gap:10, background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8, padding:'10px 14px', marginBottom:12 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:10, background:'#EFF4FF', border:'1px solid #bfdbfe', borderRadius:8, padding:'10px 14px', marginBottom:12 }}>
                     <i className="ti ti-checkbox" style={{ fontSize:16, color:'var(--blue)' }} />
                     <span style={{ fontWeight:600, color:'var(--blue)', marginRight:4 }}>{selectedCount} обрано</span>
                     <button className="btn btn-primary btn-sm" style={{ display:'flex', alignItems:'center', gap:5 }} onClick={() => setShowBulk(true)}>
@@ -928,8 +928,8 @@ export default function Bank({ user }) {
                 {/* Summary chips */}
                 <div style={{ display:'flex', gap:8, marginBottom:10, flexWrap:'wrap', alignItems:'center' }}>
                   <span style={{ fontSize:12, color:'var(--text2)' }}>{filteredAll.length} з {allBankTxs.length} операцій{hasFilter ? ' (фільтр)' : ''}</span>
-                  {totalIn > 0 && <span style={{ fontSize:12, background:'var(--green-bg)', color:'var(--green)', border:'1px solid #86efac', borderRadius:5, padding:'2px 8px', fontWeight:500 }}>+{fmt(totalIn)} грн надходжень</span>}
-                  {totalOut > 0 && <span style={{ fontSize:12, background:'var(--red-bg)', color:'var(--red)', border:'1px solid #fca5a5', borderRadius:5, padding:'2px 8px', fontWeight:500 }}>−{fmt(totalOut)} грн витрат</span>}
+                  {totalIn > 0 && <span style={{ fontSize:12, background:'var(--green-bg)', color:'var(--green)', border:'1px solid #E2E8F0', borderRadius:6, padding:'2px 8px', fontWeight:500 }}>+{fmt(totalIn)} грн надходжень</span>}
+                  {totalOut > 0 && <span style={{ fontSize:12, background:'var(--red-bg)', color:'var(--red)', border:'1px solid #E2E8F0', borderRadius:6, padding:'2px 8px', fontWeight:500 }}>−{fmt(totalOut)} грн витрат</span>}
                 </div>
 
                 <div className="tbl-wrap">
@@ -957,10 +957,10 @@ export default function Bank({ user }) {
                           <td style={{ fontSize:11.5, color:'var(--text2)', wordBreak:'break-word' }}>{btx.description}</td>
                           <td>
                             {btx.is_ignored
-                              ? <span style={{ fontSize:11, background:'#f3f4f6', color:'var(--text3)', padding:'2px 8px', borderRadius:4 }}>Ігнор</span>
+                              ? <span style={{ fontSize:11, background:'#F0F2F5', color:'var(--text3)', padding:'2px 8px', borderRadius:6 }}>Ігнор</span>
                               : btx.is_matched
-                                ? <span style={{ fontSize:11, background:'#dcfce7', color:'var(--green)', padding:'2px 8px', borderRadius:4, fontWeight:500 }}><i className="ti ti-check" style={{ marginRight:3, fontSize:11 }} />Прив'язано</span>
-                                : <span style={{ fontSize:11, background:'#fee2e2', color:'var(--red)', padding:'2px 8px', borderRadius:4, fontWeight:500 }}>Неприв'язано</span>
+                                ? <span style={{ fontSize:11, background:'#EFF5EF', color:'var(--green)', padding:'2px 8px', borderRadius:6, fontWeight:500 }}><i className="ti ti-check" style={{ marginRight:3, fontSize:11 }} />Прив'язано</span>
+                                : <span style={{ fontSize:11, background:'#F5EDED', color:'var(--red)', padding:'2px 8px', borderRadius:6, fontWeight:500 }}>Неприв'язано</span>
                             }
                           </td>
                           <td style={{ fontSize:12 }}>
@@ -1117,7 +1117,7 @@ export default function Bank({ user }) {
               <button className="modal-close" onClick={() => setShowBulk(false)}>×</button>
             </div>
 
-            <div style={{ background:'var(--blue-bg)', border:'1px solid #bfdbfe', borderRadius:8, padding:'10px 14px', marginBottom:14, fontSize:12.5, color:'#1e40af' }}>
+            <div style={{ background:'var(--blue-bg)', border:'1px solid #bfdbfe', borderRadius:8, padding:'10px 14px', marginBottom:14, fontSize:12.5, color:'var(--blue)' }}>
               <i className="ti ti-info-circle" style={{ marginRight:6 }} />
               Оберіть напрям і статтю — вони застосуються до всіх обраних транзакцій. Дату, суму і контрагента система візьме з банківської виписки.
             </div>
@@ -1184,10 +1184,10 @@ export default function Bank({ user }) {
               </span>
             )}
             <div style={{ marginLeft:'auto', display:'flex', gap:8, fontSize:12 }}>
-              <span style={{ background:'#dcfce7', color:'#166534', border:'1px solid #86efac', borderRadius:5, padding:'3px 10px', fontWeight:500 }}>
+              <span style={{ background:'#EFF5EF', color:'#4A7C59', border:'1px solid #E2E8F0', borderRadius:6, padding:'3px 10px', fontWeight:500 }}>
                 🟢 Правило 1: ЄДРПОУ + сума ±10 грн
               </span>
-              <span style={{ background:'#fef9c3', color:'#854d0e', border:'1px solid #fde047', borderRadius:5, padding:'3px 10px', fontWeight:500 }}>
+              <span style={{ background:'#F0F2F5', color:'#6B6B6B', border:'1px solid #E2E8F0', borderRadius:6, padding:'3px 10px', fontWeight:500 }}>
                 🟡 Правило 2: Сума ±10 грн + дата ±30 днів
               </span>
             </div>
@@ -1198,8 +1198,8 @@ export default function Bank({ user }) {
               {reconcileItems.map((item, i) => (
                 <div key={item.bankTx.id} style={{
                   background:'var(--surface)',
-                  border: `1px solid ${item.confidence === 'high' ? '#86efac' : '#fde047'}`,
-                  borderRadius:10,
+                  border: `1px solid #E2E8F0`,
+                  borderRadius:12,
                   padding:'14px 16px',
                   display:'grid',
                   gridTemplateColumns:'1fr auto 1fr auto',
@@ -1226,13 +1226,13 @@ export default function Bank({ user }) {
                   <div style={{ textAlign:'center' }}>
                     <div style={{
                       width:32, height:32, borderRadius:'50%',
-                      background: item.confidence === 'high' ? '#dcfce7' : '#fef9c3',
+                      background: item.confidence === 'high' ? '#EFF5EF' : '#F0F2F5',
                       display:'flex', alignItems:'center', justifyContent:'center',
                       margin:'0 auto 4px',
                     }}>
-                      <i className="ti ti-arrows-right-left" style={{ fontSize:16, color: item.confidence === 'high' ? '#166534' : '#854d0e' }} />
+                      <i className="ti ti-arrows-right-left" style={{ fontSize:16, color: item.confidence === 'high' ? '#4A7C59' : '#6B6B6B' }} />
                     </div>
-                    <div style={{ fontSize:10, fontWeight:600, color: item.confidence === 'high' ? '#166534' : '#854d0e', whiteSpace:'nowrap' }}>
+                    <div style={{ fontSize:10, fontWeight:600, color: item.confidence === 'high' ? '#4A7C59' : '#6B6B6B', whiteSpace:'nowrap' }}>
                       Правило {item.rule}
                     </div>
                   </div>
@@ -1334,7 +1334,7 @@ export default function Bank({ user }) {
                         </thead>
                         <tbody>
                           {linkedTxItems.map(it => (
-                            <tr key={it.id} style={{ borderBottom:'1px solid #f3f4f6' }}>
+                            <tr key={it.id} style={{ borderBottom:'1px solid #F0F2F5' }}>
                               <td style={{ padding:'6px 8px' }}>{it.name}</td>
                               <td style={{ padding:'6px 8px', textAlign:'right' }}>{it.quantity}</td>
                               <td style={{ padding:'6px 8px' }}>{it.unit||'—'}</td>

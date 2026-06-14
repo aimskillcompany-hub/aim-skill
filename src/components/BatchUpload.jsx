@@ -275,11 +275,11 @@ export default function BatchUpload({ user, onSaved }) {
           <span style={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:6, padding:'4px 10px', fontSize:12 }}>
             Всього: {cards.length}
           </span>
-          {pendingCount > 0 && <span style={{ background:'#f3f4f6', border:'1px solid #d1d5db', borderRadius:6, padding:'4px 10px', fontSize:12, color:'var(--text2)' }}>Очікують: {pendingCount}</span>}
-          {doneCount > 0 && <span style={{ background:'#dcfce7', border:'1px solid #86efac', borderRadius:6, padding:'4px 10px', fontSize:12, color:'#166534' }}>Розпізнано: {doneCount}</span>}
-          {dupCount > 0 && <span style={{ background:'#fef9c3', border:'1px solid #fde047', borderRadius:6, padding:'4px 10px', fontSize:12, color:'#854d0e' }}>⚠ Дублікати в пакеті: {dupCount}</span>}
-          {dbDupCount > 0 && <span style={{ background:'#fee2e2', border:'1px solid #fca5a5', borderRadius:6, padding:'4px 10px', fontSize:12, color:'#b91c1c' }}>🚫 Вже в базі: {dbDupCount}</span>}
-          {savedCards > 0 && <span style={{ background:'#dbeafe', border:'1px solid #93c5fd', borderRadius:6, padding:'4px 10px', fontSize:12, color:'#1d4ed8' }}>✓ Збережено: {savedCards}</span>}
+          {pendingCount > 0 && <span style={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:6, padding:'4px 10px', fontSize:12, color:'var(--text2)' }}>Очікують: {pendingCount}</span>}
+          {doneCount > 0 && <span style={{ background:'var(--green-bg)', border:'1px solid var(--border)', borderRadius:6, padding:'4px 10px', fontSize:12, color:'var(--green)' }}>Розпізнано: {doneCount}</span>}
+          {dupCount > 0 && <span style={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:6, padding:'4px 10px', fontSize:12, color:'var(--text2)' }}>⚠ Дублікати в пакеті: {dupCount}</span>}
+          {dbDupCount > 0 && <span style={{ background:'var(--red-bg)', border:'1px solid var(--border)', borderRadius:6, padding:'4px 10px', fontSize:12, color:'var(--red)' }}>🚫 Вже в базі: {dbDupCount}</span>}
+          {savedCards > 0 && <span style={{ background:'var(--blue-bg)', border:'1px solid var(--border)', borderRadius:6, padding:'4px 10px', fontSize:12, color:'var(--blue)' }}>✓ Збережено: {savedCards}</span>}
         </div>
       )}
 
@@ -287,7 +287,7 @@ export default function BatchUpload({ user, onSaved }) {
       <div
         style={{
           border: `2px dashed ${drag ? 'var(--blue)' : 'var(--border2)'}`,
-          borderRadius: 10, padding: cards.length > 0 ? '20px 24px' : '48px 24px',
+          borderRadius: 12, padding: cards.length > 0 ? '20px 24px' : '48px 24px',
           textAlign: 'center', cursor: 'pointer', transition: 'all .15s',
           background: drag ? 'var(--blue-bg)' : 'var(--surface2)',
           marginBottom: 16,
@@ -310,9 +310,9 @@ export default function BatchUpload({ user, onSaved }) {
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(320px, 1fr))', gap:12 }}>
           {cards.map(card => (
             <div key={card.id} style={{
-              background: card.saved ? '#f0fdf4' : card.isDuplicate ? '#fefce8' : 'var(--surface)',
-              border: `1.5px solid ${card.saved ? '#86efac' : card.isDuplicate ? '#fde047' : card.status === 'error' ? '#fca5a5' : 'var(--border)'}`,
-              borderRadius: 10,
+              background: card.saved ? 'var(--green-bg)' : card.isDuplicate ? 'var(--surface2)' : 'var(--surface)',
+              border: '1.5px solid var(--border)',
+              borderRadius: 12,
               padding: 14,
               position: 'relative',
             }}>
@@ -331,37 +331,37 @@ export default function BatchUpload({ user, onSaved }) {
 
               {/* Status badges */}
               {card.saved && (
-                <div style={{ background:'#dcfce7', color:'#166534', borderRadius:6, padding:'4px 10px', fontSize:12, fontWeight:600, marginBottom:8, display:'flex', alignItems:'center', gap:4 }}>
+                <div style={{ background:'var(--green-bg)', color:'var(--green)', borderRadius:6, padding:'4px 10px', fontSize:12, fontWeight:500, marginBottom:8, display:'flex', alignItems:'center', gap:4 }}>
                   <i className="ti ti-check" style={{ fontSize:13 }} /> Збережено
                 </div>
               )}
               {card.dbDuplicate && !card.saved && (
-                <div style={{ background:'#fee2e2', color:'#b91c1c', borderRadius:6, padding:'8px 10px', fontSize:12, fontWeight:600, marginBottom:8 }}>
+                <div style={{ background:'var(--red-bg)', color:'var(--red)', borderRadius:6, padding:'8px 10px', fontSize:12, fontWeight:500, marginBottom:8 }}>
                   🚫 Вже є в базі — збереження заблоковано
                   <div style={{ fontWeight:400, marginTop:3, fontSize:11, lineHeight:1.4 }}>
                     {card.dbDuplicate.date} · {card.dbDuplicate.contractor?.substring(0,30)}
                     {card.dbDuplicate.doc_number && ` · №${card.dbDuplicate.doc_number}`}
                     · {new Intl.NumberFormat('uk-UA').format(Math.round(Math.abs(card.dbDuplicate.amount)))} грн
                   </div>
-                  <div style={{ fontWeight:400, marginTop:2, fontSize:11, color:'#991b1b' }}>
+                  <div style={{ fontWeight:400, marginTop:2, fontSize:11, color:'var(--red)' }}>
                     Правило: {card.dbDuplicate.rule === 'doc_number+edrpou' ? 'номер документу + ЄДРПОУ' : 'ЄДРПОУ + сума + дата'}
                   </div>
                   <button
                     onClick={() => setCards(prev => prev.map(c => c.id === card.id ? {...c, dbDuplicate: null} : c))}
-                    style={{ marginTop:6, background:'none', border:'1px solid #fca5a5', borderRadius:5, padding:'3px 10px', fontSize:11, cursor:'pointer', color:'#b91c1c', fontFamily:'inherit' }}
+                    style={{ marginTop:6, background:'none', border:'1px solid var(--border)', borderRadius:6, padding:'3px 10px', fontSize:11, cursor:'pointer', color:'var(--red)', fontFamily:'inherit' }}
                   >
                     Все одно зберегти
                   </button>
                 </div>
               )}
               {card.isDuplicate && !card.saved && (
-                <div style={{ background:'#fef9c3', color:'#854d0e', borderRadius:6, padding:'6px 10px', fontSize:12, fontWeight:600, marginBottom:8 }}>
+                <div style={{ background:'var(--surface2)', color:'var(--text2)', borderRadius:6, padding:'6px 10px', fontSize:12, fontWeight:500, marginBottom:8 }}>
                   ⚠ Можливий дублікат іншого файлу в цьому пакеті
                   <div style={{ fontWeight:400, marginTop:2 }}>Перевірте і видаліть зайвий</div>
                 </div>
               )}
               {card.status === 'error' && (
-                <div style={{ background:'#fee2e2', color:'#b91c1c', borderRadius:6, padding:'4px 10px', fontSize:12, marginBottom:8 }}>
+                <div style={{ background:'var(--red-bg)', color:'var(--red)', borderRadius:6, padding:'4px 10px', fontSize:12, marginBottom:8 }}>
                   ✗ {card.error}
                 </div>
               )}
@@ -388,8 +388,8 @@ export default function BatchUpload({ user, onSaved }) {
                     <div style={{ fontWeight:600, fontSize:13, marginBottom:4 }}>{card.data.contractor || '—'}</div>
                     <div style={{ display:'flex', gap:10, color:'var(--text2)', flexWrap:'wrap' }}>
                       {card.data.date && <span>{card.data.date}</span>}
-                      {card.data.totalAmount && <span style={{ fontWeight:600, color: card.form.direction==='Доходи'?'var(--green)':'var(--red)' }}>{fmt(card.data.totalAmount)} грн</span>}
-                      {card.data.docType && <span style={{ background:'var(--surface2)', padding:'1px 6px', borderRadius:4 }}>{card.data.docType}</span>}
+                      {card.data.totalAmount && <span style={{ fontWeight:500, color: card.form.direction==='Доходи'?'var(--green)':'var(--red)' }}>{fmt(card.data.totalAmount)} грн</span>}
+                      {card.data.docType && <span style={{ background:'var(--surface2)', padding:'1px 6px', borderRadius:6 }}>{card.data.docType}</span>}
                       {card.data.docNumber && <span>№{card.data.docNumber}</span>}
                     </div>
                     {card.data.edrpou && <div style={{ color:'var(--text3)', fontSize:11, marginTop:2 }}>ЄДРПОУ: {card.data.edrpou}</div>}

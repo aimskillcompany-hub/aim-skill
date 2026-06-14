@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import { extractDocumentMulti } from '../lib/ai'
+import Badge from './ui/Badge'
 
 const DIRS = ['Витрати','Доходи','ПФД','Внутрішні перекази','Відсотки банку','Інше']
 const PER_PAGE = 50
@@ -35,19 +36,6 @@ function ArticleSelect({ value, onChange, articles, direction, style }) {
   )
 }
 
-const DIR_COLORS = {
-  'Доходи': { bg: '#dcfce7', color: '#15803d' },
-  'Витрати': { bg: '#fee2e2', color: '#b91c1c' },
-  'ПФД': { bg: '#dbeafe', color: '#1d4ed8' },
-  'Відсотки банку': { bg: '#fef9c3', color: '#854d0e' },
-  'Внутрішні перекази': { bg: '#f3f4f6', color: '#6b7280' },
-  'Інше': { bg: '#f3f4f6', color: '#6b7280' },
-}
-
-function DirBadge({ dir }) {
-  const s = DIR_COLORS[dir] || DIR_COLORS['Інше']
-  return <span style={{ background: s.bg, color: s.color, padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap' }}>{dir}</span>
-}
 
 export default function Registry({ user }) {
   const [transactions, setTransactions] = useState([])
@@ -543,19 +531,19 @@ export default function Registry({ user }) {
           {inc > 0 && (
             <div style={{ flex:'1 1 calc(50% - 6px)', minWidth:0 }}>
               <div style={{ fontSize:12, color:'var(--text3)', marginBottom:2 }}>Прихід</div>
-              <div style={{ fontSize:16, fontWeight:700, color:'var(--green)' }}>+{fmt(inc)} грн</div>
+              <div style={{ fontSize:16, fontWeight:500, color:'var(--green)' }}>+{fmt(inc)} грн</div>
             </div>
           )}
           {exp < 0 && (
             <div style={{ flex:'1 1 calc(50% - 6px)', minWidth:0 }}>
               <div style={{ fontSize:12, color:'var(--text3)', marginBottom:2 }}>Витрата</div>
-              <div style={{ fontSize:16, fontWeight:700, color:'var(--red)' }}>-{fmt(Math.abs(exp))} грн</div>
+              <div style={{ fontSize:16, fontWeight:500, color:'var(--red)' }}>-{fmt(Math.abs(exp))} грн</div>
             </div>
           )}
         </div>
         <div style={{ borderTop:'1px solid var(--border)', marginTop:10, paddingTop:10 }}>
           <div style={{ fontSize:12, color:'var(--text3)', marginBottom:2 }}>Сальдо</div>
-          <div style={{ fontSize:18, fontWeight:700, color: inc+exp >= 0 ? 'var(--green)' : 'var(--red)' }}>
+          <div style={{ fontSize:18, fontWeight:500, color: inc+exp >= 0 ? 'var(--green)' : 'var(--red)' }}>
             {inc+exp >= 0 ? '+' : ''}{fmt(inc+exp)} грн
           </div>
         </div>
@@ -565,10 +553,10 @@ export default function Registry({ user }) {
       {someChecked && (
         <div style={{
           display:'flex', alignItems:'center', gap:12, padding:'10px 16px',
-          background:'#1a1d23', borderRadius:10, marginBottom:10,
+          background:'var(--surface2)', borderRadius:12, marginBottom:10,
           border:'1px solid var(--border)',
         }}>
-          <span style={{ fontSize:13, fontWeight:600, color:'#f9fafb' }}>
+          <span style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>
             Обрано: {checkedIds.size}
           </span>
           <button
@@ -617,7 +605,7 @@ export default function Registry({ user }) {
                 const noArticle = !tx.article
                 return (
                   <tr key={tx.id}
-                    style={{ cursor:'pointer', background: isChecked ? '#F0FDF4' : noArticle ? '#FFFBEB' : '' }}
+                    style={{ cursor:'pointer', background: isChecked ? 'var(--green-bg)' : noArticle ? 'var(--surface2)' : '' }}
                     onClick={() => openDetail(tx)}
                   >
                     <td style={{ padding:'8px 6px' }} onClick={e => toggleCheck(tx.id, e)}>
@@ -627,12 +615,12 @@ export default function Registry({ user }) {
                     <td style={{ color:'var(--text2)', fontSize:13, whiteSpace:'nowrap' }}>{tx.date}</td>
                     <td style={{ minWidth:250 }}>
                       <div style={{ fontSize:14, fontWeight:500, whiteSpace:'normal', wordBreak:'break-word', lineHeight:'1.3' }}>{tx.contractor}</div>
-                      {tx.description && <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:12, color:'#6B6B6B', marginTop:2, maxWidth:300 }}>{tx.description}</div>}
+                      {tx.description && <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:12, color:'var(--text2)', marginTop:2, maxWidth:300 }}>{tx.description}</div>}
                     </td>
-                    <td style={{ textAlign:'right', fontWeight:600, fontVariantNumeric:'tabular-nums', color: tx.amount > 0 ? 'var(--green)' : tx.amount < 0 ? 'var(--red)' : 'var(--text3)', whiteSpace:'nowrap' }}>
+                    <td style={{ textAlign:'right', fontWeight:500, fontVariantNumeric:'tabular-nums', color: tx.amount > 0 ? 'var(--green)' : tx.amount < 0 ? 'var(--red)' : 'var(--text3)', whiteSpace:'nowrap' }}>
                       {tx.amount > 0 ? '+' : ''}{fmt(tx.amount)}
                     </td>
-                    <td><DirBadge dir={tx.direction} /></td>
+                    <td><Badge type={tx.direction} /></td>
                     <td style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color: noArticle ? 'var(--amber)' : 'var(--text2)', maxWidth:150 }} title={tx.article}>
                       {noArticle ? <span style={{ display:'flex', alignItems:'center', gap:4 }}><i className="ti ti-tag-off" style={{ fontSize:13 }} />без статті</span> : tx.article}
                     </td>
@@ -676,12 +664,12 @@ export default function Registry({ user }) {
             <div style={{ flex:1, minWidth:0 }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', gap:8, marginBottom:4 }}>
                 <span style={{ fontSize:13, color:'var(--text2)' }}>{tx.date}</span>
-                <span style={{ fontSize:15, fontWeight:700, fontVariantNumeric:'tabular-nums', color: tx.amount > 0 ? 'var(--green)' : tx.amount < 0 ? 'var(--red)' : 'var(--text3)', whiteSpace:'nowrap', flexShrink:0 }}>
+                <span style={{ fontSize:15, fontWeight:500, fontVariantNumeric:'tabular-nums', color: tx.amount > 0 ? 'var(--green)' : tx.amount < 0 ? 'var(--red)' : 'var(--text3)', whiteSpace:'nowrap', flexShrink:0 }}>
                   {tx.amount > 0 ? '+' : ''}{fmt(tx.amount)} <span style={{ fontSize:12, fontWeight:500 }}>грн</span>
                 </span>
               </div>
               <div style={{ fontSize:14, fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:4 }}>{tx.contractor}</div>
-              <DirBadge dir={tx.direction} />
+              <Badge type={tx.direction} />
             </div>
             <i className="ti ti-chevron-right" style={{ fontSize:16, color:'var(--text3)', flexShrink:0 }} />
           </div>
@@ -995,7 +983,7 @@ export default function Registry({ user }) {
                       <div key={tx.id} style={{
                         display:'flex', alignItems:'center', gap:12,
                         background: isDone ? '#f0fdf4' : isError ? '#fef2f2' : isSelected ? 'var(--blue-bg)' : 'var(--surface2)',
-                        border: `1px solid ${isDone ? '#86efac' : isError ? '#fca5a5' : isSelected ? 'var(--blue)' : 'var(--border)'}`,
+                        border: `1px solid ${isDone ? '#E2E8F0' : isError ? '#E2E8F0' : isSelected ? 'var(--blue)' : 'var(--border)'}`,
                         borderRadius:8, padding:'10px 14px',
                         opacity: isDone ? .8 : 1,
                       }}>
@@ -1009,7 +997,7 @@ export default function Registry({ user }) {
                           <div style={{ fontSize:13, fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{tx.contractor}</div>
                           <div style={{ fontSize:12, color:'var(--text2)', display:'flex', gap:10, marginTop:2 }}>
                             <span>{tx.date}</span>
-                            <span style={{ fontWeight:600, color: tx.amount >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                            <span style={{ fontWeight:500, color: tx.amount >= 0 ? 'var(--green)' : 'var(--red)' }}>
                               {tx.amount >= 0 ? '+' : ''}{new Intl.NumberFormat('uk-UA').format(Math.round(Math.abs(tx.amount)))} грн
                             </span>
                             {tx.doc_type && <span style={{ color:'var(--text3)' }}>{tx.doc_type}{tx.doc_number ? ` №${tx.doc_number}` : ''}</span>}
@@ -1042,7 +1030,7 @@ export default function Registry({ user }) {
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20 }}>
               <div>
                 <h2 style={{ fontSize:20, fontWeight:700, color:'#000', marginBottom:4 }}>Перевірка дублікатів</h2>
-                <p style={{ fontSize:13, color:'#6B6B6B' }}>
+                <p style={{ fontSize:13, color:'var(--text2)' }}>
                   {dupResults.length > 0
                     ? `Знайдено ${dupResults.length} можливих пар — перевірте кожну`
                     : 'Дублікатів не знайдено'}
@@ -1051,14 +1039,14 @@ export default function Registry({ user }) {
               <div style={{ display:'flex', gap:8, alignItems:'center', flexShrink:0 }}>
                 <button
                   onClick={runDupCheck} disabled={dupChecking}
-                  style={{ height:36, padding:'0 14px', border:'1px solid #E8E8E4', background:'#fff', borderRadius:8, cursor:'pointer', fontSize:13, fontWeight:500, fontFamily:'Inter,sans-serif', color:'#000', display:'flex', alignItems:'center', gap:6 }}
+                  style={{ height:36, padding:'0 14px', border:'1px solid var(--border)', background:'#fff', borderRadius:8, cursor:'pointer', fontSize:13, fontWeight:500, fontFamily:'Inter,sans-serif', color:'#000', display:'flex', alignItems:'center', gap:6 }}
                 >
                   <i className="ti ti-refresh" style={{ fontSize:14 }} />
                   Оновити
                 </button>
                 <button
                   onClick={() => setShowDupModal(false)}
-                  style={{ width:32, height:32, background:'#F0F0EC', border:'none', borderRadius:8, cursor:'pointer', fontSize:15, color:'#6B6B6B', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'Inter,sans-serif', flexShrink:0 }}
+                  style={{ width:32, height:32, background:'var(--surface2)', border:'none', borderRadius:8, cursor:'pointer', fontSize:15, color:'var(--text2)', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'Inter,sans-serif', flexShrink:0 }}
                 >X</button>
               </div>
             </div>
@@ -1073,8 +1061,8 @@ export default function Registry({ user }) {
                 return (
                   <span key={r.rule} style={{
                     fontSize:12, fontWeight:500, padding:'6px 14px', borderRadius:20,
-                    background: active ? '#000' : '#F0F0EC',
-                    color: active ? '#fff' : '#6B6B6B',
+                    background: active ? '#000' : 'var(--surface2)',
+                    color: active ? '#fff' : 'var(--text2)',
                   }}>{r.label}</span>
                 )
               })}
@@ -1093,14 +1081,14 @@ export default function Registry({ user }) {
               {dupResults.map((pair, i) => {
                 const isMerging = mergingSingle === `${pair.tx1.id}-${pair.tx2.id}` || mergingSingle === `${pair.tx2.id}-${pair.tx1.id}`
                 return (
-                  <div key={i} style={{ border:'1px solid #E8E8E4', borderRadius:16, padding:16, background:'#FAFAF8' }}>
+                  <div key={i} style={{ border:'1px solid var(--border)', borderRadius:16, padding:16, background:'var(--bg)' }}>
                     {/* Rule label + dismiss */}
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-                      <span style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:.5, color:'#6B6B6B' }}>
+                      <span style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:.5, color:'var(--text2)' }}>
                         Правило {pair.rule} · різниця {pair.amtDiff} грн{pair.rule === 1 ? ` · ${pair.dayDiff} днів` : ''}
                       </span>
                       <button onClick={() => dismissPair(pair.tx1.id, pair.tx2.id)}
-                        style={{ width:28, height:28, background:'#F0F0EC', border:'none', borderRadius:6, cursor:'pointer', fontSize:13, color:'#6B6B6B', display:'flex', alignItems:'center', justifyContent:'center' }}
+                        style={{ width:28, height:28, background:'var(--surface2)', border:'none', borderRadius:6, cursor:'pointer', fontSize:13, color:'var(--text2)', display:'flex', alignItems:'center', justifyContent:'center' }}
                         title="Не дублікат">X</button>
                     </div>
 
@@ -1108,7 +1096,7 @@ export default function Registry({ user }) {
                     <div className="dup-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
                       {[pair.tx1, pair.tx2].map((tx, ti) => (
                         <div key={tx.id} style={{
-                          background:'#FFFFFF', border:'1px solid #E8E8E4', borderRadius:12, padding:16,
+                          background:'#FFFFFF', border:'1px solid var(--border)', borderRadius:12, padding:16,
                           display:'flex', flexDirection:'column', height:'100%',
                         }}>
                           {/* Content area — flex:1 to push buttons down */}
@@ -1118,16 +1106,16 @@ export default function Registry({ user }) {
 
                             {/* Date + Amount + Badge */}
                             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8, flexWrap:'wrap', gap:6 }}>
-                              <span style={{ fontSize:13, color:'#6B6B6B' }}>{tx.date}</span>
+                              <span style={{ fontSize:13, color:'var(--text2)' }}>{tx.date}</span>
                               <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                                <span style={{ fontSize:14, fontWeight:700, color: tx.amount >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                                <span style={{ fontSize:14, fontWeight:500, color: tx.amount >= 0 ? 'var(--green)' : 'var(--red)' }}>
                                   {tx.amount >= 0 ? '+' : ''}{new Intl.NumberFormat('uk-UA').format(Math.round(Math.abs(tx.amount)))} грн
                                 </span>
                                 {tx.direction && (
                                   <span style={{
                                     fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:6,
-                                    background: tx.direction==='Доходи' ? '#DCFCE7' : tx.direction==='Витрати' ? '#FFE4E4' : '#F0F0EC',
-                                    color: tx.direction==='Доходи' ? '#16A34A' : tx.direction==='Витрати' ? '#DC2626' : '#6B6B6B',
+                                    background: tx.direction==='Доходи' ? 'var(--green-bg)' : tx.direction==='Витрати' ? 'var(--red-bg)' : 'var(--surface2)',
+                                    color: tx.direction==='Доходи' ? 'var(--green)' : tx.direction==='Витрати' ? 'var(--red)' : 'var(--text2)',
                                   }}>{tx.direction}</span>
                                 )}
                               </div>
@@ -1135,15 +1123,15 @@ export default function Registry({ user }) {
 
                             {/* Details */}
                             <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-                              {tx.edrpou && <div style={{ fontSize:12, color:'#6B6B6B' }}>ЄДРПОУ: {tx.edrpou}</div>}
-                              {(tx.doc_type || tx.doc_number) && <div style={{ fontSize:12, color:'#6B6B6B' }}>Документ: {tx.doc_type}{tx.doc_number ? ` №${tx.doc_number}` : ''}</div>}
-                              {tx.article && <div style={{ fontSize:12, color:'#6B6B6B' }}>Стаття: {tx.article}</div>}
+                              {tx.edrpou && <div style={{ fontSize:12, color:'var(--text2)' }}>ЄДРПОУ: {tx.edrpou}</div>}
+                              {(tx.doc_type || tx.doc_number) && <div style={{ fontSize:12, color:'var(--text2)' }}>Документ: {tx.doc_type}{tx.doc_number ? ` №${tx.doc_number}` : ''}</div>}
+                              {tx.article && <div style={{ fontSize:12, color:'var(--text2)' }}>Стаття: {tx.article}</div>}
                               {tx.description && (
-                                <div style={{ fontSize:12, color:'#6B6B6B', overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', lineHeight:'1.4' }}>
+                                <div style={{ fontSize:12, color:'var(--text2)', overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', lineHeight:'1.4' }}>
                                   Опис: {tx.description}
                                 </div>
                               )}
-                              <div style={{ fontSize:12, color:'#6B6B6B' }}>Документів: {tx.documents?.length || 0}</div>
+                              <div style={{ fontSize:12, color:'var(--text2)' }}>Документів: {tx.documents?.length || 0}</div>
                             </div>
                           </div>
 
@@ -1163,7 +1151,7 @@ export default function Registry({ user }) {
                               onClick={() => handleDeleteDup(tx.id, ti === 0 ? pair.tx2.id : pair.tx1.id)}
                               style={{
                                 flex:1, height:36, border:'none', borderRadius:8, cursor:'pointer',
-                                background:'#FFE4E4', color:'#DC2626', fontSize:13, fontWeight:600,
+                                background:'var(--red-bg)', color:'var(--red)', fontSize:13, fontWeight:600,
                                 fontFamily:'Inter,sans-serif', opacity: isMerging ? .5 : 1,
                               }}
                             >Видалити</button>
@@ -1173,7 +1161,7 @@ export default function Registry({ user }) {
                     </div>
 
                     {isMerging && (
-                      <div style={{ textAlign:'center', padding:'8px 0', fontSize:13, color:'#6B6B6B', marginTop:8 }}>
+                      <div style={{ textAlign:'center', padding:'8px 0', fontSize:13, color:'var(--text2)', marginTop:8 }}>
                         Обʼєднуємо...
                       </div>
                     )}

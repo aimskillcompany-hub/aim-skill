@@ -257,10 +257,10 @@ export default function Planning({ user }) {
                   </thead>
                   <tbody>
                     {visiblePlans.map((p, i) => (
-                      <tr key={p.id + (filterMonth ? i : '')} style={{ borderBottom:'1px solid #f3f4f6' }}>
+                      <tr key={p.id + (filterMonth ? i : '')} style={{ borderBottom:'1px solid #F0F2F5' }}>
                         <td style={{ whiteSpace:'nowrap' }}>
                           {p.is_template ? (
-                            <span style={{ fontSize:11, background:'#e8fdf1', color:'#0a6632', border:'1px solid #86efb8', borderRadius:4, padding:'2px 7px', fontWeight:500 }}>
+                            <span style={{ fontSize:11, background:'#EFF5EF', color:'#4A7C59', border:'1px solid #E2E8F0', borderRadius:6, padding:'2px 7px', fontWeight:500 }}>
                               <i className="ti ti-repeat" style={{ fontSize:11, marginRight:3 }} />
                               {p.template_from} → {p.template_to}
                             </span>
@@ -282,7 +282,7 @@ export default function Planning({ user }) {
                             <button onClick={() => handleEdit(p)} style={{ background:'none', border:'1px solid var(--border2)', borderRadius:6, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text2)' }}>
                               <i className="ti ti-pencil" style={{ fontSize:13 }} />
                             </button>
-                            <button onClick={() => handleDelete(p.id)} style={{ background:'none', border:'1px solid #fca5a5', borderRadius:6, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--red)' }}>
+                            <button onClick={() => handleDelete(p.id)} style={{ background:'none', border:'1px solid #E2E8F0', borderRadius:6, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--red)' }}>
                               <i className="ti ti-trash" style={{ fontSize:13 }} />
                             </button>
                           </div>
@@ -307,8 +307,8 @@ export default function Planning({ user }) {
               <div style={{ padding:'14px 18px 10px', fontSize:13, fontWeight:600, color:'var(--text2)', display:'flex', alignItems:'center', gap:10 }}>
                 Помісячне порівняння плану та факту
                 <span style={{ display:'flex', gap:8, fontSize:11, fontWeight:400 }}>
-                  <span style={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:4, padding:'2px 8px', color:'var(--text3)' }}>Факт</span>
-                  <span style={{ background:'#f0fdf4', border:'1px dashed #86efac', borderRadius:4, padding:'2px 8px', color:'#166534' }}>ПЛАН</span>
+                  <span style={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:6, padding:'2px 8px', color:'var(--text3)' }}>Факт</span>
+                  <span style={{ background:'#EFF5EF', border:'1px dashed #E2E8F0', borderRadius:6, padding:'2px 8px', color:'#4A7C59' }}>ПЛАН</span>
                 </span>
               </div>
               <div className="tbl-wrap" style={{ border:'none' }}>
@@ -334,14 +334,14 @@ export default function Planning({ user }) {
                       const isCurrent = row.isCurrent
                       return (
                         <tr key={row.m} style={{
-                          borderBottom:'1px solid #f3f4f6',
-                          background: isFuture ? '#fafafa' : isCurrent ? '#f0fdf4' : '',
+                          borderBottom:'1px solid #F0F2F5',
+                          background: isFuture ? '#fafafa' : isCurrent ? '#EFF5EF' : '',
                         }}>
                           <td>
                             <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                               <span style={{ fontSize:13, fontWeight: isCurrent?600:400 }}>{row.m}</span>
-                              {isCurrent && <span style={{ fontSize:10, background:'#dcfce7', color:'#166534', border:'1px solid #86efac', borderRadius:4, padding:'1px 6px', fontWeight:600 }}>зараз</span>}
-                              {isFuture && <span style={{ fontSize:10, background:'#f3f4f6', color:'var(--text3)', borderRadius:4, padding:'1px 6px' }}>план</span>}
+                              {isCurrent && <span style={{ fontSize:10, background:'#EFF5EF', color:'#4A7C59', border:'1px solid #E2E8F0', borderRadius:6, padding:'1px 6px', fontWeight:600 }}>зараз</span>}
+                              {isFuture && <span style={{ fontSize:10, background:'#F0F2F5', color:'var(--text3)', borderRadius:6, padding:'1px 6px' }}>план</span>}
                             </div>
                           </td>
                           {/* Доходи факт */}
@@ -349,7 +349,7 @@ export default function Planning({ user }) {
                             {isFuture ? '—' : (row.factRev > 0 ? '+'+fmt(row.factRev) : '—')}
                           </td>
                           {/* Доходи план */}
-                          <td style={{ textAlign:'right', fontVariantNumeric:'tabular-nums', color:'#166534', fontStyle:'italic', background: isFuture?'#f0fdf4':'' }}>
+                          <td style={{ textAlign:'right', fontVariantNumeric:'tabular-nums', color:'#4A7C59', fontStyle:'italic', background: isFuture?'#EFF5EF':'' }}>
                             {row.planRev > 0 ? '+'+fmt(row.planRev) : '—'}
                           </td>
                           {/* % доходів */}
@@ -361,7 +361,7 @@ export default function Planning({ user }) {
                             {isFuture ? '—' : (row.factExp > 0 ? '−'+fmt(row.factExp) : '—')}
                           </td>
                           {/* Витрати план */}
-                          <td style={{ textAlign:'right', fontVariantNumeric:'tabular-nums', color:'#991b1b', fontStyle:'italic', background: isFuture?'#fff5f5':'' }}>
+                          <td style={{ textAlign:'right', fontVariantNumeric:'tabular-nums', color:'#9B3A3A', fontStyle:'italic', background: isFuture?'#F5EDED':'' }}>
                             {row.planExp > 0 ? '−'+fmt(row.planExp) : '—'}
                           </td>
                           {/* % витрат */}
@@ -373,7 +373,7 @@ export default function Planning({ user }) {
                             {isFuture ? '—' : (row.factRev>0||row.factExp>0 ? (row.factNet>=0?'+':'−')+fmt(row.factNet) : '—')}
                           </td>
                           {/* Результат план */}
-                          <td style={{ textAlign:'right', fontVariantNumeric:'tabular-nums', fontWeight:600, color: row.planNet>=0?'#166534':'#991b1b', fontStyle:'italic', background: isFuture?(row.planNet>=0?'#f0fdf4':'#fff5f5'):'' }}>
+                          <td style={{ textAlign:'right', fontVariantNumeric:'tabular-nums', fontWeight:600, color: row.planNet>=0?'#4A7C59':'#9B3A3A', fontStyle:'italic', background: isFuture?(row.planNet>=0?'#EFF5EF':'#F5EDED'):'' }}>
                             {row.planRev>0||row.planExp>0 ? (row.planNet>=0?'+':'−')+fmt(row.planNet) : '—'}
                           </td>
                         </tr>
@@ -475,7 +475,7 @@ export default function Planning({ user }) {
             </div>
 
             {form.is_template && form.template_from && form.template_to && form.amount && (
-              <div style={{ background:'#e8fdf1', border:'1px solid #86efb8', borderRadius:8, padding:'10px 14px', fontSize:12.5, color:'#0a6632', marginTop:4 }}>
+              <div style={{ background:'#EFF5EF', border:'1px solid #E2E8F0', borderRadius:8, padding:'10px 14px', fontSize:12.5, color:'#4A7C59', marginTop:4 }}>
                 <i className="ti ti-info-circle" style={{ marginRight:6 }} />
                 Буде створено {getMonthRange(form.template_from, form.template_to).length} записів по {fmt(form.amount)} грн кожен
                 ({form.direction === 'Доходи' ? '+' : '−'}{fmt(form.amount * getMonthRange(form.template_from, form.template_to).length)} грн загалом)

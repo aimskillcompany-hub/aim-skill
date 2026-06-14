@@ -262,7 +262,7 @@ export default function Projects({ user }) {
                     onClick={e => openEdit(e, proj)} title="Редагувати"
                   ><i className="ti ti-pencil" style={{ fontSize: 13 }} /></button>
                   <button
-                    style={{ background: 'none', border: '1px solid #fca5a5', borderRadius: 6, width: 26, height: 26, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red)', flexShrink: 0 }}
+                    style={{ background: 'none', border: '1px solid #E2E8F0', borderRadius: 6, width: 26, height: 26, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red)', flexShrink: 0 }}
                     onClick={e => handleDelete(e, proj)} title="Видалити"
                   ><i className="ti ti-trash" style={{ fontSize: 13 }} /></button>
                 </div>
@@ -276,7 +276,7 @@ export default function Projects({ user }) {
                 ].map(({ l, v, c }) => (
                   <div key={l}>
                     <div style={{ fontSize: 10, color: 'var(--text3)' }}>{l}</div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: c }}>{v}</div>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: c }}>{v}</div>
                   </div>
                 ))}
               </div>

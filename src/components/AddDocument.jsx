@@ -421,7 +421,7 @@ export default function AddDocument({ user, onSaved }) {
           {/* Drop zone */}
           <div
             style={{
-              border: '1.5px dashed var(--border2)', borderRadius: 10, padding: '40px 24px',
+              border: '1.5px dashed var(--border2)', borderRadius: 12, padding: '40px 24px',
               textAlign: 'center', cursor: 'pointer', transition: 'all .15s',
               background: drag ? 'var(--blue-bg)' : 'var(--surface2)',
               borderColor: drag ? 'var(--blue)' : undefined,
@@ -515,15 +515,15 @@ export default function AddDocument({ user, onSaved }) {
 
           {/* Extracted summary */}
           {extracted && (
-            <div style={{ background: 'var(--blue-bg)', border: '1px solid #bae6fd', borderRadius: 8, padding: '10px 14px', marginBottom: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#0369a1', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ background: 'var(--blue-bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', marginBottom: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--blue)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <i className="ti ti-check" style={{ fontSize: 14 }} />
                 Розпізнано Claude — перевірте та скоригуйте за потреби
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
-                {extracted.docType && <div><div style={{ fontSize: 10.5, color: '#0369a1' }}>Тип документу</div><div style={{ fontSize: 12, fontWeight: 500, color: '#0c4a6e' }}>{extracted.docType}</div></div>}
-                {extracted.date && <div><div style={{ fontSize: 10.5, color: '#0369a1' }}>Дата</div><div style={{ fontSize: 12, fontWeight: 500, color: '#0c4a6e' }}>{extracted.date}</div></div>}
-                {extracted.totalAmount && <div><div style={{ fontSize: 10.5, color: '#0369a1' }}>Сума</div><div style={{ fontSize: 12, fontWeight: 500, color: '#0c4a6e' }}>{fmt(extracted.totalAmount)} грн</div></div>}
+                {extracted.docType && <div><div style={{ fontSize: 10.5, color: 'var(--blue)' }}>Тип документу</div><div style={{ fontSize: 12, fontWeight: 500, color: 'var(--blue)' }}>{extracted.docType}</div></div>}
+                {extracted.date && <div><div style={{ fontSize: 10.5, color: 'var(--blue)' }}>Дата</div><div style={{ fontSize: 12, fontWeight: 500, color: 'var(--blue)' }}>{extracted.date}</div></div>}
+                {extracted.totalAmount && <div><div style={{ fontSize: 10.5, color: 'var(--blue)' }}>Сума</div><div style={{ fontSize: 12, fontWeight: 500, color: 'var(--blue)' }}>{fmt(extracted.totalAmount)} грн</div></div>}
               </div>
             </div>
           )}
@@ -532,17 +532,17 @@ export default function AddDocument({ user, onSaved }) {
 
           {/* Similar transactions — attach or create new */}
           {attachMode && similarTxs.length > 0 && (
-            <div style={{ background:'#f0f9ff', border:'2px solid #7dd3fc', borderRadius:10, padding:'14px 16px', marginBottom:14 }}>
-              <div style={{ fontWeight:700, fontSize:14, color:'#0c4a6e', marginBottom:8, display:'flex', alignItems:'center', gap:8 }}>
-                <i className="ti ti-paperclip" style={{ fontSize:18, color:'#0ea5e9' }} />
+            <div style={{ background:'var(--blue-bg)', border:'2px solid var(--border)', borderRadius:12, padding:'14px 16px', marginBottom:14 }}>
+              <div style={{ fontWeight:500, fontSize:14, color:'var(--blue)', marginBottom:8, display:'flex', alignItems:'center', gap:8 }}>
+                <i className="ti ti-paperclip" style={{ fontSize:18, color:'var(--blue)' }} />
                 {similarTxs.length === 1 ? 'Знайдено схожу транзакцію' : `Знайдено ${similarTxs.length} схожих транзакцій`} — до якої прикріпити документ?
               </div>
-              <div style={{ fontSize:12, color:'#0369a1', marginBottom:12 }}>
+              <div style={{ fontSize:12, color:'var(--blue)', marginBottom:12 }}>
                 ЄДРПОУ <strong>{form.edrpou}</strong> · сума <strong>{new Intl.NumberFormat('uk-UA').format(Math.round(Math.abs(parseFloat(form.total))))} грн</strong>
               </div>
               <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:12 }}>
                 {similarTxs.map(tx => (
-                  <div key={tx.id} style={{ display:'flex', alignItems:'center', gap:10, background:'#fff', border:'1px solid #bae6fd', borderRadius:8, padding:'10px 14px' }}>
+                  <div key={tx.id} style={{ display:'flex', alignItems:'center', gap:10, background:'var(--surface)', border:'1px solid var(--border)', borderRadius:8, padding:'10px 14px' }}>
                     <div style={{ flex:1 }}>
                       <div style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>
                         {tx.contractor}
@@ -551,7 +551,7 @@ export default function AddDocument({ user, onSaved }) {
                       </div>
                       <div style={{ fontSize:12, color:'var(--text2)', marginTop:2, display:'flex', gap:12 }}>
                         <span>{tx.date}</span>
-                        <span style={{ fontWeight:600, color: tx.amount >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                        <span style={{ fontWeight:500, color: tx.amount >= 0 ? 'var(--green)' : 'var(--red)' }}>
                           {tx.amount >= 0 ? '+' : ''}{new Intl.NumberFormat('uk-UA').format(Math.round(Math.abs(tx.amount)))} грн
                         </span>
                         <span style={{ color:'var(--text3)' }}>{tx.documents?.length || 0} документів</span>
@@ -569,12 +569,12 @@ export default function AddDocument({ user, onSaved }) {
                   </div>
                 ))}
               </div>
-              <div style={{ display:'flex', gap:8, borderTop:'1px solid #bae6fd', paddingTop:12 }}>
+              <div style={{ display:'flex', gap:8, borderTop:'1px solid var(--border)', paddingTop:12 }}>
                 <button className="btn btn-secondary" onClick={() => { setSimilarTxs([]); setAttachMode(false) }}>
                   ← Скасувати
                 </button>
                 <button
-                  style={{ background:'none', border:'1px solid #0ea5e9', borderRadius:7, padding:'6px 14px', fontSize:12.5, cursor:'pointer', color:'#0c4a6e', fontFamily:'inherit' }}
+                  style={{ background:'none', border:'1px solid var(--blue)', borderRadius:6, padding:'6px 14px', fontSize:12.5, cursor:'pointer', color:'var(--blue)', fontFamily:'inherit' }}
                   onClick={handleCreateNew}
                   disabled={saving}
                 >
@@ -586,17 +586,17 @@ export default function AddDocument({ user, onSaved }) {
 
           {/* Duplicate warning */}
           {duplicate && (
-            <div style={{ background: '#fff7ed', border: '2px solid #f59e0b', borderRadius: 10, padding: '14px 16px', marginBottom: 14 }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: '#92400e', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <i className="ti ti-alert-triangle" style={{ fontSize: 18, color: '#f59e0b' }} />
+            <div style={{ background: 'var(--surface2)', border: '2px solid var(--border)', borderRadius: 12, padding: '14px 16px', marginBottom: 14 }}>
+              <div style={{ fontWeight: 500, fontSize: 14, color: 'var(--text2)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <i className="ti ti-alert-triangle" style={{ fontSize: 18, color: 'var(--text2)' }} />
                 Можливий дублікат — схожа операція вже є!
               </div>
-              <div style={{ fontSize: 13, color: '#78350f', background: '#fef3c7', borderRadius: 6, padding: '8px 12px', marginBottom: 12 }}>
+              <div style={{ fontSize: 13, color: 'var(--text2)', background: 'var(--surface2)', borderRadius: 6, padding: '8px 12px', marginBottom: 12 }}>
                 <strong>{duplicate.date}</strong> · <strong>{duplicate.contractor}</strong>
                 {duplicate.doc_number && <span> · №{duplicate.doc_number}</span>}
                 · <strong>{new Intl.NumberFormat('uk-UA').format(Math.round(Math.abs(duplicate.amount)))} грн</strong>
               </div>
-              <div style={{ fontSize: 12, color: '#92400e', marginBottom: 10 }}>
+              <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>
                 Перевірте — якщо це справді та сама операція, натисніть «Скасувати».
                 Якщо це нова окрема оплата — натисніть «Все одно зберегти».
               </div>
@@ -605,7 +605,7 @@ export default function AddDocument({ user, onSaved }) {
                   ← Скасувати (рекомендовано)
                 </button>
                 <button
-                  style={{ background: 'none', border: '1px solid #f59e0b', borderRadius: 7, padding: '6px 14px', fontSize: 12.5, cursor: 'pointer', color: '#92400e', fontFamily: 'inherit' }}
+                  style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 14px', fontSize: 12.5, cursor: 'pointer', color: 'var(--text2)', fontFamily: 'inherit' }}
                   onClick={() => { setDuplicate(null); handleSave(true) }}
                 >
                   Все одно зберегти (нова оплата)
@@ -616,18 +616,18 @@ export default function AddDocument({ user, onSaved }) {
 
           {/* Bank match notification */}
           {bankMatch && (
-            <div style={{ background:'#f0fdf4', border:'2px solid #86efac', borderRadius:10, padding:'12px 16px', marginBottom:14, display:'flex', alignItems:'center', gap:12 }}>
+            <div style={{ background:'var(--green-bg)', border:'2px solid var(--border)', borderRadius:12, padding:'12px 16px', marginBottom:14, display:'flex', alignItems:'center', gap:12 }}>
               <i className="ti ti-building-bank" style={{ fontSize:22, color:'var(--green)', flexShrink:0 }} />
               <div>
-                <div style={{ fontWeight:700, fontSize:13, color:'var(--green)', marginBottom:2 }}>
+                <div style={{ fontWeight:500, fontSize:13, color:'var(--green)', marginBottom:2 }}>
                   Знайдено збіг з банківською транзакцією!
                 </div>
-                <div style={{ fontSize:12, color:'#166534' }}>
+                <div style={{ fontSize:12, color:'var(--green)' }}>
                   {bankMatch.date} · {bankMatch.counterparty || 'Банк'} · {bankMatch.amount > 0 ? '+' : ''}{new Intl.NumberFormat('uk-UA').format(Math.round(Math.abs(bankMatch.amount)))} грн
                   {bankMatch.edrpou && <span> · ЄДРПОУ {bankMatch.edrpou}</span>}
                 </div>
               </div>
-              <button onClick={() => setBankMatch(null)} style={{ marginLeft:'auto', background:'none', border:'none', cursor:'pointer', color:'#166534', fontSize:18 }}>×</button>
+              <button onClick={() => setBankMatch(null)} style={{ marginLeft:'auto', background:'none', border:'none', cursor:'pointer', color:'var(--green)', fontSize:18 }}>×</button>
             </div>
           )}
 
@@ -705,7 +705,7 @@ export default function AddDocument({ user, onSaved }) {
           {/* Items */}
           {form.items.length > 0 && (
             <div className="items-table">
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#0369a1', marginBottom: 6 }}>
+              <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--blue)', marginBottom: 6 }}>
                 📦 Позиції з документу ({form.items.length})
               </div>
               <div style={{ overflowX: 'auto' }}>

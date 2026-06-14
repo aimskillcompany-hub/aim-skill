@@ -137,7 +137,7 @@ export default function ArticlesSettings() {
                 </button>
                 <button
                   onClick={() => handleDelete(a)}
-                  style={{ background: 'none', border: '1px solid #fca5a5', borderRadius: 6, width: 28, height: 28, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red)' }}
+                  style={{ background: 'none', border: '1px solid #E2E8F0', borderRadius: 6, width: 28, height: 28, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red)' }}
                 >
                   <i className="ti ti-trash" style={{ fontSize: 13 }} />
                 </button>

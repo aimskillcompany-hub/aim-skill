@@ -42,12 +42,12 @@ export default function Auth() {
       alignItems: 'center',
       justifyContent: 'center',
       minHeight: '100vh',
-      background: '#F0F0EC',
+      background: 'var(--bg)',
     }}>
       <div style={{ width: '100%', maxWidth: 420, padding: '0 24px' }}>
         <div style={{
-          background: '#FFFFFF',
-          border: '1px solid #E8E8E4',
+          background: 'var(--surface)',
+          border: '1px solid var(--border)',
           borderRadius: 20,
           padding: '40px 32px',
         }}>
@@ -59,15 +59,15 @@ export default function Auth() {
           <h1 style={{ fontSize: 28, fontWeight: 700, color: '#000', marginBottom: 6, letterSpacing: '-.3px' }}>
             {mode === 'login' ? 'Вхід до системи' : 'Реєстрація'}
           </h1>
-          <p style={{ fontSize: 15, color: '#6B6B6B', marginBottom: 32 }}>
+          <p style={{ fontSize: 15, color: 'var(--text2)', marginBottom: 32 }}>
             Управлінський облік AiM Skills
           </p>
 
           {error && (
             <div style={{
-              background: '#FFE4E4',
-              border: '1px solid #FCA5A5',
-              color: '#DC2626',
+              background: 'var(--red-bg)',
+              border: '1px solid var(--border)',
+              color: 'var(--red)',
               padding: '12px 16px',
               borderRadius: 12,
               fontSize: 14,
@@ -76,9 +76,9 @@ export default function Auth() {
           )}
           {success && (
             <div style={{
-              background: '#DCFCE7',
-              border: '1px solid #86EFAC',
-              color: '#16A34A',
+              background: 'var(--green-bg)',
+              border: '1px solid var(--border)',
+              color: 'var(--green)',
               padding: '12px 16px',
               borderRadius: 12,
               fontSize: 14,
@@ -124,7 +124,7 @@ export default function Auth() {
             </button>
           </form>
 
-          <p style={{ textAlign: 'center', marginTop: 24, fontSize: 14, color: '#6B6B6B' }}>
+          <p style={{ textAlign: 'center', marginTop: 24, fontSize: 14, color: 'var(--text2)' }}>
             {mode === 'login' ? 'Немає акаунту? ' : 'Вже є акаунт? '}
             <span
               style={{ color: '#000', cursor: 'pointer', fontWeight: 600 }}
@@ -140,14 +140,14 @@ export default function Auth() {
 }
 
 const labelStyle = {
-  fontSize: 12, fontWeight: 600, color: '#6B6B6B', letterSpacing: '.5px',
+  fontSize: 12, fontWeight: 600, color: 'var(--text2)', letterSpacing: '.5px',
 }
 
 const inputStyle = {
   padding: '12px 14px',
   height: 48,
-  background: '#FFFFFF',
-  border: '1px solid #E8E8E4',
+  background: 'var(--surface)',
+  border: '1px solid var(--border)',
   borderRadius: 12,
   color: '#000',
   fontSize: 16,

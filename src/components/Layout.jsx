@@ -78,10 +78,10 @@ export default function Layout({ page, onPage, user, children }) {
 
       {sidebarOpen && (
         <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,.3)',zIndex:300,backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',animation:'fadeIn .2s ease' }} onClick={() => setSidebarOpen(false)}>
-          <aside style={{ width:280,height:'100%',background:'#FFFFFF',display:'flex',flexDirection:'column',animation:'slideInLeft .25s cubic-bezier(.22,.68,0,1)',borderRight:'1px solid #E8E8E4' }} onClick={e => e.stopPropagation()}>
+          <aside style={{ width:280,height:'100%',background:'var(--surface)',display:'flex',flexDirection:'column',animation:'slideInLeft .25s cubic-bezier(.22,.68,0,1)',borderRight:'1px solid var(--border)' }} onClick={e => e.stopPropagation()}>
             <div className="sidebar-logo" style={{ display:'flex',justifyContent:'space-between',alignItems:'center' }}>
               <img src={LOGO} alt="AiM Skills" style={{ height: 44, width: 'auto', filter: 'brightness(0)' }} />
-              <button onClick={() => setSidebarOpen(false)} style={{ background:'#F0F0EC',border:'1px solid #E8E8E4',color:'#6B6B6B',fontSize:16,cursor:'pointer',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center' }}>
+              <button onClick={() => setSidebarOpen(false)} style={{ background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text2)',fontSize:16,cursor:'pointer',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center' }}>
                 <i className="ti ti-x" />
               </button>
             </div>

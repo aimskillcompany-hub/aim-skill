@@ -19,7 +19,7 @@ const numColor = v => v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--tex
 const ARTICLE_TYPE_ORDER = ['income','expense','transfer','other']
 const SECTION_LABELS = { income:'Доходи', expense:'Витрати', transfer:'Перекази / ПФД', other:'Інше' }
 const SECTION_SIGN   = { income:+1, expense:-1, transfer:+1, other:+1 }
-const EXPENSE_COLORS = ['#1d4ed8','#7c3aed','#0891b2','#059669','#d97706','#dc2626','#9333ea','#0284c7','#16a34a','#ca8a04']
+const EXPENSE_COLORS = ['#2563EB','#6B6B6B','#0891b2','#059669','#4A7C59','#9B3A3A','#6B6B6B','#2563EB','#4A7C59','#ca8a04']
 const DIRS = ['Витрати','Доходи','ПФД','Внутрішні перекази','Відсотки банку','Інше']
 
 // ── Planning helpers ─────────────────────────────────────────────────────────
@@ -71,7 +71,7 @@ const DIR_TO_TYPE = {
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
   return (
-    <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:8, padding:'10px 14px', fontSize:12.5, boxShadow:'0 4px 12px rgba(0,0,0,.08)' }}>
+    <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:8, padding:'10px 14px', fontSize:12.5, boxShadow:'0 1px 2px rgba(0,0,0,0.05)' }}>
       <div style={{ fontWeight:600, marginBottom:6 }}>{label}</div>
       {payload.map((p, i) => {
         // Витрати зберігаються як позитивне число, показуємо з мінусом
@@ -320,7 +320,7 @@ export default function Reports() {
     textAlign: 'right',
     fontVariantNumeric: 'tabular-nums',
     color: v === 0 ? 'var(--text3)' : numColor(v),
-    fontWeight: bold ? 700 : 400,
+    fontWeight: bold ? 500 : 400,
     cursor: clickable && v !== 0 ? 'pointer' : 'default',
     whiteSpace: 'nowrap',
     fontSize: 12.5,
@@ -374,13 +374,13 @@ export default function Reports() {
           <div style={{ fontSize:13, fontWeight:600, color:'var(--text2)', marginBottom:16 }}>Виручка та витрати по місяцях, грн</div>
           <ResponsiveContainer width="100%" height={240}>
             <ComposedChart data={monthly} barGap={4}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#F0F2F5" vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize:12, fill:'var(--text2)' }} axisLine={false} tickLine={false} />
               <YAxis tickFormatter={fmtK} tick={{ fontSize:11, fill:'var(--text3)' }} axisLine={false} tickLine={false} width={52} />
               <Tooltip content={<CustomTooltip />} />
               <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize:12, paddingTop:8 }} formatter={v=><span style={{color:'var(--text2)'}}>{v}</span>} />
-              <Bar dataKey="revenue"  name="Виручка" fill="#1d4ed8" radius={[4,4,0,0]} maxBarSize={48} />
-              <Bar dataKey="expenses" name="Витрати" fill="#ef4444" radius={[4,4,0,0]} maxBarSize={48} />
+              <Bar dataKey="revenue"  name="Виручка" fill="#4A7C59" radius={[4,4,0,0]} maxBarSize={48} />
+              <Bar dataKey="expenses" name="Витрати" fill="#9B3A3A" radius={[4,4,0,0]} maxBarSize={48} />
               <Line dataKey="net" name="Результат" stroke="#f59e0b" strokeWidth={2.5} dot={{ r:4, fill:'#f59e0b' }} />
             </ComposedChart>
           </ResponsiveContainer>
@@ -421,15 +421,15 @@ export default function Reports() {
           <AreaChart data={monthly} margin={{ top:4, right:8, left:0, bottom:4 }}>
             <defs>
               <linearGradient id="cfGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor={lastCF>=0?'#1d4ed8':'#ef4444'} stopOpacity={0.15}/>
-                <stop offset="95%" stopColor={lastCF>=0?'#1d4ed8':'#ef4444'} stopOpacity={0}/>
+                <stop offset="5%"  stopColor={lastCF>=0?'#2563EB':'#9B3A3A'} stopOpacity={0.15}/>
+                <stop offset="95%" stopColor={lastCF>=0?'#2563EB':'#9B3A3A'} stopOpacity={0}/>
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#F0F2F5" vertical={false} />
             <XAxis dataKey="label" tick={{ fontSize:12, fill:'var(--text2)' }} axisLine={false} tickLine={false} />
             <YAxis tickFormatter={fmtK} tick={{ fontSize:11, fill:'var(--text3)' }} axisLine={false} tickLine={false} width={64} />
             <Tooltip content={<CustomTooltip />} />
-            <Area type="monotone" dataKey="cumCF" name="Cash Flow" stroke={lastCF>=0?'#1d4ed8':'#ef4444'} strokeWidth={2.5} fill="url(#cfGrad)" dot={{ r:4, fill:lastCF>=0?'#1d4ed8':'#ef4444', strokeWidth:2, stroke:'#fff' }} activeDot={{ r:6 }} />
+            <Area type="monotone" dataKey="cumCF" name="Cash Flow" stroke={lastCF>=0?'#2563EB':'#9B3A3A'} strokeWidth={2.5} fill="url(#cfGrad)" dot={{ r:4, fill:lastCF>=0?'#2563EB':'#9B3A3A', strokeWidth:2, stroke:'#fff' }} activeDot={{ r:6 }} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -457,11 +457,11 @@ export default function Reports() {
       <div className="card" style={{ padding:'18px 0', overflowX:'auto' }}>
         <div style={{ padding:'0 18px 12px', fontSize:13, fontWeight:600, color:'var(--text2)', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
           P&L по місяцях
-          <span style={{ fontSize:11, fontWeight:400, color:'var(--text3)', background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:4, padding:'2px 8px' }}>
+          <span style={{ fontSize:11, fontWeight:400, color:'var(--text3)', background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:6, padding:'2px 8px' }}>
             натисніть на суму для деталізації
           </span>
           {planMonths.length > 0 && (
-            <span style={{ fontSize:11, fontWeight:400, color:'#6b7280', background:'#f3f4f6', border:'1px dashed #d1d5db', borderRadius:4, padding:'2px 8px', display:'flex', alignItems:'center', gap:4 }}>
+            <span style={{ fontSize:11, fontWeight:400, color:'#6B6B6B', background:'#F0F2F5', border:'1px dashed #E2E8F0', borderRadius:6, padding:'2px 8px', display:'flex', alignItems:'center', gap:4 }}>
               <i className="ti ti-calendar-stats" style={{ fontSize:12 }} />
               {planMonths.length} планових місяців
             </span>
@@ -476,22 +476,22 @@ export default function Reports() {
               {allDisplayMonths.map(m => (
                 <th key={m} style={{
                   padding:'8px 12px',
-                  background: isPlan(m) ? '#f3f4f6' : isCurrent(m) ? '#fefce8' : 'var(--surface2)',
+                  background: isPlan(m) ? '#F0F2F5' : isCurrent(m) ? '#F0F2F5' : 'var(--surface2)',
                   borderBottom:'1px solid var(--border)',
-                  borderLeft: isPlan(m) && !isPlan(allDisplayMonths[allDisplayMonths.indexOf(m)-1]) ? '2px dashed #86efac' : undefined,
+                  borderLeft: isPlan(m) && !isPlan(allDisplayMonths[allDisplayMonths.indexOf(m)-1]) ? '2px dashed #E2E8F0' : undefined,
                   textAlign:'right', fontWeight:500,
-                  color: isPlan(m) ? '#6b7280' : isCurrent(m) ? '#92400e' : 'var(--text2)',
+                  color: isPlan(m) ? '#6B6B6B' : isCurrent(m) ? '#6B6B6B' : 'var(--text2)',
                   whiteSpace:'nowrap',
                 }}>
                   {m}
-                  {isPlan(m) && <div style={{ fontSize:9, fontWeight:400, color:'#9ca3af', letterSpacing:'.5px' }}>ПЛАН</div>}
-                  {isCurrent(m) && <div style={{ fontSize:9, fontWeight:400, color:'#d97706', letterSpacing:'.5px' }}>ЗАРАЗ</div>}
+                  {isPlan(m) && <div style={{ fontSize:9, fontWeight:400, color:'#6B6B6B', letterSpacing:'.5px' }}>ПЛАН</div>}
+                  {isCurrent(m) && <div style={{ fontSize:9, fontWeight:400, color:'#6B6B6B', letterSpacing:'.5px' }}>ЗАРАЗ</div>}
                 </th>
               ))}
-              <th style={{ padding:'8px 12px', background:'#eff6ff', borderBottom:'1px solid var(--border)', textAlign:'right', fontWeight:700, color:'var(--blue)', whiteSpace:'nowrap', borderLeft:'2px solid #e5e7eb' }}>
+              <th style={{ padding:'8px 12px', background:'#EFF4FF', borderBottom:'1px solid var(--border)', textAlign:'right', fontWeight:700, color:'var(--blue)', whiteSpace:'nowrap', borderLeft:'2px solid #E2E8F0' }}>
                 ФАКТ
               </th>
-              <th style={{ padding:'8px 12px', background:'#f0fdf4', borderBottom:'1px solid var(--border)', textAlign:'right', fontWeight:700, color:'#166534', whiteSpace:'nowrap' }}>
+              <th style={{ padding:'8px 12px', background:'#EFF5EF', borderBottom:'1px solid var(--border)', textAlign:'right', fontWeight:700, color:'#4A7C59', whiteSpace:'nowrap' }}>
                 ПРОГНОЗ
               </th>
             </tr>
@@ -518,7 +518,7 @@ export default function Reports() {
                     const hasAnyPlan = allDisplayMonths.some(m => isPlan(m) && planData[artName]?.[m])
                     if (rowTotal === 0 && !artData[artName] && !hasAnyPlan) return null
                     return (
-                      <tr key={artName} style={{ borderBottom:'1px solid #f3f4f6' }}
+                      <tr key={artName} style={{ borderBottom:'1px solid #F0F2F5' }}
                         onMouseEnter={e => e.currentTarget.style.background='var(--surface2)'}
                         onMouseLeave={e => e.currentTarget.style.background=''}
                       >
@@ -531,10 +531,10 @@ export default function Reports() {
                             return (
                               <td key={m} style={{
                                 padding:'7px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums',
-                                color: pv === 0 ? 'var(--text3)' : pv > 0 ? '#4b7a5e' : '#9b3a3a',
+                                color: pv === 0 ? 'var(--text3)' : pv > 0 ? '#4A7C59' : '#9B3A3A',
                                 fontStyle:'italic', fontSize:12.5,
-                                background:'#f9fafb',
-                                borderLeft: !isPlan(allDisplayMonths[allDisplayMonths.indexOf(m)-1]) ? '2px dashed #d1d5db' : undefined,
+                                background:'#F0F2F5',
+                                borderLeft: !isPlan(allDisplayMonths[allDisplayMonths.indexOf(m)-1]) ? '2px dashed #E2E8F0' : undefined,
                               }}>
                                 {pv === 0 ? '—' : fmtS(pv)}
                               </td>
@@ -543,11 +543,11 @@ export default function Reports() {
                           const v = artData[artName]?.[m]?.sum || 0
                           return (
                             <td key={m}
-                              style={{ ...cellStyle(v, false, true), background: isCurrent(m)?'#fefce8':'' }}
+                              style={{ ...cellStyle(v, false, true), background: isCurrent(m)?'#F0F2F5':'' }}
                               onClick={() => handleCellClick(artName, m)}
                               title={v !== 0 ? 'Натисніть для деталізації' : undefined}
-                              onMouseEnter={e => { if(v!==0) e.currentTarget.style.background='#eff6ff' }}
-                              onMouseLeave={e => e.currentTarget.style.background= isCurrent(m)?'#fefce8':''}
+                              onMouseEnter={e => { if(v!==0) e.currentTarget.style.background='#EFF4FF' }}
+                              onMouseLeave={e => e.currentTarget.style.background= isCurrent(m)?'#F0F2F5':''}
                             >
                               {fmtS(v)}
                             </td>
@@ -558,10 +558,10 @@ export default function Reports() {
                           const planTotal = allDisplayMonths.filter(m=>isPlan(m)).reduce((s,m) => s+(planData[artName]?.[m]||0), 0)
                           const forecast = factTotal + planTotal
                           return (<>
-                            <td style={{ ...cellStyle(factTotal, true), background:'#eff6ff', cursor: factTotal!==0?'pointer':'default', borderLeft:'2px solid #e5e7eb' }}>
+                            <td style={{ ...cellStyle(factTotal, true), background:'#EFF4FF', cursor: factTotal!==0?'pointer':'default', borderLeft:'2px solid #E2E8F0' }}>
                               {fmtS(factTotal)}
                             </td>
-                            <td style={{ ...cellStyle(forecast, true), background: forecast===factTotal?'#f9fafb':'#f0fdf4', fontStyle: planTotal!==0?'italic':'' }}>
+                            <td style={{ ...cellStyle(forecast, true), background: forecast===factTotal?'#F0F2F5':'#EFF5EF', fontStyle: planTotal!==0?'italic':'' }}>
                               {forecast===0?'—':fmtS(forecast)}
                             </td>
                           </>)
@@ -581,10 +581,10 @@ export default function Reports() {
                         return (
                           <td key={m} style={{
                             padding:'8px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums',
-                            color: pv===0?'var(--text3)':pv>0?'#4b7a5e':'#9b3a3a',
+                            color: pv===0?'var(--text3)':pv>0?'#4A7C59':'#9B3A3A',
                             fontWeight:700, fontStyle:'italic', fontSize:12.5,
-                            background:'#f3f4f6',
-                            borderLeft: !isPlan(allDisplayMonths[allDisplayMonths.indexOf(m)-1]) ? '2px dashed #d1d5db' : undefined,
+                            background:'#F0F2F5',
+                            borderLeft: !isPlan(allDisplayMonths[allDisplayMonths.indexOf(m)-1]) ? '2px dashed #E2E8F0' : undefined,
                           }}>
                             {pv===0?'—':fmtS(pv)}
                           </td>
@@ -593,11 +593,11 @@ export default function Reports() {
                       const v = sectionTotals[type][m] || 0
                       return (
                         <td key={m}
-                          style={{ ...cellStyle(v, true, true), background: isCurrent(m)?'#fefce8':'var(--surface2)' }}
+                          style={{ ...cellStyle(v, true, true), background: isCurrent(m)?'#F0F2F5':'var(--surface2)' }}
                           onClick={() => handleSectionClick(type, m)}
                           title={v!==0?'Натисніть для деталізації':undefined}
-                          onMouseEnter={e => { if(v!==0) e.currentTarget.style.background='#eff6ff' }}
-                          onMouseLeave={e => e.currentTarget.style.background= isCurrent(m)?'#fefce8':'var(--surface2)'}
+                          onMouseEnter={e => { if(v!==0) e.currentTarget.style.background='#EFF4FF' }}
+                          onMouseLeave={e => e.currentTarget.style.background= isCurrent(m)?'#F0F2F5':'var(--surface2)'}
                         >
                           {fmtS(v)}
                         </td>
@@ -608,10 +608,10 @@ export default function Reports() {
                       const planT = allDisplayMonths.filter(m=>isPlan(m)).reduce((s,m) => s+(planSectionTotals[type][m]||0), 0)
                       const forecastT = factT + planT
                       return (<>
-                        <td style={{ ...cellStyle(factT, true), background:'#eff6ff', borderLeft:'2px solid #e5e7eb' }}>
+                        <td style={{ ...cellStyle(factT, true), background:'#EFF4FF', borderLeft:'2px solid #E2E8F0' }}>
                           {fmtS(factT)}
                         </td>
-                        <td style={{ ...cellStyle(forecastT, true), background: planT!==0?'#f0fdf4':'#f9fafb', fontStyle: planT!==0?'italic':'' }}>
+                        <td style={{ ...cellStyle(forecastT, true), background: planT!==0?'#EFF5EF':'#F0F2F5', fontStyle: planT!==0?'italic':'' }}>
                           {forecastT===0?'—':fmtS(forecastT)}
                         </td>
                       </>)
@@ -632,10 +632,10 @@ export default function Reports() {
                   return (
                     <td key={m} style={{
                       padding:'10px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums',
-                      color: pv===0?'var(--text3)':pv>0?'#4b7a5e':'#9b3a3a',
+                      color: pv===0?'var(--text3)':pv>0?'#4A7C59':'#9B3A3A',
                       fontWeight:700, fontStyle:'italic', fontSize:13,
-                      background:'#f3f4f6',
-                      borderLeft: !isPlan(allDisplayMonths[allDisplayMonths.indexOf(m)-1]) ? '2px dashed #d1d5db' : undefined,
+                      background:'#F0F2F5',
+                      borderLeft: !isPlan(allDisplayMonths[allDisplayMonths.indexOf(m)-1]) ? '2px dashed #E2E8F0' : undefined,
                     }}>
                       {pv===0?'—':fmtS(pv)}
                     </td>
@@ -644,11 +644,11 @@ export default function Reports() {
                 const v = Object.values(artData).reduce((s, d) => s+(d[m]?.sum||0), 0)
                 return (
                   <td key={m}
-                    style={{ ...cellStyle(v, true, true), background: isCurrent(m)?'#fefce8':'var(--surface2)', fontSize:13 }}
+                    style={{ ...cellStyle(v, true, true), background: isCurrent(m)?'#F0F2F5':'var(--surface2)', fontSize:13 }}
                     onClick={() => handleTotalClick(m)}
                     title={v!==0?'Натисніть для деталізації':undefined}
-                    onMouseEnter={e => { if(v!==0) e.currentTarget.style.background='#eff6ff' }}
-                    onMouseLeave={e => e.currentTarget.style.background= isCurrent(m)?'#fefce8':'var(--surface2)'}
+                    onMouseEnter={e => { if(v!==0) e.currentTarget.style.background='#EFF4FF' }}
+                    onMouseLeave={e => e.currentTarget.style.background= isCurrent(m)?'#F0F2F5':'var(--surface2)'}
                   >
                     {fmtS(v)}
                   </td>
@@ -660,10 +660,10 @@ export default function Reports() {
                 }, 0)
                 const forecastNet = totNet + planNetTotal
                 return (<>
-                  <td style={{ ...cellStyle(totNet, true), background:'#eff6ff', fontSize:13, borderLeft:'2px solid #e5e7eb' }}>
+                  <td style={{ ...cellStyle(totNet, true), background:'#EFF4FF', fontSize:13, borderLeft:'2px solid #E2E8F0' }}>
                     {fmtS(totNet)}
                   </td>
-                  <td style={{ ...cellStyle(forecastNet, true), background: planNetTotal!==0?'#f0fdf4':'#f9fafb', fontSize:13, fontStyle: planNetTotal!==0?'italic':'' }}>
+                  <td style={{ ...cellStyle(forecastNet, true), background: planNetTotal!==0?'#EFF5EF':'#F0F2F5', fontSize:13, fontStyle: planNetTotal!==0?'italic':'' }}>
                     {forecastNet===0?'—':fmtS(forecastNet)}
                   </td>
                 </>)
@@ -706,7 +706,7 @@ export default function Reports() {
                 </thead>
                 <tbody>
                   {[...drillDown.txs].sort((a,b) => Math.abs(b.amount||0) - Math.abs(a.amount||0)).map(tx => (
-                    <tr key={tx.id} style={{ borderBottom:'1px solid #f3f4f6' }}>
+                    <tr key={tx.id} style={{ borderBottom:'1px solid #F0F2F5' }}>
                       <td style={{ color:'var(--text2)', fontSize:12, whiteSpace:'nowrap' }}>{tx.date}</td>
                       <td>
                         <div style={{ fontSize:13, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:200 }} title={tx.contractor}>{tx.contractor}</div>

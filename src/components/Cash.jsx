@@ -5,12 +5,12 @@ import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
 
 const TYPES = {
-  income:         { label: 'Готівкова виручка',    color: '#15803d', bg: '#dcfce7', icon: 'ti-arrow-down-circle',  dir: +1 },
-  expense:        { label: 'Витрата готівкою',      color: '#b91c1c', bg: '#fee2e2', icon: 'ti-arrow-up-circle',    dir: -1 },
-  advance:        { label: 'Видача підзвітних',     color: '#d97706', bg: '#fef3c7', icon: 'ti-user-dollar',        dir: -1 },
-  advance_return: { label: 'Повернення підзвітних', color: '#0369a1', bg: '#dbeafe', icon: 'ti-corner-down-left',   dir: +1 },
-  bank_to_cash:   { label: 'Банк → Каса',           color: '#7c3aed', bg: '#ede9fe', icon: 'ti-transfer-in',        dir: +1 },
-  cash_to_bank:   { label: 'Каса → Банк',           color: '#7c3aed', bg: '#ede9fe', icon: 'ti-transfer-out',       dir: -1 },
+  income:         { label: 'Готівкова виручка',    color: '#4A7C59', bg: '#EFF5EF', icon: 'ti-arrow-down-circle',  dir: +1 },
+  expense:        { label: 'Витрата готівкою',      color: '#9B3A3A', bg: '#F5EDED', icon: 'ti-arrow-up-circle',    dir: -1 },
+  advance:        { label: 'Видача підзвітних',     color: '#6B6B6B', bg: '#F0F2F5', icon: 'ti-user-dollar',        dir: -1 },
+  advance_return: { label: 'Повернення підзвітних', color: '#2563EB', bg: '#EFF4FF', icon: 'ti-corner-down-left',   dir: +1 },
+  bank_to_cash:   { label: 'Банк → Каса',           color: '#6B6B6B', bg: '#F0F2F5', icon: 'ti-transfer-in',        dir: +1 },
+  cash_to_bank:   { label: 'Каса → Банк',           color: '#6B6B6B', bg: '#F0F2F5', icon: 'ti-transfer-out',       dir: -1 },
 }
 
 const NEEDS_CLASSIFICATION = ['income', 'expense']
@@ -159,7 +159,7 @@ export default function Cash({ user }) {
     const t = TYPES[type]
     if (!t) return null
     return (
-      <span style={{ background: t.bg, color: t.color, padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <span style={{ background: t.bg, color: t.color, padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
         <i className={`ti ${t.icon}`} style={{ fontSize: 11 }} />{t.label}
       </span>
     )
@@ -249,7 +249,7 @@ export default function Cash({ user }) {
                     </td>
                     <td onClick={e => e.stopPropagation()}>
                       <button
-                        style={{ background: 'none', border: '1px solid #fca5a5', borderRadius: 6, width: 26, height: 26, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red)' }}
+                        style={{ background: 'none', border: '1px solid #E2E8F0', borderRadius: 6, width: 26, height: 26, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red)' }}
                         onClick={() => deleteOp(op.id)}
                       ><i className="ti ti-trash" style={{ fontSize: 13 }} /></button>
                     </td>
@@ -281,7 +281,7 @@ export default function Cash({ user }) {
                 Відкриті підзвітні ({openAdvances.length})
               </div>
               {openAdvances.map(a => (
-                <div key={a.id} style={{ border: `1px solid ${a.overdue ? '#fca5a5' : 'var(--border)'}`, borderRadius: 10, padding: '14px 16px', background: a.overdue ? '#fff5f5' : 'var(--surface)', marginBottom: 10 }}>
+                <div key={a.id} style={{ border: `1px solid ${a.overdue ? '#E2E8F0' : 'var(--border)'}`, borderRadius: 12, padding: '14px 16px', background: a.overdue ? '#F5EDED' : 'var(--surface)', marginBottom: 10 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 14 }}>{a.advance_person}</div>
@@ -289,7 +289,7 @@ export default function Cash({ user }) {
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       {a.overdue && (
-                        <span style={{ fontSize: 11, background: '#fee2e2', color: 'var(--red)', padding: '2px 8px', borderRadius: 4, fontWeight: 500, display: 'block', marginBottom: 4 }}>
+                        <span style={{ fontSize: 11, background: '#F5EDED', color: 'var(--red)', padding: '2px 8px', borderRadius: 6, fontWeight: 500, display: 'block', marginBottom: 4 }}>
                           <i className="ti ti-alert-triangle" style={{ marginRight: 3, fontSize: 11 }} />Прострочено
                         </span>
                       )}
@@ -306,7 +306,7 @@ export default function Cash({ user }) {
                     ].map(({ l, v, c }) => (
                       <div key={l}>
                         <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 2 }}>{l}</div>
-                        <div style={{ fontWeight: 600, fontSize: 14, color: c }}>{v}</div>
+                        <div style={{ fontWeight: 500, fontSize: 14, color: c }}>{v}</div>
                       </div>
                     ))}
                   </div>
@@ -338,7 +338,7 @@ export default function Cash({ user }) {
                         <td>{a.advance_person}</td>
                         <td style={{ textAlign: 'right', color: 'var(--red)' }}>−{fmt(a.amount)}</td>
                         <td style={{ textAlign: 'right', color: 'var(--green)' }}>+{fmt(a.returned)}</td>
-                        <td><span style={{ fontSize: 11, background: '#dcfce7', color: 'var(--green)', padding: '2px 8px', borderRadius: 4 }}>Закрито</span></td>
+                        <td><span style={{ fontSize: 11, background: '#EFF5EF', color: 'var(--green)', padding: '2px 8px', borderRadius: 6 }}>Закрито</span></td>
                       </tr>
                     ))}
                   </tbody>
