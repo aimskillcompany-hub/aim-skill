@@ -511,6 +511,7 @@ export const mobileCss = `
     .reg-mobile-list { display: block !important; }
     .reg-actions { flex-direction: column; }
     .reg-actions .btn { width: 100%; }
+    .dup-grid { grid-template-columns: 1fr !important; }
 
     /* ── INLINE STYLE OVERRIDES for Dashboard grids ── */
     div[style*="grid-template-columns: repeat(3"] { grid-template-columns: 1fr 1fr !important; gap: 12px !important; }

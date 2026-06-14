@@ -1023,125 +1023,143 @@ export default function Registry({ user }) {
       {/* Duplicate check modal */}
       {showDupModal && (
         <div className="modal-bg" onClick={e => e.target===e.currentTarget && setShowDupModal(false)}>
-          <div className="modal" style={{ maxWidth:820, maxHeight:'85vh', overflow:'auto' }}>
-            <div className="modal-header" style={{ position:'sticky', top:0, background:'var(--surface)', zIndex:1, paddingBottom:12 }}>
+          <div className="modal" style={{ maxWidth:820, maxHeight:'85vh', overflow:'auto', padding:24, borderRadius:20 }}>
+            {/* Header */}
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20 }}>
               <div>
-                <h2>Перевірка дублікатів</h2>
-                <p style={{ fontSize:13, color:'var(--text2)', marginTop:2 }}>
+                <h2 style={{ fontSize:20, fontWeight:700, color:'#000', marginBottom:4 }}>Перевірка дублікатів</h2>
+                <p style={{ fontSize:13, color:'#6B6B6B' }}>
                   {dupResults.length > 0
-                    ? `Знайдено ${dupResults.length} можливих пар дублікатів — перевірте кожну`
-                    : '✓ Дублікатів не знайдено'}
+                    ? `Знайдено ${dupResults.length} можливих пар — перевірте кожну`
+                    : 'Дублікатів не знайдено'}
                 </p>
               </div>
-              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                <button className="btn btn-secondary btn-sm" onClick={runDupCheck} disabled={dupChecking}>
-                  <i className="ti ti-refresh" style={{ marginRight:4 }} />
+              <div style={{ display:'flex', gap:8, alignItems:'center', flexShrink:0 }}>
+                <button
+                  onClick={runDupCheck} disabled={dupChecking}
+                  style={{ height:36, padding:'0 14px', border:'1px solid #E8E8E4', background:'#fff', borderRadius:8, cursor:'pointer', fontSize:13, fontWeight:500, fontFamily:'Inter,sans-serif', color:'#000', display:'flex', alignItems:'center', gap:6 }}
+                >
+                  <i className="ti ti-refresh" style={{ fontSize:14 }} />
                   Оновити
                 </button>
-                <button className="modal-close" onClick={() => setShowDupModal(false)}>×</button>
+                <button
+                  onClick={() => setShowDupModal(false)}
+                  style={{ width:32, height:32, background:'#F0F0EC', border:'none', borderRadius:8, cursor:'pointer', fontSize:15, color:'#6B6B6B', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'Inter,sans-serif', flexShrink:0 }}
+                >X</button>
               </div>
             </div>
 
-            {/* Legend */}
-            <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
-              <span style={{ fontSize:12, background:'#dbeafe', color:'#1d4ed8', border:'1px solid #93c5fd', borderRadius:5, padding:'3px 10px' }}>
-                Правило 1: дата ±10 днів + сума ±10 грн
-              </span>
-              <span style={{ fontSize:12, background:'#f3e8ff', color:'#7e22ce', border:'1px solid #c4b5fd', borderRadius:5, padding:'3px 10px' }}>
-                Правило 2: ЄДРПОУ збігається + сума ±1000 грн
-              </span>
+            {/* Rule pills */}
+            <div style={{ display:'flex', gap:8, marginBottom:20, flexWrap:'wrap' }}>
+              {[
+                { label: 'Правило 1: дата ±10 днів + сума ±10 грн', rule: 1 },
+                { label: 'Правило 2: ЄДРПОУ + сума ±1000 грн', rule: 2 },
+              ].map(r => {
+                const active = dupResults.some(p => p.rule === r.rule)
+                return (
+                  <span key={r.rule} style={{
+                    fontSize:12, fontWeight:500, padding:'6px 14px', borderRadius:20,
+                    background: active ? '#000' : '#F0F0EC',
+                    color: active ? '#fff' : '#6B6B6B',
+                  }}>{r.label}</span>
+                )
+              })}
             </div>
 
+            {/* Empty state */}
             {dupResults.length === 0 && (
-              <div style={{ textAlign:'center', padding:'40px 0', color:'var(--text3)' }}>
+              <div style={{ textAlign:'center', padding:'48px 0', color:'#9A9A9A' }}>
                 <i className="ti ti-circle-check" style={{ fontSize:48, display:'block', margin:'0 auto 12px', color:'var(--green)' }} />
-                <div style={{ fontSize:15, fontWeight:500 }}>Дублікатів не знайдено</div>
+                <div style={{ fontSize:16, fontWeight:500 }}>Дублікатів не знайдено</div>
               </div>
             )}
 
-            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+            {/* Duplicate pairs */}
+            <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
               {dupResults.map((pair, i) => {
                 const isMerging = mergingSingle === `${pair.tx1.id}-${pair.tx2.id}` || mergingSingle === `${pair.tx2.id}-${pair.tx1.id}`
                 return (
-                  <div key={i} style={{
-                    border: `1.5px solid ${pair.rule === 1 ? '#93c5fd' : '#c4b5fd'}`,
-                    borderRadius: 10, padding: 14, background: 'var(--surface)',
-                  }}>
-                    {/* Rule badge + dismiss */}
-                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-                      <span style={{
-                        fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:4,
-                        background: pair.rule === 1 ? '#dbeafe' : '#f3e8ff',
-                        color: pair.rule === 1 ? '#1d4ed8' : '#7e22ce',
-                      }}>
+                  <div key={i} style={{ border:'1px solid #E8E8E4', borderRadius:16, padding:16, background:'#FAFAF8' }}>
+                    {/* Rule label + dismiss */}
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+                      <span style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:.5, color:'#6B6B6B' }}>
                         Правило {pair.rule} · різниця {pair.amtDiff} грн{pair.rule === 1 ? ` · ${pair.dayDiff} днів` : ''}
                       </span>
-                      <button onClick={() => dismissPair(pair.tx1.id, pair.tx2.id)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', fontSize:16 }} title="Не дублікат">×</button>
+                      <button onClick={() => dismissPair(pair.tx1.id, pair.tx2.id)}
+                        style={{ width:28, height:28, background:'#F0F0EC', border:'none', borderRadius:6, cursor:'pointer', fontSize:13, color:'#6B6B6B', display:'flex', alignItems:'center', justifyContent:'center' }}
+                        title="Не дублікат">X</button>
                     </div>
 
-                    {/* Two transactions side by side */}
-                    <div style={{ display:'grid', gridTemplateColumns:'1fr auto 1fr', gap:12, alignItems:'start' }}>
+                    {/* Two entries grid */}
+                    <div className="dup-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
                       {[pair.tx1, pair.tx2].map((tx, ti) => (
-                        <div key={tx.id} style={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:8, padding:12 }}>
-                          <div style={{ fontSize:13, fontWeight:600, marginBottom:6 }}>{tx.contractor}</div>
-                          <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:6 }}>
-                            <span style={{ fontSize:12, color:'var(--text2)' }}>{tx.date}</span>
-                            <span style={{ fontSize:12, fontWeight:700, color: tx.amount >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                              {tx.amount >= 0 ? '+' : ''}{new Intl.NumberFormat('uk-UA').format(Math.round(Math.abs(tx.amount)))} грн
-                            </span>
-                            {tx.direction && (
-                              <span style={{ fontSize:11, background: tx.direction==='Доходи'?'#dcfce7':'#fee2e2', color: tx.direction==='Доходи'?'#166534':'#b91c1c', borderRadius:4, padding:'1px 6px', fontWeight:500 }}>
-                                {tx.direction}
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
-                            {tx.edrpou && <div style={{ fontSize:11, color:'var(--text3)', display:'flex', gap:4 }}><span style={{ color:'var(--text2)', fontWeight:500 }}>ЄДРПОУ:</span>{tx.edrpou}</div>}
-                            {(tx.doc_type || tx.doc_number) && <div style={{ fontSize:11, color:'var(--text3)', display:'flex', gap:4 }}><span style={{ color:'var(--text2)', fontWeight:500 }}>Документ:</span>{tx.doc_type}{tx.doc_number ? ` №${tx.doc_number}` : ''}</div>}
-                            {tx.article && <div style={{ fontSize:11, color:'var(--text3)', display:'flex', gap:4 }}><span style={{ color:'var(--text2)', fontWeight:500 }}>Стаття:</span>{tx.article}</div>}
-                            {tx.description && <div style={{ fontSize:11, color:'var(--text3)', display:'flex', gap:4 }}><span style={{ color:'var(--text2)', fontWeight:500, flexShrink:0 }}>Опис:</span><span style={{ wordBreak:'break-word' }}>{tx.description}</span></div>}
-                            <div style={{ fontSize:11, color:'var(--text3)', display:'flex', gap:4 }}>
-                              <span style={{ color:'var(--text2)', fontWeight:500 }}>Документів:</span>
-                              <span style={{ color: tx.documents?.length > 0 ? 'var(--blue)' : 'var(--text3)' }}>
-                                {tx.documents?.length || 0}
-                              </span>
+                        <div key={tx.id} style={{
+                          background:'#FFFFFF', border:'1px solid #E8E8E4', borderRadius:12, padding:16,
+                          display:'flex', flexDirection:'column', height:'100%',
+                        }}>
+                          {/* Content area — flex:1 to push buttons down */}
+                          <div style={{ flex:1 }}>
+                            {/* Company name */}
+                            <div style={{ fontSize:14, fontWeight:600, color:'#000', marginBottom:8 }}>{tx.contractor}</div>
+
+                            {/* Date + Amount + Badge */}
+                            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8, flexWrap:'wrap', gap:6 }}>
+                              <span style={{ fontSize:13, color:'#6B6B6B' }}>{tx.date}</span>
+                              <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                                <span style={{ fontSize:14, fontWeight:700, color: tx.amount >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                                  {tx.amount >= 0 ? '+' : ''}{new Intl.NumberFormat('uk-UA').format(Math.round(Math.abs(tx.amount)))} грн
+                                </span>
+                                {tx.direction && (
+                                  <span style={{
+                                    fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:6,
+                                    background: tx.direction==='Доходи' ? '#DCFCE7' : tx.direction==='Витрати' ? '#FFE4E4' : '#F0F0EC',
+                                    color: tx.direction==='Доходи' ? '#16A34A' : tx.direction==='Витрати' ? '#DC2626' : '#6B6B6B',
+                                  }}>{tx.direction}</span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Details */}
+                            <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                              {tx.edrpou && <div style={{ fontSize:12, color:'#6B6B6B' }}>ЄДРПОУ: {tx.edrpou}</div>}
+                              {(tx.doc_type || tx.doc_number) && <div style={{ fontSize:12, color:'#6B6B6B' }}>Документ: {tx.doc_type}{tx.doc_number ? ` №${tx.doc_number}` : ''}</div>}
+                              {tx.article && <div style={{ fontSize:12, color:'#6B6B6B' }}>Стаття: {tx.article}</div>}
+                              {tx.description && (
+                                <div style={{ fontSize:12, color:'#6B6B6B', overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', lineHeight:'1.4' }}>
+                                  Опис: {tx.description}
+                                </div>
+                              )}
+                              <div style={{ fontSize:12, color:'#6B6B6B' }}>Документів: {tx.documents?.length || 0}</div>
                             </div>
                           </div>
 
-                          {/* Actions for this tx */}
-                          <div style={{ display:'flex', gap:6, marginTop:10 }}>
+                          {/* Action buttons — pinned to bottom */}
+                          <div style={{ display:'flex', gap:8, marginTop:14 }}>
                             <button
-                              className="btn btn-primary"
-                              style={{ fontSize:11, padding:'4px 10px', display:'flex', alignItems:'center', gap:4 }}
                               disabled={isMerging}
                               onClick={() => handleMerge(tx.id, ti === 0 ? pair.tx2.id : pair.tx1.id)}
-                              title="Залишити цю транзакцію, перенести документи з іншої і видалити її"
-                            >
-                              <i className="ti ti-arrow-merge" style={{ fontSize:12 }} />
-                              Залишити цю
-                            </button>
+                              style={{
+                                flex:1, height:36, border:'none', borderRadius:8, cursor:'pointer',
+                                background:'#000', color:'#fff', fontSize:13, fontWeight:600,
+                                fontFamily:'Inter,sans-serif', opacity: isMerging ? .5 : 1,
+                              }}
+                            >Залишити цю</button>
                             <button
-                              className="btn btn-secondary"
-                              style={{ fontSize:11, padding:'4px 10px', display:'flex', alignItems:'center', gap:4, borderColor:'#fca5a5', color:'var(--red)' }}
                               disabled={isMerging}
                               onClick={() => handleDeleteDup(tx.id, ti === 0 ? pair.tx2.id : pair.tx1.id)}
-                              title="Видалити цю транзакцію без переносу документів"
-                            >
-                              <i className="ti ti-trash" style={{ fontSize:12 }} />
-                              Видалити
-                            </button>
+                              style={{
+                                flex:1, height:36, border:'none', borderRadius:8, cursor:'pointer',
+                                background:'#FFE4E4', color:'#DC2626', fontSize:13, fontWeight:600,
+                                fontFamily:'Inter,sans-serif', opacity: isMerging ? .5 : 1,
+                              }}
+                            >Видалити</button>
                           </div>
                         </div>
                       ))}
-
-                      {/* Center icon */}
-                      <div style={{ textAlign:'center', paddingTop:20 }}>
-                        <i className="ti ti-copy" style={{ fontSize:24, color: pair.rule === 1 ? '#3b82f6' : '#8b5cf6', opacity:.6 }} />
-                      </div>
                     </div>
 
                     {isMerging && (
-                      <div style={{ textAlign:'center', padding:'8px 0', fontSize:12, color:'var(--text2)' }}>
+                      <div style={{ textAlign:'center', padding:'8px 0', fontSize:13, color:'#6B6B6B', marginTop:8 }}>
                         Обʼєднуємо...
                       </div>
                     )}
