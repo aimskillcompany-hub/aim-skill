@@ -12,6 +12,7 @@ import Bank from './components/Bank'
 import Cash from './components/Cash'
 import TransactionModal from './components/TransactionModal'
 import ArticlesSettings from './components/ArticlesSettings'
+import Planning from './components/Planning'
 
 const CASH_DIR = {
   income: +1, expense: -1, advance: -1,
@@ -311,6 +312,7 @@ export default function App() {
     cash: <Cash user={user} />,
     projects: <Projects key={`projects-${page}`} user={user} />,
     reports: <Reports />,
+    planning: <Planning user={user} />,
     settings: <Settings user={user} />,
     batch: <BatchUpload user={user} onSaved={showToast} />,
   }
