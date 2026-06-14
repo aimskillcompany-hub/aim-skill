@@ -42,101 +42,116 @@ export default function Auth() {
       alignItems: 'center',
       justifyContent: 'center',
       minHeight: '100vh',
-      background: '#0f1117',
+      background: '#F0F0EC',
     }}>
-      <div style={{ width: '100%', maxWidth: 380, padding: '0 24px' }}>
-        {/* Logo */}
-        <div style={{ marginBottom: 40 }}>
-          <img src={LOGO} alt="AiM Skills" style={{ height: 52, width: 'auto' }} />
-        </div>
-
-        <h1 style={{ fontSize: 24, fontWeight: 600, color: '#f9fafb', marginBottom: 6 }}>
-          {mode === 'login' ? 'Вхід до системи' : 'Реєстрація'}
-        </h1>
-        <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 32 }}>
-          Управлінський облік AiM Skills
-        </p>
-
-        {error && (
-          <div style={{
-            background: 'rgba(185,28,28,.15)',
-            border: '1px solid rgba(185,28,28,.4)',
-            color: '#fca5a5',
-            padding: '10px 14px',
-            borderRadius: 8,
-            fontSize: 13,
-            marginBottom: 16,
-          }}>{error}</div>
-        )}
-        {success && (
-          <div style={{
-            background: 'rgba(20,223,98,.1)',
-            border: '1px solid rgba(20,223,98,.3)',
-            color: '#14df62',
-            padding: '10px 14px',
-            borderRadius: 8,
-            fontSize: 13,
-            marginBottom: 16,
-          }}>{success}</div>
-        )}
-
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {mode === 'register' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 12, fontWeight: 500, color: '#6b7280', letterSpacing: '.3px' }}>ІМ'Я</label>
-              <input value={name} onChange={e => setName(e.target.value)} placeholder="Іван Іванов" required style={inputStyle} />
-            </div>
-          )}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: 12, fontWeight: 500, color: '#6b7280', letterSpacing: '.3px' }}>EMAIL</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="office@company.com" required style={inputStyle} />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: 12, fontWeight: 500, color: '#6b7280', letterSpacing: '.3px' }}>ПАРОЛЬ</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="мінімум 6 символів" required minLength={6} style={inputStyle} />
+      <div style={{ width: '100%', maxWidth: 420, padding: '0 24px' }}>
+        <div style={{
+          background: '#FFFFFF',
+          border: '1px solid #E8E8E4',
+          borderRadius: 20,
+          padding: '40px 32px',
+        }}>
+          {/* Logo */}
+          <div style={{ marginBottom: 36 }}>
+            <img src={LOGO} alt="AiM Skills" style={{ height: 48, width: 'auto', filter: 'brightness(0)' }} />
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              marginTop: 6,
-              padding: '13px',
-              background: loading ? '#0a8a3d' : '#14df62',
-              color: '#0a2e17',
-              border: 'none',
-              borderRadius: 9,
-              fontWeight: 700,
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: '#000', marginBottom: 6, letterSpacing: '-.3px' }}>
+            {mode === 'login' ? 'Вхід до системи' : 'Реєстрація'}
+          </h1>
+          <p style={{ fontSize: 15, color: '#6B6B6B', marginBottom: 32 }}>
+            Управлінський облік AiM Skills
+          </p>
+
+          {error && (
+            <div style={{
+              background: '#FFE4E4',
+              border: '1px solid #FCA5A5',
+              color: '#DC2626',
+              padding: '12px 16px',
+              borderRadius: 12,
               fontSize: 14,
-              cursor: loading ? 'default' : 'pointer',
-              letterSpacing: '.2px',
-            }}
-          >
-            {loading ? 'Завантаження...' : mode === 'login' ? 'Увійти →' : 'Зареєструватись →'}
-          </button>
-        </form>
+              marginBottom: 16,
+            }}>{error}</div>
+          )}
+          {success && (
+            <div style={{
+              background: '#DCFCE7',
+              border: '1px solid #86EFAC',
+              color: '#16A34A',
+              padding: '12px 16px',
+              borderRadius: 12,
+              fontSize: 14,
+              marginBottom: 16,
+            }}>{success}</div>
+          )}
 
-        <p style={{ textAlign: 'center', marginTop: 24, fontSize: 13, color: '#4b5563' }}>
-          {mode === 'login' ? 'Немає акаунту? ' : 'Вже є акаунт? '}
-          <span
-            style={{ color: '#14df62', cursor: 'pointer', fontWeight: 500 }}
-            onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
-          >
-            {mode === 'login' ? 'Зареєструватись' : 'Увійти'}
-          </span>
-        </p>
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {mode === 'register' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={labelStyle}>{"ІМ'Я"}</label>
+                <input value={name} onChange={e => setName(e.target.value)} placeholder="Іван Іванов" required style={inputStyle} />
+              </div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={labelStyle}>EMAIL</label>
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="office@company.com" required style={inputStyle} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={labelStyle}>ПАРОЛЬ</label>
+              <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="мінімум 6 символів" required minLength={6} style={inputStyle} />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                marginTop: 4,
+                padding: '14px',
+                height: 48,
+                background: loading ? '#333' : '#000000',
+                color: '#FFFFFF',
+                border: 'none',
+                borderRadius: 12,
+                fontWeight: 700,
+                fontSize: 15,
+                cursor: loading ? 'default' : 'pointer',
+                fontFamily: "'Inter', sans-serif",
+                opacity: loading ? .6 : 1,
+              }}
+            >
+              {loading ? 'Завантаження...' : mode === 'login' ? 'Увійти' : 'Зареєструватись'}
+            </button>
+          </form>
+
+          <p style={{ textAlign: 'center', marginTop: 24, fontSize: 14, color: '#6B6B6B' }}>
+            {mode === 'login' ? 'Немає акаунту? ' : 'Вже є акаунт? '}
+            <span
+              style={{ color: '#000', cursor: 'pointer', fontWeight: 600 }}
+              onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
+            >
+              {mode === 'login' ? 'Зареєструватись' : 'Увійти'}
+            </span>
+          </p>
+        </div>
       </div>
     </div>
   )
 }
 
+const labelStyle = {
+  fontSize: 12, fontWeight: 600, color: '#6B6B6B', letterSpacing: '.5px',
+}
+
 const inputStyle = {
-  padding: '11px 14px',
-  background: '#1a1d23',
-  border: '1px solid #2d3139',
-  borderRadius: 8,
-  color: '#f9fafb',
-  fontSize: 14,
+  padding: '12px 14px',
+  height: 48,
+  background: '#FFFFFF',
+  border: '1px solid #E8E8E4',
+  borderRadius: 12,
+  color: '#000',
+  fontSize: 16,
   outline: 'none',
   width: '100%',
+  fontFamily: "'Inter', sans-serif",
 }

@@ -38,7 +38,7 @@ export default function Layout({ page, onPage, user, children }) {
 
   const LogoBlock = () => (
     <div className="sidebar-logo">
-      <img src={LOGO} alt="AiM Skills" style={{ height: 48, width: 'auto', display: 'block' }} />
+      <img src={LOGO} alt="AiM Skills" style={{ height: 56, width: 'auto', display: 'block', filter: 'brightness(0)' }} />
     </div>
   )
 
@@ -60,10 +60,10 @@ export default function Layout({ page, onPage, user, children }) {
         })}
       </nav>
       <div className="sidebar-footer">
-        <div style={{ marginBottom: 6, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>{user?.email}</div>
-        <div style={{ fontSize: 10, color: '#4b5563', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.5px' }}>{role}</div>
-        <span style={{ cursor: 'pointer', color: '#4b5563', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }} onClick={handleLogout}>
-          <i className="ti ti-logout" style={{ fontSize: 14 }} />Вийти
+        <div style={{ marginBottom: 6, color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13 }}>{user?.email}</div>
+        <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.5px', fontWeight: 500 }}>{role}</div>
+        <span style={{ cursor: 'pointer', color: 'var(--text2)', fontSize: 13, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6, padding: '8px 0' }} onClick={handleLogout}>
+          <i className="ti ti-logout" style={{ fontSize: 16 }} />Вийти
         </span>
       </div>
     </>
@@ -77,11 +77,11 @@ export default function Layout({ page, onPage, user, children }) {
       </aside>
 
       {sidebarOpen && (
-        <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,.5)',zIndex:300,backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',animation:'fadeIn .2s ease' }} onClick={() => setSidebarOpen(false)}>
-          <aside style={{ width:260,height:'100%',background:'#111318',display:'flex',flexDirection:'column',animation:'slideInLeft .25s cubic-bezier(.22,.68,0,1)',boxShadow:'4px 0 24px rgba(0,0,0,.3)' }} onClick={e => e.stopPropagation()}>
+        <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,.3)',zIndex:300,backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',animation:'fadeIn .2s ease' }} onClick={() => setSidebarOpen(false)}>
+          <aside style={{ width:280,height:'100%',background:'#FFFFFF',display:'flex',flexDirection:'column',animation:'slideInLeft .25s cubic-bezier(.22,.68,0,1)',borderRight:'1px solid #E8E8E4' }} onClick={e => e.stopPropagation()}>
             <div className="sidebar-logo" style={{ display:'flex',justifyContent:'space-between',alignItems:'center' }}>
-              <img src={LOGO} alt="AiM Skills" style={{ height: 40, width: 'auto' }} />
-              <button onClick={() => setSidebarOpen(false)} style={{ background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.1)',color:'#9ca3af',fontSize:16,cursor:'pointer',width:32,height:32,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center' }}>
+              <img src={LOGO} alt="AiM Skills" style={{ height: 44, width: 'auto', filter: 'brightness(0)' }} />
+              <button onClick={() => setSidebarOpen(false)} style={{ background:'#F0F0EC',border:'1px solid #E8E8E4',color:'#6B6B6B',fontSize:16,cursor:'pointer',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center' }}>
                 <i className="ti ti-x" />
               </button>
             </div>
@@ -95,7 +95,7 @@ export default function Layout({ page, onPage, user, children }) {
           <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)}>
             <i className="ti ti-menu-2" />
           </button>
-          <img src={LOGO} alt="AiM Skills" style={{ height: 32, width: 'auto' }} />
+          <img src={LOGO} alt="AiM Skills" style={{ height: 28, width: 'auto', filter: 'brightness(0)' }} />
           <div style={{ width:44 }} />
         </div>
 

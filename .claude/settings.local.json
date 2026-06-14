@@ -6,7 +6,9 @@
       "Bash(npx vite:*)",
       "Bash(node -e \"require\\('/Users/user/Downloads/aim-skill-main/src/lib/styles.js'\\)\")",
       "Bash(node --input-type=module -e \"import\\('/Users/user/Downloads/aim-skill-main/src/lib/styles.js'\\).then\\(\\(\\) => console.log\\('styles.js: OK'\\)\\).catch\\(e => console.log\\('styles.js parse issue:', e.message\\)\\)\")",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(pkill -f \"vite\")",
+      "Read(//dev/**)"
     ]
   }
 }
