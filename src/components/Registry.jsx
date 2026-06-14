@@ -80,7 +80,7 @@ export default function Registry({ user }) {
   // Multi-select
   const [checkedIds, setCheckedIds] = useState(new Set())
   const [showBulkEdit, setShowBulkEdit] = useState(false)
-  const [bulkForm, setBulkForm] = useState({ article: '', project_id: '', direction: '' })
+  const [bulkForm, setBulkForm] = useState({ article: '', project_id: '', direction: '', contractor: '' })
   const [bulkSaving, setBulkSaving] = useState(false)
 
   const [sort, setSort] = useState({ col: 'date', dir: 'desc' })
@@ -369,17 +369,18 @@ export default function Registry({ user }) {
   }
 
   const handleBulkSave = async () => {
-    if (!bulkForm.article && !bulkForm.project_id && !bulkForm.direction) return
+    if (!bulkForm.article && !bulkForm.project_id && !bulkForm.direction && !bulkForm.contractor) return
     setBulkSaving(true)
     const update = {}
     if (bulkForm.article) update.article = bulkForm.article
     if (bulkForm.project_id) update.project_id = bulkForm.project_id
     if (bulkForm.direction) update.direction = bulkForm.direction
+    if (bulkForm.contractor) update.contractor = bulkForm.contractor
 
     await supabase.from('transactions').update(update).in('id', [...checkedIds])
     setCheckedIds(new Set())
     setShowBulkEdit(false)
-    setBulkForm({ article: '', project_id: '', direction: '' })
+    setBulkForm({ article: '', project_id: '', direction: '', contractor: '' })
     setBulkSaving(false)
     load()
   }
@@ -624,18 +625,18 @@ export default function Registry({ user }) {
                         style={{ width:15, height:15, cursor:'pointer', accentColor:'var(--text)' }} />
                     </td>
                     <td style={{ color:'var(--text2)', fontSize:13, whiteSpace:'nowrap' }}>{tx.date}</td>
-                    <td>
-                      <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:14, fontWeight:500, maxWidth:200 }} title={tx.contractor}>{tx.contractor}</div>
-                      {tx.description && <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:12, color:'var(--text3)', maxWidth:200 }}>{tx.description}</div>}
+                    <td style={{ minWidth:250 }}>
+                      <div style={{ fontSize:14, fontWeight:500, whiteSpace:'normal', wordBreak:'break-word', lineHeight:'1.3' }}>{tx.contractor}</div>
+                      {tx.description && <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:12, color:'#6B6B6B', marginTop:2, maxWidth:300 }}>{tx.description}</div>}
                     </td>
                     <td style={{ textAlign:'right', fontWeight:600, fontVariantNumeric:'tabular-nums', color: tx.amount > 0 ? 'var(--green)' : tx.amount < 0 ? 'var(--red)' : 'var(--text3)', whiteSpace:'nowrap' }}>
                       {tx.amount > 0 ? '+' : ''}{fmt(tx.amount)}
                     </td>
                     <td><DirBadge dir={tx.direction} /></td>
-                    <td style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color: noArticle ? 'var(--amber)' : 'var(--text2)', maxWidth:180 }} title={tx.article}>
+                    <td style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color: noArticle ? 'var(--amber)' : 'var(--text2)', maxWidth:150 }} title={tx.article}>
                       {noArticle ? <span style={{ display:'flex', alignItems:'center', gap:4 }}><i className="ti ti-tag-off" style={{ fontSize:13 }} />без статті</span> : tx.article}
                     </td>
-                    <td style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color:'var(--text2)', maxWidth:120 }}>{tx.projects?.name || '—'}</td>
+                    <td style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color:'var(--text2)', maxWidth:100 }}>{tx.projects?.name || '—'}</td>
                     <td style={{ textAlign:'center' }}>
                       <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:13 }}>
                         {tx.documents?.length > 0 && <span>📄{tx.documents.length > 1 ? tx.documents.length : ''}</span>}
@@ -724,6 +725,16 @@ export default function Registry({ user }) {
             </p>
             <div className="form-grid">
               <div className="form-group full">
+                <label>Назва контрагента</label>
+                <input
+                  className="form-input"
+                  value={bulkForm.contractor}
+                  onChange={e => setBulkForm(f => ({...f, contractor: e.target.value}))}
+                  placeholder="Введіть нову назву контрагента"
+                  style={{ height:48, borderRadius:8 }}
+                />
+              </div>
+              <div className="form-group full">
                 <label>Стаття</label>
                 <ArticleSelect
                   value={bulkForm.article}
@@ -748,11 +759,14 @@ export default function Registry({ user }) {
                 </select>
               </div>
             </div>
+            <p style={{ fontSize:13, color:'var(--text2)', marginTop:12 }}>
+              Буде змінено <strong>{checkedIds.size}</strong> записів
+            </p>
             <div className="btn-row">
               <button
                 className="btn btn-primary"
                 onClick={handleBulkSave}
-                disabled={bulkSaving || (!bulkForm.article && !bulkForm.project_id && !bulkForm.direction)}
+                disabled={bulkSaving || (!bulkForm.article && !bulkForm.project_id && !bulkForm.direction && !bulkForm.contractor)}
               >
                 {bulkSaving ? 'Збереження...' : `Зберегти для ${checkedIds.size} операцій`}
               </button>
