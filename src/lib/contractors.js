@@ -284,8 +284,8 @@ export async function mergeDuplicates(supabase) {
     // Keep the one with most data (most non-null fields), or oldest
     const scored = group.map(c => ({
       ...c,
-      _score: [c.iban, c.bank_name, c.mfo, c.email, c.phone, c.address, c.legal_address, c.contact_person]
-        .filter(v => v && v.trim()).length
+      _score: [c.edrpou, c.iban, c.bank_name, c.mfo, c.email, c.phone, c.address, c.legal_address, c.contact_person]
+        .filter(v => v && String(v).trim()).length
     })).sort((a, b) => b._score - a._score || new Date(a.created_at) - new Date(b.created_at))
 
     const keep = scored[0]
@@ -297,7 +297,7 @@ export async function mergeDuplicates(supabase) {
     // Merge data from duplicates into keep (fill empty fields)
     const updates = {}
     for (const dup of duplicates) {
-      for (const field of ['iban','bank_name','mfo','email','phone','address','legal_address','actual_address','contact_person','contact_position','website','city','region','postal_code','legal_form','tax_system','vat_certificate','notes']) {
+      for (const field of ['edrpou','iban','bank_name','mfo','email','phone','address','legal_address','actual_address','contact_person','contact_position','website','city','region','postal_code','legal_form','tax_system','vat_certificate','notes','short_name']) {
         if (!keep[field] && dup[field]?.trim()) {
           updates[field] = dup[field]
           keep[field] = dup[field] // prevent overwriting from next dup
