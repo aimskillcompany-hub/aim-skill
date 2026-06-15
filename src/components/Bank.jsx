@@ -383,7 +383,23 @@ export default function Bank({ user }) {
   const handleImport = async () => {
     if (!parsed) return
     setImporting(true)
-    const toInsert = parsed.txs.filter(t => t._selected).map(t => ({
+
+    // Upsert contractors with IBAN from bank statement
+    const selected = parsed.txs.filter(t => t._selected)
+    const seenNames = new Set()
+    for (const t of selected) {
+      if (!t.counterparty || seenNames.has(t.counterparty.toLowerCase())) continue
+      seenNames.add(t.counterparty.toLowerCase())
+      await upsertContractor(supabase, {
+        name: t.counterparty,
+        edrpou: t.edrpou,
+        iban: t.account,
+        default_direction: t.amount > 0 ? 'Доходи' : 'Витрати',
+        userId: user.id,
+      })
+    }
+
+    const toInsert = selected.map(t => ({
       bank_name: bankName || null,
       date: t.date,
       amount: t.amount,
@@ -461,7 +477,7 @@ export default function Bank({ user }) {
     setCreateSaving(true)
     const amt = parseFloat(createForm.amount) || 0
     const signed = createForm.direction === 'Доходи' ? Math.abs(amt) : -Math.abs(amt)
-    const contractorId = await upsertContractor(supabase, { name: createForm.contractor, edrpou: createForm.edrpou, default_direction: createForm.direction, userId: user.id })
+    const contractorId = await upsertContractor(supabase, { name: createForm.contractor, edrpou: createForm.edrpou, iban: createFrom?.account, default_direction: createForm.direction, userId: user.id })
     const { data: tx, error } = await supabase.from('transactions').insert({
       date: createForm.date, contractor: createForm.contractor,
       contractor_id: contractorId,
