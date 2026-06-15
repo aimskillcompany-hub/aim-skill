@@ -208,16 +208,19 @@ export const css = `
     background: var(--surface);
     border-radius: 20px;
     padding: 24px;
-    width: min(560px, 90vw); max-height: 90vh;
+    width: 100%; max-width: 560px; max-height: 90vh;
     overflow-y: auto; overflow-x: hidden;
     animation: modalIn .25s ease;
+    box-sizing: border-box;
   }
-  .modal.modal-lg { width: min(720px, 90vw); }
-  .modal.modal-xl { width: min(860px, 92vw); }
+  .modal.modal-lg { max-width: 720px; }
+  .modal.modal-xl { max-width: 860px; }
   .modal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; gap: 12px; }
   .modal-header h2 { font-size: 18px; font-weight: 600; letter-spacing: -.2px; word-break: break-word; }
-  .modal .form-grid { max-width: 100%; gap: 16px; }
-  .modal .tbl-wrap { max-width: 100%; overflow-x: auto; }
+  .modal .form-grid { width: 100%; max-width: 100%; gap: 16px; box-sizing: border-box; }
+  .modal .form-group { min-width: 0; }
+  .modal .form-input { width: 100%; max-width: 100%; box-sizing: border-box; }
+  .modal .tbl-wrap { width: 100%; max-width: 100%; overflow-x: auto; box-sizing: border-box; }
   .modal-close {
     background: #F0F2F5; border: none;
     width: 32px; height: 32px; border-radius: 8px;
@@ -421,11 +424,12 @@ export const mobileCss = `
     .modal-bg { padding: 0; align-items: flex-end; }
     .modal, .modal.modal-lg, .modal.modal-xl {
       border-radius: 16px 16px 0 0;
-      max-height: 90vh; width: 100% !important; max-width: 100vw !important;
+      max-height: 90vh; width: 100% !important; max-width: 100% !important;
       padding: 20px 16px;
       padding-bottom: calc(20px + env(safe-area-inset-bottom));
       animation: sheetUp .3s ease;
       overflow-x: hidden; margin: 0;
+      box-sizing: border-box;
     }
     .modal::before {
       content: ''; display: block; width: 40px; height: 4px; border-radius: 2px;
