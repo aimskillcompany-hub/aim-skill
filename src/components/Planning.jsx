@@ -186,35 +186,33 @@ export default function Planning({ user }) {
     setPlLoading(false)
   }
 
-  // Helper that doesn't depend on state
+  // Build planned_date for a given month using the day from the original date
+  const buildPlannedDate = (yearMonth, originalDate) => {
+    if (!originalDate) return yearMonth + '-01'
+    const day = originalDate.split('-')[2] || '01'
+    // Clamp day to valid range for the month
+    const [y, m] = yearMonth.split('-').map(Number)
+    const maxDay = new Date(y, m, 0).getDate() // last day of month
+    const clampedDay = Math.min(parseInt(day), maxDay)
+    return `${yearMonth}-${String(clampedDay).padStart(2, '0')}`
+  }
+
+  // Expand templates — each month gets its own planned_date with correct day
   const expandPlansHelper = (allPlans) => {
     const result = []
     allPlans.forEach(p => {
       if (p.is_template && p.template_from && p.template_to) {
         getMonthRange(p.template_from, p.template_to).forEach(m => {
-          result.push({ ...p, year_month: m })
+          result.push({ ...p, year_month: m, planned_date: buildPlannedDate(m, p.planned_date) })
         })
-      } else if (p.year_month) {
+      } else if (p.year_month || p.planned_date) {
         result.push(p)
       }
     })
     return result
   }
 
-  // Expand templates into individual month records
-  const expandPlans = (allPlans) => {
-    const result = []
-    allPlans.forEach(p => {
-      if (p.is_template && p.template_from && p.template_to) {
-        getMonthRange(p.template_from, p.template_to).forEach(m => {
-          result.push({ ...p, year_month: m })
-        })
-      } else {
-        result.push(p)
-      }
-    })
-    return result
-  }
+  const expandPlans = expandPlansHelper
 
   const reload = async () => {
     const { data } = await supabase.from('plans').select('*,projects(name)').order('year_month').order('created_at')
@@ -229,6 +227,10 @@ export default function Planning({ user }) {
     }
     if (form.is_template && (!form.template_from || !form.template_to)) {
       alert('Оберіть діапазон місяців')
+      return
+    }
+    if (form.is_template && !form.planned_date) {
+      alert('Оберіть дату платежу — день буде повторюватись щомісяця')
       return
     }
     setSaving(true)
@@ -736,7 +738,7 @@ export default function Planning({ user }) {
                 </select>
               </div>
               <div className="form-group">
-                <label>Планова дата платежу{!form.is_template ? ' *' : ''}</label>
+                <label>{form.is_template ? 'День платежу (повторюватиметься) *' : 'Планова дата платежу *'}</label>
                 <input type="date" className="form-input" value={form.planned_date} onChange={e => setForm(f=>({...f,planned_date:e.target.value}))} />
               </div>
 
@@ -748,10 +750,15 @@ export default function Planning({ user }) {
             </div>
 
             {form.is_template && form.template_from && form.template_to && form.amount && (
-              <div style={{ background:'#EFF5EF', border:'1px solid #E2E8F0', borderRadius:8, padding:'10px 14px', fontSize:12.5, color:'#4A7C59', marginTop:4 }}>
+              <div style={{ background:'#EFF5EF', border:'1px solid #E2E8F0', borderRadius:8, padding:'10px 14px', fontSize:12.5, color:'#4A7C59', marginTop:8 }}>
                 <i className="ti ti-info-circle" style={{ marginRight:6 }} />
                 Буде створено {getMonthRange(form.template_from, form.template_to).length} записів по {fmt(form.amount)} грн кожен
                 ({form.direction === 'Доходи' ? '+' : '−'}{fmt(form.amount * getMonthRange(form.template_from, form.template_to).length)} грн загалом)
+                {form.planned_date && (
+                  <div style={{ marginTop:4 }}>
+                    Платіж {form.planned_date.split('-')[2]}-го числа кожного місяця
+                  </div>
+                )}
               </div>
             )}
 
