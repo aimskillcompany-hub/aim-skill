@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import TransactionModal from './TransactionModal'
+import ContractorSelect from './ui/ContractorSelect'
 
 const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(n || 0))
 
@@ -307,7 +308,14 @@ export default function Projects({ user }) {
             <div className="form-grid">
               <div className="form-group full">
                 <label>Контрагент *</label>
-                <input className="form-input" value={form.contractor} onChange={e => setForm(f => ({ ...f, contractor: e.target.value }))} placeholder="ТОВ Гігаклауд або ФОП Іванов" />
+                <ContractorSelect
+                  value={form.contractor}
+                  onChange={v => setForm(f => ({ ...f, contractor: v }))}
+                  onContractorSelect={c => {
+                    if (c._new) return
+                    if (c.edrpou) setForm(f => ({ ...f, edrpou: c.edrpou }))
+                  }}
+                />
               </div>
               <div className="form-group">
                 <label>ЄДРПОУ / ІПН</label>

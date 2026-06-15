@@ -175,6 +175,7 @@ create policy "Delete plans" on plans for delete to authenticated using (
 -- МІГРАЦІЯ: додати planned_date якщо таблиця вже існує
 -- ═══════════════════════════════════════════════════
 ALTER TABLE plans ADD COLUMN IF NOT EXISTS planned_date date;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS contractor text;
 
 -- ═══════════════════════════════════════════════════
 -- 7. CONTRACTORS (реєстр контрагентів)

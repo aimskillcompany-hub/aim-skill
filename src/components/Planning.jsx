@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
+import ContractorSelect from './ui/ContractorSelect'
 
 const DIRS = ['Доходи','Витрати','ПФД','Внутрішні перекази','Інше']
 const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
@@ -27,7 +28,7 @@ function getNextMonths(n = 8) {
 }
 
 const EMPTY_FORM = {
-  direction: 'Витрати', article: '', project_id: '',
+  direction: 'Витрати', article: '', project_id: '', contractor: '',
   amount: '', description: '', planned_date: '',
   is_template: false, template_from: '', template_to: '',
 }
@@ -239,6 +240,7 @@ export default function Planning({ user }) {
       direction: form.direction,
       article: form.article || null,
       project_id: form.project_id || null,
+      contractor: form.contractor || null,
       amount: parseFloat(form.amount),
       description: form.description || null,
       planned_date: form.planned_date || null,
@@ -272,7 +274,7 @@ export default function Planning({ user }) {
 
   const handleEdit = (p) => {
     setForm({
-      direction: p.direction, article: p.article||'', project_id: p.project_id||'',
+      direction: p.direction, article: p.article||'', project_id: p.project_id||'', contractor: p.contractor||'',
       amount: Math.abs(p.amount), description: p.description||'',
       planned_date: p.planned_date || (p.year_month ? p.year_month + '-01' : ''),
       is_template: p.is_template||false,
@@ -702,12 +704,24 @@ export default function Planning({ user }) {
                 </>
               )}
 
-              {/* Row 1: Напрям */}
-              <div className="form-group full">
+              {/* Row 1: Напрям + Контрагент */}
+              <div className="form-group">
                 <label>Напрям</label>
                 <select className="form-input" value={form.direction} onChange={e => setForm(f=>({...f,direction:e.target.value}))}>
                   {DIRS.map(d => <option key={d}>{d}</option>)}
                 </select>
+              </div>
+              <div className="form-group">
+                <label>Контрагент</label>
+                <ContractorSelect
+                  value={form.contractor}
+                  onChange={v => setForm(f=>({...f,contractor:v}))}
+                  onContractorSelect={c => {
+                    if (c._new) return
+                    if (c.default_direction) setForm(f=>({...f,direction:c.default_direction}))
+                    if (c.default_article) setForm(f=>({...f,article:c.default_article}))
+                  }}
+                />
               </div>
 
               {/* Row 2: Стаття + Сума */}
