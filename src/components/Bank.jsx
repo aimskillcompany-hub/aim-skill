@@ -36,14 +36,19 @@ async function readXlsx(file) {
 // ── Детектор форматів ─────────────────────────────────────────────────────────
 function detectFormat(rows) {
   for (let i = 0; i < Math.min(10, rows.length); i++) {
-    const h = (rows[i] || []).map(c => (c||'').toString().toLowerCase())
+    const h = (rows[i] || []).map(c => (c||'').toString().toLowerCase().trim())
+    const joined = h.join(' ')
 
     // Monobank Business / Universalbank — є "вид операції"
-    if (h.some(c => c.includes('вид операції'))) return 'monobank'
+    if (joined.includes('вид операц')) return 'monobank'
 
-    // ПУМБ — "дебет"/"кредит" АБО "зараховано"/"списано"
-    if (h.some(c => c.includes('дебет') || c.includes('зараховано')) &&
-        h.some(c => c.includes('кредит') || c.includes('списано'))) return 'pumb'
+    // ПУМБ — "дебет"/"кредит" АБО "зараховано"/"списано" АБО "єдрпоу" + ("платник" або "одержувач")
+    if ((joined.includes('дебет') || joined.includes('зарахован') || joined.includes('списан')) &&
+        (joined.includes('кредит') || joined.includes('зарахован') || joined.includes('списан')) &&
+        h.filter(c => c.includes('дебет') || c.includes('кредит') || c.includes('зарахован') || c.includes('списан')).length >= 2) return 'pumb'
+
+    // Fallback: if row has "єдрпоу" and "платник" or "рахунок" — it's ПУМБ
+    if (joined.includes('дрпоу') && (joined.includes('платник') || joined.includes('рахунок'))) return 'pumb'
   }
 
   return 'unknown'
@@ -92,21 +97,21 @@ function parsePUMB(rows) {
   for (let i = 0; i < Math.min(10, rows.length); i++) {
     const row = rows[i] || []
     const h = row.map(c => (c||'').toString().toLowerCase().trim())
-    // Шукаємо дебет/кредит АБО зараховано/списано
-    const hasDebit  = h.findIndex(c => c.includes('дебет') || c.includes('списано'))
-    const hasCredit = h.findIndex(c => c.includes('кредит') || c.includes('зараховано'))
+    // Шукаємо дебет/кредит АБО зараховано/списано (часткові збіги для кодування)
+    const hasDebit  = h.findIndex(c => c.includes('дебет') || c.includes('списан'))
+    const hasCredit = h.findIndex(c => c.includes('кредит') || c.includes('зарахован'))
     if (hasDebit >= 0 && hasCredit >= 0) {
       headerIdx = i
-      cols.date        = h.findIndex(c => c.startsWith('дата'))
-      cols.desc        = h.findIndex(c => c.includes('призначення') || c.includes('деталі') || c.includes('опис'))
+      cols.date        = h.findIndex(c => c.includes('дат') && !c.includes('вал'))
+      cols.desc        = h.findIndex(c => c.includes('призначен') || c.includes('детал') || c.includes('опис'))
       cols.counterparty= h.findIndex(c => c.includes('платник') || c.includes('одержувач') || c.includes('партнер') || c.includes('контрагент'))
-      cols.edrpou      = h.findIndex(c => c.includes('єдрпоу') || c.includes('іпн') || c.includes('код'))
-      cols.bank        = h.findIndex(c => c.includes('банк'))
+      cols.edrpou      = h.findIndex(c => c.includes('дрпоу') || c.includes('іпн'))
+      cols.bank        = h.findIndex(c => c.includes('банк') && !c.includes('мфо'))
       cols.mfo         = h.findIndex(c => c.includes('мфо'))
       cols.account     = h.findIndex(c => c.includes('рахунок') || c.includes('iban'))
       cols.debit       = hasDebit
       cols.credit      = hasCredit
-      cols.docNum      = h.findIndex(c => c.includes('документ') || c.includes('доручення') || c.includes('номер'))
+      cols.docNum      = h.findIndex(c => c.includes('документ') || c.includes('доручен') || c.includes('номер'))
       console.log('[Bank] PUMB headers at row', i, ':', JSON.stringify(cols))
       break
     }
@@ -219,9 +224,13 @@ async function parseStatement(file) {
   // XLSX / XLS — читаємо через SheetJS
   if (ext === 'xlsx' || ext === 'xls') {
     const rows = await readXlsx(file)
+    console.log('[Bank] Rows:', rows.length)
+    for (let i = 0; i < Math.min(10, rows.length); i++) {
+      const r = (rows[i]||[]).slice(0, 10).map(c => String(c||'').substring(0, 40))
+      console.log('[Bank] Row', i, ':', JSON.stringify(r))
+    }
     const format = detectFormat(rows)
-    console.log('[Bank] Format detected:', format, '| Rows:', rows.length)
-    console.log('[Bank] First 5 rows:', rows.slice(0, 5).map(r => (r||[]).slice(0, 10).map(c => String(c||'').substring(0, 30))))
+    console.log('[Bank] Format detected:', format)
 
     if (format === 'monobank') {
       const txs = parseMonobank(rows)
