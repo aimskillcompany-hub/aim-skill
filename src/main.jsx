@@ -7,4 +7,4 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <App />
   </React.StrictMode>
 )
-// deploy: 2026-06-15-v25
+// deploy: 2026-06-15-v26

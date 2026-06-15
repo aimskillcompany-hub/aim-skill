@@ -62,7 +62,7 @@ export async function upsertContractor(supabase, { name, edrpou, iban, bank_name
 export async function syncContractorStats(supabase) {
   const [{ data: contractors }, { data: txs }, { data: bankTxs }] = await Promise.all([
     supabase.from('contractors').select('id, name, iban, edrpou'),
-    supabase.from('transactions').select('id, contractor, edrpou, amount, direction, date'),
+    supabase.from('bank_transactions').select('id, counterparty, edrpou, amount, direction, date').eq('is_ignored', false),
     supabase.from('bank_transactions').select('counterparty, account, matched_transaction_id'),
   ])
   if (!contractors?.length) return 0
@@ -74,7 +74,7 @@ export async function syncContractorStats(supabase) {
     const code = t.edrpou?.trim()
     if (!code) return
     if (!edrpouMap[code]) edrpouMap[code] = { names: new Set(), txs: [], iban: null }
-    if (t.contractor) edrpouMap[code].names.add(t.contractor.trim())
+    if (t.counterparty) edrpouMap[code].names.add(t.counterparty.trim())
     edrpouMap[code].txs.push(t)
   })
 
@@ -97,7 +97,7 @@ export async function syncContractorStats(supabase) {
     if (!b.counterparty || !b.account) return
     // Find edrpou for this counterparty from transactions
     const tx = (txs || []).find(t =>
-      t.contractor?.trim().toLowerCase() === b.counterparty.trim().toLowerCase() && t.edrpou?.trim()
+      t.counterparty?.trim().toLowerCase() === b.counterparty.trim().toLowerCase() && t.edrpou?.trim()
     )
     if (tx) {
       const code = tx.edrpou.trim()
@@ -124,7 +124,7 @@ export async function syncContractorStats(supabase) {
     if (!resolvedEdrpou) {
       const nameLower = c.name?.trim().toLowerCase()
       const txMatch = (txs || []).find(t =>
-        t.edrpou?.trim() && t.contractor?.trim().toLowerCase() === nameLower
+        t.edrpou?.trim() && t.counterparty?.trim().toLowerCase() === nameLower
       )
       if (txMatch) {
         resolvedEdrpou = txMatch.edrpou.trim()
@@ -140,7 +140,7 @@ export async function syncContractorStats(supabase) {
       myTxs = mapData.txs
     } else {
       const nameLower = c.name?.trim().toLowerCase()
-      myTxs = (txs || []).filter(t => t.contractor?.trim().toLowerCase() === nameLower)
+      myTxs = (txs || []).filter(t => t.counterparty?.trim().toLowerCase() === nameLower)
     }
 
     const income = myTxs.filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
@@ -175,13 +175,13 @@ export async function syncContractorStats(supabase) {
 
   // ── Backfill: fill edrpou in transactions from contractors ──
   let txFilled = 0
-  const emptyTxs = (txs || []).filter(t => !t.edrpou?.trim() && t.contractor?.trim())
+  const emptyTxs = (txs || []).filter(t => !t.edrpou?.trim() && t.counterparty?.trim())
   const contractorsWithCode = contractors.filter(c => c.edrpou?.trim().length > 3)
 
   // Build lookup: first keyword of contractor name → edrpou
   const namesToUpdate = {} // tx.id → { edrpou, contractor_id }
   for (const t of emptyTxs) {
-    const tName = t.contractor.trim().toLowerCase()
+    const tName = t.counterparty.trim().toLowerCase()
     for (const c of contractorsWithCode) {
       const cWords = c.name.trim().toLowerCase()
         .replace(/^(тов|фоп|ат|пп)\s+/i, '').replace(/[«»""'']/g, '')
@@ -197,7 +197,7 @@ export async function syncContractorStats(supabase) {
 
   const updateIds = Object.keys(namesToUpdate)
   for (const id of updateIds) {
-    await supabase.from('transactions').update(namesToUpdate[id]).eq('id', id)
+    await supabase.from('bank_transactions').update(namesToUpdate[id]).eq('id', id)
     txFilled++
   }
   if (txFilled > 0) console.log('[Sync] Backfill:', txFilled, 'transactions got edrpou from contractors')
@@ -210,7 +210,7 @@ export async function syncContractorStats(supabase) {
 // Check by ЄДРПОУ first, then by keyword matching to avoid duplicates
 export async function importMissingContractors(supabase, userId) {
   const [{ data: txs }, { data: existing }] = await Promise.all([
-    supabase.from('transactions').select('contractor, edrpou, direction').not('contractor', 'is', null),
+    supabase.from('bank_transactions').select('counterparty, edrpou, direction').eq('is_ignored', false).not('counterparty', 'is', null),
     supabase.from('contractors').select('name, edrpou'),
   ])
 
@@ -235,7 +235,7 @@ export async function importMissingContractors(supabase, userId) {
   let imported = 0
 
   for (const tx of (txs || [])) {
-    const rawName = tx.contractor?.trim()
+    const rawName = tx.counterparty?.trim()
     if (!rawName) continue
     const name = normalizeName(rawName)
     const code = tx.edrpou?.trim()

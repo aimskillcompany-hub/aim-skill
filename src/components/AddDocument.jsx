@@ -178,82 +178,63 @@ export default function AddDocument({ user, onSaved }) {
       const total = parseFloat(form.total) || 0
       const signed = form.direction === 'Доходи' ? Math.abs(total) : -Math.abs(total)
 
-      // ── Пошук схожих транзакцій для прикріплення (ЄДРПОУ + сума) ─────────
-      if (!forceSave && form.edrpou) {
-        const absAmt = Math.abs(total)
-        const edrpouClean = form.edrpou.trim()
-        console.log('[MATCH] Шукаємо схожі транзакції:', { edrpou: edrpouClean, total, absAmt, direction: form.direction })
-
-        const { data: similar, error: simErr } = await supabase
-          .from('transactions')
-          .select('id, date, contractor, amount, doc_type, doc_number, edrpou, documents(id)')
-          .eq('edrpou', edrpouClean)
-          .order('date', { ascending: false })
-          .limit(20)
-
-        console.log('[MATCH] Знайдено в БД:', similar?.length, 'помилка:', simErr?.message)
-        console.log('[MATCH] Записи:', similar)
-
-        // Фільтруємо — тільки по абсолютній сумі ±10 грн (знак ігноруємо бо рахунок і видаткова можуть мати різний напрям)
-        const sameSign = (similar || []).filter(t => {
-          const amtMatch = Math.abs(Math.abs(t.amount) - absAmt) <= 10
-          console.log('[MATCH] Перевірка:', t.id, { amtMatch, tAmount: t.amount, total })
-          return amtMatch
-        })
-
-        console.log('[MATCH] Після фільтрації:', sameSign.length)
-
-        if (sameSign.length > 0) {
-          setSimilarTxs(sameSign)
-          setAttachMode(true)
-          setSaving(false)
-          return
-        }
-      } else {
-        console.log('[MATCH] Пропускаємо пошук:', { forceSave, edrpou: form.edrpou })
-      }
-      // ─────────────────────────────────────────────────────────────────────
-
-      // ── Перевірка дублікатів (якщо не примусове збереження) ──────────────
-      if (!forceSave) {
-        const toDate = dt => new Date(dt).toISOString().split('T')[0]
-        const d = new Date(form.date)
-        const dMinus = new Date(d); dMinus.setDate(d.getDate() - 2)
-        const dPlus  = new Date(d); dPlus.setDate(d.getDate() + 2)
-
-        // Шукаємо за датою + сумою + контрагентом
-        // Для від'ємних сум використовуємо правильний порядок gte/lte
-        const amtMin = Math.min(signed - 1, signed + 1)
-        const amtMax = Math.max(signed - 1, signed + 1)
-
-        const { data: existing } = await supabase
-          .from('transactions')
-          .select('id, date, contractor, amount, doc_number')
-          .gte('date', toDate(dMinus))
-          .lte('date', toDate(dPlus))
-          .gte('amount', amtMin)
-          .lte('amount', amtMax)
-          .limit(5)
-
-        // Дублікат тільки якщо номер документу ТОЧНО збігається
-        // (не по сумі/контрагенту — бо це може бути інший документ до тієї ж операції)
-        const docMatch = form.docNumber && existing?.find(e =>
-          e.doc_number && e.doc_number.trim() === form.docNumber.trim()
-        )
-
-        const foundDuplicate = docMatch || null
-        if (foundDuplicate) {
-          setDuplicate(foundDuplicate)
-          setSaving(false)
-          return
-        }
-      }
-      // ─────────────────────────────────────────────────────────────────────
+      // ── Пошук банківської операції для прикріплення документа ─────────
       let finalContractorId = contractorId
       if (!finalContractorId && form.contractor) {
         finalContractorId = await upsertContractor(supabase, { name: form.contractor, edrpou: form.edrpou, default_direction: form.direction, userId: user.id })
       }
 
+      // Шукаємо банківську операцію по ЄДРПОУ + сумі або по сумі + даті
+      const absAmt = Math.abs(total)
+      const toDate = dt => new Date(dt).toISOString().split('T')[0]
+      const d = new Date(form.date)
+      const dMinus = new Date(d); dMinus.setDate(d.getDate() - 10)
+      const dPlus = new Date(d); dPlus.setDate(d.getDate() + 10)
+
+      let bankMatch = null
+
+      // Спочатку по ЄДРПОУ + сумі
+      if (form.edrpou?.trim()) {
+        const { data: byCode } = await supabase.from('bank_transactions')
+          .select('id, date, counterparty, amount, edrpou, documents(id)')
+          .eq('edrpou', form.edrpou.trim())
+          .eq('is_ignored', false)
+          .order('date', { ascending: false }).limit(20)
+
+        bankMatch = (byCode || []).find(b => Math.abs(Math.abs(b.amount) - absAmt) <= 10)
+      }
+
+      // Потім по сумі + даті
+      if (!bankMatch) {
+        const { data: byAmount } = await supabase.from('bank_transactions')
+          .select('id, date, counterparty, amount, edrpou, documents(id)')
+          .eq('is_ignored', false)
+          .gte('date', toDate(dMinus))
+          .lte('date', toDate(dPlus))
+          .limit(50)
+
+        bankMatch = (byAmount || []).find(b => {
+          const amtMatch = Math.abs(Math.abs(b.amount) - absAmt) <= 10
+          const signMatch = (signed > 0) === (b.amount > 0)
+          return amtMatch && signMatch
+        })
+      }
+
+      // Якщо знайдено банківську операцію — оновити її і прикріпити документ
+      if (bankMatch) {
+        setBankMatch(bankMatch)
+        await supabase.from('bank_transactions').update({
+          article: form.article || null,
+          direction: form.direction,
+          project_id: form.projectId || null,
+          edrpou: form.edrpou || null,
+          doc_type: form.docType || null,
+          doc_number: form.docNumber || null,
+          contractor_id: finalContractorId,
+        }).eq('id', bankMatch.id)
+      }
+
+      // Також зберігаємо в transactions для зворотної сумісності
       const { data: tx, error: txErr } = await supabase.from('transactions').insert({
         project_id: form.projectId || null,
         date: form.date,
@@ -282,26 +263,18 @@ export default function AddDocument({ user, onSaved }) {
         return
       }
 
-      // 2. Auto-match with bank transaction
-      const matched = await findBankMatch(tx.id, signed, form.date, form.edrpou)
-      if (matched) {
-        setBankMatch(matched)
-        // Update bank_transaction with article/direction from document
+      // If bank match found, link it to this transaction
+      if (bankMatch) {
         await supabase.from('bank_transactions').update({
-          article: form.article || null,
-          direction: form.direction,
-          project_id: form.projectId || null,
-          edrpou: form.edrpou || null,
-          doc_type: form.docType || null,
-          doc_number: form.docNumber || null,
-        }).eq('id', matched.id)
+          matched_transaction_id: tx.id, is_matched: true,
+        }).eq('id', bankMatch.id)
       }
 
-      // 3. Save items
+      // 2. Save items
       if (form.items.length > 0) {
         const items = form.items.map(it => ({
           transaction_id: tx.id,
-          bank_transaction_id: matched?.id || null,
+          bank_transaction_id: bankMatch?.id || null,
           name: it.name,
           quantity: it.quantity || null,
           unit: it.unit || null,
@@ -336,7 +309,7 @@ export default function AddDocument({ user, onSaved }) {
           if (!uploadErr) {
             await supabase.from('documents').insert({
               transaction_id: tx.id,
-              bank_transaction_id: matched?.id || null,
+              bank_transaction_id: bankMatch?.id || null,
               project_id: form.projectId || null,
               file_name: displayName,
               file_path: safePath,

@@ -76,14 +76,14 @@ export default function Contractors({ user }) {
     setLoading(true)
     const { data } = await supabase.from('contractors').select('*').order('name')
     const contractors = data || []
-    const { data: txStats } = await supabase.from('transactions').select('contractor, edrpou, amount, direction, date')
+    const { data: txStats } = await supabase.from('bank_transactions').select('counterparty, edrpou, amount, direction, date').eq('is_ignored', false)
 
     // Build stats by ЄДРПОУ (primary) and by name (fallback)
     const statsByCode = {}
     const statsByName = {}
     ;(txStats || []).forEach(tx => {
       const code = tx.edrpou?.trim()
-      const name = tx.contractor?.trim()
+      const name = tx.counterparty?.trim()
       const empty = { income:0, expense:0, otherIn:0, otherOut:0, count:0, lastDate:null }
       const target = code ? (statsByCode[code] || (statsByCode[code] = { ...empty }))
                          : name ? (statsByName[name.toLowerCase()] || (statsByName[name.toLowerCase()] = { ...empty }))
@@ -172,14 +172,15 @@ export default function Contractors({ user }) {
     setReconcileFrom(''); setReconcileTo('')
 
     // Fetch transactions by ЄДРПОУ (primary) or by name (fallback)
-    let txQuery = supabase.from('transactions')
-      .select('id,date,amount,direction,article,projects(name)')
+    let txQuery = supabase.from('bank_transactions')
+      .select('id,date,amount,direction,article,counterparty,description')
+      .eq('is_ignored', false)
       .order('date', { ascending: false }).limit(500)
 
     if (c.edrpou?.trim()) {
       txQuery = txQuery.eq('edrpou', c.edrpou.trim())
     } else {
-      txQuery = txQuery.ilike('contractor', c.name)
+      txQuery = txQuery.ilike('counterparty', c.name)
     }
 
     const [{ data:txs }, { data:plans }] = await Promise.all([
@@ -193,7 +194,7 @@ export default function Contractors({ user }) {
     const allTxs = txs || []
     setDetailTxs(allTxs)
     setDetailPlans(plans || [])
-    setDetailProjects([...new Set(allTxs.map(t=>t.projects?.name).filter(Boolean))])
+    setDetailProjects([])
 
     // Build monthly balance
     const byMonth = {}
@@ -567,7 +568,7 @@ export default function Contractors({ user }) {
                           </td>
                           <td style={{ fontSize:13, color:'var(--text2)' }}>{tx.direction}</td>
                           <td style={{ fontSize:13, color:'var(--text2)' }}>{tx.article||'—'}</td>
-                          <td style={{ fontSize:13, color:'var(--text2)' }}>{tx.projects?.name||'—'}</td>
+                          <td style={{ fontSize:13, color:'var(--text2)' }}>{'—'}</td>
                         </tr>
                       ))}
                     </tbody>

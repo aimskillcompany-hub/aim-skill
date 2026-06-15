@@ -20,15 +20,16 @@ function buildDocFileName(docType, docNumber, contractor, date, ext) {
 async function findDbDuplicate(data) {
   if (!data) return null
 
-  // Правило 1: точний збіг по номеру документу + ЄДРПОУ
+  // Правило 1: точний збіг по номеру документу + ЄДРПОУ в bank_transactions
   if (data.docNumber && data.edrpou) {
     const { data: found } = await supabase
-      .from('transactions')
-      .select('id, date, contractor, amount, doc_number, doc_type')
+      .from('bank_transactions')
+      .select('id, date, counterparty, amount, doc_number, doc_type')
       .eq('edrpou', data.edrpou.trim())
       .eq('doc_number', data.docNumber.trim())
+      .eq('is_ignored', false)
       .limit(1)
-    if (found?.length > 0) return { ...found[0], rule: 'doc_number+edrpou' }
+    if (found?.length > 0) return { ...found[0], contractor: found[0].counterparty, rule: 'doc_number+edrpou' }
   }
 
   // Правило 2: ЄДРПОУ + сума ±10 грн + дата ±5 днів
@@ -40,15 +41,16 @@ async function findDbDuplicate(data) {
     const amt = parseFloat(data.totalAmount)
 
     const { data: found } = await supabase
-      .from('transactions')
-      .select('id, date, contractor, amount, doc_number, doc_type')
+      .from('bank_transactions')
+      .select('id, date, counterparty, amount, doc_number, doc_type')
       .eq('edrpou', data.edrpou.trim())
+      .eq('is_ignored', false)
       .gte('date', toISO(dMinus))
       .lte('date', toISO(dPlus))
       .limit(10)
 
     const match = (found || []).find(t => Math.abs(Math.abs(t.amount) - amt) <= 10)
-    if (match) return { ...match, rule: 'edrpou+amount+date' }
+    if (match) return { ...match, contractor: match.counterparty, rule: 'edrpou+amount+date' }
   }
 
   return null
@@ -163,6 +165,22 @@ export default function BatchUpload({ user, onSaved }) {
     const signed = card.form.direction === 'Доходи' ? Math.abs(total) : -Math.abs(total)
 
     try {
+      // Find matching bank_transaction
+      const bankDup = await findDbDuplicate(d)
+      const bankTxId = bankDup?.id || null
+
+      // If found bank match — update it with article/direction
+      if (bankTxId) {
+        await supabase.from('bank_transactions').update({
+          article: card.form.article || null,
+          direction: card.form.direction,
+          project_id: card.form.projectId || null,
+          doc_type: d.docType || null,
+          doc_number: d.docNumber || null,
+        }).eq('id', bankTxId)
+      }
+
+      // Save to transactions for backward compatibility
       const { data: tx, error: txErr } = await supabase.from('transactions').insert({
         date: d.date || new Date().toISOString().split('T')[0],
         contractor: d.contractor || 'Невідомо',
@@ -190,6 +208,7 @@ export default function BatchUpload({ user, onSaved }) {
       if (!uploadErr) {
         await supabase.from('documents').insert({
           transaction_id: tx.id,
+          bank_transaction_id: bankTxId,
           file_name: displayName,
           file_path: safePath,
           file_type: f.type,
@@ -206,6 +225,7 @@ export default function BatchUpload({ user, onSaved }) {
           const { error: itemsErr } = await supabase.from('transaction_items').insert(
             validItems.map(it => ({
               transaction_id: tx.id,
+              bank_transaction_id: bankTxId,
               name: it.name,
               quantity: parseFloat(it.quantity) || null,
               unit: it.unit || null,

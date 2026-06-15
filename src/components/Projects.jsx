@@ -79,7 +79,7 @@ export default function Projects({ user }) {
     setLoading(true)
     const { data } = await supabase
       .from('projects')
-      .select('*, transactions(amount, direction)')
+      .select('*, bank_transactions(amount, direction)')
       .order('created_at', { ascending: false })
     setProjects(data || [])
     setLoading(false)
@@ -93,9 +93,10 @@ export default function Projects({ user }) {
 
     // Load transactions for this project
     const { data: txs } = await supabase
-      .from('transactions')
+      .from('bank_transactions')
       .select('*, transaction_items(*)')
       .eq('project_id', proj.id)
+      .eq('is_ignored', false)
       .order('date', { ascending: false })
 
     setProjTxs(txs || [])
@@ -106,7 +107,7 @@ export default function Projects({ user }) {
 
     const { data: byProject } = await supabase
       .from('documents')
-      .select('*, transactions(doc_type, doc_number, contractor, date)')
+      .select('*, bank_transactions(doc_type, doc_number, counterparty, date)')
       .eq('project_id', proj.id)
 
     if (byProject?.length > 0) {
@@ -114,8 +115,8 @@ export default function Projects({ user }) {
     } else if (txIds.length > 0) {
       const { data: byTx } = await supabase
         .from('documents')
-        .select('*, transactions(doc_type, doc_number, contractor, date)')
-        .in('transaction_id', txIds)
+        .select('*, bank_transactions(doc_type, doc_number, counterparty, date)')
+        .in('bank_transaction_id', txIds)
       docs = byTx || []
     }
 
@@ -186,7 +187,7 @@ export default function Projects({ user }) {
 
   const handleDelete = async (e, proj) => {
     e.stopPropagation()
-    const txCount = proj.transactions?.length || 0
+    const txCount = proj.bank_transactions?.length || 0
     const msg = txCount > 0
       ? `Видалити проєкт "${proj.name}"?\n\nУ ньому ${txCount} операцій — вони НЕ видаляться, просто відвʼяжуться від проєкту.`
       : `Видалити проєкт "${proj.name}"?`
@@ -200,7 +201,7 @@ export default function Projects({ user }) {
   }
 
   const getStats = (proj) => {
-    const txs = proj.transactions || []
+    const txs = proj.bank_transactions || []
     const revenue = txs.filter(t => t.direction === 'Доходи').reduce((s, t) => s + (t.amount || 0), 0)
     const expenses = txs.filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
     return { revenue, expenses, gp: revenue - expenses }
@@ -211,7 +212,7 @@ export default function Projects({ user }) {
     const filtered = docs.filter(d => d.doc_role === role)
     const groups = {}
     filtered.forEach(doc => {
-      const type = doc.transactions?.doc_type || 'інше'
+      const type = doc.bank_transactions?.doc_type || 'інше'
       if (!groups[type]) groups[type] = []
       groups[type].push(doc)
     })
@@ -438,23 +439,23 @@ export default function Projects({ user }) {
                     </div>
                     {docs.map(doc => (
                       <div key={doc.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
-                        <i className={`ti ${getTypeIcon(doc.transactions?.doc_type)}`} style={{ fontSize: 18, color: 'var(--text3)', flexShrink: 0, marginTop: 1 }} />
+                        <i className={`ti ${getTypeIcon(doc.bank_transactions?.doc_type)}`} style={{ fontSize: 18, color: 'var(--text3)', flexShrink: 0, marginTop: 1 }} />
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 2 }}>
-                            {doc.transactions?.doc_type && (
+                            {doc.bank_transactions?.doc_type && (
                               <span style={{ color: 'var(--blue)', marginRight: 6, textTransform: 'capitalize' }}>
-                                {doc.transactions.doc_type}
+                                {doc.bank_transactions.doc_type}
                               </span>
                             )}
-                            {doc.transactions?.doc_number && (
-                              <span style={{ color: 'var(--text2)' }}>№{doc.transactions.doc_number}</span>
+                            {doc.bank_transactions?.doc_number && (
+                              <span style={{ color: 'var(--text2)' }}>№{doc.bank_transactions.doc_number}</span>
                             )}
                           </div>
                           <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 1 }}>
-                            {doc.transactions?.contractor && <span>{doc.transactions.contractor.replace(/ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ /gi, 'ТОВ ').substring(0, 50)}</span>}
+                            {doc.bank_transactions?.counterparty && <span>{doc.bank_transactions.counterparty.replace(/ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ /gi, 'ТОВ ').substring(0, 50)}</span>}
                           </div>
                           <div style={{ fontSize: 11, color: 'var(--text3)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            {doc.transactions?.date && <span>{doc.transactions.date}</span>}
+                            {doc.bank_transactions?.date && <span>{doc.bank_transactions.date}</span>}
                             <span style={{ color: 'var(--border2)' }}>·</span>
                             <span>{doc.file_name}</span>
                             <span style={{ color: 'var(--border2)' }}>·</span>
@@ -491,7 +492,7 @@ export default function Projects({ user }) {
                     {projTxs.map(tx => (
                       <tr key={tx.id} style={{ cursor: 'pointer' }} onClick={() => setSelectedTx(tx)}>
                         <td style={{ color: 'var(--text2)' }}>{tx.date}</td>
-                        <td className="trunc">{tx.contractor}</td>
+                        <td className="trunc">{tx.counterparty}</td>
                         <td className={tx.amount >= 0 ? 'amt-pos' : 'amt-neg'}>{tx.amount >= 0 ? '+' : ''}{fmt(tx.amount)}</td>
                         <td className="trunc" style={{ color: 'var(--text2)' }}>{tx.article || '—'}</td>
                         <td style={{ color: 'var(--text3)', fontSize: 12 }}>{tx.transaction_items?.length || 0}</td>

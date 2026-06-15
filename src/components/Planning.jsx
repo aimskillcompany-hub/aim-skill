@@ -75,7 +75,7 @@ export default function Planning({ user }) {
   const loadPvf = async () => {
     setPvfLoading(true)
     const [{ data: txs }, { data: plns }] = await Promise.all([
-      supabase.from('transactions').select('date,amount,direction'),
+      supabase.from('bank_transactions').select('date,amount,direction').eq('is_ignored', false),
       supabase.from('plans').select('*'),
     ])
     // Build months: all fact months + next 6
