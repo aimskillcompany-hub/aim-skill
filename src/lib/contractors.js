@@ -98,21 +98,23 @@ export async function syncContractorStats(supabase) {
     }
 
     // Fill ЄДРПОУ from transactions
-    if (!c.edrpou) {
-      const txEdrpou = myTxs.find(t => t.edrpou)?.edrpou
+    const hasEdrpou = c.edrpou && c.edrpou.trim().length > 3
+    if (!hasEdrpou) {
+      const txEdrpou = myTxs.find(t => t.edrpou?.trim())?.edrpou?.trim()
       if (txEdrpou) { updates.edrpou = txEdrpou; edrpouFilled++ }
     }
 
     // Fill IBAN: try by ЄДРПОУ first, then by name
-    if (!c.iban) {
-      const edrpou = c.edrpou || updates.edrpou
+    const hasIban = c.iban && c.iban.trim().length > 5
+    if (!hasIban) {
+      const edrpou = (c.edrpou || updates.edrpou || '').trim()
       let foundIban = null
-      if (edrpou && edrpouToIban[edrpou.trim()]) {
-        foundIban = edrpouToIban[edrpou.trim()]
-        console.log('[Sync]', c.name, '→ IBAN by ЄДРПОУ:', edrpou, '=', foundIban)
+      if (edrpou && edrpouToIban[edrpou]) {
+        foundIban = edrpouToIban[edrpou]
+        console.log('[Sync] IBAN found by ЄДРПОУ:', c.name, edrpou, '→', foundIban)
       } else if (nameToIban[nameLower]) {
         foundIban = nameToIban[nameLower]
-        console.log('[Sync]', c.name, '→ IBAN by name match =', foundIban)
+        console.log('[Sync] IBAN found by name:', c.name, '→', foundIban)
       }
       if (foundIban) { updates.iban = foundIban; ibanFilled++ }
     }
