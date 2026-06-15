@@ -93,33 +93,29 @@ export default function Registry({ user }) {
   const load = useCallback(async () => {
     setLoading(true)
     // Map col name to DB field
-    const COL_MAP = { date:'date', contractor:'contractor', amount:'amount', direction:'direction', article:'article' }
+    const COL_MAP = { date:'date', counterparty:'counterparty', amount:'amount', direction:'direction', article:'article' }
     const dbCol = COL_MAP[sort.col] || 'date'
 
-    let q = supabase.from('transactions')
-      .select('*, projects(name), documents(id), bank_transactions(id, date, amount)', { count: 'exact' })
+    let q = supabase.from('bank_transactions')
+      .select('*, documents(id), transaction_items(id)', { count: 'exact' })
+      .eq('is_ignored', false)
       .order(dbCol, { ascending: sort.dir === 'asc' })
       .range((page - 1) * PER_PAGE, page * PER_PAGE - 1)
 
     if (filters.dateFrom) q = q.gte('date', filters.dateFrom)
     if (filters.dateTo) q = q.lte('date', filters.dateTo)
     if (filters.direction) q = q.eq('direction', filters.direction)
-    if (filters.project) q = q.eq('project_id', filters.project)
     if (filters.article) q = q.eq('article', filters.article)
     if (filters.noArticle) q = q.is('article', null)
     if (filters.amountMin) q = q.gte('amount', parseFloat(filters.amountMin))
     if (filters.amountMax) q = q.lte('amount', parseFloat(filters.amountMax))
-    if (filters.search) q = q.or(`contractor.ilike.%${filters.search}%,description.ilike.%${filters.search}%,edrpou.ilike.%${filters.search}%,doc_number.ilike.%${filters.search}%`)
+    if (filters.search) q = q.or(`counterparty.ilike.%${filters.search}%,description.ilike.%${filters.search}%`)
 
     const { data, count } = await q
     // Client-side filter by doc status
     let filtered = data || []
     if (filters.docStatus === 'has_doc') filtered = filtered.filter(t => t.documents?.length > 0)
     if (filters.docStatus === 'no_doc') filtered = filtered.filter(t => !t.documents?.length)
-    if (filters.docStatus === 'has_bank') filtered = filtered.filter(t => t.bank_transactions?.length > 0)
-    if (filters.docStatus === 'no_bank') filtered = filtered.filter(t => !t.bank_transactions?.length)
-    if (filters.docStatus === 'full') filtered = filtered.filter(t => t.documents?.length > 0 && t.bank_transactions?.length > 0)
-    if (filters.docStatus === 'empty') filtered = filtered.filter(t => !t.documents?.length && !t.bank_transactions?.length)
 
     setTransactions(filtered)
     setTotal(filters.docStatus ? filtered.length : (count || 0))
@@ -135,8 +131,9 @@ export default function Registry({ user }) {
     setDupResults([])
 
     const { data: txs } = await supabase
-      .from('transactions')
-      .select('id, date, contractor, edrpou, amount, direction, article, doc_type, doc_number, description, documents(id)')
+      .from('bank_transactions')
+      .select('id, date, counterparty, amount, direction, article, description, documents(id)')
+      .eq('is_ignored', false)
       .order('date', { ascending: false })
       .limit(1000)
 
@@ -160,8 +157,8 @@ export default function Registry({ user }) {
           continue
         }
 
-        // Правило 2: ЄДРПОУ збігається + сума ±1000 грн
-        if (a.edrpou && b.edrpou && a.edrpou.trim() === b.edrpou.trim() && amtDiff <= 1000) {
+        // Правило 2: counterparty збігається + сума ±1000 грн
+        if (a.counterparty && b.counterparty && a.counterparty.trim() === b.counterparty.trim() && amtDiff <= 1000) {
           seen.add(key)
           pairs.push({ tx1: a, tx2: b, rule: 2, dayDiff: Math.round(dayDiff), amtDiff: Math.round(amtDiff) })
         }
@@ -176,10 +173,10 @@ export default function Registry({ user }) {
   const handleMerge = async (keepId, removeId) => {
     setMergingSingle(`${keepId}-${removeId}`)
     // Move documents from removeId to keepId
-    await supabase.from('documents').update({ transaction_id: keepId }).eq('transaction_id', removeId)
-    await supabase.from('transaction_items').update({ transaction_id: keepId }).eq('transaction_id', removeId)
-    // Delete the duplicate
-    await supabase.from('transactions').delete().eq('id', removeId)
+    await supabase.from('documents').update({ bank_transaction_id: keepId }).eq('bank_transaction_id', removeId)
+    await supabase.from('transaction_items').update({ bank_transaction_id: keepId }).eq('bank_transaction_id', removeId)
+    // Ignore the duplicate
+    await supabase.from('bank_transactions').update({ is_ignored: true }).eq('id', removeId)
     // Remove from results
     setDupResults(prev => prev.filter(p => p.tx1.id !== keepId && p.tx1.id !== removeId && p.tx2.id !== keepId && p.tx2.id !== removeId))
     setMergingSingle(null)
@@ -187,7 +184,7 @@ export default function Registry({ user }) {
   }
 
   const handleDeleteDup = async (deleteId, keepId) => {
-    await supabase.from('transactions').delete().eq('id', deleteId)
+    await supabase.from('bank_transactions').update({ is_ignored: true }).eq('id', deleteId)
     setDupResults(prev => prev.filter(p => p.tx1.id !== deleteId && p.tx2.id !== deleteId))
     load()
   }
@@ -202,8 +199,9 @@ export default function Registry({ user }) {
     setRecoverLoading(true)
     // Find transactions that have documents but no items
     const { data: txsWithDocs } = await supabase
-      .from('transactions')
-      .select('id, date, contractor, edrpou, amount, direction, doc_type, doc_number, documents(id, file_path, file_name, file_type)')
+      .from('bank_transactions')
+      .select('id, date, counterparty, amount, direction, documents(id, file_path, file_name, file_type)')
+      .eq('is_ignored', false)
       .order('date', { ascending: false })
 
     const withDocs = (txsWithDocs || []).filter(t => t.documents?.length > 0)
@@ -212,10 +210,10 @@ export default function Registry({ user }) {
     const txIds = withDocs.map(t => t.id)
     const { data: itemRows } = await supabase
       .from('transaction_items')
-      .select('transaction_id')
-      .in('transaction_id', txIds)
+      .select('bank_transaction_id')
+      .in('bank_transaction_id', txIds)
 
-    const withItems = new Set((itemRows || []).map(r => r.transaction_id))
+    const withItems = new Set((itemRows || []).map(r => r.bank_transaction_id))
     const noItems = withDocs.filter(t => !withItems.has(t.id))
 
     setRecoverList(noItems)
@@ -263,7 +261,7 @@ export default function Registry({ user }) {
         if (items.length > 0) {
           await supabase.from('transaction_items').insert(
             items.map(it => ({
-              transaction_id: tx.id,
+              bank_transaction_id: tx.id,
               name: it.name,
               quantity: parseFloat(it.quantity) || null,
               unit: it.unit || null,
@@ -302,8 +300,8 @@ export default function Registry({ user }) {
   const openDetail = async (tx) => {
     setSelected(tx)
     const [{ data: docs }, { data: items }] = await Promise.all([
-      supabase.from('documents').select('*').eq('transaction_id', tx.id),
-      supabase.from('transaction_items').select('*').eq('transaction_id', tx.id),
+      supabase.from('documents').select('*').eq('bank_transaction_id', tx.id),
+      supabase.from('transaction_items').select('*').eq('bank_transaction_id', tx.id),
     ])
     setSelectedDocs(docs || [])
     setSelectedItems(items || [])
@@ -316,25 +314,25 @@ export default function Registry({ user }) {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Видалити операцію?')) return
-    await supabase.from('transactions').delete().eq('id', id)
+    await supabase.from('bank_transactions').update({ is_ignored: true }).eq('id', id)
     setTransactions(prev => prev.filter(t => t.id !== id))
     setTotal(prev => prev - 1)
   }
 
   const openEdit = (tx) => {
-    setEditForm({ id:tx.id,date:tx.date,contractor:tx.contractor,edrpou:tx.edrpou||'',amount:tx.amount,direction:tx.direction,article:tx.article||'',project_id:tx.project_id||'',description:tx.description||'',doc_type:tx.doc_type||'',doc_number:tx.doc_number||'' })
+    setEditForm({ id:tx.id,contractor:tx.counterparty,direction:tx.direction,article:tx.article||'',description:tx.description||'' })
     setEdit(tx)
   }
 
   const handleUpdate = async () => {
     setEditSaving(true)
-    await supabase.from('transactions').update({
-      date: editForm.date, contractor: editForm.contractor, edrpou: editForm.edrpou||null,
-      amount: parseFloat(editForm.amount), direction: editForm.direction, article: editForm.article||null,
-      project_id: editForm.project_id||null, description: editForm.description||null,
-      doc_type: editForm.doc_type||null, doc_number: editForm.doc_number||null,
+    await supabase.from('bank_transactions').update({
+      direction: editForm.direction,
+      article: editForm.article || null,
+      description: editForm.description || null,
+      counterparty: editForm.contractor,
     }).eq('id', editForm.id)
-    setTransactions(prev => prev.map(t => t.id === editForm.id ? { ...t, ...editForm, amount: parseFloat(editForm.amount) } : t))
+    setTransactions(prev => prev.map(t => t.id === editForm.id ? { ...t, direction: editForm.direction, article: editForm.article, description: editForm.description, counterparty: editForm.contractor } : t))
     setEdit(null)
     setEditSaving(false)
   }
@@ -364,9 +362,9 @@ export default function Registry({ user }) {
     if (bulkForm.article) update.article = bulkForm.article
     if (bulkForm.project_id) update.project_id = bulkForm.project_id
     if (bulkForm.direction) update.direction = bulkForm.direction
-    if (bulkForm.contractor) update.contractor = bulkForm.contractor
+    if (bulkForm.contractor) update.counterparty = bulkForm.contractor
 
-    await supabase.from('transactions').update(update).in('id', [...checkedIds])
+    await supabase.from('bank_transactions').update(update).in('id', [...checkedIds])
     setCheckedIds(new Set())
     setShowBulkEdit(false)
     setBulkForm({ article: '', project_id: '', direction: '', contractor: '' })
@@ -434,7 +432,7 @@ export default function Registry({ user }) {
         <input
           className="form-input"
           style={{ width:'100%', paddingLeft:38 }}
-          placeholder="Пошук по контрагенту, ЄДРПОУ, № документу..."
+          placeholder="Пошук по контрагенту, опису..."
           value={filters.search}
           onChange={e => setF('search', e.target.value)}
         />
@@ -457,12 +455,8 @@ export default function Registry({ user }) {
           onChange={e => setF('docStatus', e.target.value)}
         >
           <option value="">Всі статуси</option>
-          <option value="full">Документ + Банк</option>
           <option value="has_doc">Є документ</option>
           <option value="no_doc">Без документу</option>
-          <option value="has_bank">Є банк</option>
-          <option value="no_bank">Без банку</option>
-          <option value="empty">Нічого немає</option>
         </select>
         <button
           className={`btn btn-sm ${activeFilterCount > 0 ? 'btn-primary' : 'btn-secondary'}`}
@@ -589,7 +583,7 @@ export default function Registry({ user }) {
                     style={{ width:15, height:15, cursor:'pointer', accentColor:'var(--text)' }} />
                 </th>
                 <th style={thStyle('date')} onClick={() => toggleSort('date')}>Дата<SortIcon col="date" /></th>
-                <th style={thStyle('contractor')} onClick={() => toggleSort('contractor')}>Контрагент<SortIcon col="contractor" /></th>
+                <th style={thStyle('counterparty')} onClick={() => toggleSort('counterparty')}>Контрагент<SortIcon col="counterparty" /></th>
                 <th style={{ ...thStyle('amount'), textAlign:'right' }} onClick={() => toggleSort('amount')}>Сума, грн<SortIcon col="amount" /></th>
                 <th style={thStyle('direction')} onClick={() => toggleSort('direction')}>Напрям<SortIcon col="direction" /></th>
                 <th style={thStyle('article')} onClick={() => toggleSort('article')}>Стаття<SortIcon col="article" /></th>
@@ -615,7 +609,7 @@ export default function Registry({ user }) {
                     </td>
                     <td style={{ color:'var(--text2)', fontSize:13, whiteSpace:'nowrap' }}>{tx.date}</td>
                     <td style={{ minWidth:250 }}>
-                      <div style={{ fontSize:14, fontWeight:500, whiteSpace:'normal', wordBreak:'break-word', lineHeight:'1.3' }}>{tx.contractor}</div>
+                      <div style={{ fontSize:14, fontWeight:500, whiteSpace:'normal', wordBreak:'break-word', lineHeight:'1.3' }}>{tx.counterparty}</div>
                       {tx.description && <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:12, color:'var(--text2)', marginTop:2, maxWidth:300 }}>{tx.description}</div>}
                     </td>
                     <td style={{ textAlign:'right', fontWeight:500, fontVariantNumeric:'tabular-nums', color: tx.amount > 0 ? 'var(--green)' : tx.amount < 0 ? 'var(--red)' : 'var(--text3)', whiteSpace:'nowrap' }}>
@@ -625,12 +619,12 @@ export default function Registry({ user }) {
                     <td style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color: noArticle ? 'var(--amber)' : 'var(--text2)', maxWidth:150 }} title={tx.article}>
                       {noArticle ? <span style={{ display:'flex', alignItems:'center', gap:4 }}><i className="ti ti-tag-off" style={{ fontSize:13 }} />без статті</span> : tx.article}
                     </td>
-                    <td style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color:'var(--text2)', maxWidth:100 }}>{tx.projects?.name || '—'}</td>
+                    <td style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color:'var(--text2)', maxWidth:100 }}>—</td>
                     <td style={{ textAlign:'center' }}>
                       <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:13 }}>
                         {tx.documents?.length > 0 && <span>📄{tx.documents.length > 1 ? tx.documents.length : ''}</span>}
-                        {tx.bank_transactions?.length > 0 && <span>🏦</span>}
-                        {!tx.documents?.length && !tx.bank_transactions?.length && <span style={{ color:'var(--text3)' }}>—</span>}
+                        {tx.transaction_items?.length > 0 && <span>📦</span>}
+                        {!tx.documents?.length && !tx.transaction_items?.length && <span style={{ color:'var(--text3)' }}>—</span>}
                       </span>
                     </td>
                     <td onClick={e => e.stopPropagation()}>
@@ -669,7 +663,7 @@ export default function Registry({ user }) {
                   {tx.amount > 0 ? '+' : ''}{fmt(tx.amount)} <span style={{ fontSize:12, fontWeight:500 }}>грн</span>
                 </span>
               </div>
-              <div style={{ fontSize:14, fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:4 }}>{tx.contractor}</div>
+              <div style={{ fontSize:14, fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:4 }}>{tx.counterparty}</div>
               <Badge type={tx.direction} />
             </div>
             <i className="ti ti-chevron-right" style={{ fontSize:16, color:'var(--text3)', flexShrink:0 }} />
@@ -770,7 +764,7 @@ export default function Registry({ user }) {
         <div className="modal-bg" onClick={e => e.target===e.currentTarget && setSelected(null)}>
           <div className="modal modal-lg">
             <div className="modal-header">
-              <h2 style={{ fontSize:15 }}>{selected.contractor}</h2>
+              <h2 style={{ fontSize:15 }}>{selected.counterparty}</h2>
               <button className="modal-close" onClick={() => setSelected(null)}>×</button>
             </div>
             <div className="modal-detail-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16, fontSize:13 }}>
@@ -779,12 +773,9 @@ export default function Registry({ user }) {
                 ['Сума', (selected.amount>0?'+':'')+fmt(selected.amount)+' грн'],
                 ['ПДВ', fmt(selected.vat_amount)+' грн'],
                 ['Без ПДВ', fmt(selected.amount_no_vat)+' грн'],
-                ['ЄДРПОУ', selected.edrpou],
-                ['Тип документу', selected.doc_type],
-                ['Номер', selected.doc_number],
                 ['Напрям', selected.direction],
                 ['Стаття', selected.article],
-                ['Проєкт', selected.projects?.name],
+                ['Проєкт', '—'],
                 ['Призначення', selected.description],
               ].filter(([,v]) => v).map(([l,v]) => (
                 <div key={l}><div style={{ fontSize:11, color:'var(--text3)', marginBottom:1 }}>{l}</div><div style={{ fontWeight:500 }}>{v}</div></div>
@@ -857,7 +848,6 @@ export default function Registry({ user }) {
               <button className="modal-close" onClick={() => setEdit(null)}>×</button>
             </div>
             <div className="form-grid">
-              <div className="form-group"><label>Дата</label><input type="date" className="form-input" value={editForm.date} onChange={e => setEditForm(f=>({...f,date:e.target.value}))}/></div>
               <div className="form-group"><label>Контрагент</label><ContractorSelect
   value={editForm.contractor}
   onChange={v => setEditForm(f => ({...f, contractor: v}))}
@@ -867,13 +857,8 @@ export default function Registry({ user }) {
     if (c.default_article) setEditForm(f => ({...f, article: c.default_article}))
   }}
 /></div>
-              <div className="form-group"><label>Сума (зі знаком)</label><input type="number" className="form-input" value={editForm.amount} onChange={e => setEditForm(f=>({...f,amount:e.target.value}))}/></div>
-              <div className="form-group"><label>ЄДРПОУ</label><input className="form-input" value={editForm.edrpou} onChange={e => setEditForm(f=>({...f,edrpou:e.target.value}))}/></div>
-              <div className="form-group"><label>Тип документу</label><input className="form-input" value={editForm.doc_type} onChange={e => setEditForm(f=>({...f,doc_type:e.target.value}))} placeholder="рахунок-фактура..."/></div>
-              <div className="form-group"><label>Номер документу</label><input className="form-input" value={editForm.doc_number} onChange={e => setEditForm(f=>({...f,doc_number:e.target.value}))}/></div>
               <div className="form-group"><label>Напрям</label><select className="form-input" value={editForm.direction} onChange={e => setEditForm(f=>({...f,direction:e.target.value}))}>{DIRS.map(d=><option key={d}>{d}</option>)}</select></div>
               <div className="form-group"><label>Стаття</label><ArticleSelect value={editForm.article} onChange={e => setEditForm(f=>({...f,article:e.target.value}))} articles={articles} direction={editForm.direction} /></div>
-              <div className="form-group"><label>Проєкт</label><select className="form-input" value={editForm.project_id} onChange={e => setEditForm(f=>({...f,project_id:e.target.value}))}><option value="">— без проєкту —</option>{projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
               <div className="form-group full"><label>Призначення</label><textarea className="form-input" rows={2} value={editForm.description} onChange={e => setEditForm(f=>({...f,description:e.target.value}))}/></div>
             </div>
             <div className="btn-row">
@@ -999,13 +984,12 @@ export default function Registry({ user }) {
                           style={{ width:15, height:15, accentColor:'var(--blue)', flexShrink:0 }}
                         />
                         <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:13, fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{tx.contractor}</div>
+                          <div style={{ fontSize:13, fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{tx.counterparty}</div>
                           <div style={{ fontSize:12, color:'var(--text2)', display:'flex', gap:10, marginTop:2 }}>
                             <span>{tx.date}</span>
                             <span style={{ fontWeight:500, color: tx.amount >= 0 ? 'var(--green)' : 'var(--red)' }}>
                               {tx.amount >= 0 ? '+' : ''}{new Intl.NumberFormat('uk-UA').format(Math.round(Math.abs(tx.amount)))} грн
                             </span>
-                            {tx.doc_type && <span style={{ color:'var(--text3)' }}>{tx.doc_type}{tx.doc_number ? ` №${tx.doc_number}` : ''}</span>}
                           </div>
                         </div>
                         <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
@@ -1060,7 +1044,7 @@ export default function Registry({ user }) {
             <div style={{ display:'flex', gap:8, marginBottom:20, flexWrap:'wrap' }}>
               {[
                 { label: 'Правило 1: дата ±10 днів + сума ±10 грн', rule: 1 },
-                { label: 'Правило 2: ЄДРПОУ + сума ±1000 грн', rule: 2 },
+                { label: 'Правило 2: контрагент + сума ±1000 грн', rule: 2 },
               ].map(r => {
                 const active = dupResults.some(p => p.rule === r.rule)
                 return (
@@ -1107,7 +1091,7 @@ export default function Registry({ user }) {
                           {/* Content area — flex:1 to push buttons down */}
                           <div style={{ flex:1 }}>
                             {/* Company name */}
-                            <div style={{ fontSize:14, fontWeight:600, color:'#000', marginBottom:8 }}>{tx.contractor}</div>
+                            <div style={{ fontSize:14, fontWeight:600, color:'#000', marginBottom:8 }}>{tx.counterparty}</div>
 
                             {/* Date + Amount + Badge */}
                             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8, flexWrap:'wrap', gap:6 }}>
@@ -1128,8 +1112,6 @@ export default function Registry({ user }) {
 
                             {/* Details */}
                             <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-                              {tx.edrpou && <div style={{ fontSize:12, color:'var(--text2)' }}>ЄДРПОУ: {tx.edrpou}</div>}
-                              {(tx.doc_type || tx.doc_number) && <div style={{ fontSize:12, color:'var(--text2)' }}>Документ: {tx.doc_type}{tx.doc_number ? ` №${tx.doc_number}` : ''}</div>}
                               {tx.article && <div style={{ fontSize:12, color:'var(--text2)' }}>Стаття: {tx.article}</div>}
                               {tx.description && (
                                 <div style={{ fontSize:12, color:'var(--text2)', overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', lineHeight:'1.4' }}>
