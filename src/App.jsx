@@ -13,6 +13,7 @@ import Cash from './components/Cash'
 import TransactionModal from './components/TransactionModal'
 import ArticlesSettings from './components/ArticlesSettings'
 import Planning from './components/Planning'
+import Contractors from './components/Contractors'
 
 const CASH_DIR = {
   income: +1, expense: -1, advance: -1,
@@ -310,6 +311,7 @@ export default function App() {
     registry: <Registry user={user} />,
     bank: <Bank user={user} />,
     cash: <Cash user={user} />,
+    contractors: <Contractors user={user} />,
     projects: <Projects key={`projects-${page}`} user={user} />,
     reports: <Reports />,
     planning: <Planning user={user} />,

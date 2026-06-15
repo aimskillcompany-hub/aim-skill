@@ -177,6 +177,44 @@ create policy "Delete plans" on plans for delete to authenticated using (
 ALTER TABLE plans ADD COLUMN IF NOT EXISTS planned_date date;
 
 -- ═══════════════════════════════════════════════════
+-- 7. CONTRACTORS (реєстр контрагентів)
+-- ═══════════════════════════════════════════════════
+create table if not exists contractors (
+  id uuid default gen_random_uuid() primary key,
+  name text not null,
+  short_name text,
+  edrpou text,
+  type text default 'other' check (type in ('client','supplier','other')),
+  email text,
+  phone text,
+  address text,
+  iban text,
+  bank_name text,
+  mfo text,
+  default_article text,
+  default_direction text,
+  notes text,
+  total_income numeric(15,2) default 0,
+  total_expense numeric(15,2) default 0,
+  operations_count integer default 0,
+  last_operation_date date,
+  created_by uuid references profiles(id) on delete set null,
+  created_at timestamptz default now()
+);
+
+alter table contractors enable row level security;
+create policy "View contractors" on contractors for select to authenticated using (true);
+create policy "Insert contractors" on contractors for insert to authenticated with check (
+  (select role from profiles where id = auth.uid()) in ('admin','accountant','manager')
+);
+create policy "Update contractors" on contractors for update to authenticated using (
+  (select role from profiles where id = auth.uid()) in ('admin','accountant','manager')
+);
+create policy "Delete contractors" on contractors for delete to authenticated using (
+  (select role from profiles where id = auth.uid()) = 'admin'
+);
+
+-- ═══════════════════════════════════════════════════
 -- INDEXES для швидкості
 -- ═══════════════════════════════════════════════════
 create index if not exists idx_tx_date on transactions(date desc);
