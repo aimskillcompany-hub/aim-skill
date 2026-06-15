@@ -498,9 +498,18 @@ export default function Bank({ user }) {
     for (const btx of toProcess) {
       const amt = btx.amount || 0
       const signed = bulkForm.direction === 'Доходи' ? Math.abs(amt) : -Math.abs(amt)
+      // Find ЄДРПОУ from contractors
+      let edrpou = null
+      if (btx.counterparty) {
+        const { data } = await supabase.from('contractors').select('edrpou').ilike('name', btx.counterparty.trim()).maybeSingle()
+        if (data?.edrpou) edrpou = data.edrpou
+      }
+      const contractorId = await upsertContractor(supabase, { name: btx.counterparty, edrpou, iban: btx.account, default_direction: bulkForm.direction, userId: user.id })
       const { data: tx } = await supabase.from('transactions').insert({
         date: btx.date,
         contractor: btx.counterparty || 'Банк',
+        edrpou,
+        contractor_id: contractorId,
         amount: signed,
         direction: bulkForm.direction,
         article: bulkForm.article || null,
@@ -518,15 +527,21 @@ export default function Bank({ user }) {
     loadUnmatched()
   }
 
-  const openCreate = (btx) => {
+  const openCreate = async (btx) => {
     setCreateFrom(btx)
+    // Try to find ЄДРПОУ from contractors by name
+    let edrpou = btx.edrpou || ''
+    if (!edrpou && btx.counterparty) {
+      const { data } = await supabase.from('contractors').select('edrpou').ilike('name', btx.counterparty.trim()).maybeSingle()
+      if (data?.edrpou) edrpou = data.edrpou
+    }
     setCreateForm({
       date: btx.date, contractor: btx.counterparty || '',
       amount: Math.abs(btx.amount).toString(),
       direction: btx.amount > 0 ? 'Доходи' : 'Витрати',
       description: btx.description || '', projectId: '',
       article: '',
-      edrpou: '', docType: '', docNumber: btx.reference || '',
+      edrpou, docType: '', docNumber: btx.reference || '',
     })
   }
 

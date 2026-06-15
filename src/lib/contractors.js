@@ -173,7 +173,34 @@ export async function syncContractorStats(supabase) {
     synced++
   }
 
-  console.log('[Sync] Done:', synced, 'synced |', edrpouFilled, 'ЄДРПОУ |', ibanFilled, 'IBAN')
+  // ── Backfill: fill edrpou in transactions from contractors ──
+  let txFilled = 0
+  const emptyTxs = (txs || []).filter(t => !t.edrpou?.trim() && t.contractor?.trim())
+  const contractorsWithCode = contractors.filter(c => c.edrpou?.trim().length > 3)
+
+  // Build lookup: first keyword of contractor name → edrpou
+  const namesToUpdate = {} // tx.id → { edrpou, contractor_id }
+  for (const t of emptyTxs) {
+    const tName = t.contractor.trim().toLowerCase()
+    for (const c of contractorsWithCode) {
+      const cWords = c.name.trim().toLowerCase().split(/\s+/).filter(w => w.length > 3)
+      // Match if all significant words of contractor name appear in transaction contractor
+      const match = cWords.length > 0 && cWords.every(w => tName.includes(w))
+      if (match) {
+        namesToUpdate[t.id] = { edrpou: c.edrpou.trim(), contractor_id: c.id }
+        break
+      }
+    }
+  }
+
+  const updateIds = Object.keys(namesToUpdate)
+  for (const id of updateIds) {
+    await supabase.from('transactions').update(namesToUpdate[id]).eq('id', id)
+    txFilled++
+  }
+  if (txFilled > 0) console.log('[Sync] Backfill:', txFilled, 'transactions got edrpou from contractors')
+
+  console.log('[Sync] Done:', synced, 'synced |', edrpouFilled, 'ЄДРПОУ |', ibanFilled, 'IBAN |', txFilled, 'tx backfilled')
   return synced
 }
 
