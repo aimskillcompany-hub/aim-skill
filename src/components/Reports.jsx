@@ -150,7 +150,8 @@ export default function Reports() {
     ]).then(([arts, { data: txs }]) => {
       // Normalize field names for compatibility
       ;(txs || []).forEach(t => { t.contractor = t.counterparty; t.projects = null })
-      const all = txs || []
+      // P&L тільки Доходи і Витрати — інші типи (ПФД, Внутрішні перекази, Інше) не враховуються
+      const all = (txs || []).filter(t => t.direction === 'Доходи' || t.direction === 'Витрати')
       setArticles(arts)
       setRawTxs(all)
 
@@ -289,7 +290,7 @@ export default function Reports() {
         supabase.from('bank_transactions').select('id,date,amount,direction,article,counterparty,description,is_ignored').eq('is_ignored', false).order('date'),
       ]).then(([arts, { data: txs }]) => {
         ;(txs || []).forEach(t => { t.contractor = t.counterparty; t.projects = null })
-        const all = txs || []
+        const all = (txs || []).filter(t => t.direction === 'Доходи' || t.direction === 'Витрати')
         // Re-group artData
         const grouped = {}
         all.forEach(tx => {
