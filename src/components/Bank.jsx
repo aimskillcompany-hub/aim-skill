@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import * as XLSX from 'xlsx'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
+import ContractorSelect from './ui/ContractorSelect'
+import { upsertContractor } from '../lib/contractors'
 
 const API_KEY = import.meta.env.VITE_ANTHROPIC_KEY
 const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
@@ -459,8 +461,10 @@ export default function Bank({ user }) {
     setCreateSaving(true)
     const amt = parseFloat(createForm.amount) || 0
     const signed = createForm.direction === 'Доходи' ? Math.abs(amt) : -Math.abs(amt)
+    const contractorId = await upsertContractor(supabase, { name: createForm.contractor, edrpou: createForm.edrpou, default_direction: createForm.direction, userId: user.id })
     const { data: tx, error } = await supabase.from('transactions').insert({
       date: createForm.date, contractor: createForm.contractor,
+      contractor_id: contractorId,
       edrpou: createForm.edrpou || null, doc_type: createForm.docType || null,
       doc_number: createForm.docNumber || null, amount: signed,
       direction: createForm.direction, article: createForm.article,
@@ -1005,7 +1009,18 @@ export default function Bank({ user }) {
             </div>
             <div className="form-grid">
               <div className="form-group"><label>Дата *</label><input type="date" className="form-input" value={createForm.date} onChange={e => setCreateForm(f=>({...f,date:e.target.value}))}/></div>
-              <div className="form-group"><label>Контрагент *</label><input className="form-input" value={createForm.contractor} onChange={e => setCreateForm(f=>({...f,contractor:e.target.value}))}/></div>
+              <div className="form-group"><label>Контрагент *</label>
+                <ContractorSelect
+                  value={createForm.contractor}
+                  onChange={v => setCreateForm(f=>({...f,contractor:v}))}
+                  onContractorSelect={c => {
+                    if (c._new) return
+                    if (c.default_direction) setCreateForm(f=>({...f,direction:c.default_direction}))
+                    if (c.default_article) setCreateForm(f=>({...f,article:c.default_article}))
+                    if (c.edrpou) setCreateForm(f=>({...f,edrpou:c.edrpou}))
+                  }}
+                />
+              </div>
               <div className="form-group"><label>Сума, грн *</label><input type="number" className="form-input" value={createForm.amount} onChange={e => setCreateForm(f=>({...f,amount:e.target.value}))}/></div>
               <div className="form-group"><label>Напрям</label><select className="form-input" value={createForm.direction} onChange={e => setCreateForm(f=>({...f,direction:e.target.value}))}>{DIRS.map(d=><option key={d}>{d}</option>)}</select></div>
               <div className="form-group"><label>Стаття</label>

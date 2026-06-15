@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import { extractDocumentMulti } from '../lib/ai'
 import Badge from './ui/Badge'
+import ContractorSelect from './ui/ContractorSelect'
 
 const DIRS = ['Витрати','Доходи','ПФД','Внутрішні перекази','Відсотки банку','Інше']
 const PER_PAGE = 50
@@ -857,7 +858,15 @@ export default function Registry({ user }) {
             </div>
             <div className="form-grid">
               <div className="form-group"><label>Дата</label><input type="date" className="form-input" value={editForm.date} onChange={e => setEditForm(f=>({...f,date:e.target.value}))}/></div>
-              <div className="form-group"><label>Контрагент</label><input className="form-input" value={editForm.contractor} onChange={e => setEditForm(f=>({...f,contractor:e.target.value}))}/></div>
+              <div className="form-group"><label>Контрагент</label><ContractorSelect
+  value={editForm.contractor}
+  onChange={v => setEditForm(f => ({...f, contractor: v}))}
+  onContractorSelect={c => {
+    if (c._new) return
+    if (c.default_direction) setEditForm(f => ({...f, direction: c.default_direction}))
+    if (c.default_article) setEditForm(f => ({...f, article: c.default_article}))
+  }}
+/></div>
               <div className="form-group"><label>Сума (зі знаком)</label><input type="number" className="form-input" value={editForm.amount} onChange={e => setEditForm(f=>({...f,amount:e.target.value}))}/></div>
               <div className="form-group"><label>ЄДРПОУ</label><input className="form-input" value={editForm.edrpou} onChange={e => setEditForm(f=>({...f,edrpou:e.target.value}))}/></div>
               <div className="form-group"><label>Тип документу</label><input className="form-input" value={editForm.doc_type} onChange={e => setEditForm(f=>({...f,doc_type:e.target.value}))} placeholder="рахунок-фактура..."/></div>

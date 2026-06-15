@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
+import { upsertContractor, syncContractorStats, importMissingContractors } from '../lib/contractors'
 
 const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
 const TYPES = [
@@ -66,6 +67,8 @@ export default function Contractors({ user }) {
   const [form, setForm] = useState(EMPTY)
   const [editId, setEditId] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState(null)
 
   useEffect(() => { loadAll(); fetchArticles().then(setArticles) }, [])
 
@@ -135,6 +138,16 @@ export default function Contractors({ user }) {
     await supabase.from('contractors').update({ status:newStatus }).eq('id', c.id)
     loadAll()
     if (detail?.id===c.id) setDetail(prev => ({ ...prev, status:newStatus }))
+  }
+
+  const handleSync = async () => {
+    setSyncing(true)
+    setSyncResult(null)
+    const imported = await importMissingContractors(supabase, user?.id)
+    const synced = await syncContractorStats(supabase)
+    setSyncResult({ imported, synced })
+    await loadAll()
+    setSyncing(false)
   }
 
   const openDetail = async (c) => {
@@ -641,9 +654,15 @@ export default function Contractors({ user }) {
     <div>
       <div className="page-header" style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:12 }}>
         <div><h1>Контрагенти</h1><p>Реєстр клієнтів та постачальників</p></div>
-        <button className="btn btn-primary" onClick={openAdd} style={{ width:'auto' }}>
-          <i className="ti ti-plus" style={{ fontSize:15 }} /> Додати
-        </button>
+        <div style={{ display:'flex', gap:8 }}>
+          <button className="btn btn-secondary" onClick={handleSync} disabled={syncing} style={{ width:'auto' }}>
+            <i className={`ti ${syncing ? 'ti-loader-2' : 'ti-refresh'}`} style={{ fontSize:15 }} />
+            {syncing ? 'Синхронізація...' : 'Синхронізувати'}
+          </button>
+          <button className="btn btn-primary" onClick={openAdd} style={{ width:'auto' }}>
+            <i className="ti ti-plus" style={{ fontSize:15 }} /> Додати
+          </button>
+        </div>
       </div>
 
       <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(4,1fr)', marginBottom:20 }}>
@@ -652,6 +671,13 @@ export default function Contractors({ user }) {
         <div className="kpi"><div className="kpi-label">Постачальники</div><div className="kpi-value" style={{ color:'var(--red)' }}>{kpi.suppliers}</div></div>
         <div className="kpi"><div className="kpi-label">Найбільший оборот</div><div className="kpi-value" style={{ fontSize:16 }}>{kpi.topTurnover.name}</div><div className="kpi-sub">{fmt(kpi.topTurnover.val)} грн</div></div>
       </div>
+
+      {syncResult && (
+        <div style={{ background:'var(--green-bg)', border:'1px solid var(--border)', borderRadius:8, padding:'10px 16px', marginBottom:12, fontSize:13, color:'var(--green)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <span>Імпортовано: {syncResult.imported} нових · Оновлено статистику: {syncResult.synced}</span>
+          <button onClick={() => setSyncResult(null)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--green)', fontSize:16 }}>×</button>
+        </div>
+      )}
 
       <div style={{ display:'flex', gap:8, marginBottom:14, flexWrap:'wrap' }}>
         <div style={{ flex:1, position:'relative', minWidth:200 }}>

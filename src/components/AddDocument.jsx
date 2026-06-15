@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { extractDocumentMulti } from '../lib/ai'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
+import ContractorSelect from './ui/ContractorSelect'
+import { upsertContractor } from '../lib/contractors'
 
 const DIRECTIONS = ['Витрати', 'Доходи', 'ПФД', 'Внутрішні перекази', 'Відсотки банку', 'Інше']
 
@@ -88,6 +90,7 @@ export default function AddDocument({ user, onSaved }) {
     article: '', projectId: '', description: '',
     docRole: 'incoming', items: [],
   })
+  const [contractorId, setContractorId] = useState(null)
 
   useEffect(() => {
     supabase.from('projects').select('id, name').eq('status', 'active').order('name')
@@ -246,6 +249,11 @@ export default function AddDocument({ user, onSaved }) {
         }
       }
       // ─────────────────────────────────────────────────────────────────────
+      let finalContractorId = contractorId
+      if (!finalContractorId && form.contractor) {
+        finalContractorId = await upsertContractor(supabase, { name: form.contractor, edrpou: form.edrpou, default_direction: form.direction, userId: user.id })
+      }
+
       const { data: tx, error: txErr } = await supabase.from('transactions').insert({
         project_id: form.projectId || null,
         date: form.date,
@@ -260,6 +268,7 @@ export default function AddDocument({ user, onSaved }) {
         article: form.article,
         description: form.description || null,
         created_by: user.id,
+        contractor_id: finalContractorId,
       }).select().single()
 
       if (txErr) {
@@ -334,6 +343,7 @@ export default function AddDocument({ user, onSaved }) {
       setFile(null)
       setFiles([])
       setExtracted(null)
+      setContractorId(null)
       setForm({
         date: '', contractor: '', edrpou: '', docType: '', docNumber: '',
         total: '', vat: '', noVat: '', direction: 'Витрати',
@@ -383,6 +393,7 @@ export default function AddDocument({ user, onSaved }) {
       setFile(null)
       setFiles([])
       setExtracted(null)
+      setContractorId(null)
       setForm({ date:'', contractor:'', edrpou:'', docType:'', docNumber:'', total:'', vat:'', noVat:'', direction:'Витрати', article:'', projectId:'', description:'', docRole:'incoming', items:[] })
       onSaved?.('✓ Документ прикріплено до існуючої транзакції')
     } catch(e) {
@@ -642,7 +653,16 @@ export default function AddDocument({ user, onSaved }) {
             </div>
             <div className="form-group">
               <label>Контрагент *</label>
-              <input className="form-input" value={form.contractor} onChange={set('contractor')} placeholder="Назва компанії або ФОП" />
+              <ContractorSelect
+                value={form.contractor}
+                onChange={v => setForm(p => ({ ...p, contractor: v }))}
+                onContractorSelect={c => {
+                  if (c._new) return
+                  setContractorId(c.id)
+                  if (c.default_direction) setForm(p => ({ ...p, direction: c.default_direction }))
+                  if (c.default_article) setForm(p => ({ ...p, article: c.default_article }))
+                }}
+              />
             </div>
             <div className="form-group">
               <label>ЄДРПОУ / ІПН</label>

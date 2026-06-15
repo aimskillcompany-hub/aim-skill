@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
+import ContractorSelect from './ui/ContractorSelect'
 
 const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
 
@@ -416,7 +417,14 @@ export default function Cash({ user }) {
               {NEEDS_CLASSIFICATION.includes(formType) && (<>
                 <div className="form-group">
                   <label>Контрагент</label>
-                  <input className="form-input" value={form.counterparty} onChange={setF('counterparty')} placeholder="Від кого / кому" />
+                  <ContractorSelect
+  value={form.counterparty}
+  onChange={v => setForm(f => ({...f, counterparty: v}))}
+  onContractorSelect={c => {
+    if (c._new) return
+    if (c.default_article) setForm(f => ({...f, article: c.default_article}))
+  }}
+/>
                 </div>
                 <div className="form-group">
                   <label>Стаття</label>

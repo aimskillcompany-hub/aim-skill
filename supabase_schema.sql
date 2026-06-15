@@ -230,6 +230,16 @@ create policy "Delete contractors" on contractors for delete to authenticated us
 );
 
 -- ═══════════════════════════════════════════════════
+-- МІГРАЦІЯ: contractor_id в транзакціях
+-- ═══════════════════════════════════════════════════
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS contractor_id uuid REFERENCES contractors(id) ON DELETE SET NULL;
+ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS contractor_id uuid REFERENCES contractors(id) ON DELETE SET NULL;
+ALTER TABLE cash_transactions ADD COLUMN IF NOT EXISTS contractor_id uuid REFERENCES contractors(id) ON DELETE SET NULL;
+create index if not exists idx_tx_contractor on transactions(contractor_id);
+create index if not exists idx_bank_contractor on bank_transactions(contractor_id);
+create index if not exists idx_cash_contractor on cash_transactions(contractor_id);
+
+-- ═══════════════════════════════════════════════════
 -- INDEXES для швидкості
 -- ═══════════════════════════════════════════════════
 create index if not exists idx_tx_date on transactions(date desc);
