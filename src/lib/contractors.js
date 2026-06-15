@@ -51,8 +51,11 @@ export async function syncContractorStats(supabase) {
     supabase.from('bank_transactions').select('counterparty, edrpou, account'),
   ])
   if (!contractors?.length) return 0
+  console.log('[Sync] Contractors:', contractors?.length, 'Transactions:', txs?.length, 'Bank txs:', bankTxs?.length)
 
   let synced = 0
+  let ibanFilled = 0
+  let edrpouFilled = 0
   for (const c of contractors) {
     const nameLower = c.name?.trim().toLowerCase()
     const myTxs = (txs || []).filter(t => t.contractor?.trim().toLowerCase() === nameLower)
@@ -62,10 +65,18 @@ export async function syncContractorStats(supabase) {
     const lastDate = myTxs.reduce((max, t) => t.date > (max || '') ? t.date : max, null)
 
     // Find IBAN and ЄДРПОУ from bank_transactions if missing
-    const bankMatch = (bankTxs || []).find(b =>
-      b.counterparty?.trim().toLowerCase() === nameLower ||
-      (c.edrpou && b.edrpou && b.edrpou.trim() === c.edrpou.trim())
-    )
+    // Try exact match, then contains match, then edrpou match
+    const bankMatch = (bankTxs || []).find(b => {
+      if (!b.counterparty && !b.edrpou) return false
+      const bName = b.counterparty?.trim().toLowerCase() || ''
+      // Exact match
+      if (bName === nameLower) return true
+      // ЄДРПОУ match
+      if (c.edrpou && b.edrpou && b.edrpou.trim() === c.edrpou.trim()) return true
+      // Contains match (bank name contains contractor name or vice versa)
+      if (bName && nameLower && (bName.includes(nameLower) || nameLower.includes(bName))) return true
+      return false
+    })
 
     const updates = {
       total_income: income,
@@ -73,17 +84,22 @@ export async function syncContractorStats(supabase) {
       operations_count: count,
       last_operation_date: lastDate,
     }
-    if (!c.iban && bankMatch?.account) updates.iban = bankMatch.account
-    if (!c.edrpou && bankMatch?.edrpou) updates.edrpou = bankMatch.edrpou
+    if (!c.iban && bankMatch?.account) { updates.iban = bankMatch.account; ibanFilled++ }
+    if (!c.edrpou && bankMatch?.edrpou) { updates.edrpou = bankMatch.edrpou; edrpouFilled++ }
     // Also check transactions for edrpou
-    if (!c.edrpou && !bankMatch?.edrpou) {
+    if (!c.edrpou && !updates.edrpou) {
       const txEdrpou = myTxs.find(t => t.edrpou)?.edrpou
-      if (txEdrpou) updates.edrpou = txEdrpou
+      if (txEdrpou) { updates.edrpou = txEdrpou; edrpouFilled++ }
+    }
+
+    if (bankMatch) {
+      console.log('[Sync]', c.name, '→ bank match:', bankMatch.counterparty, '| IBAN:', bankMatch.account || '—', '| ЄДРПОУ:', bankMatch.edrpou || '—')
     }
 
     await supabase.from('contractors').update(updates).eq('id', c.id)
     synced++
   }
+  console.log('[Sync] Done:', synced, 'synced,', ibanFilled, 'IBAN filled,', edrpouFilled, 'ЄДРПОУ filled')
   return synced
 }
 
