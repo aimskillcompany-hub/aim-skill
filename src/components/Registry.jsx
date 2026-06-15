@@ -362,7 +362,11 @@ export default function Registry({ user }) {
     if (bulkForm.article) update.article = bulkForm.article
     if (bulkForm.project_id) update.project_id = bulkForm.project_id
     if (bulkForm.direction) update.direction = bulkForm.direction
-    if (bulkForm.contractor) update.counterparty = bulkForm.contractor
+    if (bulkForm.contractor) {
+      update.counterparty = bulkForm.contractor
+      if (bulkForm._contractorId) update.contractor_id = bulkForm._contractorId
+      if (bulkForm._edrpou) update.edrpou = bulkForm._edrpou
+    }
 
     await supabase.from('bank_transactions').update(update).in('id', [...checkedIds])
     setCheckedIds(new Set())
@@ -708,12 +712,14 @@ export default function Registry({ user }) {
             </p>
             <div className="form-grid">
               <div className="form-group full">
-                <label>Назва контрагента</label>
-                <input
-                  className="form-input"
+                <label>Контрагент</label>
+                <ContractorSelect
                   value={bulkForm.contractor}
-                  onChange={e => setBulkForm(f => ({...f, contractor: e.target.value}))}
-                  placeholder="Введіть нову назву контрагента"
+                  onChange={v => setBulkForm(f => ({...f, contractor: v}))}
+                  onContractorSelect={c => {
+                    if (c._new) return
+                    setBulkForm(f => ({...f, contractor: c.name, _contractorId: c.id, _edrpou: c.edrpou}))
+                  }}
                   style={{ height:48, borderRadius:8 }}
                 />
               </div>
