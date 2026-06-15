@@ -11,7 +11,14 @@ const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).fo
 // ── Пряме читання XLSX/XLS (SheetJS) ─────────────────────────────────────────
 async function readXlsx(file) {
   const buf = await file.arrayBuffer()
-  const wb = XLSX.read(buf, { type: 'array', cellText: true, cellDates: false })
+  const data = new Uint8Array(buf)
+  const wb = XLSX.read(data, {
+    type: 'array',
+    codepage: 1251,    // CP1251 для старих .xls з українськими символами
+    cellText: true,
+    cellDates: false,
+    cellNF: false,
+  })
   const ws = wb.Sheets[wb.SheetNames[0]]
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' })
   return rows
@@ -19,13 +26,16 @@ async function readXlsx(file) {
 
 // ── Детектор форматів ─────────────────────────────────────────────────────────
 function detectFormat(rows) {
-  const h = (rows[1] || []).concat(rows[0] || []).map(c => (c||'').toString().toLowerCase())
+  // Scan first 10 rows for headers (ПУМБ may have metadata rows before headers)
+  for (let i = 0; i < Math.min(10, rows.length); i++) {
+    const h = (rows[i] || []).map(c => (c||'').toString().toLowerCase())
 
-  // Monobank Business / Universalbank — є "вид операції" і одна колонка суми
-  if (h.some(c => c.includes('вид операції'))) return 'monobank'
+    // Monobank Business / Universalbank — є "вид операції"
+    if (h.some(c => c.includes('вид операції'))) return 'monobank'
 
-  // ПУМБ — окремі колонки "дебет" і "кредит"
-  if (h.some(c => c.includes('дебет')) && h.some(c => c.includes('кредит'))) return 'pumb'
+    // ПУМБ — окремі колонки "дебет" і "кредит"
+    if (h.some(c => c.includes('дебет')) && h.some(c => c.includes('кредит'))) return 'pumb'
+  }
 
   return 'unknown'
 }
@@ -67,10 +77,10 @@ function parseMonobank(rows) {
 // ПУМБ має окремі колонки Дебет і Кредит
 // Типовий порядок: Дата, Дата вал., Документ №, Призначення, Партнер, МФО, Рахунок, Дебет, Кредит, Залишок
 function parsePUMB(rows) {
-  // Знаходимо рядок заголовків
+  // Знаходимо рядок заголовків (може бути на рядку 0-10)
   let headerIdx = -1
   let cols = {}
-  for (let i = 0; i < Math.min(5, rows.length); i++) {
+  for (let i = 0; i < Math.min(10, rows.length); i++) {
     const row = rows[i] || []
     const h = row.map(c => (c||'').toString().toLowerCase())
     const hasDebit  = h.findIndex(c => c.includes('дебет'))
