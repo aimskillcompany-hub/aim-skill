@@ -141,6 +141,42 @@ create trigger on_auth_user_created
   for each row execute function handle_new_user();
 
 -- ═══════════════════════════════════════════════════
+-- 6. PLANS (планування доходів/витрат)
+-- ═══════════════════════════════════════════════════
+create table if not exists plans (
+  id uuid default gen_random_uuid() primary key,
+  direction text not null,
+  article text,
+  project_id uuid references projects(id) on delete set null,
+  amount numeric(15,2) not null,
+  description text,
+  planned_date date,
+  is_template boolean default false,
+  year_month text,
+  template_from text,
+  template_to text,
+  created_by uuid references profiles(id) on delete set null,
+  created_at timestamptz default now()
+);
+
+alter table plans enable row level security;
+create policy "View plans" on plans for select to authenticated using (true);
+create policy "Insert plans" on plans for insert to authenticated with check (
+  (select role from profiles where id = auth.uid()) in ('admin','accountant','manager')
+);
+create policy "Update plans" on plans for update to authenticated using (
+  (select role from profiles where id = auth.uid()) in ('admin','accountant')
+);
+create policy "Delete plans" on plans for delete to authenticated using (
+  (select role from profiles where id = auth.uid()) in ('admin','accountant')
+);
+
+-- ═══════════════════════════════════════════════════
+-- МІГРАЦІЯ: додати planned_date якщо таблиця вже існує
+-- ═══════════════════════════════════════════════════
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS planned_date date;
+
+-- ═══════════════════════════════════════════════════
 -- INDEXES для швидкості
 -- ═══════════════════════════════════════════════════
 create index if not exists idx_tx_date on transactions(date desc);

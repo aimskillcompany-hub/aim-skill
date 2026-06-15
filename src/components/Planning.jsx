@@ -29,7 +29,7 @@ function getNextMonths(n = 8) {
 const EMPTY_FORM = {
   direction: 'Витрати', article: '', project_id: '',
   amount: '', description: '', planned_date: '',
-  is_template: false, year_month: '', template_from: '', template_to: '',
+  is_template: false, template_from: '', template_to: '',
 }
 
 export default function Planning({ user }) {
@@ -223,9 +223,8 @@ export default function Planning({ user }) {
 
   const handleSave = async () => {
     if (!form.amount || !form.direction) return
-    // Validate month
-    if (!form.is_template && !form.year_month) {
-      alert('Оберіть місяць')
+    if (!form.is_template && !form.planned_date) {
+      alert('Оберіть планову дату платежу')
       return
     }
     if (form.is_template && (!form.template_from || !form.template_to)) {
@@ -233,6 +232,7 @@ export default function Planning({ user }) {
       return
     }
     setSaving(true)
+    const autoMonth = form.planned_date ? form.planned_date.substring(0, 7) : null
     const payload = {
       direction: form.direction,
       article: form.article || null,
@@ -241,7 +241,7 @@ export default function Planning({ user }) {
       description: form.description || null,
       planned_date: form.planned_date || null,
       is_template: form.is_template,
-      year_month: form.is_template ? form.template_from : form.year_month,
+      year_month: form.is_template ? form.template_from : autoMonth,
       template_from: form.is_template ? form.template_from : null,
       template_to: form.is_template ? form.template_to : null,
       created_by: user?.id,
@@ -272,9 +272,8 @@ export default function Planning({ user }) {
     setForm({
       direction: p.direction, article: p.article||'', project_id: p.project_id||'',
       amount: Math.abs(p.amount), description: p.description||'',
-      planned_date: p.planned_date||'',
+      planned_date: p.planned_date || (p.year_month ? p.year_month + '-01' : ''),
       is_template: p.is_template||false,
-      year_month: p.year_month||'',
       template_from: p.template_from||'', template_to: p.template_to||'',
     })
     setEditId(p.id)
@@ -681,8 +680,8 @@ export default function Planning({ user }) {
             </div>
 
             <div className="form-grid">
-              {/* Month(s) */}
-              {form.is_template ? (
+              {/* Template month range */}
+              {form.is_template && (
                 <>
                   <div className="form-group">
                     <label>Місяць від</label>
@@ -699,23 +698,17 @@ export default function Planning({ user }) {
                     </select>
                   </div>
                 </>
-              ) : (
-                <div className="form-group">
-                  <label>Місяць</label>
-                  <select className="form-input" value={form.year_month} onChange={e => setForm(f=>({...f,year_month:e.target.value}))}>
-                    <option value="">— оберіть —</option>
-                    {nextMonths.map(m => <option key={m}>{m}</option>)}
-                  </select>
-                </div>
               )}
 
-              <div className="form-group">
+              {/* Row 1: Напрям */}
+              <div className="form-group full">
                 <label>Напрям</label>
                 <select className="form-input" value={form.direction} onChange={e => setForm(f=>({...f,direction:e.target.value}))}>
                   {DIRS.map(d => <option key={d}>{d}</option>)}
                 </select>
               </div>
 
+              {/* Row 2: Стаття + Сума */}
               <div className="form-group">
                 <label>Стаття</label>
                 <select className="form-input" value={form.article} onChange={e => setForm(f=>({...f,article:e.target.value}))}>
@@ -729,12 +722,12 @@ export default function Planning({ user }) {
                   )}
                 </select>
               </div>
-
               <div className="form-group">
                 <label>Сума, грн</label>
                 <input type="number" min="0" className="form-input" placeholder="0" value={form.amount} onChange={e => setForm(f=>({...f,amount:e.target.value}))} />
               </div>
 
+              {/* Row 3: Проєкт + Дата */}
               <div className="form-group">
                 <label>Проєкт</label>
                 <select className="form-input" value={form.project_id} onChange={e => setForm(f=>({...f,project_id:e.target.value}))}>
@@ -742,12 +735,12 @@ export default function Planning({ user }) {
                   {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
-
               <div className="form-group">
-                <label>Планова дата платежу</label>
+                <label>Планова дата платежу{!form.is_template ? ' *' : ''}</label>
                 <input type="date" className="form-input" value={form.planned_date} onChange={e => setForm(f=>({...f,planned_date:e.target.value}))} />
               </div>
 
+              {/* Row 4: Опис */}
               <div className="form-group full">
                 <label>Опис (необов'язково)</label>
                 <input className="form-input" placeholder="Наприклад: зарплата команди" value={form.description} onChange={e => setForm(f=>({...f,description:e.target.value}))} />
