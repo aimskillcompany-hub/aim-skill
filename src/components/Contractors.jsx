@@ -84,22 +84,24 @@ export default function Contractors({ user }) {
     ;(txStats || []).forEach(tx => {
       const code = tx.edrpou?.trim()
       const name = tx.contractor?.trim()
-      const empty = { income:0, expense:0, other:0, count:0, lastDate:null }
+      const empty = { income:0, expense:0, otherIn:0, otherOut:0, count:0, lastDate:null }
       const target = code ? (statsByCode[code] || (statsByCode[code] = { ...empty }))
                          : name ? (statsByName[name.toLowerCase()] || (statsByName[name.toLowerCase()] = { ...empty }))
                          : null
       if (!target) return
       target.count++
-      if (tx.direction === 'Доходи') target.income += Math.abs(tx.amount || 0)
-      else if (tx.direction === 'Витрати') target.expense += Math.abs(tx.amount || 0)
-      else target.other += Math.abs(tx.amount || 0)
+      const amt = tx.amount || 0
+      if (tx.direction === 'Доходи') target.income += Math.abs(amt)
+      else if (tx.direction === 'Витрати') target.expense += Math.abs(amt)
+      else if (amt > 0) target.otherIn += Math.abs(amt)
+      else target.otherOut += Math.abs(amt)
       if (!target.lastDate || tx.date > target.lastDate) target.lastDate = tx.date
     })
 
     setList(contractors.map(c => {
       const code = c.edrpou?.trim()
       const s = (code && statsByCode[code]) || statsByName[c.name?.trim().toLowerCase()] || {}
-      return { ...c, total_income:s.income||c.total_income||0, total_expense:s.expense||c.total_expense||0, total_other:s.other||0, operations_count:s.count||c.operations_count||0, last_operation_date:s.lastDate||c.last_operation_date }
+      return { ...c, total_income:s.income||c.total_income||0, total_expense:s.expense||c.total_expense||0, total_otherIn:s.otherIn||0, total_otherOut:s.otherOut||0, operations_count:s.count||c.operations_count||0, last_operation_date:s.lastDate||c.last_operation_date }
     }))
     setLoading(false)
   }
@@ -254,13 +256,19 @@ export default function Contractors({ user }) {
         </div>
 
         {/* KPI row */}
-        <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(5,1fr)', marginBottom:20 }}>
-          <div className="kpi"><div className="kpi-label">Оборот</div><div className="kpi-value">{fmt((detail.total_income||0)+(detail.total_expense||0))}</div><div className="kpi-sub">грн</div></div>
-          <div className="kpi"><div className="kpi-label">Вхідні</div><div className="kpi-value" style={{ color:'var(--green)' }}>+{fmt(detail.total_income)}</div><div className="kpi-sub">грн</div></div>
-          <div className="kpi"><div className="kpi-label">Вихідні</div><div className="kpi-value" style={{ color:'var(--red)' }}>-{fmt(detail.total_expense)}</div><div className="kpi-sub">грн</div></div>
-          <div className="kpi"><div className="kpi-label">Баланс</div><div className="kpi-value" style={{ color:balance>=0?'var(--green)':'var(--red)' }}>{balance>=0?'+':'-'}{fmt(balance)}</div><div className="kpi-sub">грн</div></div>
+        <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(4,1fr)', marginBottom:12 }}>
+          <div className="kpi"><div className="kpi-label">Доходи</div><div className="kpi-value" style={{ color:'var(--green)' }}>+{fmt(detail.total_income)}</div><div className="kpi-sub">грн</div></div>
+          <div className="kpi"><div className="kpi-label">Витрати</div><div className="kpi-value" style={{ color:'var(--red)' }}>-{fmt(detail.total_expense)}</div><div className="kpi-sub">грн</div></div>
+          <div className="kpi"><div className="kpi-label">Сальдо</div><div className="kpi-value" style={{ color:balance>=0?'var(--green)':'var(--red)' }}>{balance>=0?'+':'-'}{fmt(balance)}</div><div className="kpi-sub">грн</div></div>
           <div className="kpi"><div className="kpi-label">Операцій</div><div className="kpi-value">{detail.operations_count||0}</div><div className="kpi-sub">остання: {detail.last_operation_date||'—'}</div></div>
         </div>
+        {(detail.total_otherIn > 0 || detail.total_otherOut > 0) && (
+          <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(3,1fr)', marginBottom:20 }}>
+            <div className="kpi"><div className="kpi-label">Інші вхідні</div><div className="kpi-value" style={{ color:'var(--green)' }}>+{fmt(detail.total_otherIn)}</div><div className="kpi-sub">грн</div></div>
+            <div className="kpi"><div className="kpi-label">Інші вихідні</div><div className="kpi-value" style={{ color:'var(--red)' }}>-{fmt(detail.total_otherOut)}</div><div className="kpi-sub">грн</div></div>
+            <div className="kpi"><div className="kpi-label">Сальдо інших</div><div className="kpi-value" style={{ color:((detail.total_otherIn||0)-(detail.total_otherOut||0))>=0?'var(--green)':'var(--red)' }}>{((detail.total_otherIn||0)-(detail.total_otherOut||0))>=0?'+':'-'}{fmt((detail.total_otherIn||0)-(detail.total_otherOut||0))}</div><div className="kpi-sub">грн</div></div>
+          </div>
+        )}
 
         {/* Tabs */}
         <div style={{ display:'flex', borderBottom:'1px solid var(--border)', marginBottom:20, gap:0 }}>
@@ -724,16 +732,18 @@ export default function Contractors({ user }) {
 
       <div className="tbl-wrap">
         <table>
-          <thead><tr><th>Назва</th><th>Тип</th><th style={{ textAlign:'right' }}>Вхідні</th><th style={{ textAlign:'right' }}>Вихідні</th><th style={{ textAlign:'right' }}>Інше</th><th style={{ textAlign:'right' }}>Операцій</th><th>Остання</th><th style={{ width:80 }}></th></tr></thead>
+          <thead><tr><th>Назва</th><th>Тип</th><th style={{ textAlign:'right' }}>Доходи</th><th style={{ textAlign:'right' }}>Витрати</th><th style={{ textAlign:'right' }}>Сальдо</th><th style={{ textAlign:'right' }}>Інші вх.</th><th style={{ textAlign:'right' }}>Інші вих.</th><th style={{ textAlign:'right' }}>Оп.</th><th>Остання</th><th style={{ width:80 }}></th></tr></thead>
           <tbody>
-            {filtered.length===0 && <tr><td colSpan={8} style={{ textAlign:'center', padding:32, color:'var(--text3)' }}>{search?'Не знайдено':'Немає контрагентів'}</td></tr>}
+            {filtered.length===0 && <tr><td colSpan={10} style={{ textAlign:'center', padding:32, color:'var(--text3)' }}>{search?'Не знайдено':'Немає контрагентів'}</td></tr>}
             {filtered.map(c => (
               <tr key={c.id} style={{ cursor:'pointer' }} onClick={() => openDetail(c)}>
                 <td><div style={{ fontWeight:500, fontSize:14 }}>{c.short_name||c.name}</div>{c.edrpou && <div style={{ fontSize:12, color:'var(--text3)' }}>ЄДРПОУ: {c.edrpou}</div>}</td>
                 <td><span style={typeStyle(c.type)}>{typeLabel(c.type)}</span></td>
                 <td style={{ textAlign:'right', color:'var(--green)', fontWeight:500, fontVariantNumeric:'tabular-nums' }}>{c.total_income>0?'+'+fmt(c.total_income):'—'}</td>
                 <td style={{ textAlign:'right', color:'var(--red)', fontWeight:500, fontVariantNumeric:'tabular-nums' }}>{c.total_expense>0?'-'+fmt(c.total_expense):'—'}</td>
-                <td style={{ textAlign:'right', color:'var(--text2)', fontWeight:500, fontVariantNumeric:'tabular-nums' }}>{c.total_other>0?fmt(c.total_other):'—'}</td>
+                <td style={{ textAlign:'right', fontWeight:500, fontVariantNumeric:'tabular-nums', color:(c.total_income-c.total_expense)>=0?'var(--green)':'var(--red)' }}>{(c.total_income||c.total_expense)?(c.total_income-c.total_expense>=0?'+':'-')+fmt(c.total_income-c.total_expense):'—'}</td>
+                <td style={{ textAlign:'right', color:'var(--green)', fontVariantNumeric:'tabular-nums' }}>{c.total_otherIn>0?'+'+fmt(c.total_otherIn):'—'}</td>
+                <td style={{ textAlign:'right', color:'var(--red)', fontVariantNumeric:'tabular-nums' }}>{c.total_otherOut>0?'-'+fmt(c.total_otherOut):'—'}</td>
                 <td style={{ textAlign:'right', color:'var(--text2)' }}>{c.operations_count||0}</td>
                 <td style={{ fontSize:13, color:'var(--text2)', whiteSpace:'nowrap' }}>{c.last_operation_date||'—'}</td>
                 <td onClick={e => e.stopPropagation()}>
