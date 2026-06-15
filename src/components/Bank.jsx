@@ -518,7 +518,14 @@ export default function Bank({ user }) {
         created_by: user.id,
       }).select().single()
       if (tx) {
-        await supabase.from('bank_transactions').update({ matched_transaction_id: tx.id, is_matched: true }).eq('id', btx.id)
+        await supabase.from('bank_transactions').update({
+          matched_transaction_id: tx.id, is_matched: true,
+          direction: bulkForm.direction,
+          article: bulkForm.article || null,
+          project_id: bulkForm.projectId || null,
+          edrpou: edrpou || null,
+          contractor_id: contractorId,
+        }).eq('id', btx.id)
       }
     }
     setBulkSaving(false)
@@ -560,7 +567,14 @@ export default function Bank({ user }) {
       project_id: createForm.projectId || null, created_by: user.id,
     }).select().single()
     if (!error) {
-      await supabase.from('bank_transactions').update({ matched_transaction_id: tx.id, is_matched: true }).eq('id', createFrom.id)
+      await supabase.from('bank_transactions').update({
+        matched_transaction_id: tx.id, is_matched: true,
+        direction: createForm.direction,
+        article: createForm.article || null,
+        project_id: createForm.projectId || null,
+        edrpou: createForm.edrpou || null,
+        contractor_id: contractorId,
+      }).eq('id', createFrom.id)
       setUnmatched(u => u.filter(t => t.id !== createFrom.id))
       setCreateFrom(null)
     }

@@ -146,8 +146,10 @@ export default function Reports() {
     fetchArticles().then(setAllArticles)
     Promise.all([
       fetchArticles(),
-      supabase.from('transactions').select('id,date,amount,direction,article,contractor,description,projects(name)').order('date'),
+      supabase.from('bank_transactions').select('id,date,amount,direction,article,counterparty,description,is_ignored').eq('is_ignored', false).order('date'),
     ]).then(([arts, { data: txs }]) => {
+      // Normalize field names for compatibility
+      ;(txs || []).forEach(t => { t.contractor = t.counterparty; t.projects = null })
       const all = txs || []
       setArticles(arts)
       setRawTxs(all)
@@ -273,13 +275,9 @@ export default function Reports() {
 
   const handleEditSave = async () => {
     setEditSaving(true)
-    const { error } = await supabase.from('transactions').update({
-      date: editForm.date,
-      contractor: editForm.contractor,
-      amount: parseFloat(editForm.amount),
+    const { error } = await supabase.from('bank_transactions').update({
       direction: editForm.direction,
       article: editForm.article || null,
-      project_id: editForm.project_id || null,
       description: editForm.description || null,
     }).eq('id', editForm.id)
 
@@ -288,8 +286,9 @@ export default function Reports() {
       // Перезавантажуємо дані — оновлюємо drill-down і таблицю
       Promise.all([
         fetchArticles(),
-        supabase.from('transactions').select('id,date,amount,direction,article,contractor,description,projects(name)').order('date'),
+        supabase.from('bank_transactions').select('id,date,amount,direction,article,counterparty,description,is_ignored').eq('is_ignored', false).order('date'),
       ]).then(([arts, { data: txs }]) => {
+        ;(txs || []).forEach(t => { t.contractor = t.counterparty; t.projects = null })
         const all = txs || []
         // Re-group artData
         const grouped = {}

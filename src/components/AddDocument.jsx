@@ -284,12 +284,24 @@ export default function AddDocument({ user, onSaved }) {
 
       // 2. Auto-match with bank transaction
       const matched = await findBankMatch(tx.id, signed, form.date, form.edrpou)
-      if (matched) setBankMatch(matched)
+      if (matched) {
+        setBankMatch(matched)
+        // Update bank_transaction with article/direction from document
+        await supabase.from('bank_transactions').update({
+          article: form.article || null,
+          direction: form.direction,
+          project_id: form.projectId || null,
+          edrpou: form.edrpou || null,
+          doc_type: form.docType || null,
+          doc_number: form.docNumber || null,
+        }).eq('id', matched.id)
+      }
 
       // 3. Save items
       if (form.items.length > 0) {
         const items = form.items.map(it => ({
           transaction_id: tx.id,
+          bank_transaction_id: matched?.id || null,
           name: it.name,
           quantity: it.quantity || null,
           unit: it.unit || null,
@@ -324,6 +336,7 @@ export default function AddDocument({ user, onSaved }) {
           if (!uploadErr) {
             await supabase.from('documents').insert({
               transaction_id: tx.id,
+              bank_transaction_id: matched?.id || null,
               project_id: form.projectId || null,
               file_name: displayName,
               file_path: safePath,

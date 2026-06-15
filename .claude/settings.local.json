@@ -12,7 +12,9 @@
       "Bash(git add:*)",
       "Read(//mnt/user-data/**)",
       "Read(//Users/user/Downloads/**)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git push:*)"
     ]
   }
 }

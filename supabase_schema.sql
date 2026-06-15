@@ -241,6 +241,53 @@ create index if not exists idx_bank_contractor on bank_transactions(contractor_i
 create index if not exists idx_cash_contractor on cash_transactions(contractor_id);
 
 -- ═══════════════════════════════════════════════════
+-- МІГРАЦІЯ: bank_transactions як основа обліку
+-- ═══════════════════════════════════════════════════
+ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS direction text;
+ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS article text;
+ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS project_id uuid REFERENCES projects(id) ON DELETE SET NULL;
+ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS edrpou text;
+ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS doc_type text;
+ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS doc_number text;
+
+-- Додати зв'язок документів з bank_transactions
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS bank_transaction_id uuid REFERENCES bank_transactions(id) ON DELETE SET NULL;
+ALTER TABLE transaction_items ADD COLUMN IF NOT EXISTS bank_transaction_id uuid REFERENCES bank_transactions(id) ON DELETE SET NULL;
+
+-- Заповнити direction з суми для існуючих
+UPDATE bank_transactions SET direction = CASE WHEN amount > 0 THEN 'Доходи' ELSE 'Витрати' END WHERE direction IS NULL;
+
+-- Перенести article, project_id, edrpou з привʼязаних transactions
+UPDATE bank_transactions b SET
+  article = t.article,
+  project_id = t.project_id,
+  edrpou = t.edrpou,
+  direction = t.direction
+FROM transactions t
+WHERE b.matched_transaction_id = t.id
+AND b.matched_transaction_id IS NOT NULL;
+
+-- Перенести документи з transactions в bank_transactions
+UPDATE documents d SET bank_transaction_id = b.id
+FROM bank_transactions b
+WHERE b.matched_transaction_id = d.transaction_id
+AND b.matched_transaction_id IS NOT NULL
+AND d.bank_transaction_id IS NULL;
+
+-- Перенести позиції товарів
+UPDATE transaction_items ti SET bank_transaction_id = b.id
+FROM bank_transactions b
+WHERE b.matched_transaction_id = ti.transaction_id
+AND b.matched_transaction_id IS NOT NULL
+AND ti.bank_transaction_id IS NULL;
+
+create index if not exists idx_bank_direction on bank_transactions(direction);
+create index if not exists idx_bank_article on bank_transactions(article);
+create index if not exists idx_bank_project on bank_transactions(project_id);
+create index if not exists idx_docs_bank on documents(bank_transaction_id);
+create index if not exists idx_items_bank on transaction_items(bank_transaction_id);
+
+-- ═══════════════════════════════════════════════════
 -- INDEXES для швидкості
 -- ═══════════════════════════════════════════════════
 create index if not exists idx_tx_date on transactions(date desc);

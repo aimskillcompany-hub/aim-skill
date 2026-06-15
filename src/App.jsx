@@ -31,31 +31,25 @@ function Dashboard({ user }) {
 
   useEffect(() => {
     Promise.all([
-      supabase.from('transactions').select('amount, direction'),
+      supabase.from('bank_transactions').select('amount, direction, date, counterparty, description').eq('is_ignored', false).order('date', { ascending: false }),
       supabase.from('projects').select('id', { count: 'exact' }).eq('status', 'active'),
       supabase.from('documents').select('id', { count: 'exact' }),
-      supabase.from('transactions').select('*, projects(name)').order('date', { ascending: false }).limit(8),
       supabase.from('cash_transactions').select('amount, type'),
-      supabase.from('bank_transactions').select('amount').eq('is_ignored', false),
     ]).then(([
-      { data: txs },
+      { data: bankTxs },
       { count: projCount },
       { count: docCount },
-      { data: recent },
       { data: cashTxs },
-      { data: bankTxs },
     ]) => {
-      const revenue  = (txs || []).filter(t => t.direction === 'Доходи').reduce((s, t) => s + (t.amount || 0), 0)
-      const expenses = (txs || []).filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+      const all = bankTxs || []
+      const revenue  = all.filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+      const expenses = all.filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+      const bankFlow = all.reduce((s, t) => s + (t.amount || 0), 0)
 
-      // Залишок каси
       const cashBalance = (cashTxs || []).reduce((s, t) => {
         const dir = CASH_DIR[t.type] || 0
         return s + dir * (t.amount || 0)
       }, 0)
-
-      // Net flow по банківській виписці (сума всіх імпортованих транзакцій)
-      const bankFlow = (bankTxs || []).reduce((s, t) => s + (t.amount || 0), 0)
 
       setStats({
         revenue, expenses, net: revenue - expenses,
@@ -63,7 +57,10 @@ function Dashboard({ user }) {
         projects: projCount || 0,
         docs: docCount || 0,
       })
-      setRecentTxs(recent || [])
+      // Recent transactions from bank
+      setRecentTxs(all.slice(0, 8).map(t => ({
+        ...t, contractor: t.counterparty, projects: null,
+      })))
     })
   }, [])
 
