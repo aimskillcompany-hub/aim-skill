@@ -703,7 +703,7 @@ export default function Registry({ user }) {
       {/* Bulk edit modal */}
       {showBulkEdit && (
         <div className="modal-bg" onClick={e => e.target===e.currentTarget && setShowBulkEdit(false)}>
-          <div className="modal" style={{ maxWidth:480 }}>
+          <div className="modal">
             <div className="modal-header">
               <h2>Масове редагування — {checkedIds.size} операцій</h2>
               <button className="modal-close" onClick={() => setShowBulkEdit(false)}>×</button>
@@ -767,7 +767,7 @@ export default function Registry({ user }) {
       {/* Detail modal */}
       {selected && (
         <div className="modal-bg" onClick={e => e.target===e.currentTarget && setSelected(null)}>
-          <div className="modal" style={{ maxWidth:680 }}>
+          <div className="modal modal-lg">
             <div className="modal-header">
               <h2 style={{ fontSize:15 }}>{selected.contractor}</h2>
               <button className="modal-close" onClick={() => setSelected(null)}>×</button>
@@ -877,11 +877,7 @@ export default function Registry({ user }) {
       {/* File preview modal */}
       {previewDoc && (
         <div className="modal-bg" onClick={e => e.target===e.currentTarget && setPreviewDoc(null)} style={{ zIndex:1100 }}>
-          <div style={{
-            background:'var(--surface)', borderRadius:12, padding:0,
-            width:'90vw', maxWidth:900, maxHeight:'88vh',
-            display:'flex', flexDirection:'column', overflow:'hidden',
-          }} className="modal">
+          <div className="modal modal-xl" style={{ padding:0, display:'flex', flexDirection:'column', overflow:'hidden' }}>
             {/* Header */}
             <div style={{ display:'flex', alignItems:'center', gap:12, padding:'14px 18px', borderBottom:'1px solid var(--border)' }}>
               <i className="ti ti-file-text" style={{ fontSize:20, color:'var(--blue)' }} />
@@ -925,7 +921,7 @@ export default function Registry({ user }) {
       {/* Recover items modal */}
       {showRecover && (
         <div className="modal-bg" onClick={e => e.target===e.currentTarget && setShowRecover(false)}>
-          <div className="modal" style={{ maxWidth:700, maxHeight:'85vh', overflow:'auto' }}>
+          <div className="modal modal-lg">
             <div className="modal-header" style={{ position:'sticky', top:0, background:'var(--surface)', zIndex:1 }}>
               <div>
                 <h2>Відновити позиції документів</h2>
@@ -1025,7 +1021,7 @@ export default function Registry({ user }) {
       {/* Duplicate check modal */}
       {showDupModal && (
         <div className="modal-bg" onClick={e => e.target===e.currentTarget && setShowDupModal(false)}>
-          <div className="modal" style={{ maxWidth:820, maxHeight:'85vh', overflow:'auto', padding:24, borderRadius:20 }}>
+          <div className="modal modal-xl">
             {/* Header */}
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20 }}>
               <div>

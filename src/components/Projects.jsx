@@ -337,7 +337,7 @@ export default function Projects({ user }) {
       {/* Project detail modal */}
       {selected && (
         <div className="modal-bg" onClick={e => e.target === e.currentTarget && setSelected(null)}>
-          <div className="modal" style={{ maxWidth: 820 }}>
+          <div className="modal modal-xl">
             <div className="modal-header">
               <h2>{selected.project_id_display || selected.name}</h2>
               <button className="modal-close" onClick={() => setSelected(null)}>×</button>

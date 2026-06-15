@@ -150,7 +150,7 @@ export default function ArticlesSettings() {
       {/* Add / Edit modal */}
       {showForm && (
         <div className="modal-bg" onClick={e => e.target === e.currentTarget && setShowForm(false)}>
-          <div className="modal" style={{ maxWidth: 440 }}>
+          <div className="modal">
             <div className="modal-header">
               <h2>{editItem ? 'Редагувати статтю' : 'Нова стаття'}</h2>
               <button className="modal-close" onClick={() => setShowForm(false)}>×</button>

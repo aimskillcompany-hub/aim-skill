@@ -352,7 +352,7 @@ export default function Cash({ user }) {
       {/* ── MODAL: Add operation ── */}
       {showForm && (
         <div className="modal-bg" onClick={e => e.target === e.currentTarget && setShowForm(false)}>
-          <div className="modal" style={{ maxWidth: 540 }}>
+          <div className="modal">
             <div className="modal-header">
               <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <i className={`ti ${TYPES[formType]?.icon}`} style={{ fontSize: 18, color: TYPES[formType]?.color }} />
@@ -478,7 +478,7 @@ export default function Cash({ user }) {
       {/* ── MODAL: Return advance ── */}
       {showReturn && (
         <div className="modal-bg" onClick={e => e.target === e.currentTarget && setShowReturn(null)}>
-          <div className="modal" style={{ maxWidth: 440 }}>
+          <div className="modal">
             <div className="modal-header">
               <h2>Повернення підзвітних</h2>
               <button className="modal-close" onClick={() => setShowReturn(null)}>×</button>
@@ -513,7 +513,7 @@ export default function Cash({ user }) {
       {/* ── MODAL: Detail ── */}
       {detail && (
         <div className="modal-bg" onClick={e => e.target === e.currentTarget && setDetail(null)}>
-          <div className="modal" style={{ maxWidth: 520 }}>
+          <div className="modal">
             <div className="modal-header">
               <h2><TypeBadge type={detail.type} /></h2>
               <button className="modal-close" onClick={() => setDetail(null)}>×</button>

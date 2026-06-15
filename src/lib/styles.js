@@ -131,8 +131,8 @@ export const css = `
   .btn-secondary:hover { background: var(--bg); }
   .btn-danger { background: var(--red-bg); color: var(--red); border: 1px solid var(--border); }
   .btn-danger:hover { background: #EBE0E0; }
-  .btn-sm { padding: 8px 14px; font-size: 13px; border-radius: var(--radius-sm); min-height: 36px; }
-  .btn-row { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+  .btn-sm { padding: 8px 14px; font-size: 13px; border-radius: 8px; min-height: 36px; }
+  .btn-row { display: flex; gap: 8px; margin-top: 20px; flex-wrap: wrap; justify-content: flex-end; }
 
   /* ═══ FILTERS ═══ */
   .filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; align-items: center; }
@@ -206,22 +206,22 @@ export const css = `
   }
   .modal {
     background: var(--surface);
-    border-radius: var(--radius-2xl);
+    border-radius: 20px;
     padding: 24px;
-    width: 100%; max-width: 600px; max-height: 88vh;
+    width: min(560px, 90vw); max-height: 90vh;
     overflow-y: auto; overflow-x: hidden;
     animation: modalIn .25s ease;
   }
+  .modal.modal-lg { width: min(720px, 90vw); }
+  .modal.modal-xl { width: min(860px, 92vw); }
   .modal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; gap: 12px; }
   .modal-header h2 { font-size: 18px; font-weight: 600; letter-spacing: -.2px; word-break: break-word; }
-  /* Grids inside modals should not overflow */
-  .modal .form-grid { max-width: 100%; }
+  .modal .form-grid { max-width: 100%; gap: 16px; }
   .modal .tbl-wrap { max-width: 100%; overflow-x: auto; }
-  .modal [style*="grid-template-columns: 1fr 1fr"] { gap: 12px; }
   .modal-close {
-    background: var(--surface2); border: 1px solid var(--border);
-    width: 36px; height: 36px; border-radius: var(--radius-md);
-    font-size: 18px; cursor: pointer; color: var(--text2);
+    background: #F0F2F5; border: none;
+    width: 32px; height: 32px; border-radius: 8px;
+    font-size: 16px; cursor: pointer; color: var(--text2);
     display: flex; align-items: center; justify-content: center;
     line-height: 1; flex-shrink: 0; transition: all .12s;
   }
@@ -419,13 +419,13 @@ export const mobileCss = `
     .trunc { max-width: 120px; }
 
     .modal-bg { padding: 0; align-items: flex-end; }
-    .modal {
-      border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
-      max-height: 92vh; max-width: 100vw !important; width: 100vw !important;
-      padding: 16px;
-      padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    .modal, .modal.modal-lg, .modal.modal-xl {
+      border-radius: 16px 16px 0 0;
+      max-height: 90vh; width: 100% !important; max-width: 100vw !important;
+      padding: 20px 16px;
+      padding-bottom: calc(20px + env(safe-area-inset-bottom));
       animation: sheetUp .3s ease;
-      overflow-x: hidden;
+      overflow-x: hidden; margin: 0;
     }
     .modal::before {
       content: ''; display: block; width: 40px; height: 4px; border-radius: 2px;
@@ -433,14 +433,11 @@ export const mobileCss = `
     }
     .modal-header { margin-bottom: 16px; }
     .modal-header h2 { font-size: 17px; }
-    /* Force all inline maxWidth overrides to full width on mobile */
-    .modal[style*="maxWidth"], .modal[style*="max-width"] { max-width: 100vw !important; width: 100vw !important; }
-    /* Grids inside modals go single column on mobile */
-    .modal div[style*="gridTemplateColumns: '1fr 1fr'"],
-    .modal div[style*="grid-template-columns"] { grid-template-columns: 1fr !important; }
-    /* Tables inside modals */
-    .modal .tbl-wrap { border-radius: var(--radius-md); }
+    .modal .form-grid { grid-template-columns: 1fr !important; }
+    .modal .tbl-wrap { border-radius: 8px; }
     .modal .tbl-wrap table { min-width: 400px; }
+    .btn-row { flex-direction: column; justify-content: stretch; }
+    .btn-row .btn { width: 100%; }
 
     .filters { gap: 8px; flex-wrap: wrap; }
     .filters .form-input { min-width: 0; flex: 1 1 100%; }

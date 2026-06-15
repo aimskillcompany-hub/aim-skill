@@ -991,7 +991,7 @@ export default function Bank({ user }) {
       {/* ── MODAL: Create doc from bank tx ── */}
       {createFrom && (
         <div className="modal-bg" onClick={e => e.target===e.currentTarget && setCreateFrom(null)}>
-          <div className="modal" style={{ maxWidth:600 }}>
+          <div className="modal">
             <div className="modal-header">
               <h2>Створити документ з транзакції</h2>
               <button className="modal-close" onClick={() => setCreateFrom(null)}>×</button>
@@ -1040,7 +1040,7 @@ export default function Bank({ user }) {
       {/* ── MODAL: Link to existing transaction ── */}
       {linkFor && (
         <div className="modal-bg" onClick={e => e.target===e.currentTarget && setLinkFor(null)}>
-          <div className="modal" style={{ maxWidth:900, maxHeight:'88vh' }}>
+          <div className="modal modal-xl">
             <div className="modal-header">
               <h2>Привʼязати до документу</h2>
               <button className="modal-close" onClick={() => setLinkFor(null)}>×</button>
@@ -1106,7 +1106,7 @@ export default function Bank({ user }) {
       {/* ── MODAL: Bulk create ── */}
       {showBulk && (
         <div className="modal-bg" onClick={e => e.target===e.currentTarget && setShowBulk(false)}>
-          <div className="modal" style={{ maxWidth:500 }}>
+          <div className="modal">
             <div className="modal-header">
               <div>
                 <h2>Групове створення операцій</h2>
@@ -1292,7 +1292,7 @@ export default function Bank({ user }) {
       {/* Linked transaction detail modal */}
       {(linkedTxDetail || linkedTxLoading) && (
         <div className="modal-bg" onClick={e => e.target===e.currentTarget && setLinkedTxDetail(null)} style={{ zIndex:1200 }}>
-          <div className="modal" style={{ maxWidth:680 }}>
+          <div className="modal modal-lg">
             <div className="modal-header">
               <h2 style={{ fontSize:15 }}>{linkedTxDetail?.contractor || 'Завантаження...'}</h2>
               <button className="modal-close" onClick={() => { setLinkedTxDetail(null); setLinkedTxDocs([]); setLinkedTxItems([]) }}>×</button>

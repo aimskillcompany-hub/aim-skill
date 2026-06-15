@@ -665,7 +665,7 @@ export default function Planning({ user }) {
       {/* ── Form modal ──────────────────────────────────────────────────── */}
       {showForm && (
         <div className="modal-bg" onClick={e => e.target===e.currentTarget && setShowForm(false)}>
-          <div className="modal" style={{ maxWidth:520 }}>
+          <div className="modal">
             <div className="modal-header">
               <h2>{editId ? 'Редагувати запис' : 'Новий плановий запис'}</h2>
               <button className="modal-close" onClick={() => setShowForm(false)}>×</button>

@@ -779,7 +779,7 @@ export default function Reports() {
       {/* ── Drill-down modal ────────────────────────────────────────────────────── */}
       {drillDown && (
         <div className="modal-bg" onClick={e => e.target===e.currentTarget && setDrillDown(null)}>
-          <div className="modal" style={{ maxWidth:700 }}>
+          <div className="modal modal-lg">
             <div className="modal-header">
               <div>
                 <div style={{ fontSize:15, fontWeight:600 }}>{drillDown.article}</div>
@@ -846,7 +846,7 @@ export default function Reports() {
       {/* ── Edit transaction modal ─────────────────────────────────────────────── */}
       {editTx && (
         <div className="modal-bg" style={{ zIndex: 400 }} onClick={e => e.target===e.currentTarget && setEditTx(null)}>
-          <div className="modal" style={{ maxWidth:580 }}>
+          <div className="modal">
             <div className="modal-header">
               <h2 style={{ fontSize:15 }}>Редагувати операцію</h2>
               <button className="modal-close" onClick={() => setEditTx(null)}>×</button>
