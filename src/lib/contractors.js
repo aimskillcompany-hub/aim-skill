@@ -215,6 +215,7 @@ export async function importMissingContractors(supabase, userId) {
   ])
 
   const existingEdrpous = new Set((existing || []).filter(c => c.edrpou?.trim()).map(c => c.edrpou.trim()))
+  const existingNormalized = new Set((existing || []).map(c => normalizeName(c.name).toLowerCase()))
 
   // Build keyword sets for existing contractors
   const existingKeywords = (existing || []).map(c => {
@@ -225,9 +226,12 @@ export async function importMissingContractors(supabase, userId) {
   })
 
   const matchesExisting = (txName) => {
+    // Direct normalized name match
+    if (existingNormalized.has(normalizeName(txName).toLowerCase())) return true
+    // Keyword match
     const tName = txName.toLowerCase()
     return existingKeywords.some(c =>
-      c.words.length >= 2 && c.words.every(w => tName.includes(w))
+      c.words.length >= 1 && c.words.every(w => tName.includes(w))
     )
   }
 
@@ -239,20 +243,21 @@ export async function importMissingContractors(supabase, userId) {
     if (!rawName) continue
     const name = normalizeName(rawName)
     const code = tx.edrpou?.trim()
+    const validCode = code && code.length > 3 && code !== '0' ? code : null
 
     // Skip if ЄДРПОУ already exists
-    if (code && existingEdrpous.has(code)) continue
+    if (validCode && existingEdrpous.has(validCode)) continue
 
     // Skip if keywords match an existing contractor
     if (matchesExisting(rawName)) continue
 
-    const key = code || name.toLowerCase()
+    const key = validCode || name.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
 
     await supabase.from('contractors').insert({
       name,
-      edrpou: code || null,
+      edrpou: validCode || null,
       type: tx.direction === 'Доходи' ? 'client' : tx.direction === 'Витрати' ? 'supplier' : 'other',
       default_direction: tx.direction || null,
       created_by: userId,
