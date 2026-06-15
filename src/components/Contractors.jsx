@@ -94,9 +94,12 @@ export default function Contractors({ user }) {
     setLoading(false)
   }
 
+  const [filterNoCode, setFilterNoCode] = useState(false)
+
   const filtered = list.filter(c => {
     if (c.status === 'archived' && filterType !== 'archived') return false
-    if (filterType && filterType !== 'archived' && c.type !== filterType) return false
+    if (filterType && filterType !== 'archived' && filterType !== 'no_code' && c.type !== filterType) return false
+    if (filterNoCode && c.edrpou && c.edrpou.trim().length > 3) return false
     if (search) {
       const q = search.toLowerCase()
       if (!(c.name||'').toLowerCase().includes(q) && !(c.short_name||'').toLowerCase().includes(q) && !(c.edrpou||'').toLowerCase().includes(q)) return false
@@ -108,6 +111,7 @@ export default function Contractors({ user }) {
     total: list.filter(c=>c.status!=='archived').length,
     clients: list.filter(c=>c.type==='client'&&c.status!=='archived').length,
     suppliers: list.filter(c=>c.type==='supplier'&&c.status!=='archived').length,
+    noCode: list.filter(c => c.status !== 'archived' && (!c.edrpou || c.edrpou.trim().length <= 3)).length,
     topTurnover: list.reduce((max,c) => {
       const t = (c.total_income||0)+(c.total_expense||0)
       return t>max.val ? { name:c.short_name||c.name, val:t } : max
@@ -665,11 +669,14 @@ export default function Contractors({ user }) {
         </div>
       </div>
 
-      <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(4,1fr)', marginBottom:20 }}>
+      <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(5,1fr)', marginBottom:20 }}>
         <div className="kpi"><div className="kpi-label">Всього</div><div className="kpi-value">{kpi.total}</div></div>
         <div className="kpi"><div className="kpi-label">Клієнти</div><div className="kpi-value" style={{ color:'var(--green)' }}>{kpi.clients}</div></div>
         <div className="kpi"><div className="kpi-label">Постачальники</div><div className="kpi-value" style={{ color:'var(--red)' }}>{kpi.suppliers}</div></div>
-        <div className="kpi"><div className="kpi-label">Найбільший оборот</div><div className="kpi-value" style={{ fontSize:16 }}>{kpi.topTurnover.name}</div><div className="kpi-sub">{fmt(kpi.topTurnover.val)} грн</div></div>
+        <div className="kpi" style={{ cursor:'pointer', border: filterNoCode ? '2px solid var(--red)' : undefined }} onClick={() => setFilterNoCode(f=>!f)}>
+          <div className="kpi-label">Без ЄДРПОУ/ІПН</div>
+          <div className="kpi-value" style={{ color: kpi.noCode > 0 ? 'var(--red)' : 'var(--green)' }}>{kpi.noCode}</div>
+        </div>
       </div>
 
       {syncResult && (
@@ -687,6 +694,12 @@ export default function Contractors({ user }) {
         {['','client','supplier','other'].map(t => (
           <button key={t} onClick={() => setFilterType(t)} className={`btn btn-sm ${filterType===t?'btn-primary':'btn-secondary'}`} style={{ width:'auto' }}>{t?typeLabel(t):'Всі'}</button>
         ))}
+        <button onClick={() => setFilterNoCode(f => !f)}
+          className={`btn btn-sm ${filterNoCode?'btn-primary':'btn-secondary'}`}
+          style={{ width:'auto' }}>
+          <i className="ti ti-alert-circle" style={{ fontSize:14 }} />
+          Без ЄДРПОУ/ІПН
+        </button>
       </div>
 
       <div className="tbl-wrap">
