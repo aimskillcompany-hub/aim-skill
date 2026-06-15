@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 
@@ -33,7 +33,7 @@ const EMPTY_FORM = {
 }
 
 export default function Planning({ user }) {
-  const [tab, setTab] = useState('plans')       // plans | pvf
+  const [tab, setTab] = useState('plans')       // plans | pvf | pl
   const [plans, setPlans]       = useState([])
   const [articles, setArticles] = useState([])
   const [projects, setProjects] = useState([])
@@ -45,6 +45,8 @@ export default function Planning({ user }) {
   const [filterMonth, setFilterMonth] = useState('')
   const [pvfData, setPvfData]   = useState([])
   const [pvfLoading, setPvfLoading] = useState(false)
+  const [plData, setPlData]     = useState(null)
+  const [plLoading, setPlLoading] = useState(false)
 
   const nextMonths = getNextMonths(8)
 
@@ -63,6 +65,7 @@ export default function Planning({ user }) {
 
   useEffect(() => {
     if (tab === 'pvf') loadPvf()
+    if (tab === 'pl') loadPl()
   }, [tab])
 
   const loadPvf = async () => {
@@ -99,6 +102,70 @@ export default function Planning({ user }) {
     })
     setPvfData(rows)
     setPvfLoading(false)
+  }
+
+  const DIR_TO_TYPE = { 'Доходи':'income', 'Витрати':'expense', 'ПФД':'transfer', 'Внутрішні перекази':'transfer', 'Інше':'other' }
+  const SECTION_LABELS = { income:'Доходи', expense:'Витрати', transfer:'Перекази / ПФД', other:'Інше' }
+  const SECTION_ORDER = ['income','expense','transfer','other']
+
+  const loadPl = async () => {
+    setPlLoading(true)
+    const { data: plns } = await supabase.from('plans').select('*')
+    const expanded = expandPlansHelper(plns || [])
+
+    // Collect all months
+    const monthsSet = new Set(expanded.map(p => p.year_month))
+    const months = [...monthsSet].sort()
+
+    // Group by article → month → sum
+    const artData = {}
+    const artTypes = {}
+    expanded.forEach(p => {
+      const art = p.article || '(без статті)'
+      const type = DIR_TO_TYPE[p.direction] || 'other'
+      if (!artTypes[art]) artTypes[art] = type
+      if (!artData[art]) artData[art] = {}
+      if (!artData[art][p.year_month]) artData[art][p.year_month] = 0
+      const sign = p.direction === 'Доходи' ? 1 : -1
+      artData[art][p.year_month] += sign * (p.amount || 0)
+    })
+
+    // Group articles by section type
+    const bySection = {}
+    SECTION_ORDER.forEach(t => { bySection[t] = [] })
+    Object.keys(artData).forEach(art => {
+      const t = artTypes[art] || 'other'
+      if (!bySection[t]) bySection[t] = []
+      if (!bySection[t].includes(art)) bySection[t].push(art)
+    })
+
+    // Section totals
+    const sectionTotals = {}
+    SECTION_ORDER.forEach(type => {
+      sectionTotals[type] = {}
+      months.forEach(m => {
+        sectionTotals[type][m] = (bySection[type] || []).reduce((s, art) => s + (artData[art]?.[m] || 0), 0)
+      })
+      sectionTotals[type]._total = months.reduce((s, m) => s + (sectionTotals[type][m] || 0), 0)
+    })
+
+    setPlData({ months, artData, artTypes, bySection, sectionTotals })
+    setPlLoading(false)
+  }
+
+  // Helper that doesn't depend on state
+  const expandPlansHelper = (allPlans) => {
+    const result = []
+    allPlans.forEach(p => {
+      if (p.is_template && p.template_from && p.template_to) {
+        getMonthRange(p.template_from, p.template_to).forEach(m => {
+          result.push({ ...p, year_month: m })
+        })
+      } else if (p.year_month) {
+        result.push(p)
+      }
+    })
+    return result
   }
 
   // Expand templates into individual month records
@@ -205,7 +272,8 @@ export default function Planning({ user }) {
       <div style={{ display:'flex', borderBottom:'1px solid var(--border)', marginBottom:20 }}>
         {[
           { id:'plans', label:'Планові записи', icon:'ti-calendar-stats' },
-          { id:'pvf',   label:'План vs Факт',   icon:'ti-arrows-diff' },
+          { id:'pl',    label:'P&L План',        icon:'ti-chart-bar' },
+          { id:'pvf',   label:'План vs Факт',    icon:'ti-arrows-diff' },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             padding:'10px 18px', border:'none', background:'none', cursor:'pointer',
@@ -384,6 +452,152 @@ export default function Planning({ user }) {
               </div>
             </div>
           )}
+        </>
+      )}
+
+      {/* ── TAB: P&L План ─────────────────────────────────────────────── */}
+      {tab === 'pl' && (
+        <>
+          {plLoading ? (
+            <div style={{ padding:40, textAlign:'center', color:'var(--text2)' }}>Завантаження...</div>
+          ) : !plData || plData.months.length === 0 ? (
+            <div className="card">
+              <div className="empty">
+                <i className="ti ti-chart-bar" style={{ fontSize:40, color:'var(--text3)', display:'block', margin:'0 auto 12px' }} />
+                <p>Немає планових даних. Додайте записи у вкладці "Планові записи".</p>
+              </div>
+            </div>
+          ) : (() => {
+            const { months, artData, bySection, sectionTotals } = plData
+            const fmtS = n => n === 0 ? '—' : (n > 0 ? '+' : '−') + fmt(n)
+            const numColor = v => v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--text3)'
+
+            // KPI totals
+            const totRev = months.reduce((s, m) => s + (sectionTotals.income?.[m] || 0), 0)
+            const totExp = months.reduce((s, m) => s + Math.abs(sectionTotals.expense?.[m] || 0), 0)
+            const totNet = totRev - totExp
+
+            return (
+              <>
+                {/* KPI */}
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16, marginBottom:20 }}>
+                  {[
+                    { l:'Плановий дохід', v:totRev, c:'var(--green)' },
+                    { l:'Планові витрати', v:totExp, c:'var(--red)' },
+                    { l:'Плановий результат', v:totNet, c: totNet >= 0 ? 'var(--green)' : 'var(--red)' },
+                  ].map(({ l, v, c }) => (
+                    <div key={l} className="kpi">
+                      <div className="kpi-label">{l}</div>
+                      <div className="kpi-value" style={{ color:c }}>{fmt(v)} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>грн</span></div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* P&L Table */}
+                <div className="card" style={{ padding:'18px 0', overflowX:'auto' }}>
+                  <div style={{ padding:'0 18px 12px', fontSize:14, fontWeight:600, color:'var(--text)' }}>
+                    P&L на основі плану по місяцях
+                  </div>
+                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, minWidth:500 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign:'left', padding:'10px 18px', background:'var(--surface2)', borderBottom:'1px solid var(--border)', fontWeight:600, color:'var(--text2)', fontSize:12, textTransform:'uppercase', letterSpacing:.5, minWidth:180, position:'sticky', left:0, zIndex:1 }}>
+                          Стаття
+                        </th>
+                        {months.map(m => (
+                          <th key={m} style={{ padding:'10px 12px', background:'var(--surface2)', borderBottom:'1px solid var(--border)', textAlign:'right', fontWeight:600, color:'var(--text2)', fontSize:12, whiteSpace:'nowrap' }}>
+                            {m}
+                          </th>
+                        ))}
+                        <th style={{ padding:'10px 12px', background:'var(--surface2)', borderBottom:'1px solid var(--border)', textAlign:'right', fontWeight:600, color:'var(--text)', fontSize:12, borderLeft:'2px solid var(--border)' }}>
+                          РАЗОМ
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {SECTION_ORDER.map(type => {
+                        const rows = bySection[type] || []
+                        if (rows.length === 0) return null
+                        const secTotal = sectionTotals[type]?._total || 0
+                        if (secTotal === 0 && rows.every(art => !artData[art])) return null
+
+                        return (
+                          <React.Fragment key={type}>
+                            {/* Section header */}
+                            <tr>
+                              <td colSpan={months.length + 2} style={{ padding:'10px 18px 4px', fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.6px', color:'var(--text3)', background:'var(--surface2)', borderTop:'1px solid var(--border)' }}>
+                                {SECTION_LABELS[type]}
+                              </td>
+                            </tr>
+
+                            {/* Article rows */}
+                            {rows.map(art => {
+                              const rowTotal = months.reduce((s, m) => s + (artData[art]?.[m] || 0), 0)
+                              if (rowTotal === 0) return null
+                              return (
+                                <tr key={art} style={{ borderBottom:'1px solid var(--bg)' }}>
+                                  <td style={{ padding:'8px 18px 8px 28px', fontSize:13, color:'var(--text)', position:'sticky', left:0, background:'var(--surface)', zIndex:1 }}>
+                                    {art}
+                                  </td>
+                                  {months.map(m => {
+                                    const v = artData[art]?.[m] || 0
+                                    return (
+                                      <td key={m} style={{ padding:'8px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums', color: numColor(v), fontWeight: v !== 0 ? 500 : 400, whiteSpace:'nowrap', fontSize:13 }}>
+                                        {fmtS(v)}
+                                      </td>
+                                    )
+                                  })}
+                                  <td style={{ padding:'8px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums', color: numColor(rowTotal), fontWeight:500, whiteSpace:'nowrap', fontSize:13, borderLeft:'2px solid var(--border)' }}>
+                                    {fmtS(rowTotal)}
+                                  </td>
+                                </tr>
+                              )
+                            })}
+
+                            {/* Section total */}
+                            <tr style={{ borderTop:'2px solid var(--border)', borderBottom:'1px solid var(--border)' }}>
+                              <td style={{ padding:'8px 18px', fontWeight:600, fontSize:13, color:'var(--text2)', background:'var(--surface2)', position:'sticky', left:0 }}>
+                                Разом {SECTION_LABELS[type]?.toLowerCase()}
+                              </td>
+                              {months.map(m => {
+                                const v = sectionTotals[type]?.[m] || 0
+                                return (
+                                  <td key={m} style={{ padding:'8px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums', color: numColor(v), fontWeight:500, background:'var(--surface2)', whiteSpace:'nowrap', fontSize:13 }}>
+                                    {fmtS(v)}
+                                  </td>
+                                )
+                              })}
+                              <td style={{ padding:'8px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums', color: numColor(secTotal), fontWeight:600, background:'var(--surface2)', whiteSpace:'nowrap', fontSize:13, borderLeft:'2px solid var(--border)' }}>
+                                {fmtS(secTotal)}
+                              </td>
+                            </tr>
+                          </React.Fragment>
+                        )
+                      })}
+
+                      {/* Net result */}
+                      <tr style={{ borderTop:'2px solid var(--border)' }}>
+                        <td style={{ padding:'10px 18px', fontWeight:600, fontSize:14, background:'var(--surface2)', position:'sticky', left:0 }}>
+                          ЧИСТИЙ РЕЗУЛЬТАТ
+                        </td>
+                        {months.map(m => {
+                          const v = SECTION_ORDER.reduce((s, type) => s + (sectionTotals[type]?.[m] || 0), 0)
+                          return (
+                            <td key={m} style={{ padding:'10px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums', fontWeight:500, color: numColor(v), background:'var(--surface2)', whiteSpace:'nowrap', fontSize:14 }}>
+                              {fmtS(v)}
+                            </td>
+                          )
+                        })}
+                        <td style={{ padding:'10px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums', fontWeight:600, color: numColor(totNet), background:'var(--surface2)', whiteSpace:'nowrap', fontSize:14, borderLeft:'2px solid var(--border)' }}>
+                          {fmtS(totNet)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )
+          })()}
         </>
       )}
 
