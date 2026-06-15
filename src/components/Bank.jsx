@@ -35,15 +35,15 @@ async function readXlsx(file) {
 
 // ── Детектор форматів ─────────────────────────────────────────────────────────
 function detectFormat(rows) {
-  // Scan first 10 rows for headers (ПУМБ may have metadata rows before headers)
   for (let i = 0; i < Math.min(10, rows.length); i++) {
     const h = (rows[i] || []).map(c => (c||'').toString().toLowerCase())
 
     // Monobank Business / Universalbank — є "вид операції"
     if (h.some(c => c.includes('вид операції'))) return 'monobank'
 
-    // ПУМБ — окремі колонки "дебет" і "кредит"
-    if (h.some(c => c.includes('дебет')) && h.some(c => c.includes('кредит'))) return 'pumb'
+    // ПУМБ — "дебет"/"кредит" АБО "зараховано"/"списано"
+    if (h.some(c => c.includes('дебет') || c.includes('зараховано')) &&
+        h.some(c => c.includes('кредит') || c.includes('списано'))) return 'pumb'
   }
 
   return 'unknown'
@@ -91,19 +91,23 @@ function parsePUMB(rows) {
   let cols = {}
   for (let i = 0; i < Math.min(10, rows.length); i++) {
     const row = rows[i] || []
-    const h = row.map(c => (c||'').toString().toLowerCase())
-    const hasDebit  = h.findIndex(c => c.includes('дебет'))
-    const hasCredit = h.findIndex(c => c.includes('кредит'))
+    const h = row.map(c => (c||'').toString().toLowerCase().trim())
+    // Шукаємо дебет/кредит АБО зараховано/списано
+    const hasDebit  = h.findIndex(c => c.includes('дебет') || c.includes('списано'))
+    const hasCredit = h.findIndex(c => c.includes('кредит') || c.includes('зараховано'))
     if (hasDebit >= 0 && hasCredit >= 0) {
       headerIdx = i
-      cols.date        = h.findIndex(c => c.includes('дата') && !c.includes('вал'))
+      cols.date        = h.findIndex(c => c.startsWith('дата'))
       cols.desc        = h.findIndex(c => c.includes('призначення') || c.includes('деталі') || c.includes('опис'))
-      cols.counterparty= h.findIndex(c => c.includes('партнер') || c.includes('контрагент') || c.includes('назва'))
-      cols.edrpou      = h.findIndex(c => c.includes('єдрпоу') || c.includes('код'))
+      cols.counterparty= h.findIndex(c => c.includes('платник') || c.includes('одержувач') || c.includes('партнер') || c.includes('контрагент'))
+      cols.edrpou      = h.findIndex(c => c.includes('єдрпоу') || c.includes('іпн') || c.includes('код'))
+      cols.bank        = h.findIndex(c => c.includes('банк'))
+      cols.mfo         = h.findIndex(c => c.includes('мфо'))
       cols.account     = h.findIndex(c => c.includes('рахунок') || c.includes('iban'))
       cols.debit       = hasDebit
       cols.credit      = hasCredit
-      cols.docNum      = h.findIndex(c => c.includes('документ') || c.includes('номер'))
+      cols.docNum      = h.findIndex(c => c.includes('документ') || c.includes('доручення') || c.includes('номер'))
+      console.log('[Bank] PUMB headers at row', i, ':', JSON.stringify(cols))
       break
     }
   }
@@ -126,11 +130,26 @@ function parsePUMB(rows) {
       date = `${y}-${m}-${d}`
     }
 
-    const debitVal  = parseFloat((row[cols.debit]  ||'').toString().replace(/\s/g,'').replace(',','.')) || 0
-    const creditVal = parseFloat((row[cols.credit] ||'').toString().replace(/\s/g,'').replace(',','.')) || 0
+    // Parse amount: handle "1,151,647.67" (commas as thousands) and "1 151 647,67" (spaces + comma decimal)
+    const parseAmt = s => {
+      if (!s) return 0
+      let str = s.toString().trim()
+      // If has dot as decimal and commas as thousands: 1,151,647.67
+      if (str.includes('.') && str.includes(',')) {
+        str = str.replace(/,/g, '')
+      }
+      // If only commas, could be decimal: 1647,67 → 1647.67
+      else if (str.includes(',') && !str.includes('.')) {
+        str = str.replace(/,/g, '.')
+      }
+      str = str.replace(/\s/g, '')
+      return parseFloat(str) || 0
+    }
+    const debitVal  = parseAmt(row[cols.debit])
+    const creditVal = parseAmt(row[cols.credit])
     if (debitVal === 0 && creditVal === 0) continue
 
-    // Дебет = витрата (мінус), Кредит = надходження (плюс)
+    // Зараховано = надходження (плюс), Списано = витрата (мінус)
     const amount = creditVal > 0 ? creditVal : -debitVal
 
     const desc   = cols.desc >= 0 ? (row[cols.desc]||'').toString().trim() : ''
@@ -143,6 +162,8 @@ function parsePUMB(rows) {
       reference:    docNum || null,
       account:      cols.account >= 0 ? (row[cols.account]||'').toString().trim() || null : null,
       edrpou:       cols.edrpou >= 0 ? (row[cols.edrpou]||'').toString().trim() || null : null,
+      bank_name:    cols.bank >= 0 ? (row[cols.bank]||'').toString().trim() || null : null,
+      mfo:          cols.mfo >= 0 ? (row[cols.mfo]||'').toString().trim() || null : null,
     })
   }
   return txs
@@ -419,6 +440,8 @@ export default function Bank({ user }) {
         name: t.counterparty,
         edrpou: t.edrpou,
         iban: t.account,
+        bank_name: t.bank_name,
+        mfo: t.mfo,
         default_direction: t.amount > 0 ? 'Доходи' : 'Витрати',
         userId: user.id,
       })

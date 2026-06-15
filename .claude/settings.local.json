@@ -9,7 +9,10 @@
       "Bash(npm install:*)",
       "Bash(pkill -f \"vite\")",
       "Read(//dev/**)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Read(//mnt/user-data/**)",
+      "Read(//Users/user/Downloads/**)",
+      "Bash(node:*)"
     ]
   }
 }
