@@ -58,6 +58,10 @@ export default function Contractors({ user }) {
   const [detailTab, setDetailTab] = useState('info')
   const [detailTxs, setDetailTxs] = useState([])
   const [detailProjects, setDetailProjects] = useState([])
+  const [detailPlans, setDetailPlans] = useState([])
+  const [balanceByMonth, setBalanceByMonth] = useState([])
+  const [reconcileFrom, setReconcileFrom] = useState('')
+  const [reconcileTo, setReconcileTo] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY)
   const [editId, setEditId] = useState(null)
@@ -135,11 +139,42 @@ export default function Contractors({ user }) {
 
   const openDetail = async (c) => {
     setDetail(c); setDetailTab('info'); setView('detail')
-    const { data:txs } = await supabase.from('transactions')
-      .select('id,date,amount,direction,article,projects(name)')
-      .ilike('contractor', c.name).order('date',{ascending:false}).limit(100)
-    setDetailTxs(txs||[])
-    setDetailProjects([...new Set((txs||[]).map(t=>t.projects?.name).filter(Boolean))])
+    setReconcileFrom(''); setReconcileTo('')
+
+    const [{ data:txs }, { data:plans }] = await Promise.all([
+      supabase.from('transactions')
+        .select('id,date,amount,direction,article,projects(name)')
+        .ilike('contractor', c.name).order('date',{ascending:false}).limit(500),
+      supabase.from('plans')
+        .select('id,year_month,planned_date,amount,direction,article,description')
+        .ilike('article', `%${c.default_article || '___NOMATCH___'}%`)
+        .order('planned_date'),
+    ])
+
+    const allTxs = txs || []
+    setDetailTxs(allTxs)
+    setDetailPlans(plans || [])
+    setDetailProjects([...new Set(allTxs.map(t=>t.projects?.name).filter(Boolean))])
+
+    // Build monthly balance
+    const byMonth = {}
+    allTxs.forEach(tx => {
+      const m = tx.date?.substring(0,7)
+      if (!m) return
+      if (!byMonth[m]) byMonth[m] = { month:m, income:0, expense:0, count:0 }
+      if (tx.amount > 0) byMonth[m].income += tx.amount
+      else byMonth[m].expense += Math.abs(tx.amount)
+      byMonth[m].count++
+    })
+    const months = Object.keys(byMonth).sort()
+    let cumBalance = 0
+    const rows = months.map(m => {
+      const r = byMonth[m]
+      const net = r.income - r.expense
+      cumBalance += net
+      return { ...r, net, cumBalance }
+    })
+    setBalanceByMonth(rows)
   }
 
   const setF = k => e => setForm(f => ({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
@@ -194,6 +229,7 @@ export default function Contractors({ user }) {
         <div style={{ display:'flex', borderBottom:'1px solid var(--border)', marginBottom:20, gap:0 }}>
           {[
             { id:'info', label:'Реквізити', icon:'ti-file-info' },
+            { id:'balance', label:'Баланс', icon:'ti-scale' },
             { id:'txs', label:`Операції (${detailTxs.length})`, icon:'ti-list-details' },
             { id:'projects', label:`Проєкти (${detailProjects.length})`, icon:'ti-briefcase' },
             { id:'notes', label:'Нотатки', icon:'ti-notes' },
@@ -262,6 +298,200 @@ export default function Contractors({ user }) {
             </Section>
           </div>
         )}
+
+        {/* ── Tab: Баланс ── */}
+        {detailTab === 'balance' && (() => {
+          const totalIncome = detailTxs.filter(t=>t.amount>0).reduce((s,t)=>s+(t.amount||0),0)
+          const totalExpense = detailTxs.filter(t=>t.amount<0).reduce((s,t)=>s+Math.abs(t.amount||0),0)
+          const currentBalance = totalIncome - totalExpense
+          const today = new Date().toISOString().split('T')[0]
+
+          // Overdue plans
+          const overdue = detailPlans.filter(p => {
+            const d = p.planned_date || (p.year_month + '-28')
+            return d < today && p.direction === 'Доходи'
+          })
+
+          // Upcoming plans
+          const upcoming = detailPlans.filter(p => {
+            const d = p.planned_date || (p.year_month + '-01')
+            return d >= today
+          }).slice(0, 10)
+
+          // Reconciliation data — filtered by period
+          const reconTxs = detailTxs.filter(tx => {
+            if (reconcileFrom && tx.date < reconcileFrom) return false
+            if (reconcileTo && tx.date > reconcileTo) return false
+            return true
+          })
+          const reconIncome = reconTxs.filter(t=>t.amount>0).reduce((s,t)=>s+(t.amount||0),0)
+          const reconExpense = reconTxs.filter(t=>t.amount<0).reduce((s,t)=>s+Math.abs(t.amount||0),0)
+
+          return (
+            <div>
+              {/* Balance KPIs */}
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16, marginBottom:20 }}>
+                <div className="kpi">
+                  <div className="kpi-label">Поточний баланс</div>
+                  <div className="kpi-value" style={{ color: currentBalance>=0?'var(--green)':'var(--red)' }}>
+                    {currentBalance>=0?'+':'-'}{fmt(currentBalance)} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>грн</span>
+                  </div>
+                  <div className="kpi-sub">{currentBalance>0?'Нам повинні':'Ми повинні'}</div>
+                </div>
+                <div className="kpi">
+                  <div className="kpi-label">Нам оплатили</div>
+                  <div className="kpi-value" style={{ color:'var(--green)' }}>+{fmt(totalIncome)} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>грн</span></div>
+                </div>
+                <div className="kpi">
+                  <div className="kpi-label">Ми оплатили</div>
+                  <div className="kpi-value" style={{ color:'var(--red)' }}>-{fmt(totalExpense)} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>грн</span></div>
+                </div>
+              </div>
+
+              {/* Overdue */}
+              {overdue.length > 0 && (
+                <Section title={`Прострочені платежі (${overdue.length})`} icon="ti-alert-triangle">
+                  <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                    {overdue.map(p => (
+                      <div key={p.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 14px', background:'var(--red-bg)', borderRadius:8, border:'1px solid var(--border)' }}>
+                        <div>
+                          <div style={{ fontWeight:500, fontSize:14 }}>{p.article || p.description || 'Без статті'}</div>
+                          <div style={{ fontSize:12, color:'var(--text2)', marginTop:2 }}>{p.planned_date || p.year_month} · {p.direction}</div>
+                        </div>
+                        <div style={{ fontSize:16, fontWeight:500, color:'var(--red)', whiteSpace:'nowrap' }}>
+                          {fmt(p.amount)} грн
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Section>
+              )}
+
+              {/* Upcoming payments */}
+              {upcoming.length > 0 && (
+                <Section title="Очікувані платежі" icon="ti-calendar-event">
+                  <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                    {upcoming.map(p => (
+                      <div key={p.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 14px', background:'var(--surface2)', borderRadius:8 }}>
+                        <div>
+                          <div style={{ fontWeight:500, fontSize:14 }}>{p.article || p.description || 'Без статті'}</div>
+                          <div style={{ fontSize:12, color:'var(--text2)', marginTop:2 }}>{p.planned_date || p.year_month}</div>
+                        </div>
+                        <div style={{ fontSize:15, fontWeight:500, color: p.direction==='Доходи'?'var(--green)':'var(--red)', whiteSpace:'nowrap' }}>
+                          {p.direction==='Доходи'?'+':'-'}{fmt(p.amount)} грн
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Section>
+              )}
+
+              {/* Monthly balance history */}
+              {balanceByMonth.length > 0 && (
+                <Section title="Помісячний баланс" icon="ti-chart-line">
+                  <div className="tbl-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Місяць</th>
+                          <th style={{ textAlign:'right' }}>Дохід</th>
+                          <th style={{ textAlign:'right' }}>Витрати</th>
+                          <th style={{ textAlign:'right' }}>Сальдо</th>
+                          <th style={{ textAlign:'right' }}>Накопичений баланс</th>
+                          <th style={{ textAlign:'right' }}>Операцій</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {balanceByMonth.map(r => (
+                          <tr key={r.month}>
+                            <td style={{ fontWeight:500 }}>{r.month}</td>
+                            <td style={{ textAlign:'right', color:'var(--green)', fontWeight:500, fontVariantNumeric:'tabular-nums' }}>
+                              {r.income>0 ? '+'+fmt(r.income) : '—'}
+                            </td>
+                            <td style={{ textAlign:'right', color:'var(--red)', fontWeight:500, fontVariantNumeric:'tabular-nums' }}>
+                              {r.expense>0 ? '-'+fmt(r.expense) : '—'}
+                            </td>
+                            <td style={{ textAlign:'right', fontWeight:500, color:r.net>=0?'var(--green)':'var(--red)', fontVariantNumeric:'tabular-nums' }}>
+                              {r.net>=0?'+':'-'}{fmt(r.net)}
+                            </td>
+                            <td style={{ textAlign:'right', fontWeight:500, color:r.cumBalance>=0?'var(--green)':'var(--red)', fontVariantNumeric:'tabular-nums' }}>
+                              {r.cumBalance>=0?'+':'-'}{fmt(r.cumBalance)}
+                            </td>
+                            <td style={{ textAlign:'right', color:'var(--text2)' }}>{r.count}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Section>
+              )}
+
+              {/* Reconciliation act */}
+              <Section title="Акт звірки" icon="ti-file-check">
+                <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
+                  <span style={{ fontSize:13, color:'var(--text2)' }}>Період:</span>
+                  <input type="date" className="form-input" value={reconcileFrom} onChange={e => setReconcileFrom(e.target.value)} style={{ width:160, height:40, fontSize:13 }} />
+                  <span style={{ color:'var(--text3)' }}>—</span>
+                  <input type="date" className="form-input" value={reconcileTo} onChange={e => setReconcileTo(e.target.value)} style={{ width:160, height:40, fontSize:13 }} />
+                  {(reconcileFrom||reconcileTo) && (
+                    <button className="btn btn-sm btn-secondary" onClick={() => { setReconcileFrom(''); setReconcileTo('') }} style={{ width:'auto', height:40 }}>
+                      <i className="ti ti-x" style={{ fontSize:13 }} /> Скинути
+                    </button>
+                  )}
+                </div>
+
+                {reconTxs.length === 0 ? (
+                  <div style={{ padding:24, textAlign:'center', color:'var(--text3)' }}>
+                    {reconcileFrom||reconcileTo ? 'Немає операцій за обраний період' : 'Оберіть період для формування акту звірки'}
+                  </div>
+                ) : (
+                  <>
+                    {/* Summary */}
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:16 }}>
+                      <div style={{ background:'var(--green-bg)', borderRadius:8, padding:'12px 16px' }}>
+                        <div style={{ fontSize:12, color:'var(--green)' }}>Надходження</div>
+                        <div style={{ fontSize:18, fontWeight:500, color:'var(--green)' }}>+{fmt(reconIncome)} грн</div>
+                      </div>
+                      <div style={{ background:'var(--red-bg)', borderRadius:8, padding:'12px 16px' }}>
+                        <div style={{ fontSize:12, color:'var(--red)' }}>Витрати</div>
+                        <div style={{ fontSize:18, fontWeight:500, color:'var(--red)' }}>-{fmt(reconExpense)} грн</div>
+                      </div>
+                      <div style={{ background:'var(--surface2)', borderRadius:8, padding:'12px 16px' }}>
+                        <div style={{ fontSize:12, color:'var(--text2)' }}>Сальдо</div>
+                        <div style={{ fontSize:18, fontWeight:500, color:(reconIncome-reconExpense)>=0?'var(--green)':'var(--red)' }}>
+                          {(reconIncome-reconExpense)>=0?'+':'-'}{fmt(reconIncome-reconExpense)} грн
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Transactions list */}
+                    <div className="tbl-wrap" style={{ maxHeight:300 }}>
+                      <table>
+                        <thead><tr><th>Дата</th><th>Напрям</th><th>Стаття</th><th style={{ textAlign:'right' }}>Сума</th></tr></thead>
+                        <tbody>
+                          {reconTxs.sort((a,b) => a.date>b.date?1:-1).map(tx => (
+                            <tr key={tx.id}>
+                              <td style={{ fontSize:13, whiteSpace:'nowrap' }}>{tx.date}</td>
+                              <td style={{ fontSize:13, color:'var(--text2)' }}>{tx.direction}</td>
+                              <td style={{ fontSize:13, color:'var(--text2)' }}>{tx.article||'—'}</td>
+                              <td style={{ textAlign:'right', fontWeight:500, color:tx.amount>=0?'var(--green)':'var(--red)', fontVariantNumeric:'tabular-nums', whiteSpace:'nowrap' }}>
+                                {tx.amount>=0?'+':''}{fmt(tx.amount)} грн
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div style={{ marginTop:12, fontSize:13, color:'var(--text3)', textAlign:'right' }}>
+                      {reconTxs.length} операцій за {reconcileFrom||'початок'} — {reconcileTo||'сьогодні'}
+                    </div>
+                  </>
+                )}
+              </Section>
+            </div>
+          )
+        })()}
 
         {/* ── Tab: Операції ── */}
         {detailTab === 'txs' && (
