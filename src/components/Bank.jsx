@@ -10,18 +10,27 @@ const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).fo
 
 // ── Пряме читання XLSX/XLS (SheetJS) ─────────────────────────────────────────
 async function readXlsx(file) {
-  const buf = await file.arrayBuffer()
-  const data = new Uint8Array(buf)
-  const wb = XLSX.read(data, {
-    type: 'array',
-    codepage: 1251,    // CP1251 для старих .xls з українськими символами
-    cellText: true,
-    cellDates: false,
-    cellNF: false,
-  })
-  const ws = wb.Sheets[wb.SheetNames[0]]
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' })
-  return rows
+  console.log('[Bank] readXlsx start:', file.name, file.size, 'bytes')
+  try {
+    const buf = await file.arrayBuffer()
+    const data = new Uint8Array(buf)
+    console.log('[Bank] ArrayBuffer read, size:', data.length)
+    const wb = XLSX.read(data, {
+      type: 'array',
+      codepage: 1251,
+      cellText: true,
+      cellDates: false,
+      cellNF: false,
+    })
+    console.log('[Bank] Workbook parsed, sheets:', wb.SheetNames)
+    const ws = wb.Sheets[wb.SheetNames[0]]
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' })
+    console.log('[Bank] Rows extracted:', rows.length)
+    return rows
+  } catch (e) {
+    console.error('[Bank] readXlsx error:', e.message)
+    throw e
+  }
 }
 
 // ── Детектор форматів ─────────────────────────────────────────────────────────
@@ -184,6 +193,7 @@ async function parseWithClaude(content, fileName, isPDF = false) {
 // ── Головна функція парсингу ──────────────────────────────────────────────────
 async function parseStatement(file) {
   const ext = file.name.split('.').pop().toLowerCase()
+  console.log('[Bank] parseStatement:', file.name, 'ext:', ext, 'size:', file.size)
 
   // XLSX / XLS — читаємо через SheetJS
   if (ext === 'xlsx' || ext === 'xls') {
