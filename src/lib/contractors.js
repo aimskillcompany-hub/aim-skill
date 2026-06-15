@@ -43,15 +43,41 @@ export async function upsertContractor(supabase, { name, edrpou, iban, bank_name
   return data?.id || null
 }
 
-// Sync all contractor stats from transactions + IBAN from bank_transactions
+// Sync all contractor stats + IBAN via ЄДРПОУ matching
 export async function syncContractorStats(supabase) {
   const [{ data: contractors }, { data: txs }, { data: bankTxs }] = await Promise.all([
     supabase.from('contractors').select('id, name, iban, edrpou'),
-    supabase.from('transactions').select('contractor, edrpou, amount, direction, date'),
-    supabase.from('bank_transactions').select('counterparty, account'),
+    supabase.from('transactions').select('id, contractor, edrpou, amount, direction, date'),
+    supabase.from('bank_transactions').select('counterparty, account, matched_transaction_id'),
   ])
   if (!contractors?.length) return 0
   console.log('[Sync] Contractors:', contractors?.length, 'Transactions:', txs?.length, 'Bank txs:', bankTxs?.length)
+
+  // Build map: transaction_id → bank account (IBAN)
+  const txIdToIban = {}
+  ;(bankTxs || []).forEach(b => {
+    if (b.matched_transaction_id && b.account) {
+      txIdToIban[b.matched_transaction_id] = b.account
+    }
+  })
+
+  // Build map: edrpou → IBAN (from bank_transactions via matched transactions)
+  const edrpouToIban = {}
+  ;(txs || []).forEach(t => {
+    if (t.edrpou && t.id && txIdToIban[t.id]) {
+      edrpouToIban[t.edrpou.trim()] = txIdToIban[t.id]
+    }
+  })
+
+  // Also build: contractor name → IBAN directly from bank_transactions
+  const nameToIban = {}
+  ;(bankTxs || []).forEach(b => {
+    if (b.counterparty && b.account) {
+      nameToIban[b.counterparty.trim().toLowerCase()] = b.account
+    }
+  })
+
+  console.log('[Sync] ЄДРПОУ→IBAN map:', Object.keys(edrpouToIban).length, '| Name→IBAN map:', Object.keys(nameToIban).length)
 
   let synced = 0
   let ibanFilled = 0
@@ -64,33 +90,31 @@ export async function syncContractorStats(supabase) {
     const count = myTxs.length
     const lastDate = myTxs.reduce((max, t) => t.date > (max || '') ? t.date : max, null)
 
-    // Find IBAN from bank_transactions if missing
-    // Try exact match, then contains match
-    const bankMatch = (bankTxs || []).find(b => {
-      if (!b.counterparty || !b.account) return false
-      const bName = b.counterparty?.trim().toLowerCase() || ''
-      // Exact match
-      if (bName === nameLower) return true
-      // Contains match (bank name contains contractor name or vice versa)
-      if (bName && nameLower && bName.length > 3 && nameLower.length > 3 && (bName.includes(nameLower) || nameLower.includes(bName))) return true
-      return false
-    })
-
     const updates = {
       total_income: income,
       total_expense: expense,
       operations_count: count,
       last_operation_date: lastDate,
     }
-    if (!c.iban && bankMatch?.account) { updates.iban = bankMatch.account; ibanFilled++ }
-    // Check transactions for edrpou
+
+    // Fill ЄДРПОУ from transactions
     if (!c.edrpou) {
       const txEdrpou = myTxs.find(t => t.edrpou)?.edrpou
       if (txEdrpou) { updates.edrpou = txEdrpou; edrpouFilled++ }
     }
 
-    if (bankMatch) {
-      console.log('[Sync]', c.name, '→ bank match:', bankMatch.counterparty, '| IBAN:', bankMatch.account || '—')
+    // Fill IBAN: try by ЄДРПОУ first, then by name
+    if (!c.iban) {
+      const edrpou = c.edrpou || updates.edrpou
+      let foundIban = null
+      if (edrpou && edrpouToIban[edrpou.trim()]) {
+        foundIban = edrpouToIban[edrpou.trim()]
+        console.log('[Sync]', c.name, '→ IBAN by ЄДРПОУ:', edrpou, '=', foundIban)
+      } else if (nameToIban[nameLower]) {
+        foundIban = nameToIban[nameLower]
+        console.log('[Sync]', c.name, '→ IBAN by name match =', foundIban)
+      }
+      if (foundIban) { updates.iban = foundIban; ibanFilled++ }
     }
 
     await supabase.from('contractors').update(updates).eq('id', c.id)
