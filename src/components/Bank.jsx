@@ -189,19 +189,24 @@ async function parseStatement(file) {
   if (ext === 'xlsx' || ext === 'xls') {
     const rows = await readXlsx(file)
     const format = detectFormat(rows)
+    console.log('[Bank] Format detected:', format, '| Rows:', rows.length)
+    console.log('[Bank] First 5 rows:', rows.slice(0, 5).map(r => (r||[]).slice(0, 10).map(c => String(c||'').substring(0, 30))))
 
     if (format === 'monobank') {
       const txs = parseMonobank(rows)
+      console.log('[Bank] Monobank parsed:', txs.length, 'transactions')
       if (txs.length > 0) return txs
     }
     if (format === 'pumb') {
       const txs = parsePUMB(rows)
+      console.log('[Bank] PUMB parsed:', txs.length, 'transactions')
       if (txs.length > 0) return txs
     }
 
+    console.log('[Bank] Unknown format, falling back to Claude')
     // Невідомий XLSX — конвертуємо в CSV і кидаємо Claude
     const buf = await file.arrayBuffer()
-    const wb2 = XLSX.read(buf, { type: 'array' })
+    const wb2 = XLSX.read(buf, { type: 'array', codepage: 1251 })
     const csv = XLSX.utils.sheet_to_csv(Object.values(wb2.Sheets)[0])
     return parseWithClaude(csv, file.name)
   }
