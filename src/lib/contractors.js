@@ -1,7 +1,20 @@
+// Normalize contractor name to canonical form
+export function normalizeName(name) {
+  if (!name) return ''
+  return name
+    .replace(/ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ/gi, 'ТОВ')
+    .replace(/ФІЗИЧНА ОСОБА[\s-]*ПІДПРИЄМЕЦЬ/gi, 'ФОП')
+    .replace(/АКЦІОНЕРНЕ ТОВАРИСТВО/gi, 'АТ')
+    .replace(/ПРИВАТНЕ ПІДПРИЄМСТВО/gi, 'ПП')
+    .replace(/[«»""''`]/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 // Upsert contractor — find by ЄДРПОУ (primary), then name (fallback)
 export async function upsertContractor(supabase, { name, edrpou, iban, bank_name, mfo, type, default_direction, userId }) {
   if (!name?.trim()) return null
-  const cleanName = name.trim()
+  const cleanName = normalizeName(name)
   const cleanEdrpou = edrpou?.trim() || null
 
   // Find by ЄДРПОУ first (most reliable)
@@ -172,15 +185,14 @@ export async function importMissingContractors(supabase, userId) {
   ])
 
   const existingEdrpous = new Set((existing || []).filter(c => c.edrpou?.trim()).map(c => c.edrpou.trim()))
-  const existingNames = new Set((existing || []).map(c => c.name?.trim().toLowerCase()))
+  const existingNames = new Set((existing || []).map(c => normalizeName(c.name).toLowerCase()))
   const seen = new Set()
   let imported = 0
 
   for (const tx of (txs || [])) {
-    const name = tx.contractor?.trim()
+    const name = normalizeName(tx.contractor)
     if (!name) continue
 
-    // Skip if already exists by ЄДРПОУ or name
     const code = tx.edrpou?.trim()
     if (code && existingEdrpous.has(code)) continue
     if (existingNames.has(name.toLowerCase())) continue
@@ -199,4 +211,69 @@ export async function importMissingContractors(supabase, userId) {
     imported++
   }
   return imported
+}
+
+// Merge duplicate contractors by ЄДРПОУ — keep oldest, transfer references, delete rest
+export async function mergeDuplicates(supabase) {
+  const { data: all } = await supabase.from('contractors').select('*').order('created_at')
+  if (!all?.length) return 0
+
+  // Group by ЄДРПОУ
+  const byCode = {}
+  all.forEach(c => {
+    const code = c.edrpou?.trim()
+    if (!code) return
+    if (!byCode[code]) byCode[code] = []
+    byCode[code].push(c)
+  })
+
+  let merged = 0
+  for (const [code, group] of Object.entries(byCode)) {
+    if (group.length <= 1) continue
+
+    // Keep the one with most data (most non-null fields), or oldest
+    const scored = group.map(c => ({
+      ...c,
+      _score: [c.iban, c.bank_name, c.mfo, c.email, c.phone, c.address, c.legal_address, c.contact_person]
+        .filter(v => v && v.trim()).length
+    })).sort((a, b) => b._score - a._score || new Date(a.created_at) - new Date(b.created_at))
+
+    const keep = scored[0]
+    const duplicates = scored.slice(1)
+    const dupIds = duplicates.map(d => d.id)
+
+    console.log('[Merge]', code, '| keep:', keep.name, '| remove:', duplicates.map(d => d.name).join(', '))
+
+    // Merge data from duplicates into keep (fill empty fields)
+    const updates = {}
+    for (const dup of duplicates) {
+      for (const field of ['iban','bank_name','mfo','email','phone','address','legal_address','actual_address','contact_person','contact_position','website','city','region','postal_code','legal_form','tax_system','vat_certificate','notes']) {
+        if (!keep[field] && dup[field]?.trim()) {
+          updates[field] = dup[field]
+          keep[field] = dup[field] // prevent overwriting from next dup
+        }
+      }
+    }
+
+    // Normalize the name
+    if (keep.name) updates.name = normalizeName(keep.name)
+
+    if (Object.keys(updates).length > 0) {
+      await supabase.from('contractors').update(updates).eq('id', keep.id)
+    }
+
+    // Transfer contractor_id references
+    for (const dupId of dupIds) {
+      await supabase.from('transactions').update({ contractor_id: keep.id }).eq('contractor_id', dupId)
+      await supabase.from('bank_transactions').update({ contractor_id: keep.id }).eq('contractor_id', dupId)
+      await supabase.from('cash_transactions').update({ contractor_id: keep.id }).eq('contractor_id', dupId)
+    }
+
+    // Delete duplicates
+    await supabase.from('contractors').delete().in('id', dupIds)
+    merged += dupIds.length
+  }
+
+  console.log('[Merge] Done: removed', merged, 'duplicates')
+  return merged
 }

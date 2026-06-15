@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
-import { upsertContractor, syncContractorStats, importMissingContractors } from '../lib/contractors'
+import { upsertContractor, syncContractorStats, importMissingContractors, mergeDuplicates } from '../lib/contractors'
 
 const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
 const TYPES = [
@@ -148,8 +148,9 @@ export default function Contractors({ user }) {
     setSyncing(true)
     setSyncResult(null)
     const imported = await importMissingContractors(supabase, user?.id)
+    const merged = await mergeDuplicates(supabase)
     const synced = await syncContractorStats(supabase)
-    setSyncResult({ imported, synced })
+    setSyncResult({ imported, synced, merged })
     await loadAll()
     setSyncing(false)
   }
@@ -681,7 +682,7 @@ export default function Contractors({ user }) {
 
       {syncResult && (
         <div style={{ background:'var(--green-bg)', border:'1px solid var(--border)', borderRadius:8, padding:'10px 16px', marginBottom:12, fontSize:13, color:'var(--green)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-          <span>Імпортовано: {syncResult.imported} нових · Оновлено статистику: {syncResult.synced}</span>
+          <span>Імпортовано: {syncResult.imported} нових · Об'єднано дублікатів: {syncResult.merged || 0} · Оновлено: {syncResult.synced}</span>
           <button onClick={() => setSyncResult(null)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--green)', fontSize:16 }}>×</button>
         </div>
       )}
