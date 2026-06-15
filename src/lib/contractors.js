@@ -183,9 +183,11 @@ export async function syncContractorStats(supabase) {
   for (const t of emptyTxs) {
     const tName = t.contractor.trim().toLowerCase()
     for (const c of contractorsWithCode) {
-      const cWords = c.name.trim().toLowerCase().split(/\s+/).filter(w => w.length > 3)
-      // Match if all significant words of contractor name appear in transaction contractor
-      const match = cWords.length > 0 && cWords.every(w => tName.includes(w))
+      const cWords = c.name.trim().toLowerCase()
+        .replace(/^(тов|фоп|ат|пп)\s+/i, '').replace(/[«»""'']/g, '')
+        .split(/\s+/).filter(w => w.length > 3)
+      // Match if ALL significant words (min 2) appear in transaction contractor
+      const match = cWords.length >= 2 && cWords.every(w => tName.includes(w))
       if (match) {
         namesToUpdate[t.id] = { edrpou: c.edrpou.trim(), contractor_id: c.id }
         break
