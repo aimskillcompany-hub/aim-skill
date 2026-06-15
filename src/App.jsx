@@ -20,18 +20,18 @@ const CASH_DIR = {
   advance_return: +1, bank_to_cash: +1, cash_to_bank: -1
 }
 
-function Dashboard({ user }) {
+function Dashboard({ user, onPage }) {
   const [stats, setStats] = useState({
     revenue: 0, expenses: 0, net: 0,
     cashBalance: 0, bankFlow: 0,
-    projects: 0, docs: 0,
+    projects: 0, docs: 0, noArticle: 0,
   })
   const [recentTxs, setRecentTxs] = useState([])
   const [selectedTx, setSelectedTx] = useState(null)
 
   useEffect(() => {
     Promise.all([
-      supabase.from('bank_transactions').select('amount, direction, date, counterparty, description').eq('is_ignored', false).order('date', { ascending: false }),
+      supabase.from('bank_transactions').select('amount, direction, date, counterparty, description, article').eq('is_ignored', false).order('date', { ascending: false }),
       supabase.from('projects').select('id', { count: 'exact' }).eq('status', 'active'),
       supabase.from('documents').select('id', { count: 'exact' }),
       supabase.from('cash_transactions').select('amount, type'),
@@ -51,11 +51,14 @@ function Dashboard({ user }) {
         return s + dir * (t.amount || 0)
       }, 0)
 
+      const noArticle = all.filter(t => !t.article || t.article.trim() === '').length
+
       setStats({
         revenue, expenses, net: revenue - expenses,
         cashBalance, bankFlow,
         projects: projCount || 0,
         docs: docCount || 0,
+        noArticle,
       })
       // Recent transactions from bank
       setRecentTxs(all.slice(0, 8).map(t => ({
@@ -75,7 +78,7 @@ function Dashboard({ user }) {
       </div>
 
       {/* KPI Row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 16 }}>
         <div className="kpi">
           <div className="kpi-label">Загальна виручка</div>
           <div className="kpi-value">{fmt(stats.revenue)} <span style={{ fontSize: 16, fontWeight: 500, color: 'var(--text3)' }}>грн</span></div>
@@ -89,6 +92,10 @@ function Dashboard({ user }) {
           <div className={`kpi-value ${stats.net >= 0 ? 'green' : 'red'}`}>
             {stats.net >= 0 ? '+' : '−'}{fmt(stats.net)} <span style={{ fontSize: 16, fontWeight: 500 }}>грн</span>
           </div>
+        </div>
+        <div className="kpi" style={{ cursor: 'pointer' }} onClick={() => onPage?.('registry')}>
+          <div className="kpi-label">Без статті</div>
+          <div className="kpi-value" style={{ color: stats.noArticle > 0 ? 'var(--red)' : 'var(--green)' }}>{stats.noArticle}</div>
         </div>
       </div>
 
@@ -303,7 +310,7 @@ export default function App() {
   )
 
   const pages = {
-    dashboard: <Dashboard user={user} />,
+    dashboard: <Dashboard user={user} onPage={setPage} />,
     add: <AddDocument user={user} onSaved={showToast} />,
     registry: <Registry user={user} />,
     bank: <Bank user={user} />,

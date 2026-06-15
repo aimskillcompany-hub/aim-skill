@@ -14,7 +14,8 @@
       "Read(//Users/user/Downloads/**)",
       "Bash(node:*)",
       "Bash(git commit -m ':*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(sed -i '' 's/deploy: 2026-06-16-v5/deploy: 2026-06-16-v6/' /Users/user/Downloads/aim-skill-main/src/main.jsx)"
     ]
   }
 }

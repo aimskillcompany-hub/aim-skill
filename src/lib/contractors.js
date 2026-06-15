@@ -107,8 +107,6 @@ export async function syncContractorStats(supabase) {
     }
   })
 
-  console.log('[Sync] Contractors:', contractors.length, '| ЄДРПОУ in transactions:', Object.keys(edrpouMap).length)
-
   let synced = 0
   let ibanFilled = 0
   let edrpouFilled = 0
@@ -159,14 +157,12 @@ export async function syncContractorStats(supabase) {
     if (!hasEdrpou && resolvedEdrpou) {
       updates.edrpou = resolvedEdrpou
       edrpouFilled++
-      console.log('[Sync] ЄДРПОУ filled:', c.name, '→', resolvedEdrpou)
     }
 
     // Fill IBAN via ЄДРПОУ
     if (!hasIban && mapData?.iban) {
       updates.iban = mapData.iban
       ibanFilled++
-      console.log('[Sync] IBAN filled:', c.name, '→', mapData.iban)
     }
 
     await supabase.from('contractors').update(updates).eq('id', c.id)
@@ -200,9 +196,6 @@ export async function syncContractorStats(supabase) {
     await supabase.from('bank_transactions').update(namesToUpdate[id]).eq('id', id)
     txFilled++
   }
-  if (txFilled > 0) console.log('[Sync] Backfill:', txFilled, 'transactions got edrpou from contractors')
-
-  console.log('[Sync] Done:', synced, 'synced |', edrpouFilled, 'ЄДРПОУ |', ibanFilled, 'IBAN |', txFilled, 'tx backfilled')
   return synced
 }
 
@@ -263,7 +256,6 @@ export async function importMissingContractors(supabase, userId) {
       created_by: userId,
     })
     imported++
-    console.log('[Import] New contractor:', name, code || '(no code)')
   }
   return imported
 }
@@ -297,8 +289,6 @@ export async function mergeDuplicates(supabase) {
     const duplicates = scored.slice(1)
     const dupIds = duplicates.map(d => d.id)
 
-    console.log('[Merge]', code, '| keep:', keep.name, '| remove:', duplicates.map(d => d.name).join(', '))
-
     // Merge data from duplicates into keep (fill empty fields)
     const updates = {}
     for (const dup of duplicates) {
@@ -329,6 +319,5 @@ export async function mergeDuplicates(supabase) {
     merged += dupIds.length
   }
 
-  console.log('[Merge] Done: removed', merged, 'duplicates')
   return merged
 }

@@ -7,55 +7,6 @@ import { upsertContractor } from '../lib/contractors'
 
 const DIRECTIONS = ['Витрати', 'Доходи', 'ПФД', 'Внутрішні перекази', 'Відсотки банку', 'Інше']
 
-// ── Автоматичний матчинг з банківською транзакцією ───────────────────────────
-async function findBankMatch(txId, amount, date, edrpou) {
-  const d = new Date(date)
-  const dMinus = new Date(d); dMinus.setDate(d.getDate() - 10)
-  const dPlus  = new Date(d); dPlus.setDate(d.getDate() + 10)
-  const toISO  = dt => dt.toISOString().split('T')[0]
-
-  const absAmt = Math.abs(amount)
-
-  // Шукаємо непривʼязані банківські транзакції в діапазоні дати
-  const { data: candidates } = await supabase
-    .from('bank_transactions')
-    .select('id, amount, date, edrpou, counterparty')
-    .eq('is_matched', false)
-    .eq('is_ignored', false)
-    .gte('date', toISO(dMinus))
-    .lte('date', toISO(dPlus))
-
-  if (!candidates?.length) return null
-
-  // Пріоритет: ЄДРПОУ + сума → тільки сума
-  let best = null
-
-  for (const b of candidates) {
-    const bankAbs = Math.abs(b.amount)
-    const amtMatch = Math.abs(bankAbs - absAmt) <= 10
-    if (!amtMatch) continue
-
-    // Знак має збігатись (обидва + або обидва -)
-    const sameSign = (amount > 0) === (b.amount > 0)
-    if (!sameSign) continue
-
-    if (edrpou && b.edrpou && edrpou.trim() === b.edrpou.trim()) {
-      // Найкращий збіг — ЄДРПОУ + сума
-      best = b
-      break
-    }
-    if (!best) best = b // запасний варіант — тільки сума + дата
-  }
-
-  if (!best) return null
-
-  // Привʼязуємо
-  await supabase.from('bank_transactions')
-    .update({ matched_transaction_id: txId, is_matched: true })
-    .eq('id', best.id)
-
-  return best
-}
 const DOC_ROLES = ['incoming', 'outgoing']
 const DOC_ROLE_LABELS = { incoming: 'Вхідний (від постачальника)', outgoing: 'Вихідний (від нас)' }
 

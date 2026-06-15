@@ -10,11 +10,9 @@ const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).fo
 
 // ── Пряме читання XLSX/XLS (SheetJS) ─────────────────────────────────────────
 async function readXlsx(file) {
-  console.log('[Bank] readXlsx start:', file.name, file.size, 'bytes')
   try {
     const buf = await file.arrayBuffer()
     const data = new Uint8Array(buf)
-    console.log('[Bank] ArrayBuffer read, size:', data.length)
     const wb = XLSX.read(data, {
       type: 'array',
       codepage: 1251,
@@ -22,10 +20,8 @@ async function readXlsx(file) {
       cellDates: false,
       cellNF: false,
     })
-    console.log('[Bank] Workbook parsed, sheets:', wb.SheetNames)
     const ws = wb.Sheets[wb.SheetNames[0]]
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' })
-    console.log('[Bank] Rows extracted:', rows.length)
     return rows
   } catch (e) {
     console.error('[Bank] readXlsx error:', e.message)
@@ -112,7 +108,6 @@ function parsePUMB(rows) {
       cols.debit       = hasDebit
       cols.credit      = hasCredit
       cols.docNum      = h.findIndex(c => c.includes('документ') || c.includes('доручен') || c.includes('номер'))
-      console.log('[Bank] PUMB headers at row', i, ':', JSON.stringify(cols))
       break
     }
   }
@@ -219,31 +214,21 @@ async function parseWithClaude(content, fileName, isPDF = false) {
 // ── Головна функція парсингу ──────────────────────────────────────────────────
 async function parseStatement(file) {
   const ext = file.name.split('.').pop().toLowerCase()
-  console.log('[Bank] parseStatement:', file.name, 'ext:', ext, 'size:', file.size)
 
   // XLSX / XLS — читаємо через SheetJS
   if (ext === 'xlsx' || ext === 'xls') {
     const rows = await readXlsx(file)
-    console.log('[Bank] Rows:', rows.length)
-    for (let i = 0; i < Math.min(10, rows.length); i++) {
-      const r = (rows[i]||[]).slice(0, 10).map(c => String(c||'').substring(0, 40))
-      console.log('[Bank] Row', i, ':', JSON.stringify(r))
-    }
     const format = detectFormat(rows)
-    console.log('[Bank] Format detected:', format)
 
     if (format === 'monobank') {
       const txs = parseMonobank(rows)
-      console.log('[Bank] Monobank parsed:', txs.length, 'transactions')
       if (txs.length > 0) return txs
     }
     if (format === 'pumb') {
       const txs = parsePUMB(rows)
-      console.log('[Bank] PUMB parsed:', txs.length, 'transactions')
       if (txs.length > 0) return txs
     }
 
-    console.log('[Bank] Unknown format, falling back to Claude')
     // Невідомий XLSX — конвертуємо в CSV і кидаємо Claude
     const buf = await file.arrayBuffer()
     const wb2 = XLSX.read(buf, { type: 'array', codepage: 1251 })
@@ -456,18 +441,32 @@ export default function Bank({ user }) {
       })
     }
 
-    const toInsert = selected.map(t => ({
-      bank_name: bankName || null,
-      date: t.date,
-      amount: t.amount,
-      counterparty: t.counterparty,
-      description: t.description,
-      reference: t.reference,
-      account: t.account,
-      matched_transaction_id: t._match?.id || null,
-      is_matched: !!t._match,
-      imported_by: user.id,
-    }))
+    // Load all contractors to auto-fill direction/article from defaults
+    const { data: allContractors } = await supabase.from('contractors').select('name, default_article, default_direction, edrpou, id')
+    const contractorMap = {}
+    ;(allContractors || []).forEach(c => {
+      if (c.name) contractorMap[c.name.trim().toLowerCase()] = c
+    })
+
+    const toInsert = selected.map(t => {
+      const ct = contractorMap[t.counterparty?.trim().toLowerCase()] || {}
+      return {
+        bank_name: bankName || null,
+        date: t.date,
+        amount: t.amount,
+        counterparty: t.counterparty,
+        description: t.description,
+        reference: t.reference,
+        account: t.account,
+        matched_transaction_id: t._match?.id || null,
+        is_matched: !!t._match,
+        imported_by: user.id,
+        direction: ct.default_direction || (t.amount > 0 ? 'Доходи' : 'Витрати'),
+        article: ct.default_article || null,
+        edrpou: t.edrpou || ct.edrpou || null,
+        contractor_id: ct.id || null,
+      }
+    })
     await supabase.from('bank_transactions').insert(toInsert)
     setImporting(false)
     setParsed(null)
