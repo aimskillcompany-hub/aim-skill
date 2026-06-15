@@ -772,7 +772,7 @@ export default function Registry({ user }) {
               <h2 style={{ fontSize:15 }}>{selected.contractor}</h2>
               <button className="modal-close" onClick={() => setSelected(null)}>×</button>
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16, fontSize:13 }}>
+            <div className="modal-detail-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16, fontSize:13 }}>
               {[
                 ['Дата', selected.date],
                 ['Сума', (selected.amount>0?'+':'')+fmt(selected.amount)+' грн'],
@@ -879,9 +879,9 @@ export default function Registry({ user }) {
         <div className="modal-bg" onClick={e => e.target===e.currentTarget && setPreviewDoc(null)} style={{ zIndex:1100 }}>
           <div style={{
             background:'var(--surface)', borderRadius:12, padding:0,
-            width:'90vw', maxWidth:900, maxHeight:'90vh',
+            width:'90vw', maxWidth:900, maxHeight:'88vh',
             display:'flex', flexDirection:'column', overflow:'hidden',
-          }}>
+          }} className="modal">
             {/* Header */}
             <div style={{ display:'flex', alignItems:'center', gap:12, padding:'14px 18px', borderBottom:'1px solid var(--border)' }}>
               <i className="ti ti-file-text" style={{ fontSize:20, color:'var(--blue)' }} />

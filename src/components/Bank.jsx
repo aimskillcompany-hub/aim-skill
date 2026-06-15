@@ -1040,7 +1040,7 @@ export default function Bank({ user }) {
       {/* ── MODAL: Link to existing transaction ── */}
       {linkFor && (
         <div className="modal-bg" onClick={e => e.target===e.currentTarget && setLinkFor(null)}>
-          <div className="modal" style={{ maxWidth:'95vw', width:'95vw', maxHeight:'92vh' }}>
+          <div className="modal" style={{ maxWidth:900, maxHeight:'88vh' }}>
             <div className="modal-header">
               <h2>Привʼязати до документу</h2>
               <button className="modal-close" onClick={() => setLinkFor(null)}>×</button>
@@ -1063,7 +1063,7 @@ export default function Bank({ user }) {
               <i className="ti ti-search" style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--text3)', fontSize:16 }} />
               <input className="form-input" style={{ width:'100%', paddingLeft:34 }} placeholder="Пошук по контрагенту..." value={linkSearch} onChange={e => searchLink(e.target.value)} />
             </div>
-            <div className="tbl-wrap" style={{ maxHeight:'calc(92vh - 220px)' }}>
+            <div className="tbl-wrap" style={{ maxHeight:'calc(80vh - 200px)' }}>
               <table>
                 <thead><tr><th>Контрагент</th><th style={{ textAlign:'right' }}>Сума</th><th>Напрям</th><th>Документ / Дата</th><th>Стаття</th><th style={{ textAlign:'center' }}>📄</th><th></th></tr></thead>
                 <tbody>
@@ -1196,9 +1196,9 @@ export default function Bank({ user }) {
           {reconcileItems.length > 0 && (
             <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
               {reconcileItems.map((item, i) => (
-                <div key={item.bankTx.id} style={{
+                <div key={item.bankTx.id} className="reconcile-card" style={{
                   background:'var(--surface)',
-                  border: `1px solid #E2E8F0`,
+                  border: '1px solid var(--border)',
                   borderRadius:12,
                   padding:'14px 16px',
                   display:'grid',

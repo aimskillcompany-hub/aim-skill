@@ -28,7 +28,7 @@ function getNextMonths(n = 8) {
 
 const EMPTY_FORM = {
   direction: 'Витрати', article: '', project_id: '',
-  amount: '', description: '',
+  amount: '', description: '', planned_date: '',
   is_template: false, year_month: '', template_from: '', template_to: '',
 }
 
@@ -47,6 +47,9 @@ export default function Planning({ user }) {
   const [pvfLoading, setPvfLoading] = useState(false)
   const [plData, setPlData]     = useState(null)
   const [plLoading, setPlLoading] = useState(false)
+  const [plGran, setPlGran]     = useState('month') // day | week | month
+  const [plFrom, setPlFrom]     = useState('')
+  const [plTo, setPlTo]         = useState('')
 
   const nextMonths = getNextMonths(8)
 
@@ -66,7 +69,7 @@ export default function Planning({ user }) {
   useEffect(() => {
     if (tab === 'pvf') loadPvf()
     if (tab === 'pl') loadPl()
-  }, [tab])
+  }, [tab, plGran, plFrom, plTo])
 
   const loadPvf = async () => {
     setPvfLoading(true)
@@ -108,29 +111,59 @@ export default function Planning({ user }) {
   const SECTION_LABELS = { income:'Доходи', expense:'Витрати', transfer:'Перекази / ПФД', other:'Інше' }
   const SECTION_ORDER = ['income','expense','transfer','other']
 
+  // Get period key from a date string based on granularity
+  const getPeriodKey = (dateStr, gran) => {
+    if (!dateStr) return null
+    if (gran === 'day') return dateStr // YYYY-MM-DD
+    if (gran === 'week') {
+      const d = new Date(dateStr)
+      const day = d.getDay() || 7
+      d.setDate(d.getDate() - day + 1) // Monday
+      return d.toISOString().split('T')[0]
+    }
+    return dateStr.substring(0, 7) // YYYY-MM
+  }
+
+  const formatPeriodLabel = (key, gran) => {
+    if (gran === 'day') return key
+    if (gran === 'week') return `тижд. ${key}`
+    return key
+  }
+
   const loadPl = async () => {
     setPlLoading(true)
     const { data: plns } = await supabase.from('plans').select('*')
     const expanded = expandPlansHelper(plns || [])
 
-    // Collect all months
-    const monthsSet = new Set(expanded.map(p => p.year_month))
-    const months = [...monthsSet].sort()
+    // Filter by date range if set
+    const filtered = expanded.filter(p => {
+      const d = p.planned_date || p.year_month + '-01'
+      if (plFrom && d < plFrom) return false
+      if (plTo && d > plTo) return false
+      return true
+    })
 
-    // Group by article → month → sum
+    // Group into periods based on granularity
+    const periodsSet = new Set()
     const artData = {}
     const artTypes = {}
-    expanded.forEach(p => {
+    filtered.forEach(p => {
+      const d = p.planned_date || p.year_month + '-15'
+      const period = getPeriodKey(d, plGran)
+      if (!period) return
+      periodsSet.add(period)
       const art = p.article || '(без статті)'
       const type = DIR_TO_TYPE[p.direction] || 'other'
       if (!artTypes[art]) artTypes[art] = type
       if (!artData[art]) artData[art] = {}
-      if (!artData[art][p.year_month]) artData[art][p.year_month] = 0
+      if (!artData[art][period]) artData[art][period] = 0
       const sign = p.direction === 'Доходи' ? 1 : -1
-      artData[art][p.year_month] += sign * (p.amount || 0)
+      artData[art][period] += sign * (p.amount || 0)
     })
 
-    // Group articles by section type
+    const months = [...periodsSet].sort()
+
+    // Group articles by section
     const bySection = {}
     SECTION_ORDER.forEach(t => { bySection[t] = [] })
     Object.keys(artData).forEach(art => {
@@ -206,6 +239,7 @@ export default function Planning({ user }) {
       project_id: form.project_id || null,
       amount: parseFloat(form.amount),
       description: form.description || null,
+      planned_date: form.planned_date || null,
       is_template: form.is_template,
       year_month: form.is_template ? form.template_from : form.year_month,
       template_from: form.is_template ? form.template_from : null,
@@ -238,6 +272,7 @@ export default function Planning({ user }) {
     setForm({
       direction: p.direction, article: p.article||'', project_id: p.project_id||'',
       amount: Math.abs(p.amount), description: p.description||'',
+      planned_date: p.planned_date||'',
       is_template: p.is_template||false,
       year_month: p.year_month||'',
       template_from: p.template_from||'', template_to: p.template_to||'',
@@ -316,6 +351,7 @@ export default function Planning({ user }) {
                   <thead>
                     <tr>
                       <th>Місяць</th>
+                      <th>Дата платежу</th>
                       <th>Напрям / Стаття</th>
                       <th>Проєкт</th>
                       <th style={{ textAlign:'right' }}>Сума, грн</th>
@@ -336,6 +372,7 @@ export default function Planning({ user }) {
                             <span style={{ fontSize:13 }}>{p.year_month}</span>
                           )}
                         </td>
+                        <td style={{ fontSize:12, color:'var(--text2)', whiteSpace:'nowrap' }}>{p.planned_date || '—'}</td>
                         <td>
                           <div style={{ fontSize:11, color: p.direction==='Доходи'?'var(--green)':'var(--red)', fontWeight:600, marginBottom:1 }}>{p.direction}</div>
                           <div style={{ fontSize:13 }}>{p.article || '—'}</div>
@@ -458,6 +495,30 @@ export default function Planning({ user }) {
       {/* ── TAB: P&L План ─────────────────────────────────────────────── */}
       {tab === 'pl' && (
         <>
+          {/* Period controls */}
+          <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
+            <div style={{ display:'flex', border:'1px solid var(--border)', borderRadius:8, overflow:'hidden' }}>
+              {[{id:'month',label:'Місяць'},{id:'week',label:'Тиждень'},{id:'day',label:'День'}].map(g => (
+                <button key={g.id} onClick={() => setPlGran(g.id)} style={{
+                  padding:'8px 14px', border:'none', cursor:'pointer', fontSize:13, fontWeight:500,
+                  fontFamily:'-apple-system,Inter,sans-serif',
+                  background: plGran===g.id ? '#000' : 'var(--surface)',
+                  color: plGran===g.id ? '#fff' : 'var(--text2)',
+                }}>{g.label}</button>
+              ))}
+            </div>
+            <input type="date" className="form-input" value={plFrom} onChange={e => setPlFrom(e.target.value)}
+              style={{ width:150, height:40, fontSize:13 }} placeholder="Від" />
+            <input type="date" className="form-input" value={plTo} onChange={e => setPlTo(e.target.value)}
+              style={{ width:150, height:40, fontSize:13 }} placeholder="До" />
+            {(plFrom || plTo) && (
+              <button className="btn btn-sm btn-secondary" onClick={() => { setPlFrom(''); setPlTo('') }}
+                style={{ height:40, display:'flex', alignItems:'center', gap:4 }}>
+                <i className="ti ti-x" style={{ fontSize:13 }} />Скинути
+              </button>
+            )}
+          </div>
+
           {plLoading ? (
             <div style={{ padding:40, textAlign:'center', color:'var(--text2)' }}>Завантаження...</div>
           ) : !plData || plData.months.length === 0 ? (
@@ -496,7 +557,7 @@ export default function Planning({ user }) {
                 {/* P&L Table */}
                 <div className="card" style={{ padding:'18px 0', overflowX:'auto' }}>
                   <div style={{ padding:'0 18px 12px', fontSize:14, fontWeight:600, color:'var(--text)' }}>
-                    P&L на основі плану по місяцях
+                    P&L на основі плану — {plGran === 'day' ? 'по днях' : plGran === 'week' ? 'по тижнях' : 'по місяцях'}
                   </div>
                   <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, minWidth:500 }}>
                     <thead>
@@ -680,6 +741,11 @@ export default function Planning({ user }) {
                   <option value="">— без проєкту —</option>
                   {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
+              </div>
+
+              <div className="form-group">
+                <label>Планова дата платежу</label>
+                <input type="date" className="form-input" value={form.planned_date} onChange={e => setForm(f=>({...f,planned_date:e.target.value}))} />
               </div>
 
               <div className="form-group full">

@@ -106,6 +106,22 @@ export default function Reports() {
   const [projects, setProjects]     = useState([])
   const [planData, setPlanData]     = useState({}) // article -> month -> planSum
   const [planMonths, setPlanMonths] = useState([]) // future months with plans
+  const [rptGran, setRptGran]     = useState('month') // day | week | month
+  const [rptFrom, setRptFrom]     = useState('')
+  const [rptTo, setRptTo]         = useState('')
+  const [rawTxs, setRawTxs]       = useState([])
+
+  const rptPeriodKey = (dateStr) => {
+    if (!dateStr) return null
+    if (rptGran === 'day') return dateStr
+    if (rptGran === 'week') {
+      const d = new Date(dateStr)
+      const day = d.getDay() || 7
+      d.setDate(d.getDate() - day + 1)
+      return d.toISOString().split('T')[0]
+    }
+    return dateStr.substring(0, 7)
+  }
 
   useEffect(() => {
     supabase.from('projects').select('id,name').eq('status','active').order('name').then(({ data }) => setProjects(data || []))
@@ -134,6 +150,7 @@ export default function Reports() {
     ]).then(([arts, { data: txs }]) => {
       const all = txs || []
       setArticles(arts)
+      setRawTxs(all)
 
       // ── Extract sorted months ───────────────────────────────────────────
       const mSet = new Set(all.map(t => t.date?.substring(0,7)).filter(Boolean))
@@ -184,6 +201,61 @@ export default function Reports() {
       setLoading(false)
     })
   }, [])
+
+  // Re-group data when granularity or date range changes
+  useEffect(() => {
+    if (!rawTxs.length) return
+    // Filter by date range
+    const filtered = rawTxs.filter(tx => {
+      if (rptFrom && tx.date < rptFrom) return false
+      if (rptTo && tx.date > rptTo) return false
+      return true
+    })
+    // Re-group by period
+    const pSet = new Set(filtered.map(t => rptPeriodKey(t.date)).filter(Boolean))
+    const sortedPeriods = [...pSet].sort()
+    setMonths(sortedPeriods)
+
+    const grouped = {}
+    filtered.forEach(tx => {
+      const m = rptPeriodKey(tx.date)
+      if (!m) return
+      const art = tx.article || '(без статті)'
+      if (!grouped[art]) grouped[art] = {}
+      if (!grouped[art][m]) grouped[art][m] = { sum: 0, txs: [] }
+      grouped[art][m].sum += tx.amount || 0
+      grouped[art][m].txs.push(tx)
+    })
+    setArtData(grouped)
+
+    // Monthly aggregates for charts
+    const byPeriod = {}
+    filtered.forEach(tx => {
+      const m = rptPeriodKey(tx.date)
+      if (!m) return
+      if (!byPeriod[m]) byPeriod[m] = { month:m, revenue:0, expenses:0, pfd:0, other:0 }
+      const a = tx.amount || 0
+      if (tx.direction==='Доходи') byPeriod[m].revenue += a
+      else if (tx.direction==='Витрати') byPeriod[m].expenses += Math.abs(a)
+      else if (tx.direction==='ПФД') byPeriod[m].pfd += a
+      else byPeriod[m].other += a
+    })
+    let cum = 0
+    setMonthly(sortedPeriods.map(m => {
+      const d = byPeriod[m] || { revenue:0, expenses:0, pfd:0, other:0 }
+      const net = d.revenue - d.expenses
+      cum += net + d.pfd + d.other
+      return { ...d, net, cumCF:cum, label: m.length > 7 ? m.substring(5) : m }
+    }))
+
+    // Expense pie
+    const expByArt = {}
+    filtered.filter(t => t.direction==='Витрати').forEach(tx => {
+      const art = tx.article || 'Інше'
+      expByArt[art] = (expByArt[art]||0) + Math.abs(tx.amount||0)
+    })
+    setExpenseByArt(Object.entries(expByArt).sort((a,b)=>b[1]-a[1]).map(([name,value])=>({ name:name.substring(0,28), fullName:name, value })))
+  }, [rptGran, rptFrom, rptTo, rawTxs])
 
   const openEdit = (tx) => {
     setEditForm({
@@ -350,7 +422,36 @@ export default function Reports() {
 
   return (
     <div>
-      <div className="page-header"><h1>Звіти P&L</h1><p>Фінансовий результат по місяцях — натисніть на суму для деталізації</p></div>
+      <div className="page-header">
+        <h1>Звіти P&L</h1>
+        <p>Фінансовий результат — натисніть на суму для деталізації</p>
+      </div>
+
+      {/* Period controls */}
+      <div style={{ display:'flex', gap:8, marginBottom:20, flexWrap:'wrap', alignItems:'center' }}>
+        <div style={{ display:'flex', border:'1px solid var(--border)', borderRadius:8, overflow:'hidden' }}>
+          {[{id:'month',label:'Місяць'},{id:'week',label:'Тиждень'},{id:'day',label:'День'}].map(g => (
+            <button key={g.id} onClick={() => setRptGran(g.id)} style={{
+              padding:'8px 14px', border:'none', cursor:'pointer', fontSize:13, fontWeight:500,
+              fontFamily:'-apple-system,Inter,sans-serif',
+              background: rptGran===g.id ? '#000' : 'var(--surface)',
+              color: rptGran===g.id ? '#fff' : 'var(--text2)',
+            }}>{g.label}</button>
+          ))}
+        </div>
+        <span style={{ fontSize:13, color:'var(--text2)' }}>Період:</span>
+        <input type="date" className="form-input" value={rptFrom} onChange={e => setRptFrom(e.target.value)}
+          style={{ width:150, height:40, fontSize:13 }} />
+        <span style={{ color:'var(--text3)' }}>—</span>
+        <input type="date" className="form-input" value={rptTo} onChange={e => setRptTo(e.target.value)}
+          style={{ width:150, height:40, fontSize:13 }} />
+        {(rptFrom || rptTo) && (
+          <button className="btn btn-sm btn-secondary" onClick={() => { setRptFrom(''); setRptTo('') }}
+            style={{ height:40, display:'flex', alignItems:'center', gap:4 }}>
+            <i className="ti ti-x" style={{ fontSize:13 }} />Скинути
+          </button>
+        )}
+      </div>
 
       {/* KPIs */}
       <div className="kpi-grid" style={{ marginBottom:20 }}>
