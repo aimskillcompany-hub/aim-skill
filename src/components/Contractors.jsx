@@ -157,8 +157,8 @@ export default function Contractors({ user }) {
   const handleSync = async () => {
     setSyncing(true)
     setSyncResult(null)
-    const imported = await importMissingContractors(supabase, user?.id)
     const merged = await mergeDuplicates(supabase)
+    const imported = await importMissingContractors(supabase, user?.id)
     const synced = await syncContractorStats(supabase)
     setSyncResult({ imported, synced, merged })
     await loadAll()

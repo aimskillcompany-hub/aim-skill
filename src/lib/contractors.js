@@ -206,7 +206,8 @@ export async function syncContractorStats(supabase) {
   return synced
 }
 
-// Import contractors from transactions that don't exist yet — by ЄДРПОУ
+// Import contractors from transactions that don't exist yet
+// Check by ЄДРПОУ first, then by keyword matching to avoid duplicates
 export async function importMissingContractors(supabase, userId) {
   const [{ data: txs }, { data: existing }] = await Promise.all([
     supabase.from('transactions').select('contractor, edrpou, direction').not('contractor', 'is', null),
@@ -214,17 +215,36 @@ export async function importMissingContractors(supabase, userId) {
   ])
 
   const existingEdrpous = new Set((existing || []).filter(c => c.edrpou?.trim()).map(c => c.edrpou.trim()))
-  const existingNames = new Set((existing || []).map(c => normalizeName(c.name).toLowerCase()))
+
+  // Build keyword sets for existing contractors
+  const existingKeywords = (existing || []).map(c => {
+    const words = c.name?.trim().toLowerCase()
+      .replace(/^(тов|фоп|ат|пп)\s+/i, '').replace(/[«»""'']/g, '')
+      .split(/\s+/).filter(w => w.length > 3)
+    return { words, name: c.name }
+  })
+
+  const matchesExisting = (txName) => {
+    const tName = txName.toLowerCase()
+    return existingKeywords.some(c =>
+      c.words.length >= 2 && c.words.every(w => tName.includes(w))
+    )
+  }
+
   const seen = new Set()
   let imported = 0
 
   for (const tx of (txs || [])) {
-    const name = normalizeName(tx.contractor)
-    if (!name) continue
-
+    const rawName = tx.contractor?.trim()
+    if (!rawName) continue
+    const name = normalizeName(rawName)
     const code = tx.edrpou?.trim()
+
+    // Skip if ЄДРПОУ already exists
     if (code && existingEdrpous.has(code)) continue
-    if (existingNames.has(name.toLowerCase())) continue
+
+    // Skip if keywords match an existing contractor
+    if (matchesExisting(rawName)) continue
 
     const key = code || name.toLowerCase()
     if (seen.has(key)) continue
@@ -238,6 +258,7 @@ export async function importMissingContractors(supabase, userId) {
       created_by: userId,
     })
     imported++
+    console.log('[Import] New contractor:', name, code || '(no code)')
   }
   return imported
 }
