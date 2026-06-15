@@ -164,7 +164,8 @@ export default function Reports() {
       const grouped = {}
       all.forEach(tx => {
         const m   = tx.date?.substring(0,7)
-        const art = tx.article || '(без статті)'
+        // Розділяємо "без статті" на доходи і витрати
+        const art = tx.article || (tx.direction === 'Доходи' ? '(без статті: доходи)' : '(без статті: витрати)')
         if (!grouped[art])    grouped[art] = {}
         if (!grouped[art][m]) grouped[art][m] = { sum: 0, txs: [] }
         grouped[art][m].sum += tx.amount || 0
@@ -223,7 +224,7 @@ export default function Reports() {
     filtered.forEach(tx => {
       const m = rptPeriodKey(tx.date)
       if (!m) return
-      const art = tx.article || '(без статті)'
+      const art = tx.article || (tx.direction === 'Доходи' ? '(без статті: доходи)' : '(без статті: витрати)')
       if (!grouped[art]) grouped[art] = {}
       if (!grouped[art][m]) grouped[art][m] = { sum: 0, txs: [] }
       grouped[art][m].sum += tx.amount || 0
@@ -295,7 +296,7 @@ export default function Reports() {
         const grouped = {}
         all.forEach(tx => {
           const m   = tx.date?.substring(0,7)
-          const art = tx.article || '(без статті)'
+          const art = tx.article || (tx.direction === 'Доходи' ? '(без статті: доходи)' : '(без статті: витрати)')
           if (!grouped[art])    grouped[art] = {}
           if (!grouped[art][m]) grouped[art][m] = { sum: 0, txs: [] }
           grouped[art][m].sum += tx.amount || 0
