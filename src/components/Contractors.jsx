@@ -76,19 +76,27 @@ export default function Contractors({ user }) {
     setLoading(true)
     const { data } = await supabase.from('contractors').select('*').order('name')
     const contractors = data || []
-    const { data: txStats } = await supabase.from('transactions').select('contractor, amount, direction, date')
-    const stats = {}
+    const { data: txStats } = await supabase.from('transactions').select('contractor, edrpou, amount, direction, date')
+
+    // Build stats by ЄДРПОУ (primary) and by name (fallback)
+    const statsByCode = {}
+    const statsByName = {}
     ;(txStats || []).forEach(tx => {
+      const code = tx.edrpou?.trim()
       const name = tx.contractor?.trim()
-      if (!name) return
-      if (!stats[name]) stats[name] = { income:0, expense:0, count:0, lastDate:null }
-      stats[name].count++
-      if (tx.direction === 'Доходи') stats[name].income += Math.abs(tx.amount || 0)
-      else stats[name].expense += Math.abs(tx.amount || 0)
-      if (!stats[name].lastDate || tx.date > stats[name].lastDate) stats[name].lastDate = tx.date
+      const target = code ? (statsByCode[code] || (statsByCode[code] = { income:0, expense:0, count:0, lastDate:null }))
+                         : name ? (statsByName[name.toLowerCase()] || (statsByName[name.toLowerCase()] = { income:0, expense:0, count:0, lastDate:null }))
+                         : null
+      if (!target) return
+      target.count++
+      if (tx.direction === 'Доходи') target.income += Math.abs(tx.amount || 0)
+      else target.expense += Math.abs(tx.amount || 0)
+      if (!target.lastDate || tx.date > target.lastDate) target.lastDate = tx.date
     })
+
     setList(contractors.map(c => {
-      const s = stats[c.name] || stats[c.short_name] || {}
+      const code = c.edrpou?.trim()
+      const s = (code && statsByCode[code]) || statsByName[c.name?.trim().toLowerCase()] || {}
       return { ...c, total_income:s.income||c.total_income||0, total_expense:s.expense||c.total_expense||0, operations_count:s.count||c.operations_count||0, last_operation_date:s.lastDate||c.last_operation_date }
     }))
     setLoading(false)
@@ -159,10 +167,19 @@ export default function Contractors({ user }) {
     setDetail(c); setDetailTab('info'); setView('detail')
     setReconcileFrom(''); setReconcileTo('')
 
+    // Fetch transactions by ЄДРПОУ (primary) or by name (fallback)
+    let txQuery = supabase.from('transactions')
+      .select('id,date,amount,direction,article,projects(name)')
+      .order('date', { ascending: false }).limit(500)
+
+    if (c.edrpou?.trim()) {
+      txQuery = txQuery.eq('edrpou', c.edrpou.trim())
+    } else {
+      txQuery = txQuery.ilike('contractor', c.name)
+    }
+
     const [{ data:txs }, { data:plans }] = await Promise.all([
-      supabase.from('transactions')
-        .select('id,date,amount,direction,article,projects(name)')
-        .ilike('contractor', c.name).order('date',{ascending:false}).limit(500),
+      txQuery,
       supabase.from('plans')
         .select('id,year_month,planned_date,amount,direction,article,description')
         .ilike('article', `%${c.default_article || '___NOMATCH___'}%`)
