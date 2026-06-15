@@ -43,28 +43,45 @@ export async function upsertContractor(supabase, { name, edrpou, iban, bank_name
   return data?.id || null
 }
 
-// Sync all contractor stats from transactions
+// Sync all contractor stats from transactions + IBAN from bank_transactions
 export async function syncContractorStats(supabase) {
-  const [{ data: contractors }, { data: txs }] = await Promise.all([
-    supabase.from('contractors').select('id, name'),
-    supabase.from('transactions').select('contractor, amount, direction, date'),
+  const [{ data: contractors }, { data: txs }, { data: bankTxs }] = await Promise.all([
+    supabase.from('contractors').select('id, name, iban, edrpou'),
+    supabase.from('transactions').select('contractor, edrpou, amount, direction, date'),
+    supabase.from('bank_transactions').select('counterparty, edrpou, account'),
   ])
   if (!contractors?.length) return 0
 
   let synced = 0
   for (const c of contractors) {
-    const myTxs = (txs || []).filter(t => t.contractor?.trim().toLowerCase() === c.name?.trim().toLowerCase())
+    const nameLower = c.name?.trim().toLowerCase()
+    const myTxs = (txs || []).filter(t => t.contractor?.trim().toLowerCase() === nameLower)
     const income = myTxs.filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
     const expense = myTxs.filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
     const count = myTxs.length
     const lastDate = myTxs.reduce((max, t) => t.date > (max || '') ? t.date : max, null)
 
-    await supabase.from('contractors').update({
+    // Find IBAN and ЄДРПОУ from bank_transactions if missing
+    const bankMatch = (bankTxs || []).find(b =>
+      b.counterparty?.trim().toLowerCase() === nameLower ||
+      (c.edrpou && b.edrpou && b.edrpou.trim() === c.edrpou.trim())
+    )
+
+    const updates = {
       total_income: income,
       total_expense: expense,
       operations_count: count,
       last_operation_date: lastDate,
-    }).eq('id', c.id)
+    }
+    if (!c.iban && bankMatch?.account) updates.iban = bankMatch.account
+    if (!c.edrpou && bankMatch?.edrpou) updates.edrpou = bankMatch.edrpou
+    // Also check transactions for edrpou
+    if (!c.edrpou && !bankMatch?.edrpou) {
+      const txEdrpou = myTxs.find(t => t.edrpou)?.edrpou
+      if (txEdrpou) updates.edrpou = txEdrpou
+    }
+
+    await supabase.from('contractors').update(updates).eq('id', c.id)
     synced++
   }
   return synced
