@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import * as XLSX from 'xlsx'
 import { supabase } from '../lib/supabase'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import {
@@ -110,6 +111,8 @@ export default function Reports() {
   const [rptFrom, setRptFrom]     = useState('')
   const [rptTo, setRptTo]         = useState('')
   const [rawTxs, setRawTxs]       = useState([])
+  const [compareMode, setCompareMode] = useState(false)
+  const [cfMonthly, setCfMonthly]   = useState([])
 
   const rptPeriodKey = (dateStr) => {
     if (!dateStr) return null
@@ -150,6 +153,25 @@ export default function Reports() {
     ]).then(([arts, { data: txs }]) => {
       // Normalize field names for compatibility
       ;(txs || []).forEach(t => { t.contractor = t.counterparty; t.projects = null })
+
+      // CF from all transactions (not just Доходи/Витрати)
+      const cfByMonth = {}
+      ;(txs || []).forEach(tx => {
+        const m = tx.date?.substring(0,7)
+        if (!m) return
+        if (!cfByMonth[m]) cfByMonth[m] = { month:m, inflow:0, outflow:0 }
+        if (tx.amount > 0) cfByMonth[m].inflow += tx.amount
+        else cfByMonth[m].outflow += Math.abs(tx.amount)
+      })
+      const cfMonths = Object.keys(cfByMonth).sort()
+      let cfCum = 0
+      setCfMonthly(cfMonths.map(m => {
+        const d = cfByMonth[m]
+        const net = d.inflow - d.outflow
+        cfCum += net
+        return { label: m, inflow: d.inflow, outflow: d.outflow, net, cumBalance: cfCum }
+      }))
+
       // P&L тільки Доходи і Витрати — інші типи (ПФД, Внутрішні перекази, Інше) не враховуються
       const all = (txs || []).filter(t => t.direction === 'Доходи' || t.direction === 'Витрати')
       setArticles(arts)
@@ -338,6 +360,19 @@ export default function Reports() {
   const lastCF      = monthly[monthly.length-1]?.cumCF || 0
   const margin      = totRevenue > 0 ? ((totNet/totRevenue)*100).toFixed(1) : null
 
+  // Calculate previous period for comparison
+  const prevRevenue = compareMode && rptFrom && rptTo ? (() => {
+    const from = new Date(rptFrom)
+    const to = new Date(rptTo)
+    const diff = to - from
+    const prevFrom = new Date(from - diff).toISOString().split('T')[0]
+    const prevTo = new Date(to - diff - 86400000).toISOString().split('T')[0]
+    const prevTxs = rawTxs.filter(t => t.date >= prevFrom && t.date <= prevTo)
+    const pRev = prevTxs.filter(t => t.direction === 'Доходи').reduce((s,t) => s + Math.abs(t.amount||0), 0)
+    const pExp = prevTxs.filter(t => t.direction === 'Витрати').reduce((s,t) => s + Math.abs(t.amount||0), 0)
+    return { revenue: pRev, expenses: pExp, net: pRev - pExp }
+  })() : null
+
   // ── Build P&L table rows from articles ──────────────────────────────────────
   // Collect articles that have data + active articles
   const activeArticleNames = new Set(articles.map(a => a.name))
@@ -452,22 +487,50 @@ export default function Reports() {
             <i className="ti ti-x" style={{ fontSize:13 }} />Скинути
           </button>
         )}
+        <button
+          className={`btn btn-sm ${compareMode ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setCompareMode(c => !c)}
+          style={{ width:'auto', height:40 }}
+        >
+          <i className="ti ti-arrows-diff" style={{ fontSize:14 }} />
+          Порівняння
+        </button>
       </div>
 
       {/* KPIs */}
       <div className="kpi-grid" style={{ marginBottom:20 }}>
-        {[
-          { l:'Загальна виручка',  v:totRevenue,  c:'blue' },
-          { l:'Загальні витрати',  v:totExpenses, c:'red' },
-          { l:'Чистий результат',  v:totNet,      c:totNet>=0?'green':'red', sub: margin?margin+'% маржа':null },
-          { l:'Поточний CF',       v:lastCF,      c:lastCF>=0?'green':'red' },
-        ].map(({ l, v, c, sub }) => (
-          <div key={l} className="kpi">
-            <div className="kpi-label">{l}</div>
-            <div className={`kpi-value ${c}`}>{fmt(v)} грн</div>
-            {sub && <div className="kpi-sub">{sub}</div>}
-          </div>
-        ))}
+        <div className="kpi">
+          <div className="kpi-label">Загальна виручка</div>
+          <div className="kpi-value blue">{fmt(totRevenue)} грн</div>
+          {prevRevenue && (
+            <div className="kpi-sub" style={{ color: totRevenue >= prevRevenue.revenue ? 'var(--green)' : 'var(--red)' }}>
+              {totRevenue >= prevRevenue.revenue ? '+' : ''}{((totRevenue - prevRevenue.revenue) / (prevRevenue.revenue || 1) * 100).toFixed(1)}% vs попередній
+            </div>
+          )}
+        </div>
+        <div className="kpi">
+          <div className="kpi-label">Загальні витрати</div>
+          <div className="kpi-value red">{fmt(totExpenses)} грн</div>
+          {prevRevenue && (
+            <div className="kpi-sub" style={{ color: totExpenses <= prevRevenue.expenses ? 'var(--green)' : 'var(--red)' }}>
+              {totExpenses >= prevRevenue.expenses ? '+' : ''}{((totExpenses - prevRevenue.expenses) / (prevRevenue.expenses || 1) * 100).toFixed(1)}% vs попередній
+            </div>
+          )}
+        </div>
+        <div className="kpi">
+          <div className="kpi-label">Чистий результат</div>
+          <div className={`kpi-value ${totNet>=0?'green':'red'}`}>{fmt(totNet)} грн</div>
+          {margin && <div className="kpi-sub">{margin}% маржа</div>}
+          {prevRevenue && (
+            <div className="kpi-sub" style={{ color: totNet >= prevRevenue.net ? 'var(--green)' : 'var(--red)' }}>
+              {totNet >= prevRevenue.net ? '+' : ''}{((totNet - prevRevenue.net) / (Math.abs(prevRevenue.net) || 1) * 100).toFixed(1)}% vs попередній
+            </div>
+          )}
+        </div>
+        <div className="kpi">
+          <div className="kpi-label">Поточний CF</div>
+          <div className={`kpi-value ${lastCF>=0?'green':'red'}`}>{fmt(lastCF)} грн</div>
+        </div>
       </div>
 
       {/* Charts */}
@@ -536,6 +599,40 @@ export default function Reports() {
         </ResponsiveContainer>
       </div>
 
+      {/* ── Cash Flow Table ── */}
+      <div className="card" style={{ padding:'18px 0', overflowX:'auto', marginBottom:14 }}>
+        <div style={{ padding:'0 18px 12px', fontSize:14, fontWeight:600, color:'var(--text)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <span>Рух грошових коштів</span>
+          <span style={{ fontSize:12, fontWeight:400, color:'var(--text3)' }}>Всі операції включно з ПФД та іншими</span>
+        </div>
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, minWidth:400 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign:'left', padding:'8px 18px', background:'var(--surface2)', borderBottom:'1px solid var(--border)', fontWeight:500, color:'var(--text2)', fontSize:12 }}>Період</th>
+              <th style={{ textAlign:'right', padding:'8px 12px', background:'var(--surface2)', borderBottom:'1px solid var(--border)', fontWeight:500, color:'var(--text2)', fontSize:12 }}>Надходження</th>
+              <th style={{ textAlign:'right', padding:'8px 12px', background:'var(--surface2)', borderBottom:'1px solid var(--border)', fontWeight:500, color:'var(--text2)', fontSize:12 }}>Списання</th>
+              <th style={{ textAlign:'right', padding:'8px 12px', background:'var(--surface2)', borderBottom:'1px solid var(--border)', fontWeight:500, color:'var(--text2)', fontSize:12 }}>Нетто</th>
+              <th style={{ textAlign:'right', padding:'8px 12px', background:'var(--surface2)', borderBottom:'1px solid var(--border)', fontWeight:500, color:'var(--text2)', fontSize:12 }}>Залишок</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cfMonthly.map(m => (
+              <tr key={m.label} style={{ borderBottom:'1px solid var(--bg)' }}>
+                <td style={{ padding:'8px 18px', fontWeight:500 }}>{m.label}</td>
+                <td style={{ padding:'8px 12px', textAlign:'right', color:'var(--green)', fontVariantNumeric:'tabular-nums' }}>+{fmt(m.inflow)}</td>
+                <td style={{ padding:'8px 12px', textAlign:'right', color:'var(--red)', fontVariantNumeric:'tabular-nums' }}>-{fmt(m.outflow)}</td>
+                <td style={{ padding:'8px 12px', textAlign:'right', fontWeight:500, color: m.net >= 0 ? 'var(--green)' : 'var(--red)', fontVariantNumeric:'tabular-nums' }}>
+                  {m.net >= 0 ? '+' : '-'}{fmt(Math.abs(m.net))}
+                </td>
+                <td style={{ padding:'8px 12px', textAlign:'right', fontWeight:500, color: m.cumBalance >= 0 ? 'var(--green)' : 'var(--red)', fontVariantNumeric:'tabular-nums' }}>
+                  {m.cumBalance >= 0 ? '+' : '-'}{fmt(Math.abs(m.cumBalance))}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
       {/* ── P&L Table by articles ──────────────────────────────────────────────── */}
       {(() => {
         const curMonth = currentMonth()
@@ -555,6 +652,39 @@ export default function Reports() {
           })
         })
 
+        const exportToExcel = () => {
+          if (!months.length) return
+          const rows = []
+          // Header row
+          rows.push(['Стаття', ...months, 'РАЗОМ'])
+
+          ARTICLE_TYPE_ORDER.forEach(type => {
+            const articles = byType[type] || []
+            if (articles.length === 0) return
+            // Section header
+            rows.push([SECTION_LABELS[type]])
+            // Article rows
+            articles.forEach(artName => {
+              const rowTotal = months.reduce((s,m) => s + (artData[artName]?.[m]?.sum || 0), 0)
+              if (rowTotal === 0) return
+              rows.push([artName, ...months.map(m => artData[artName]?.[m]?.sum || 0), rowTotal])
+            })
+            // Section total
+            const secTotal = sectionTotals[type]?._total || 0
+            rows.push(['Разом ' + SECTION_LABELS[type].toLowerCase(), ...months.map(m => sectionTotals[type]?.[m] || 0), secTotal])
+          })
+          // Net result
+          const netRow = ['ЧИСТИЙ РЕЗУЛЬТАТ', ...months.map(m => {
+            return ARTICLE_TYPE_ORDER.reduce((s, type) => s + (sectionTotals[type]?.[m] || 0), 0)
+          }), totNet]
+          rows.push(netRow)
+
+          const ws = XLSX.utils.aoa_to_sheet(rows)
+          const wb = XLSX.utils.book_new()
+          XLSX.utils.book_append_sheet(wb, ws, 'P&L')
+          XLSX.writeFile(wb, `PL_${rptFrom || 'all'}_${rptTo || 'all'}.xlsx`)
+        }
+
         return (
       <div className="card" style={{ padding:'18px 0', overflowX:'auto' }}>
         <div style={{ padding:'0 18px 12px', fontSize:13, fontWeight:600, color:'var(--text2)', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
@@ -568,6 +698,10 @@ export default function Reports() {
               {planMonths.length} планових місяців
             </span>
           )}
+          <button className="btn btn-sm btn-secondary" onClick={exportToExcel} style={{ width:'auto', height:40 }}>
+            <i className="ti ti-download" style={{ fontSize:14 }} />
+            Excel
+          </button>
         </div>
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5, minWidth:500 }}>
           <thead>
