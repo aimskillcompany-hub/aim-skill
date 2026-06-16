@@ -72,6 +72,31 @@ export default function Registry({ user }) {
   const [bulkForm, setBulkForm] = useState({ article: '', project_id: '', direction: '', contractor: '' })
   const [bulkSaving, setBulkSaving] = useState(false)
 
+  // Quick new project
+  const [showNewProject, setShowNewProject] = useState(false)
+  const [newProjectName, setNewProjectName] = useState('')
+  const [newProjectSaving, setNewProjectSaving] = useState(false)
+
+  const handleCreateProject = async () => {
+    if (!newProjectName.trim()) return
+    setNewProjectSaving(true)
+    const { data, error } = await supabase.from('projects').insert({
+      name: newProjectName.trim(),
+      status: 'active',
+      created_by: user?.id,
+    }).select('id').single()
+    if (!error && data) {
+      // Оновити список проєктів і обрати новий
+      const { data: allProjects } = await supabase.from('projects').select('id, name').order('name')
+      setProjects(allProjects || [])
+      setEditForm(f => ({ ...f, project_id: data.id }))
+      setBulkForm(f => ({ ...f, project_id: data.id }))
+    }
+    setNewProjectSaving(false)
+    setShowNewProject(false)
+    setNewProjectName('')
+  }
+
   const [sort, setSort] = useState({ col: 'date', dir: 'desc' })
 
   const [filters, setFilters] = useState({
@@ -866,13 +891,42 @@ export default function Registry({ user }) {
 /></div>
               <div className="form-group"><label>Напрям</label><select className="form-input" value={editForm.direction} onChange={e => setEditForm(f=>({...f,direction:e.target.value}))}>{DIRS.map(d=><option key={d}>{d}</option>)}</select></div>
               <div className="form-group"><label>Стаття</label><ArticleSelect value={editForm.article} onChange={e => setEditForm(f=>({...f,article:e.target.value}))} articles={articles} direction={editForm.direction} /></div>
-              <div className="form-group"><label>Проєкт</label><select className="form-input" value={editForm.project_id} onChange={e => setEditForm(f=>({...f,project_id:e.target.value}))}><option value="">— без проєкту —</option>{projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+              <div className="form-group"><label>Проєкт</label>
+                <div style={{ display:'flex', gap:6 }}>
+                  <select className="form-input" style={{ flex:1 }} value={editForm.project_id} onChange={e => setEditForm(f=>({...f,project_id:e.target.value}))}>
+                    <option value="">— без проєкту —</option>
+                    {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                  <button type="button" onClick={() => setShowNewProject(true)} style={{ background:'none', border:'1px solid var(--border)', borderRadius:8, width:44, height:48, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--blue)', flexShrink:0 }} title="Створити новий проєкт">
+                    <i className="ti ti-plus" style={{ fontSize:16 }} />
+                  </button>
+                </div>
+              </div>
               <div className="form-group full"><label>Призначення</label><textarea className="form-input" rows={2} value={editForm.description} onChange={e => setEditForm(f=>({...f,description:e.target.value}))}/></div>
             </div>
             <div className="btn-row">
               <button className="btn btn-primary" onClick={handleUpdate} disabled={editSaving}>{editSaving?'Збереження...':'Зберегти'}</button>
               <button className="btn btn-secondary" onClick={() => setEdit(null)}>Скасувати</button>
             </div>
+
+            {/* New project mini-modal */}
+            {showNewProject && (
+              <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.3)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center' }} onClick={e => e.target===e.currentTarget && setShowNewProject(false)}>
+                <div style={{ background:'var(--surface)', borderRadius:16, padding:24, width:'100%', maxWidth:400 }}>
+                  <h3 style={{ fontSize:16, fontWeight:600, marginBottom:16 }}>Новий проєкт</h3>
+                  <div className="form-group" style={{ marginBottom:16 }}>
+                    <label>Назва проєкту *</label>
+                    <input className="form-input" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} placeholder="Назва проєкту" autoFocus />
+                  </div>
+                  <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+                    <button className="btn btn-primary" onClick={handleCreateProject} disabled={newProjectSaving || !newProjectName.trim()} style={{ width:'auto' }}>
+                      {newProjectSaving ? 'Створення...' : 'Створити'}
+                    </button>
+                    <button className="btn btn-secondary" onClick={() => setShowNewProject(false)} style={{ width:'auto' }}>Скасувати</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
