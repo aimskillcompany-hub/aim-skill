@@ -204,22 +204,78 @@ export default function Inventory({ user }) {
         </div>
 
         {/* KPI */}
-        <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(4,1fr)', marginBottom:20 }}>
-          <div className="kpi">
-            <div className="kpi-label">Залишок</div>
-            <div className="kpi-value" style={{ color: detail.current_stock <= 0 ? 'var(--red)' : detail.current_stock <= (detail.min_stock||0) ? '#D97706' : 'var(--green)' }}>
-              {fmt(detail.current_stock)} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>{detail.unit}</span>
-            </div>
-          </div>
-          <div className="kpi"><div className="kpi-label">Прихід (всього)</div><div className="kpi-value" style={{ color:'var(--green)' }}>+{fmt(totalIn)}</div></div>
-          <div className="kpi"><div className="kpi-label">Витрата (всього)</div><div className="kpi-value" style={{ color:'var(--red)' }}>-{fmt(totalOut)}</div></div>
-          <div className="kpi"><div className="kpi-label">Вартість залишку</div><div className="kpi-value">{fmtInt((detail.current_stock||0) * (detail.buy_price||0))} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>грн</span></div></div>
-        </div>
+        {(() => {
+          const purchases = detailMovements.filter(m => m.type === 'in')
+          const sales = detailMovements.filter(m => m.type === 'out')
+          const totalBought = purchases.reduce((s, m) => s + (m.total || (m.quantity * (m.price || 0)) || 0), 0)
+          const totalSold = sales.reduce((s, m) => s + (m.total || (m.quantity * (m.price || 0)) || 0), 0)
+          const margin = totalSold - totalBought
+          return (
+            <>
+              <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(5,1fr)', marginBottom:20 }}>
+                <div className="kpi">
+                  <div className="kpi-label">Залишок</div>
+                  <div className="kpi-value" style={{ color: detail.current_stock <= 0 ? 'var(--red)' : detail.current_stock <= (detail.min_stock||0) ? '#D97706' : 'var(--green)' }}>
+                    {fmt(detail.current_stock)} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>{detail.unit}</span>
+                  </div>
+                </div>
+                <div className="kpi"><div className="kpi-label">Закуплено</div><div className="kpi-value" style={{ color:'var(--green)' }}>+{fmt(totalIn)} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>{detail.unit}</span></div><div className="kpi-sub">{fmtInt(totalBought)} грн</div></div>
+                <div className="kpi"><div className="kpi-label">Реалізовано</div><div className="kpi-value" style={{ color:'var(--red)' }}>-{fmt(totalOut)} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>{detail.unit}</span></div><div className="kpi-sub">{fmtInt(totalSold)} грн</div></div>
+                <div className="kpi"><div className="kpi-label">Маржа</div><div className="kpi-value" style={{ color: margin >= 0 ? 'var(--green)' : 'var(--red)' }}>{margin >= 0 ? '+' : '-'}{fmtInt(Math.abs(margin))} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>грн</span></div>{totalBought > 0 && <div className="kpi-sub">{((margin / totalBought) * 100).toFixed(0)}%</div>}</div>
+                <div className="kpi"><div className="kpi-label">Вартість залишку</div><div className="kpi-value">{fmtInt((detail.current_stock||0) * (detail.buy_price||0))} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>грн</span></div></div>
+              </div>
 
-        {/* Movement history */}
+              {/* Purchases */}
+              {purchases.length > 0 && (
+                <div className="card" style={{ marginBottom: 14 }}>
+                  <div style={{ fontWeight:600, fontSize:14, marginBottom:10, display:'flex', alignItems:'center', gap:6, color:'var(--green)' }}>
+                    <i className="ti ti-arrow-down-circle" style={{ fontSize:16 }} />
+                    Закупівлі ({purchases.length})
+                  </div>
+                  {purchases.map(m => (
+                    <div key={m.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid var(--bg)' }}>
+                      <div>
+                        <div style={{ fontWeight:500, fontSize:13 }}>{m.bank_transactions?.counterparty || m.description || '—'}</div>
+                        <div style={{ fontSize:12, color:'var(--text2)' }}>{m.date}</div>
+                      </div>
+                      <div style={{ textAlign:'right' }}>
+                        <div style={{ fontWeight:500, color:'var(--green)' }}>{fmt(m.quantity)} {detail.unit} × {m.price ? fmt(m.price) + ' грн' : '—'}</div>
+                        <div style={{ fontSize:12, color:'var(--text2)' }}>{m.total ? fmtInt(m.total) + ' грн' : '—'}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Sales */}
+              {sales.length > 0 && (
+                <div className="card" style={{ marginBottom: 14 }}>
+                  <div style={{ fontWeight:600, fontSize:14, marginBottom:10, display:'flex', alignItems:'center', gap:6, color:'var(--red)' }}>
+                    <i className="ti ti-arrow-up-circle" style={{ fontSize:16 }} />
+                    Реалізації ({sales.length})
+                  </div>
+                  {sales.map(m => (
+                    <div key={m.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid var(--bg)' }}>
+                      <div>
+                        <div style={{ fontWeight:500, fontSize:13 }}>{m.bank_transactions?.counterparty || m.description || '—'}</div>
+                        <div style={{ fontSize:12, color:'var(--text2)' }}>{m.date}</div>
+                      </div>
+                      <div style={{ textAlign:'right' }}>
+                        <div style={{ fontWeight:500, color:'var(--red)' }}>{fmt(m.quantity)} {detail.unit} × {m.price ? fmt(m.price) + ' грн' : '—'}</div>
+                        <div style={{ fontSize:12, color:'var(--text2)' }}>{m.total ? fmtInt(m.total) + ' грн' : '—'}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )
+        })()}
+
+        {/* Full movement history */}
         <div className="card" style={{ padding:0, overflow:'hidden' }}>
           <div style={{ padding:'16px 20px', fontWeight:600, fontSize:14, borderBottom:'1px solid var(--border)' }}>
-            Історія руху ({detailMovements.length})
+            Повна історія руху ({detailMovements.length})
           </div>
           {detailMovements.length === 0 ? (
             <div className="empty"><p>Немає руху товару</p></div>
