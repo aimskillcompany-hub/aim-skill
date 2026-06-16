@@ -288,6 +288,71 @@ create index if not exists idx_docs_bank on documents(bank_transaction_id);
 create index if not exists idx_items_bank on transaction_items(bank_transaction_id);
 
 -- ═══════════════════════════════════════════════════
+-- 8. PRODUCTS (складський облік)
+-- ═══════════════════════════════════════════════════
+create table if not exists products (
+  id uuid default gen_random_uuid() primary key,
+  name text not null,
+  sku text,
+  category text,
+  unit text default 'шт',
+  buy_price numeric(15,2),
+  sell_price numeric(15,2),
+  min_stock numeric(15,4) default 0,
+  current_stock numeric(15,4) default 0,
+  status text default 'active' check (status in ('active','archived')),
+  notes text,
+  created_by uuid references profiles(id) on delete set null,
+  created_at timestamptz default now()
+);
+
+alter table products enable row level security;
+create policy "View products" on products for select to authenticated using (true);
+create policy "Insert products" on products for insert to authenticated with check (
+  (select role from profiles where id = auth.uid()) in ('admin','accountant','manager')
+);
+create policy "Update products" on products for update to authenticated using (
+  (select role from profiles where id = auth.uid()) in ('admin','accountant','manager')
+);
+create policy "Delete products" on products for delete to authenticated using (
+  (select role from profiles where id = auth.uid()) = 'admin'
+);
+
+-- Зв'язок товарних позицій з products
+ALTER TABLE transaction_items ADD COLUMN IF NOT EXISTS product_id uuid REFERENCES products(id) ON DELETE SET NULL;
+
+-- Рух товарів (прихід/витрата)
+create table if not exists stock_movements (
+  id uuid default gen_random_uuid() primary key,
+  product_id uuid references products(id) on delete cascade not null,
+  type text not null check (type in ('in','out','adjustment')),
+  quantity numeric(15,4) not null,
+  price numeric(15,2),
+  total numeric(15,2),
+  document_id uuid references documents(id) on delete set null,
+  bank_transaction_id uuid references bank_transactions(id) on delete set null,
+  transaction_item_id uuid references transaction_items(id) on delete set null,
+  date date not null,
+  description text,
+  created_by uuid references profiles(id) on delete set null,
+  created_at timestamptz default now()
+);
+
+alter table stock_movements enable row level security;
+create policy "View stock" on stock_movements for select to authenticated using (true);
+create policy "Insert stock" on stock_movements for insert to authenticated with check (
+  (select role from profiles where id = auth.uid()) in ('admin','accountant','manager')
+);
+create policy "Delete stock" on stock_movements for delete to authenticated using (
+  (select role from profiles where id = auth.uid()) = 'admin'
+);
+
+create index if not exists idx_stock_product on stock_movements(product_id);
+create index if not exists idx_stock_date on stock_movements(date desc);
+create index if not exists idx_products_sku on products(sku);
+create index if not exists idx_items_product on transaction_items(product_id);
+
+-- ═══════════════════════════════════════════════════
 -- INDEXES для швидкості
 -- ═══════════════════════════════════════════════════
 create index if not exists idx_tx_date on transactions(date desc);

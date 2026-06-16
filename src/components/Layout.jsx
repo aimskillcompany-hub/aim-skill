@@ -11,6 +11,7 @@ const NAV = [
   { id: 'cash',      label: 'Каса',          icon: 'ti-cash',              section: null },
   { id: 'contractors', label: 'Контрагенти', icon: 'ti-users',             section: 'Облік' },
   { id: 'projects',  label: 'Проєкти',       icon: 'ti-briefcase',         section: null },
+  { id: 'inventory', label: 'Склад',         icon: 'ti-package',           section: null },
   { id: 'reports',   label: 'Звіти P&L',     icon: 'ti-chart-bar',         section: null },
   { id: 'planning',  label: 'Планування',    icon: 'ti-calendar-stats',    section: null },
   { id: 'settings',  label: 'Налаштування',  icon: 'ti-settings',          section: 'Адмін' },

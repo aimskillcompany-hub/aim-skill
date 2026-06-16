@@ -14,6 +14,7 @@ import TransactionModal from './components/TransactionModal'
 import ArticlesSettings from './components/ArticlesSettings'
 import Planning from './components/Planning'
 import Contractors from './components/Contractors'
+import Inventory from './components/Inventory'
 
 const CASH_DIR = {
   income: +1, expense: -1, advance: -1,
@@ -317,6 +318,7 @@ export default function App() {
     cash: <Cash user={user} />,
     contractors: <Contractors user={user} />,
     projects: <Projects key={`projects-${page}`} user={user} />,
+    inventory: <Inventory user={user} />,
     reports: <Reports />,
     planning: <Planning user={user} />,
     settings: <Settings user={user} />,
