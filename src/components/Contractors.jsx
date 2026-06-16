@@ -174,7 +174,7 @@ export default function Contractors({ user }) {
 
     try {
       // Fetch transactions by ЄДРПОУ (primary) or by name (fallback)
-      const baseSelect = 'id,date,amount,direction,article,counterparty,description,project_id,edrpou,doc_type,doc_number,iban'
+      const baseSelect = 'id,date,amount,direction,article,counterparty,description,project_id,edrpou,doc_type,doc_number'
       const fullSelect = `${baseSelect},documents(id,file_name,file_path,file_type,file_size,doc_role),transaction_items(id,name,quantity,unit,unit_price,amount)`
 
       const buildQuery = (sel) => {
