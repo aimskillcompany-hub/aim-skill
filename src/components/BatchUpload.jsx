@@ -159,6 +159,67 @@ export default function BatchUpload({ user, onSaved }) {
     setCards(prev => prev.map(c => c.id === id ? { ...c, form: { ...c.form, [field]: value } } : c))
   }
 
+  // ── Ручна привʼязка до банк. операції ───
+  const [linkCardId, setLinkCardId] = useState(null)
+  const [linkSearch, setLinkSearch] = useState('')
+  const [linkResults, setLinkResults] = useState([])
+  const [linkSearching, setLinkSearching] = useState(false)
+
+  const searchBankTx = async (query) => {
+    if (!query || query.length < 2) { setLinkResults([]); return }
+    setLinkSearching(true)
+    try {
+      const isNumber = /^[\d\s,.]+$/.test(query.trim())
+      let results = []
+      if (isNumber) {
+        const searchAmt = parseFloat(query.replace(/\s/g, '').replace(',', '.')) || 0
+        if (searchAmt > 0) {
+          const tolerance = Math.max(10, searchAmt * 0.01)
+          const { data } = await supabase.from('bank_transactions')
+            .select('id, date, counterparty, amount, edrpou')
+            .eq('is_ignored', false).order('date', { ascending: false }).limit(500)
+          results = (data || []).filter(b => Math.abs(Math.abs(b.amount) - searchAmt) <= tolerance)
+        }
+      } else {
+        const { data: byCp } = await supabase.from('bank_transactions')
+          .select('id, date, counterparty, amount, edrpou')
+          .ilike('counterparty', `%${query.trim()}%`)
+          .eq('is_ignored', false).order('date', { ascending: false }).limit(30)
+        const { data: byCode } = await supabase.from('bank_transactions')
+          .select('id, date, counterparty, amount, edrpou')
+          .ilike('edrpou', `%${query.trim()}%`)
+          .eq('is_ignored', false).order('date', { ascending: false }).limit(30)
+        const seen = new Set()
+        results = [...(byCp || []), ...(byCode || [])].filter(b => { if (seen.has(b.id)) return false; seen.add(b.id); return true })
+      }
+      setLinkResults(results.slice(0, 15))
+    } catch (e) { console.error(e) }
+    setLinkSearching(false)
+  }
+
+  const linkToBankTx = async (cardId, bankTx) => {
+    // Оновити bankMatch на картці
+    setCards(prev => prev.map(c => c.id === cardId ? { ...c, bankMatch: bankTx } : c))
+    setLinkCardId(null)
+    setLinkSearch('')
+    setLinkResults([])
+
+    // Якщо документ вже збережений — оновити documents в БД
+    const card = cards.find(c => c.id === cardId)
+    if (card?.saved && card?.savedDocId) {
+      await supabase.from('documents').update({ bank_transaction_id: bankTx.id }).eq('id', card.savedDocId)
+      // Оновити банківську операцію
+      const d = card.data
+      await supabase.from('bank_transactions').update({
+        article: card.form.article || null,
+        direction: card.form.direction,
+        project_id: card.form.projectId || null,
+        doc_type: d?.docType || null,
+        doc_number: d?.docNumber || null,
+      }).eq('id', bankTx.id)
+    }
+  }
+
   const saveCard = async (card) => {
     if (!card.data) return
     const d = card.data
@@ -166,9 +227,8 @@ export default function BatchUpload({ user, onSaved }) {
     const signed = card.form.direction === 'Доходи' ? Math.abs(total) : -Math.abs(total)
 
     try {
-      // Find matching bank_transaction
-      const bankDup = await findDbDuplicate(d)
-      const bankTxId = bankDup?.id || null
+      // Використати ручну привʼязку або автопошук
+      const bankTxId = card.bankMatch?.id || (await findDbDuplicate(d))?.id || null
 
       // If found bank match — update it with article/direction
       if (bankTxId) {
@@ -190,8 +250,9 @@ export default function BatchUpload({ user, onSaved }) {
       const safePath = `${docFolder}/${Date.now()}.${ext}`
       const displayName = buildDocFileName(d.docType, d.docNumber, d.contractor, d.date, ext)
       const { error: uploadErr } = await supabase.storage.from('documents').upload(safePath, f, { contentType: f.type })
+      let savedDocId = null
       if (!uploadErr) {
-        await supabase.from('documents').insert({
+        const { data: docData } = await supabase.from('documents').insert({
           bank_transaction_id: bankTxId,
           file_name: displayName,
           file_path: safePath,
@@ -199,7 +260,8 @@ export default function BatchUpload({ user, onSaved }) {
           file_size: f.size,
           doc_role: card.form.docRole,
           uploaded_by: user.id,
-        })
+        }).select('id').single()
+        savedDocId = docData?.id
       }
 
       // Save items (позиції документу — потрібні для складу)
@@ -221,7 +283,7 @@ export default function BatchUpload({ user, onSaved }) {
         }
       }
 
-      setCards(prev => prev.map(c => c.id === card.id ? { ...c, saved: true } : c))
+      setCards(prev => prev.map(c => c.id === card.id ? { ...c, saved: true, savedDocId } : c))
       return true
     } catch(e) {
       setCards(prev => prev.map(c => c.id === card.id ? { ...c, error: e.message } : c))
@@ -336,16 +398,29 @@ export default function BatchUpload({ user, onSaved }) {
               {card.saved && (
                 <div style={{ background:'var(--green-bg)', color:'var(--green)', borderRadius:6, padding:'4px 10px', fontSize:12, fontWeight:500, marginBottom:8, display:'flex', alignItems:'center', gap:4 }}>
                   <i className="ti ti-check" style={{ fontSize:13 }} /> Збережено
+                  {!card.bankMatch && (
+                    <button
+                      onClick={() => { setLinkCardId(card.id); setLinkSearch(card.data?.totalAmount ? String(Math.abs(card.data.totalAmount)) : '') }}
+                      style={{ marginLeft:'auto', background:'none', border:'1px solid var(--border)', borderRadius:5, cursor:'pointer', color:'var(--blue)', fontSize:11, padding:'2px 8px', fontFamily:'inherit' }}
+                    >
+                      <i className="ti ti-link" style={{ fontSize:12, marginRight:3 }} />Привʼязати
+                    </button>
+                  )}
                 </div>
               )}
-              {card.bankMatch && !card.saved && (
-                <div style={{ background:'var(--green-bg)', color:'var(--green)', borderRadius:6, padding:'8px 10px', fontSize:12, fontWeight:500, marginBottom:8 }}>
-                  🔗 Буде привʼязано до банківської операції
-                  <div style={{ fontWeight:400, marginTop:3, fontSize:11, lineHeight:1.4, color:'var(--text2)' }}>
-                    {card.bankMatch.date} · {card.bankMatch.contractor?.substring(0,30)}
-                    {card.bankMatch.doc_number && ` · №${card.bankMatch.doc_number}`}
-                    · {new Intl.NumberFormat('uk-UA').format(Math.round(Math.abs(card.bankMatch.amount)))} грн
+              {card.bankMatch && (
+                <div style={{ background:'var(--green-bg)', color:'var(--green)', borderRadius:6, padding:'8px 10px', fontSize:12, fontWeight:500, marginBottom:8, display:'flex', alignItems:'center', gap:6 }}>
+                  <div style={{ flex:1 }}>
+                    🔗 {card.saved ? 'Привʼязано' : 'Буде привʼязано'} до банківської операції
+                    <div style={{ fontWeight:400, marginTop:3, fontSize:11, lineHeight:1.4, color:'var(--text2)' }}>
+                      {card.bankMatch.date} · {(card.bankMatch.counterparty || card.bankMatch.contractor || '').substring(0,30)}
+                      · {fmt(Math.abs(card.bankMatch.amount))} грн
+                    </div>
                   </div>
+                  <button
+                    onClick={() => { setLinkCardId(card.id); setLinkSearch('') }}
+                    style={{ background:'none', border:'1px solid var(--border)', borderRadius:5, cursor:'pointer', color:'var(--text2)', fontSize:11, padding:'2px 8px', fontFamily:'inherit', flexShrink:0 }}
+                  >Змінити</button>
                 </div>
               )}
               {card.isDuplicate && !card.saved && (
@@ -425,16 +500,26 @@ export default function BatchUpload({ user, onSaved }) {
                     </div>
                   </div>
 
-                  {!card.bankMatch && (
+                  <div style={{ display:'flex', gap:6 }}>
                     <button
                       className="btn btn-primary"
-                      style={{ width:'100%', justifyContent:'center', display:'flex', gap:6, fontSize:13 }}
+                      style={{ flex:1, justifyContent:'center', display:'flex', gap:6, fontSize:13 }}
                       onClick={() => saveCard(card)}
                     >
                       <i className="ti ti-device-floppy" style={{ fontSize:14 }} />
                       Зберегти
                     </button>
-                  )}
+                    {!card.bankMatch && (
+                      <button
+                        className="btn btn-secondary"
+                        style={{ justifyContent:'center', display:'flex', gap:4, fontSize:12 }}
+                        onClick={() => { setLinkCardId(card.id); setLinkSearch(card.data?.totalAmount ? String(Math.abs(card.data.totalAmount)) : '') }}
+                      >
+                        <i className="ti ti-link" style={{ fontSize:13 }} />
+                        Привʼязати
+                      </button>
+                    )}
+                  </div>
                 </>
               )}
             </div>
@@ -447,6 +532,60 @@ export default function BatchUpload({ user, onSaved }) {
           <i className="ti ti-files" style={{ fontSize:48, display:'block', margin:'0 auto 12px', opacity:.3 }} />
           <div style={{ fontSize:14, fontWeight:500, marginBottom:6 }}>Завантажте файли для масової обробки</div>
           <div style={{ fontSize:12 }}>Система розпізнає всі документи, знайде дублікати і дозволить зберегти одним кліком</div>
+        </div>
+      )}
+
+      {/* ── Модалка пошуку банківської операції ── */}
+      {linkCardId && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
+          onClick={e => { if (e.target === e.currentTarget) { setLinkCardId(null); setLinkResults([]) } }}>
+          <div style={{ background:'var(--surface)', borderRadius:16, width:'100%', maxWidth:520, maxHeight:'80vh', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+            <div style={{ padding:'16px 20px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <div style={{ fontWeight:600, fontSize:15 }}>Привʼязати до банківської операції</div>
+              <button onClick={() => { setLinkCardId(null); setLinkResults([]) }} style={{ background:'none', border:'none', cursor:'pointer', fontSize:20, color:'var(--text3)' }}>×</button>
+            </div>
+            <div style={{ padding:'12px 20px' }}>
+              <input
+                className="form-input"
+                placeholder="Введіть суму, ЄДРПОУ або контрагента..."
+                value={linkSearch}
+                onChange={e => {
+                  setLinkSearch(e.target.value)
+                  clearTimeout(window._batchLinkTimer)
+                  window._batchLinkTimer = setTimeout(() => searchBankTx(e.target.value), 400)
+                }}
+                autoFocus
+              />
+            </div>
+            <div style={{ flex:1, overflowY:'auto', padding:'0 20px 16px' }}>
+              {linkSearching && <div style={{ fontSize:12, color:'var(--text3)', padding:8 }}>Пошук...</div>}
+              {linkResults.map(b => (
+                <div
+                  key={b.id}
+                  onClick={() => linkToBankTx(linkCardId, b)}
+                  style={{ padding:'10px 12px', cursor:'pointer', borderBottom:'1px solid var(--border)', fontSize:13, display:'flex', justifyContent:'space-between', alignItems:'center', borderRadius:8, marginBottom:2 }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <div>
+                    <div style={{ fontWeight:500, color:'var(--text1)' }}>{b.counterparty || '—'}</div>
+                    <div style={{ fontSize:11, color:'var(--text3)', marginTop:2 }}>
+                      {b.date}{b.edrpou ? ` · ЄДРПОУ ${b.edrpou}` : ''}
+                    </div>
+                  </div>
+                  <div style={{ fontWeight:600, color: b.amount > 0 ? 'var(--green)' : 'var(--red)', whiteSpace:'nowrap', marginLeft:12 }}>
+                    {b.amount > 0 ? '+' : ''}{fmt(b.amount)} грн
+                  </div>
+                </div>
+              ))}
+              {linkSearch.length >= 2 && !linkSearching && linkResults.length === 0 && (
+                <div style={{ fontSize:12, color:'var(--text3)', padding:'12px 4px', textAlign:'center' }}>Нічого не знайдено</div>
+              )}
+              {linkSearch.length < 2 && (
+                <div style={{ fontSize:12, color:'var(--text3)', padding:'12px 4px', textAlign:'center' }}>Введіть мінімум 2 символи для пошуку</div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
