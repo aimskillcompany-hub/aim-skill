@@ -833,24 +833,38 @@ export default function Registry({ user }) {
                 <div style={{ fontSize:13, fontWeight:600, marginBottom:8, display:'flex', alignItems:'center', gap:6 }}>
                   <i className="ti ti-package" style={{ fontSize:15, color:'var(--blue)' }} />
                   Позиції ({selectedItems.length})
+                  <span style={{ fontSize:11, fontWeight:400, color:'var(--text3)', marginLeft:8 }}>Оберіть проєкт для кожної позиції</span>
                 </div>
                 <div style={{ overflowX:'auto' }}>
                   <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
                     <thead>
                       <tr style={{ background:'var(--surface2)' }}>
-                        {['Назва','К-сть','Од.','Ціна','Сума'].map(h => (
+                        {['Назва','К-сть','Сума','Проєкт'].map(h => (
                           <th key={h} style={{ padding:'6px 8px', textAlign:'left', borderBottom:'1px solid var(--border)', fontWeight:500, color:'var(--text2)' }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       {selectedItems.map(it => (
-                        <tr key={it.id} style={{ borderBottom:'1px solid #f3f4f6' }}>
-                          <td style={{ padding:'6px 8px' }}>{it.name}</td>
-                          <td style={{ padding:'6px 8px', textAlign:'right' }}>{fmt2(it.quantity)}</td>
-                          <td style={{ padding:'6px 8px' }}>{it.unit||'—'}</td>
-                          <td style={{ padding:'6px 8px', textAlign:'right' }}>{fmt2(it.unit_price)}</td>
-                          <td style={{ padding:'6px 8px', textAlign:'right', fontWeight:500 }}>{fmt2(it.amount)}</td>
+                        <tr key={it.id} style={{ borderBottom:'1px solid var(--bg)' }}>
+                          <td style={{ padding:'6px 8px', maxWidth:200 }}>{it.name}</td>
+                          <td style={{ padding:'6px 8px', whiteSpace:'nowrap' }}>{fmt2(it.quantity)} {it.unit||'шт'}</td>
+                          <td style={{ padding:'6px 8px', fontWeight:500, whiteSpace:'nowrap' }}>{fmt2(it.amount)} грн</td>
+                          <td style={{ padding:'6px 8px' }}>
+                            <select
+                              className="form-input"
+                              style={{ height:32, fontSize:12, padding:'4px 8px', minWidth:140 }}
+                              value={it.project_id || ''}
+                              onChange={async (e) => {
+                                const projectId = e.target.value || null
+                                await supabase.from('transaction_items').update({ project_id: projectId }).eq('id', it.id)
+                                setSelectedItems(prev => prev.map(item => item.id === it.id ? { ...item, project_id: projectId } : item))
+                              }}
+                            >
+                              <option value="">— без проєкту —</option>
+                              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            </select>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

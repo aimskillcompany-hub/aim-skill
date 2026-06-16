@@ -77,11 +77,17 @@ export default function Projects({ user }) {
 
   const load = async () => {
     setLoading(true)
-    const { data } = await supabase
-      .from('projects')
-      .select('*, bank_transactions(amount, direction)')
-      .order('created_at', { ascending: false })
-    setProjects(data || [])
+    const [{ data: projs }, { data: items }] = await Promise.all([
+      supabase.from('projects').select('*, bank_transactions(amount, direction)').order('created_at', { ascending: false }),
+      supabase.from('transaction_items').select('project_id, amount').not('project_id', 'is', null),
+    ])
+    // Додати суми з transaction_items до проєктів
+    const itemsByProject = {}
+    ;(items || []).forEach(it => {
+      if (!itemsByProject[it.project_id]) itemsByProject[it.project_id] = { total: 0 }
+      itemsByProject[it.project_id].total += Math.abs(it.amount || 0)
+    })
+    setProjects((projs || []).map(p => ({ ...p, _itemsTotal: itemsByProject[p.id]?.total || 0 })))
     setLoading(false)
   }
 
