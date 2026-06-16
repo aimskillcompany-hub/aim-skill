@@ -46,16 +46,43 @@ export default function Inventory({ user }) {
   const findPairs = async () => {
     setPairsLoading(true)
     setShowPairs(true)
-    // Товари з тільки OUT (продані без закупки)
+    // Всі рухи з датами і контрагентами
     const { data: allMovs } = await supabase.from('stock_movements')
-      .select('product_id, type')
+      .select('product_id, type, date, quantity, price, bank_transaction_id')
     const hasIn = new Set(), hasOut = new Set()
+    const movInfo = {} // product_id → { inDates, outDates, inQty, outQty, bankIds }
     ;(allMovs || []).forEach(m => {
       if (m.type === 'in') hasIn.add(m.product_id)
       if (m.type === 'out') hasOut.add(m.product_id)
+      if (!movInfo[m.product_id]) movInfo[m.product_id] = { inDates: [], outDates: [], inQty: 0, outQty: 0, bankIds: new Set() }
+      if (m.type === 'in') { movInfo[m.product_id].inDates.push(m.date); movInfo[m.product_id].inQty += parseFloat(m.quantity) || 0 }
+      if (m.type === 'out') { movInfo[m.product_id].outDates.push(m.date); movInfo[m.product_id].outQty += parseFloat(m.quantity) || 0 }
+      if (m.bank_transaction_id) movInfo[m.product_id].bankIds.add(m.bank_transaction_id)
     })
     const outOnlyIds = [...hasOut].filter(id => !hasIn.has(id))
     const inOnlyIds = [...hasIn].filter(id => !hasOut.has(id))
+
+    // Підтягнути контрагентів з bank_transactions
+    const allBankIds = new Set()
+    ;[...outOnlyIds, ...inOnlyIds].forEach(pid => {
+      (movInfo[pid]?.bankIds || new Set()).forEach(bid => allBankIds.add(bid))
+    })
+    const bankMap = {}
+    if (allBankIds.size > 0) {
+      const ids = [...allBankIds]
+      for (let i = 0; i < ids.length; i += 100) {
+        const { data } = await supabase.from('bank_transactions')
+          .select('id, counterparty').in('id', ids.slice(i, i + 100))
+        ;(data || []).forEach(b => { bankMap[b.id] = b.counterparty })
+      }
+    }
+
+    // Додати інфо до продуктів
+    const enrichProduct = (p) => {
+      const info = movInfo[p.id] || {}
+      const bankId = [...(info.bankIds || [])][0]
+      return { ...p, _dates: [...(info.inDates || []), ...(info.outDates || [])].sort(), _inQty: info.inQty || 0, _outQty: info.outQty || 0, _counterparty: bankMap[bankId] || '' }
+    }
 
     const { data: outProds } = outOnlyIds.length > 0
       ? await supabase.from('products').select('id, name').in('id', outOnlyIds).eq('status', 'active').order('name')
@@ -64,7 +91,10 @@ export default function Inventory({ user }) {
       ? await supabase.from('products').select('id, name').in('id', inOnlyIds).eq('status', 'active').order('name')
       : { data: [] }
 
-    setPairs({ outOnly: outProds || [], inOnly: inProds || [] })
+    setPairs({
+      outOnly: (outProds || []).map(enrichProduct),
+      inOnly: (inProds || []).map(enrichProduct),
+    })
     setPairsLoading(false)
   }
 
@@ -836,7 +866,14 @@ export default function Inventory({ user }) {
                         <i className="ti ti-arrow-up-circle" style={{ fontSize:16, color:'var(--red)' }} />
                         <div style={{ fontWeight:500, fontSize:13, color:'var(--red)' }}>Продано (без закупки):</div>
                       </div>
-                      <div style={{ fontWeight:600, fontSize:14, marginBottom:10, paddingLeft:24 }}>{outProd.name}</div>
+                      <div style={{ paddingLeft:24, marginBottom:10 }}>
+                        <div style={{ fontWeight:600, fontSize:14 }}>{outProd.name}</div>
+                        <div style={{ fontSize:11, color:'var(--text3)', marginTop:2, display:'flex', gap:12, flexWrap:'wrap' }}>
+                          {outProd._counterparty && <span>Клієнт: {outProd._counterparty.substring(0, 40)}</span>}
+                          <span>Продано: {outProd._outQty} шт</span>
+                          {outProd._dates.length > 0 && <span>{outProd._dates[0]}</span>}
+                        </div>
+                      </div>
 
                       {candidates.length > 0 ? (
                         <div style={{ paddingLeft:24 }}>
@@ -848,7 +885,12 @@ export default function Inventory({ user }) {
                             <div key={c.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 10px', borderRadius:6, border:'1px solid var(--border)', marginBottom:4, background:'var(--bg)' }}>
                               <div style={{ flex:1 }}>
                                 <div style={{ fontSize:13 }}>{c.name}</div>
-                                <div style={{ fontSize:10, color:'var(--text3)' }}>збіг: {c.common.join(', ')}</div>
+                                <div style={{ fontSize:10, color:'var(--text3)', display:'flex', gap:10, flexWrap:'wrap' }}>
+                                  {c._counterparty && <span>Постач: {c._counterparty.substring(0, 35)}</span>}
+                                  <span>Закупл: {c._inQty} шт</span>
+                                  {c._dates?.length > 0 && <span>{c._dates[0]}</span>}
+                                  <span>збіг: {c.common.join(', ')}</span>
+                                </div>
                               </div>
                               <button className="btn btn-sm btn-primary" style={{ flexShrink:0, fontSize:12 }}
                                 onClick={() => { if (confirm(`Обʼєднати?\n\n"${outProd.name}"\n← "${c.name}"\n\nВсі рухи та позиції будуть перенесені.`)) mergePair(outProd.id, c.id) }}>
