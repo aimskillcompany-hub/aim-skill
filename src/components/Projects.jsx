@@ -4,6 +4,7 @@ import TransactionModal from './TransactionModal'
 import ContractorSelect from './ui/ContractorSelect'
 
 const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(n || 0))
+const fmtInt = fmt
 
 const UA_MONTHS = ['січень','лютий','березень','квітень','травень','червень','липень','серпень','вересень','жовтень','листопад','грудень']
 
@@ -497,10 +498,23 @@ export default function Projects({ user }) {
 
             {/* Items / Products */}
             {(() => {
-              const allItems = projTxs.flatMap(tx => (tx.transaction_items || []).map(it => ({ ...it, _date: tx.date, _counterparty: tx.counterparty })))
+              const allItems = projTxs.flatMap(tx => (tx.transaction_items || []).map(it => ({ ...it, _date: tx.date, _counterparty: tx.counterparty, _direction: tx.direction })))
               if (allItems.length === 0) return null
-              const totalSum = allItems.reduce((s, it) => s + Math.abs(it.amount || 0), 0)
               const linked = allItems.filter(it => it.product_id).length
+
+              // Calculate cost & revenue
+              const itemsWithCost = allItems.map(it => {
+                const product = it.product_id ? allProducts.find(p => p.id === it.product_id) : null
+                const qty = parseFloat(it.quantity) || 0
+                const sellPrice = parseFloat(it.unit_price) || 0
+                const buyPrice = product?.buy_price || 0
+                const costTotal = qty * buyPrice
+                const sellTotal = qty * sellPrice
+                return { ...it, _product: product, _buyPrice: buyPrice, _costTotal: costTotal, _sellTotal: sellTotal }
+              })
+              const totalCost = itemsWithCost.reduce((s, it) => s + it._costTotal, 0)
+              const totalRevenue = itemsWithCost.reduce((s, it) => s + it._sellTotal, 0)
+              const totalMargin = totalRevenue - totalCost
 
               const handleLinkProduct = async (itemId, productId) => {
                 await supabase.from('transaction_items').update({ product_id: productId }).eq('id', itemId)
@@ -514,22 +528,43 @@ export default function Projects({ user }) {
 
               return (
                 <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <i className="ti ti-package" style={{ fontSize: 15, color: 'var(--blue)' }} />
                     Товари / послуги ({allItems.length})
                     <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text3)', marginLeft: 8 }}>
-                      на суму {fmt(totalSum)} грн · {linked}/{allItems.length} на складі
+                      {linked}/{allItems.length} на складі
                     </span>
                   </div>
+                  {/* Cost / Revenue / Margin summary */}
+                  {totalCost > 0 && (
+                    <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+                      <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: '8px 14px', flex: 1, minWidth: 120 }}>
+                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>Собівартість</div>
+                        <div style={{ fontSize: 16, fontWeight: 500 }}>{fmtInt(totalCost)} грн</div>
+                      </div>
+                      <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: '8px 14px', flex: 1, minWidth: 120 }}>
+                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>Реалізація</div>
+                        <div style={{ fontSize: 16, fontWeight: 500 }}>{fmtInt(totalRevenue)} грн</div>
+                      </div>
+                      <div style={{ background: totalMargin >= 0 ? 'var(--green-bg)' : 'var(--red-bg)', borderRadius: 8, padding: '8px 14px', flex: 1, minWidth: 120 }}>
+                        <div style={{ fontSize: 11, color: totalMargin >= 0 ? 'var(--green)' : 'var(--red)' }}>Маржа</div>
+                        <div style={{ fontSize: 16, fontWeight: 500, color: totalMargin >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                          {totalMargin >= 0 ? '+' : '-'}{fmtInt(Math.abs(totalMargin))} грн
+                          {totalCost > 0 && <span style={{ fontSize: 12, fontWeight: 400 }}> ({((totalMargin / totalCost) * 100).toFixed(0)}%)</span>}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {allItems.map((it, i) => {
-                      const product = it.product_id ? allProducts.find(p => p.id === it.product_id) : null
+                    {itemsWithCost.map((it, i) => {
+                      const product = it._product
                       const isLinking = linkingItemId === it.id
                       const searchResults = isLinking && productSearch.length >= 2
                         ? allProducts.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase())).slice(0, 8)
                         : []
-                      // Auto-suggest: product with same name
                       const autoMatch = !it.product_id ? allProducts.find(p => p.name.trim().toLowerCase() === it.name?.trim().toLowerCase()) : null
+                      const qty = parseFloat(it.quantity) || 0
+                      const itemMargin = it._sellTotal - it._costTotal
 
                       return (
                         <div key={it.id || i} style={{
@@ -542,8 +577,17 @@ export default function Projects({ user }) {
                               <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 3, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                                 <span>{it._counterparty}</span>
                                 <span>{it._date}</span>
-                                <span>{it.quantity || '—'} {it.unit || 'шт'}</span>
-                                <span style={{ fontWeight: 500 }}>{fmt(Math.abs(it.amount || 0))} грн</span>
+                                <span>{qty || '—'} {it.unit || 'шт'}</span>
+                              </div>
+                              {/* Prices */}
+                              <div style={{ fontSize: 12, marginTop: 6, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                                {it._buyPrice > 0 && <span>Собівартість: <strong>{fmtInt(it._buyPrice)}</strong> × {qty} = <strong>{fmtInt(it._costTotal)} грн</strong></span>}
+                                {it._sellTotal > 0 && <span>Реалізація: <strong>{fmtInt(it.unit_price)}</strong> × {qty} = <strong>{fmtInt(it._sellTotal)} грн</strong></span>}
+                                {it._buyPrice > 0 && it._sellTotal > 0 && (
+                                  <span style={{ color: itemMargin >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 500 }}>
+                                    Маржа: {itemMargin >= 0 ? '+' : '-'}{fmtInt(Math.abs(itemMargin))} грн ({((itemMargin / it._costTotal) * 100).toFixed(0)}%)
+                                  </span>
+                                )}
                               </div>
                             </div>
                             <div style={{ flexShrink: 0 }}>
