@@ -223,17 +223,38 @@ export default function Inventory({ user }) {
   // Detail
   const openDetail = async (p) => {
     setDetail(p)
-    const { data, error } = await supabase.from('stock_movements')
-      .select('*, documents(id, file_name, file_path, file_type), bank_transactions(id, counterparty, amount, direction)')
+    // Завантажити рухи
+    const { data: movs, error } = await supabase.from('stock_movements')
+      .select('*')
       .eq('product_id', p.id).order('date', { ascending: false }).limit(100)
-    if (error) {
-      // Fallback without joins
-      const { data: fallback } = await supabase.from('stock_movements')
-        .select('*').eq('product_id', p.id).order('date', { ascending: false }).limit(100)
-      setDetailMovements(fallback || [])
-    } else {
-      setDetailMovements(data || [])
+
+    const movements = movs || []
+
+    // Підтягнути bank_transactions і documents для кожного руху
+    const bankIds = [...new Set(movements.map(m => m.bank_transaction_id).filter(Boolean))]
+    if (bankIds.length > 0) {
+      const { data: banks } = await supabase.from('bank_transactions')
+        .select('id, counterparty, amount, direction')
+        .in('id', bankIds)
+      const { data: docs } = await supabase.from('documents')
+        .select('id, file_name, file_path, file_type, bank_transaction_id')
+        .in('bank_transaction_id', bankIds)
+
+      const bankMap = {}
+      ;(banks || []).forEach(b => { bankMap[b.id] = b })
+      const docMap = {}
+      ;(docs || []).forEach(d => {
+        if (!docMap[d.bank_transaction_id]) docMap[d.bank_transaction_id] = []
+        docMap[d.bank_transaction_id].push(d)
+      })
+
+      movements.forEach(m => {
+        m.bank_transactions = bankMap[m.bank_transaction_id] || null
+        m.documents = docMap[m.bank_transaction_id] || []
+      })
     }
+
+    setDetailMovements(movements)
   }
 
   const handleAddMovement = async () => {
@@ -324,15 +345,24 @@ export default function Inventory({ user }) {
                     Закупівлі ({purchases.length})
                   </div>
                   {purchases.map(m => (
-                    <div key={m.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid var(--bg)' }}>
-                      <div>
-                        <div style={{ fontWeight:500, fontSize:13 }}>{m.bank_transactions?.counterparty || m.description || '—'}</div>
-                        <div style={{ fontSize:12, color:'var(--text2)' }}>{m.date}</div>
+                    <div key={m.id} style={{ padding:'8px 0', borderBottom:'1px solid var(--bg)' }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                        <div>
+                          <div style={{ fontWeight:500, fontSize:13 }}>{m.bank_transactions?.counterparty || m.description || '—'}</div>
+                          <div style={{ fontSize:12, color:'var(--text2)' }}>{m.date}</div>
+                        </div>
+                        <div style={{ textAlign:'right' }}>
+                          <div style={{ fontWeight:500, color:'var(--green)' }}>{fmt(m.quantity)} {detail.unit} × {m.price ? fmt(m.price) + ' грн' : '—'}</div>
+                          <div style={{ fontSize:12, color:'var(--text2)' }}>{m.total ? fmtInt(m.total) + ' грн' : '—'}</div>
+                        </div>
                       </div>
-                      <div style={{ textAlign:'right' }}>
-                        <div style={{ fontWeight:500, color:'var(--green)' }}>{fmt(m.quantity)} {detail.unit} × {m.price ? fmt(m.price) + ' грн' : '—'}</div>
-                        <div style={{ fontSize:12, color:'var(--text2)' }}>{m.total ? fmtInt(m.total) + ' грн' : '—'}</div>
-                      </div>
+                      {m.documents?.length > 0 && m.documents.map(doc => (
+                        <div key={doc.id} style={{ display:'flex', alignItems:'center', gap:6, marginTop:4, paddingLeft:4 }}>
+                          <i className="ti ti-file-text" style={{ fontSize:13, color:'var(--blue)' }} />
+                          <span style={{ fontSize:11, color:'var(--blue)', cursor:'pointer', textDecoration:'underline' }}
+                            onClick={() => openDocPreview(doc)}>{doc.file_name}</span>
+                        </div>
+                      ))}
                     </div>
                   ))}
                 </div>
@@ -346,15 +376,24 @@ export default function Inventory({ user }) {
                     Реалізації ({sales.length})
                   </div>
                   {sales.map(m => (
-                    <div key={m.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid var(--bg)' }}>
-                      <div>
-                        <div style={{ fontWeight:500, fontSize:13 }}>{m.bank_transactions?.counterparty || m.description || '—'}</div>
-                        <div style={{ fontSize:12, color:'var(--text2)' }}>{m.date}</div>
+                    <div key={m.id} style={{ padding:'8px 0', borderBottom:'1px solid var(--bg)' }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                        <div>
+                          <div style={{ fontWeight:500, fontSize:13 }}>{m.bank_transactions?.counterparty || m.description || '—'}</div>
+                          <div style={{ fontSize:12, color:'var(--text2)' }}>{m.date}</div>
+                        </div>
+                        <div style={{ textAlign:'right' }}>
+                          <div style={{ fontWeight:500, color:'var(--red)' }}>{fmt(m.quantity)} {detail.unit} × {m.price ? fmt(m.price) + ' грн' : '—'}</div>
+                          <div style={{ fontSize:12, color:'var(--text2)' }}>{m.total ? fmtInt(m.total) + ' грн' : '—'}</div>
+                        </div>
                       </div>
-                      <div style={{ textAlign:'right' }}>
-                        <div style={{ fontWeight:500, color:'var(--red)' }}>{fmt(m.quantity)} {detail.unit} × {m.price ? fmt(m.price) + ' грн' : '—'}</div>
-                        <div style={{ fontSize:12, color:'var(--text2)' }}>{m.total ? fmtInt(m.total) + ' грн' : '—'}</div>
-                      </div>
+                      {m.documents?.length > 0 && m.documents.map(doc => (
+                        <div key={doc.id} style={{ display:'flex', alignItems:'center', gap:6, marginTop:4, paddingLeft:4 }}>
+                          <i className="ti ti-file-text" style={{ fontSize:13, color:'var(--blue)' }} />
+                          <span style={{ fontSize:11, color:'var(--blue)', cursor:'pointer', textDecoration:'underline' }}
+                            onClick={() => openDocPreview(doc)}>{doc.file_name}</span>
+                        </div>
+                      ))}
                     </div>
                   ))}
                 </div>
