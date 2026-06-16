@@ -172,24 +172,31 @@ export default function Contractors({ user }) {
     setReconcileFrom(''); setReconcileTo('')
 
     // Fetch transactions by ЄДРПОУ (primary) or by name (fallback)
-    let txQuery = supabase.from('bank_transactions')
-      .select('id,date,amount,direction,article,counterparty,description,project_id,edrpou,doc_type,doc_number,iban,documents(id,file_name,file_path,file_type,file_size,doc_role),transaction_items(id,name,quantity,unit,unit_price,amount)')
-      .eq('is_ignored', false)
-      .order('date', { ascending: false }).limit(500)
+    const baseSelect = 'id,date,amount,direction,article,counterparty,description,project_id,edrpou,doc_type,doc_number,iban'
+    const fullSelect = `${baseSelect},documents(id,file_name,file_path,file_type,file_size,doc_role),transaction_items(id,name,quantity,unit,unit_price,amount)`
 
-    if (c.edrpou?.trim()) {
-      txQuery = txQuery.eq('edrpou', c.edrpou.trim())
-    } else {
-      txQuery = txQuery.ilike('counterparty', c.name)
+    const buildQuery = (sel) => {
+      let q = supabase.from('bank_transactions').select(sel)
+        .eq('is_ignored', false).order('date', { ascending: false }).limit(500)
+      if (c.edrpou?.trim()) q = q.eq('edrpou', c.edrpou.trim())
+      else q = q.ilike('counterparty', c.name)
+      return q
     }
 
-    const [{ data:txs }, { data:plans }] = await Promise.all([
-      txQuery,
+    // Спробувати з documents + items, fallback без них
+    let txResult = await buildQuery(fullSelect)
+    if (txResult.error) {
+      console.warn('Full select failed, fallback:', txResult.error.message)
+      txResult = await buildQuery(baseSelect)
+    }
+
+    const [{ data: plans }] = await Promise.all([
       supabase.from('plans')
         .select('id,year_month,planned_date,amount,direction,article,description')
         .ilike('article', `%${c.default_article || '___NOMATCH___'}%`)
         .order('planned_date'),
     ])
+    const txs = txResult.data
 
     const allTxs = txs || []
     setDetailTxs(allTxs)
