@@ -118,6 +118,7 @@ export default function AddDocument({ user, onSaved }) {
   const [attachMode, setAttachMode] = useState(false) // show attach UI instead of save
 
   const handleSave = async (forceSave = false) => {
+    if (saving) return // захист від подвійного натискання
     if (!form.date || !form.contractor || !form.total) {
       setError('Заповніть: Дата, Контрагент, Сума')
       return
@@ -126,7 +127,7 @@ export default function AddDocument({ user, onSaved }) {
     setError(null)
 
     try {
-      const total = parseFloat(form.total) || 0
+      const total = parseFloat(String(form.total).replace(/\s/g, '').replace(',', '.')) || 0
       const signed = form.direction === 'Доходи' ? Math.abs(total) : -Math.abs(total)
 
       // ── Пошук банківської операції для прикріплення документа ─────────
@@ -144,15 +145,18 @@ export default function AddDocument({ user, onSaved }) {
 
       let bankMatch = null
 
+      // Допуск: 10 грн або 0.1% від суми (що більше)
+      const tolerance = Math.max(10, absAmt * 0.001)
+
       // Спочатку по ЄДРПОУ + сумі
       if (form.edrpou?.trim()) {
         const { data: byCode } = await supabase.from('bank_transactions')
           .select('id, date, counterparty, amount, edrpou, documents(id)')
           .eq('edrpou', form.edrpou.trim())
           .eq('is_ignored', false)
-          .order('date', { ascending: false }).limit(20)
+          .order('date', { ascending: false }).limit(100)
 
-        bankMatch = (byCode || []).find(b => Math.abs(Math.abs(b.amount) - absAmt) <= 10)
+        bankMatch = (byCode || []).find(b => Math.abs(Math.abs(b.amount) - absAmt) <= tolerance)
       }
 
       // Потім по сумі + даті
@@ -162,10 +166,10 @@ export default function AddDocument({ user, onSaved }) {
           .eq('is_ignored', false)
           .gte('date', toDate(dMinus))
           .lte('date', toDate(dPlus))
-          .limit(50)
+          .limit(100)
 
         bankMatch = (byAmount || []).find(b => {
-          const amtMatch = Math.abs(Math.abs(b.amount) - absAmt) <= 10
+          const amtMatch = Math.abs(Math.abs(b.amount) - absAmt) <= tolerance
           const signMatch = (signed > 0) === (b.amount > 0)
           return amtMatch && signMatch
         })
@@ -194,8 +198,8 @@ export default function AddDocument({ user, onSaved }) {
         doc_type: form.docType || null,
         doc_number: form.docNumber || null,
         amount: signed,
-        vat_amount: parseFloat(form.vat) || 0,
-        amount_no_vat: parseFloat(form.noVat) || 0,
+        vat_amount: parseFloat(String(form.vat).replace(/\s/g, '').replace(',', '.')) || 0,
+        amount_no_vat: parseFloat(String(form.noVat).replace(/\s/g, '').replace(',', '.')) || 0,
         direction: form.direction,
         article: form.article,
         description: form.description || null,
@@ -204,11 +208,11 @@ export default function AddDocument({ user, onSaved }) {
       }).select().single()
 
       if (txErr) {
-        // Унікальний індекс по doc_number+edrpou — це дублікат
-        if (txErr.code === '23505') {
+        // Конфлікт (409) або унікальний індекс (23505) — дублікат
+        if (txErr.code === '23505' || txErr.code === '409' || (txErr.message && txErr.message.includes('conflict'))) {
           setError('Цей документ вже є в системі (збіг по номеру документу та ЄДРПОУ). Збереження скасовано.')
         } else {
-          throw txErr
+          setError('Помилка збереження: ' + (txErr.message || txErr.code || JSON.stringify(txErr)))
         }
         setSaving(false)
         return

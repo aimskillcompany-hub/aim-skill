@@ -38,7 +38,8 @@ async function findDbDuplicate(data) {
     const dMinus = new Date(d); dMinus.setDate(d.getDate() - 5)
     const dPlus  = new Date(d); dPlus.setDate(d.getDate() + 5)
     const toISO  = dt => dt.toISOString().split('T')[0]
-    const amt = parseFloat(data.totalAmount)
+    const amt = parseFloat(String(data.totalAmount).replace(/\s/g, '').replace(',', '.'))
+    const tolerance = Math.max(10, amt * 0.001)
 
     const { data: found } = await supabase
       .from('bank_transactions')
@@ -47,9 +48,9 @@ async function findDbDuplicate(data) {
       .eq('is_ignored', false)
       .gte('date', toISO(dMinus))
       .lte('date', toISO(dPlus))
-      .limit(10)
+      .limit(50)
 
-    const match = (found || []).find(t => Math.abs(Math.abs(t.amount) - amt) <= 10)
+    const match = (found || []).find(t => Math.abs(Math.abs(t.amount) - amt) <= tolerance)
     if (match) return { ...match, contractor: match.counterparty, rule: 'edrpou+amount+date' }
   }
 
@@ -161,7 +162,7 @@ export default function BatchUpload({ user, onSaved }) {
   const saveCard = async (card) => {
     if (!card.data) return
     const d = card.data
-    const total = parseFloat(d.totalAmount) || 0
+    const total = parseFloat(String(d.totalAmount).replace(/\s/g, '').replace(',', '.')) || 0
     const signed = card.form.direction === 'Доходи' ? Math.abs(total) : -Math.abs(total)
 
     try {
@@ -188,8 +189,8 @@ export default function BatchUpload({ user, onSaved }) {
         doc_type: d.docType || null,
         doc_number: d.docNumber || null,
         amount: signed,
-        vat_amount: parseFloat(d.vatAmount) || 0,
-        amount_no_vat: parseFloat(d.amountNoVat) || 0,
+        vat_amount: parseFloat(String(d.vatAmount || '0').replace(/\s/g, '').replace(',', '.')) || 0,
+        amount_no_vat: parseFloat(String(d.amountNoVat || '0').replace(/\s/g, '').replace(',', '.')) || 0,
         direction: card.form.direction,
         article: card.form.article || null,
         project_id: card.form.projectId || null,
