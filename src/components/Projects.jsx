@@ -97,15 +97,25 @@ export default function Projects({ user }) {
     setSelected(proj)
     setDocTab('incoming')
 
-    // Load transactions for this project
-    const { data: txs } = await supabase
-      .from('bank_transactions')
-      .select('*, transaction_items(*)')
-      .eq('project_id', proj.id)
-      .eq('is_ignored', false)
-      .order('date', { ascending: false })
+    // Load transactions: by bank_transactions.project_id OR by transaction_items.project_id
+    const [{ data: txsByProject }, { data: itemsByProject }] = await Promise.all([
+      supabase.from('bank_transactions').select('*, transaction_items(*)').eq('project_id', proj.id).eq('is_ignored', false).order('date', { ascending: false }),
+      supabase.from('transaction_items').select('*, bank_transactions(id, date, amount, direction, counterparty, description)').eq('project_id', proj.id),
+    ])
 
-    setProjTxs(txs || [])
+    // Merge: bank_transactions з project_id + bank_transactions де позиції мають project_id
+    const txMap = {}
+    ;(txsByProject || []).forEach(tx => { txMap[tx.id] = tx })
+    ;(itemsByProject || []).forEach(it => {
+      const bt = it.bank_transactions
+      if (bt && !txMap[bt.id]) {
+        txMap[bt.id] = { ...bt, transaction_items: [it], _fromItems: true }
+      } else if (bt && txMap[bt.id] && txMap[bt.id]._fromItems) {
+        txMap[bt.id].transaction_items.push(it)
+      }
+    })
+    const allTxs = Object.values(txMap).sort((a, b) => b.date > a.date ? 1 : -1)
+    setProjTxs(allTxs)
 
     // Load documents — by project_id OR by transaction_id (для старих записів)
     const txIds = (txs || []).map(t => t.id)

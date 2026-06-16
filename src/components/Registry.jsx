@@ -337,14 +337,38 @@ export default function Registry({ user }) {
   const clearFilters = () => { setFilters({ dateFrom:'',dateTo:'',direction:'',project:'',article:'',search:'',amountMin:'',amountMax:'',noArticle:false,docStatus:'' }); setPage(1) }
   const activeFilterCount = Object.values(filters).filter(v => v === true || (v !== false && Boolean(v))).length
 
+  const [projectInfo, setProjectInfo] = useState({}) // projectId → { count, total, lastItems[] }
+  const [itemProjectHints, setItemProjectHints] = useState({}) // itemName → projectId (де цей товар вже був)
+
   const openDetail = async (tx) => {
     setSelected(tx)
-    const [{ data: docs }, { data: items }] = await Promise.all([
+    const [{ data: docs }, { data: items }, { data: allItems }] = await Promise.all([
       supabase.from('documents').select('*').eq('bank_transaction_id', tx.id),
       supabase.from('transaction_items').select('*').eq('bank_transaction_id', tx.id),
+      supabase.from('transaction_items').select('name, amount, project_id').not('project_id', 'is', null),
     ])
     setSelectedDocs(docs || [])
     setSelectedItems(items || [])
+
+    // Build project info: count, total, last items
+    const pInfo = {}
+    ;(allItems || []).forEach(it => {
+      if (!pInfo[it.project_id]) pInfo[it.project_id] = { count:0, total:0, items: new Set() }
+      pInfo[it.project_id].count++
+      pInfo[it.project_id].total += Math.abs(it.amount || 0)
+      if (pInfo[it.project_id].items.size < 3) pInfo[it.project_id].items.add(it.name?.substring(0, 30))
+    })
+    setProjectInfo(pInfo)
+
+    // Build hints: if same item name exists in a project → suggest it
+    const hints = {}
+    ;(items || []).forEach(item => {
+      if (!item.name) return
+      const nameLower = item.name.trim().toLowerCase()
+      const match = (allItems || []).find(a => a.name?.trim().toLowerCase() === nameLower && a.project_id)
+      if (match) hints[item.id] = match.project_id
+    })
+    setItemProjectHints(hints)
   }
 
   const downloadDoc = async (doc) => {
@@ -851,19 +875,52 @@ export default function Registry({ user }) {
                           <td style={{ padding:'6px 8px', whiteSpace:'nowrap' }}>{fmt2(it.quantity)} {it.unit||'шт'}</td>
                           <td style={{ padding:'6px 8px', fontWeight:500, whiteSpace:'nowrap' }}>{fmt2(it.amount)} грн</td>
                           <td style={{ padding:'6px 8px' }}>
-                            <select
-                              className="form-input"
-                              style={{ height:32, fontSize:12, padding:'4px 8px', minWidth:140 }}
-                              value={it.project_id || ''}
-                              onChange={async (e) => {
-                                const projectId = e.target.value || null
-                                await supabase.from('transaction_items').update({ project_id: projectId }).eq('id', it.id)
-                                setSelectedItems(prev => prev.map(item => item.id === it.id ? { ...item, project_id: projectId } : item))
-                              }}
-                            >
-                              <option value="">— без проєкту —</option>
-                              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                            </select>
+                            {(() => {
+                              const hint = itemProjectHints[it.id]
+                              const hintProject = hint ? projects.find(p => p.id === hint) : null
+                              // Sort: hint first, then by item count
+                              const sorted = [...projects].sort((a, b) => {
+                                if (a.id === hint) return -1
+                                if (b.id === hint) return 1
+                                return (projectInfo[b.id]?.count || 0) - (projectInfo[a.id]?.count || 0)
+                              })
+                              return (
+                                <div>
+                                  {hintProject && !it.project_id && (
+                                    <button onClick={async () => {
+                                      await supabase.from('transaction_items').update({ project_id: hint }).eq('id', it.id)
+                                      setSelectedItems(prev => prev.map(item => item.id === it.id ? { ...item, project_id: hint } : item))
+                                    }} style={{
+                                      background:'var(--green-bg)', border:'1px solid var(--border)', borderRadius:6,
+                                      padding:'3px 8px', cursor:'pointer', fontSize:11, color:'var(--green)',
+                                      marginBottom:4, display:'flex', alignItems:'center', gap:4, fontFamily:'inherit', width:'100%',
+                                    }}>
+                                      <i className="ti ti-sparkles" style={{ fontSize:12 }} />
+                                      {hintProject.name?.substring(0, 25)}
+                                    </button>
+                                  )}
+                                  <select
+                                    className="form-input"
+                                    style={{ height:32, fontSize:11, padding:'4px 6px', minWidth:160 }}
+                                    value={it.project_id || ''}
+                                    onChange={async (e) => {
+                                      const projectId = e.target.value || null
+                                      await supabase.from('transaction_items').update({ project_id: projectId }).eq('id', it.id)
+                                      setSelectedItems(prev => prev.map(item => item.id === it.id ? { ...item, project_id: projectId } : item))
+                                    }}
+                                  >
+                                    <option value="">— без проєкту —</option>
+                                    {sorted.map(p => {
+                                      const info = projectInfo[p.id]
+                                      const label = info
+                                        ? `${p.name} (${info.count} поз., ${new Intl.NumberFormat('uk-UA',{maximumFractionDigits:0}).format(info.total)} грн)`
+                                        : p.name
+                                      return <option key={p.id} value={p.id}>{p.id === hint ? '⭐ ' : ''}{label}</option>
+                                    })}
+                                  </select>
+                                </div>
+                              )
+                            })()}
                           </td>
                         </tr>
                       ))}
