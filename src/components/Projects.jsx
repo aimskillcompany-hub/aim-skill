@@ -531,23 +531,23 @@ export default function Projects({ user }) {
 
             {/* Stats — рахуються з projTxs (реальні дані відкритого проекту) */}
             {(() => {
-              // Виручка = оплати від клієнта
-              const revenue = projTxs.filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+              // Все без ПДВ — однакова основа
+              // Виручка = з товарних позицій (unit_price × qty, без ПДВ)
+              // Fallback на банк якщо немає позицій
+              const allItems = projTxs.flatMap(tx => (tx.transaction_items || []).map(it => ({ ...it, _dir: tx.direction })))
+              const salesItems = allItems.filter(it => it._dir === 'Доходи')
+              const goodsRevenue = salesItems.reduce((s, it) => s + (parseFloat(it.quantity) || 0) * (parseFloat(it.unit_price) || 0), 0)
+              const bankRevenue = projTxs.filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+              const revenue = goodsRevenue > 0 ? goodsRevenue : bankRevenue
               // Додаткові витрати (bank_transactions з direction='Витрати')
               const extraExpenses = projTxs.filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
-              // Собівартість (FIFO + ПДВ) — тільки з проданих товарів (direction='Доходи')
-              const allItems = projTxs.flatMap(tx => (tx.transaction_items || []).map(it => ({ ...it, _dir: tx.direction })))
+              // Собівартість (FIFO, без ПДВ)
               let goodsCost = 0
-              allItems.forEach(it => {
-                if (it._dir !== 'Доходи') return // тільки продажі
+              salesItems.forEach(it => {
                 const qty = parseFloat(it.quantity) || 0
                 const product = it.product_id ? allProducts.find(p => p.id === it.product_id) : null
                 const costPrice = it._costPrice || product?.buy_price || 0
-                if (costPrice > 0 && qty > 0) {
-                  const vatRate = parseFloat(it.vat_rate) || 20
-                  const costWithVat = costPrice * (1 + vatRate / 100)
-                  goodsCost += qty * costWithVat
-                }
+                if (costPrice > 0 && qty > 0) goodsCost += qty * costPrice
               })
               const totalExpenses = goodsCost + extraExpenses
               const margin = revenue - totalExpenses
@@ -555,11 +555,12 @@ export default function Projects({ user }) {
               return (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 20 }}>
                   <div className="kpi">
-                    <div className="kpi-label">Виручка</div>
+                    <div className="kpi-label">Виручка (без ПДВ)</div>
                     <div className="kpi-value blue">{fmt(revenue)} грн</div>
+                    {bankRevenue > 0 && bankRevenue !== revenue && <div className="kpi-sub">Оплачено: {fmt(bankRevenue)} (з ПДВ)</div>}
                   </div>
                   <div className="kpi">
-                    <div className="kpi-label">Витрати</div>
+                    <div className="kpi-label">Витрати (без ПДВ)</div>
                     <div className="kpi-value red">{fmt(totalExpenses)} грн</div>
                     {goodsCost > 0 && <div className="kpi-sub">с/в {fmt(goodsCost)}{extraExpenses > 0 ? ` + дод. ${fmt(extraExpenses)}` : ''}</div>}
                   </div>
