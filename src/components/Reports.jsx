@@ -667,14 +667,15 @@ export default function Reports() {
             // Section header
             rows.push([SECTION_LABELS[type]])
             // Article rows
+            const sign = SECTION_SIGN[type] || 1
             articles.forEach(artName => {
-              const rowTotal = months.reduce((s,m) => s + (artData[artName]?.[m]?.sum || 0), 0)
+              const rowTotal = sign * months.reduce((s,m) => s + (artData[artName]?.[m]?.sum || 0), 0)
               if (rowTotal === 0) return
-              rows.push([artName, ...months.map(m => artData[artName]?.[m]?.sum || 0), rowTotal])
+              rows.push([artName, ...months.map(m => sign * (artData[artName]?.[m]?.sum || 0)), rowTotal])
             })
             // Section total
-            const secTotal = sectionTotals[type]?._total || 0
-            rows.push(['Разом ' + SECTION_LABELS[type].toLowerCase(), ...months.map(m => sectionTotals[type]?.[m] || 0), secTotal])
+            const secTotal = sign * (sectionTotals[type]?._total || 0)
+            rows.push(['Разом ' + SECTION_LABELS[type].toLowerCase(), ...months.map(m => sign * (sectionTotals[type]?.[m] || 0)), secTotal])
           })
           // Net result
           const netRow = ['ЧИСТИЙ РЕЗУЛЬТАТ', ...months.map(m => {
@@ -779,7 +780,8 @@ export default function Reports() {
                               </td>
                             )
                           }
-                          const v = artData[artName]?.[m]?.sum || 0
+                          const raw = artData[artName]?.[m]?.sum || 0
+                          const v = (SECTION_SIGN[type] || 1) * raw
                           return (
                             <td key={m}
                               style={{ ...cellStyle(v, false, true), background: isCurrent(m)?'#F0F2F5':'' }}
@@ -793,8 +795,9 @@ export default function Reports() {
                           )
                         })}
                         {(() => {
-                          const factTotal = months.reduce((s,m) => s+(artData[artName]?.[m]?.sum||0), 0)
-                          const planTotal = allDisplayMonths.filter(m=>isPlan(m)).reduce((s,m) => s+(planData[artName]?.[m]||0), 0)
+                          const sign = SECTION_SIGN[type] || 1
+                          const factTotal = sign * months.reduce((s,m) => s+(artData[artName]?.[m]?.sum||0), 0)
+                          const planTotal = sign * allDisplayMonths.filter(m=>isPlan(m)).reduce((s,m) => s+(planData[artName]?.[m]||0), 0)
                           const forecast = factTotal + planTotal
                           return (<>
                             <td style={{ ...cellStyle(factTotal, true), background:'#EFF4FF', cursor: factTotal!==0?'pointer':'default', borderLeft:'2px solid #E2E8F0' }}>
