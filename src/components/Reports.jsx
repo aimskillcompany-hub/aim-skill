@@ -23,11 +23,8 @@ const SECTION_SIGN   = { income:+1, expense:-1, transfer:+1, other:+1 }
 const EXPENSE_COLORS = ['#2563EB','#6B6B6B','#0891b2','#059669','#4A7C59','#9B3A3A','#6B6B6B','#2563EB','#4A7C59','#ca8a04']
 const DIRS = ['Витрати','Доходи','ПФД','Внутрішні перекази','Відсотки банку','Інше']
 
-// Нормалізація суми: direction = джерело правди, amount може мати неправильний знак
-const normAmount = (tx) => {
-  const abs = Math.abs(tx.amount || 0)
-  return tx.direction === 'Витрати' ? -abs : abs
-}
+// Абсолютна сума для P&L (direction визначає секцію, amount завжди показується додатнім)
+const absAmount = (tx) => Math.abs(tx.amount || 0)
 
 // ── Planning helpers ─────────────────────────────────────────────────────────
 function getMonthRange(from, to) {
@@ -196,7 +193,7 @@ export default function Reports() {
         const art = tx.article || (tx.direction === 'Доходи' ? '(без статті: доходи)' : '(без статті: витрати)')
         if (!grouped[art])    grouped[art] = {}
         if (!grouped[art][m]) grouped[art][m] = { sum: 0, txs: [] }
-        grouped[art][m].sum += normAmount(tx)
+        grouped[art][m].sum += absAmount(tx)
         grouped[art][m].txs.push(tx)
       })
       setArtData(grouped)
@@ -255,7 +252,7 @@ export default function Reports() {
       const art = tx.article || (tx.direction === 'Доходи' ? '(без статті: доходи)' : '(без статті: витрати)')
       if (!grouped[art]) grouped[art] = {}
       if (!grouped[art][m]) grouped[art][m] = { sum: 0, txs: [] }
-      grouped[art][m].sum += normAmount(tx)
+      grouped[art][m].sum += absAmount(tx)
       grouped[art][m].txs.push(tx)
     })
     setArtData(grouped)
@@ -327,7 +324,7 @@ export default function Reports() {
           const art = tx.article || (tx.direction === 'Доходи' ? '(без статті: доходи)' : '(без статті: витрати)')
           if (!grouped[art])    grouped[art] = {}
           if (!grouped[art][m]) grouped[art][m] = { sum: 0, txs: [] }
-          grouped[art][m].sum += normAmount(tx)
+          grouped[art][m].sum += absAmount(tx)
           grouped[art][m].txs.push(tx)
         })
         setArtData(grouped)
@@ -339,7 +336,7 @@ export default function Reports() {
           setDrillDown(prev => prev ? ({
             ...prev,
             txs: updTxs,
-            sum: updTxs.reduce((s,t) => s + normAmount(t), 0),
+            sum: updTxs.reduce((s,t) => s + absAmount(t), 0),
           }) : null)
         }
       })
@@ -458,7 +455,7 @@ export default function Reports() {
   const handleTotalClick = (month) => {
     const allTxs = Object.values(artData).flatMap(d => d[month]?.txs || [])
     if (!allTxs.length) return
-    const sum = allTxs.reduce((s,t) => s+(t.amount||0), 0)
+    const sum = ARTICLE_TYPE_ORDER.reduce((s, type) => s + (SECTION_SIGN[type] || 1) * (sectionTotals[type]?.[month] || 0), 0)
     setDrillDown({ article: 'Всі операції', month, txs: allTxs, sum })
   }
 
@@ -681,7 +678,7 @@ export default function Reports() {
           })
           // Net result
           const netRow = ['ЧИСТИЙ РЕЗУЛЬТАТ', ...months.map(m => {
-            return ARTICLE_TYPE_ORDER.reduce((s, type) => s + (sectionTotals[type]?.[m] || 0), 0)
+            return ARTICLE_TYPE_ORDER.reduce((s, type) => s + (SECTION_SIGN[type] || 1) * (sectionTotals[type]?.[m] || 0), 0)
           }), totNet]
           rows.push(netRow)
 
@@ -832,7 +829,8 @@ export default function Reports() {
                           </td>
                         )
                       }
-                      const v = sectionTotals[type][m] || 0
+                      const raw = sectionTotals[type][m] || 0
+                      const v = (SECTION_SIGN[type] || 1) * raw
                       return (
                         <td key={m}
                           style={{ ...cellStyle(v, true, true), background: isCurrent(m)?'#F0F2F5':'var(--surface2)' }}
@@ -846,8 +844,9 @@ export default function Reports() {
                       )
                     })}
                     {(() => {
-                      const factT = sectionTotals[type]._total || 0
-                      const planT = allDisplayMonths.filter(m=>isPlan(m)).reduce((s,m) => s+(planSectionTotals[type][m]||0), 0)
+                      const sign = SECTION_SIGN[type] || 1
+                      const factT = sign * (sectionTotals[type]._total || 0)
+                      const planT = sign * allDisplayMonths.filter(m=>isPlan(m)).reduce((s,m) => s+(planSectionTotals[type][m]||0), 0)
                       const forecastT = factT + planT
                       return (<>
                         <td style={{ ...cellStyle(factT, true), background:'#EFF4FF', borderLeft:'2px solid #E2E8F0' }}>
@@ -883,7 +882,7 @@ export default function Reports() {
                     </td>
                   )
                 }
-                const v = Object.values(artData).reduce((s, d) => s+(d[m]?.sum||0), 0)
+                const v = ARTICLE_TYPE_ORDER.reduce((s, type) => s + (SECTION_SIGN[type] || 1) * (sectionTotals[type]?.[m] || 0), 0)
                 return (
                   <td key={m}
                     style={{ ...cellStyle(v, true, true), background: isCurrent(m)?'#F0F2F5':'var(--surface2)', fontSize:13 }}
