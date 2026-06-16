@@ -252,45 +252,13 @@ export default function AddDocument({ user, onSaved }) {
         }).eq('id', bankMatch.id)
       }
 
-      // Також зберігаємо в transactions для зворотної сумісності (не блокує збереження)
-      let tx = null
-      try {
-        const { data: txData, error: txErr } = await supabase.from('transactions').insert({
-          project_id: form.projectId || null,
-          date: form.date,
-          contractor: form.contractor,
-          edrpou: form.edrpou || null,
-          doc_type: form.docType || null,
-          doc_number: form.docNumber || null,
-          amount: signed,
-          vat_amount: parseFloat(String(form.vat).replace(/\s/g, '').replace(',', '.')) || 0,
-          amount_no_vat: parseFloat(String(form.noVat).replace(/\s/g, '').replace(',', '.')) || 0,
-          direction: form.direction,
-          article: form.article,
-          description: form.description || null,
-          created_by: user.id,
-          contractor_id: finalContractorId,
-        }).select().single()
-        if (!txErr) tx = txData
-        else console.warn('transactions insert (non-critical):', txErr.message || txErr.code)
-      } catch (e) {
-        console.warn('transactions insert (non-critical):', e.message)
-      }
-
-      // If bank match found, link it to this transaction
-      if (bankMatch && tx) {
-        await supabase.from('bank_transactions').update({
-          matched_transaction_id: tx.id, is_matched: true,
-        }).eq('id', bankMatch.id)
-      }
+      // bank_transactions = єдине джерело правди, transactions не потрібна
 
       // 2. Save items + auto-link to products + stock movements
-      const txId = tx?.id || null
-      const docFolder = txId || bankMatch?.id || crypto.randomUUID()
+      const docFolder = bankMatch?.id || crypto.randomUUID()
 
       if (form.items.length > 0) {
         const items = form.items.map(it => ({
-          transaction_id: txId,
           bank_transaction_id: bankMatch?.id || null,
           name: it.name,
           quantity: it.quantity || null,
@@ -375,7 +343,6 @@ export default function AddDocument({ user, onSaved }) {
 
           if (!uploadErr) {
             await supabase.from('documents').insert({
-              transaction_id: txId,
               bank_transaction_id: bankMatch?.id || null,
               project_id: form.projectId || null,
               file_name: displayName,
