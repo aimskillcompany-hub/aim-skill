@@ -74,27 +74,42 @@ export default function Registry({ user }) {
 
   // Quick new project
   const [showNewProject, setShowNewProject] = useState(false)
-  const [newProjectName, setNewProjectName] = useState('')
   const [newProjectSaving, setNewProjectSaving] = useState(false)
 
+  const UA_MONTHS = ['січень','лютий','березень','квітень','травень','червень','липень','серпень','вересень','жовтень','листопад','грудень']
+
   const handleCreateProject = async () => {
-    if (!newProjectName.trim()) return
+    // Беремо контрагента і дату з операції що редагується
+    const contractor = editForm.contractor || edit?.counterparty || ''
+    const txDate = edit?.date || new Date().toISOString().split('T')[0]
+    if (!contractor) return
+
     setNewProjectSaving(true)
+    // Генеруємо назву як в Projects.jsx
+    const { count } = await supabase.from('projects').select('*', { count: 'exact', head: true })
+    const seqNum = (count || 0) + 1
+    const num = String(seqNum).padStart(3, '0')
+    const short = contractor.replace(/ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ/gi, '').replace(/ФІЗИЧНА ОСОБА[-\s]ПІДПРИЄМЕЦЬ/gi, '').replace(/^(ТОВ|ФОП|АТ|ПП)\s+/gi, '').replace(/[«»"']/g, '').trim().substring(0, 25).trim()
+    const d = new Date(txDate)
+    const month = UA_MONTHS[d.getMonth()]
+    const year = d.getFullYear()
+    const projectName = `#${num} / ${short} / ${month} ${year}`
+
     const { data, error } = await supabase.from('projects').insert({
-      name: newProjectName.trim(),
+      name: projectName,
       status: 'active',
+      contractor: contractor,
+      start_date: txDate,
       created_by: user?.id,
     }).select('id').single()
+
     if (!error && data) {
-      // Оновити список проєктів і обрати новий
       const { data: allProjects } = await supabase.from('projects').select('id, name').order('name')
       setProjects(allProjects || [])
       setEditForm(f => ({ ...f, project_id: data.id }))
-      setBulkForm(f => ({ ...f, project_id: data.id }))
     }
     setNewProjectSaving(false)
     setShowNewProject(false)
-    setNewProjectName('')
   }
 
   const [sort, setSort] = useState({ col: 'date', dir: 'desc' })
@@ -910,23 +925,34 @@ export default function Registry({ user }) {
             </div>
 
             {/* New project mini-modal */}
-            {showNewProject && (
-              <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.3)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center' }} onClick={e => e.target===e.currentTarget && setShowNewProject(false)}>
-                <div style={{ background:'var(--surface)', borderRadius:16, padding:24, width:'100%', maxWidth:400 }}>
-                  <h3 style={{ fontSize:16, fontWeight:600, marginBottom:16 }}>Новий проєкт</h3>
-                  <div className="form-group" style={{ marginBottom:16 }}>
-                    <label>Назва проєкту *</label>
-                    <input className="form-input" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} placeholder="Назва проєкту" autoFocus />
-                  </div>
-                  <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
-                    <button className="btn btn-primary" onClick={handleCreateProject} disabled={newProjectSaving || !newProjectName.trim()} style={{ width:'auto' }}>
-                      {newProjectSaving ? 'Створення...' : 'Створити'}
-                    </button>
-                    <button className="btn btn-secondary" onClick={() => setShowNewProject(false)} style={{ width:'auto' }}>Скасувати</button>
+            {showNewProject && (() => {
+              const contractor = editForm.contractor || edit?.counterparty || ''
+              const txDate = edit?.date || new Date().toISOString().split('T')[0]
+              const short = contractor.replace(/ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ/gi, '').replace(/ФІЗИЧНА ОСОБА[-\s]ПІДПРИЄМЕЦЬ/gi, '').replace(/^(ТОВ|ФОП|АТ|ПП)\s+/gi, '').replace(/[«»"']/g, '').trim().substring(0, 25).trim()
+              const d = new Date(txDate)
+              const month = UA_MONTHS[d.getMonth()]
+              const year = d.getFullYear()
+              const preview = `#??? / ${short} / ${month} ${year}`
+              return (
+                <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.3)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center' }} onClick={e => e.target===e.currentTarget && setShowNewProject(false)}>
+                  <div style={{ background:'var(--surface)', borderRadius:16, padding:24, width:'100%', maxWidth:420 }}>
+                    <h3 style={{ fontSize:16, fontWeight:600, marginBottom:16 }}>Створити проєкт</h3>
+                    <div style={{ background:'var(--surface2)', borderRadius:8, padding:'14px 16px', marginBottom:16 }}>
+                      <div style={{ fontSize:12, color:'var(--text3)', marginBottom:4 }}>Назва проєкту (генерується автоматично)</div>
+                      <div style={{ fontSize:16, fontWeight:600 }}>{preview}</div>
+                      <div style={{ fontSize:12, color:'var(--text2)', marginTop:6 }}>Контрагент: {contractor || '—'}</div>
+                      <div style={{ fontSize:12, color:'var(--text2)' }}>Дата: {txDate}</div>
+                    </div>
+                    <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+                      <button className="btn btn-primary" onClick={handleCreateProject} disabled={newProjectSaving || !contractor} style={{ width:'auto' }}>
+                        {newProjectSaving ? 'Створення...' : 'Створити проєкт'}
+                      </button>
+                      <button className="btn btn-secondary" onClick={() => setShowNewProject(false)} style={{ width:'auto' }}>Скасувати</button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )
+            })()}
           </div>
         </div>
       )}
