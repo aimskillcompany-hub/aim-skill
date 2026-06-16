@@ -669,23 +669,18 @@ export default function Projects({ user }) {
               if (allItems.length === 0) return null
               const linked = allItems.filter(it => it.product_id).length
 
-              // Calculate cost & revenue
-              // Продажі (direction='Доходи'): реалізація = amount з накладної (з ПДВ), собівартість = FIFO + ПДВ
-              // Закупки (direction='Витрати'): тільки собівартість
+              // Calculate cost & revenue (без ПДВ — однакова основа)
               const itemsWithCost = allItems.map(it => {
                 const product = it.product_id ? allProducts.find(p => p.id === it.product_id) : null
                 const qty = parseFloat(it.quantity) || 0
-                const vatRate = parseFloat(it.vat_rate) || 20
                 const isSale = it._direction === 'Доходи'
 
-                // Собівартість (FIFO + ПДВ)
-                const buyPriceNet = it._costPrice || product?.buy_price || 0
-                const buyPrice = buyPriceNet > 0 ? buyPriceNet * (1 + vatRate / 100) : 0
+                // Собівартість (FIFO, без ПДВ)
+                const buyPrice = it._costPrice || product?.buy_price || 0
                 const costTotal = isSale ? qty * buyPrice : 0
 
-                // Реалізація: unit_price та amount без ПДВ, додаємо ПДВ
-                const unitPriceNet = parseFloat(it.unit_price) || 0
-                const sellPrice = isSale ? unitPriceNet * (1 + vatRate / 100) : 0
+                // Реалізація (unit_price без ПДВ)
+                const sellPrice = isSale ? (parseFloat(it.unit_price) || 0) : 0
                 const sellTotal = isSale ? qty * sellPrice : 0
 
                 return { ...it, _product: product, _buyPrice: buyPrice, _costTotal: costTotal, _sellTotal: sellTotal, _sellPrice: sellPrice, _isSale: isSale }
@@ -716,7 +711,7 @@ export default function Projects({ user }) {
                   {totalCost > 0 && (
                     <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
                       <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: '8px 14px', flex: 1, minWidth: 120 }}>
-                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>Собівартість (з ПДВ)</div>
+                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>Собівартість</div>
                         <div style={{ fontSize: 16, fontWeight: 500 }}>{fmtInt(totalCost)} грн</div>
                       </div>
                       <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: '8px 14px', flex: 1, minWidth: 120 }}>
