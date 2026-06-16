@@ -10,6 +10,15 @@ export default function Inventory({ user }) {
   const [products, setProducts] = useState([])
   const [movements, setMovements] = useState([])
   const [loading, setLoading] = useState(true)
+  const [previewUrl, setPreviewUrl] = useState(null)
+  const [previewDoc, setPreviewDoc] = useState(null)
+
+  const openDocPreview = async (doc) => {
+    if (!doc?.file_path) return
+    setPreviewDoc(doc)
+    const { data } = await supabase.storage.from('documents').createSignedUrl(doc.file_path, 300)
+    setPreviewUrl(data?.signedUrl || null)
+  }
   const [search, setSearch] = useState('')
   const [filterCat, setFilterCat] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -98,7 +107,8 @@ export default function Inventory({ user }) {
   const openDetail = async (p) => {
     setDetail(p)
     const { data } = await supabase.from('stock_movements')
-      .select('*').eq('product_id', p.id).order('date', { ascending: false }).limit(100)
+      .select('*, documents(id, file_name, file_path, file_type), bank_transactions(id, counterparty, amount, direction)')
+      .eq('product_id', p.id).order('date', { ascending: false }).limit(100)
     setDetailMovements(data || [])
   }
 
@@ -181,7 +191,7 @@ export default function Inventory({ user }) {
           ) : (
             <div className="tbl-wrap" style={{ border:'none' }}>
               <table>
-                <thead><tr><th>Дата</th><th>Тип</th><th style={{ textAlign:'right' }}>Кількість</th><th style={{ textAlign:'right' }}>Ціна</th><th style={{ textAlign:'right' }}>Сума</th><th>Опис</th></tr></thead>
+                <thead><tr><th>Дата</th><th>Тип</th><th>Контрагент</th><th style={{ textAlign:'right' }}>Кількість</th><th style={{ textAlign:'right' }}>Ціна</th><th style={{ textAlign:'right' }}>Сума</th><th>Документ</th></tr></thead>
                 <tbody>
                   {detailMovements.map(m => (
                     <tr key={m.id}>
@@ -193,12 +203,28 @@ export default function Inventory({ user }) {
                           color: m.type==='in' ? 'var(--green)' : m.type==='out' ? 'var(--red)' : 'var(--text2)',
                         }}>{m.type==='in' ? 'Прихід' : m.type==='out' ? 'Витрата' : 'Коригування'}</span>
                       </td>
+                      <td style={{ fontSize:13, color:'var(--text2)', maxWidth:150, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {m.bank_transactions?.counterparty || '—'}
+                      </td>
                       <td style={{ textAlign:'right', fontWeight:500, color: m.type==='in' ? 'var(--green)' : 'var(--red)', fontVariantNumeric:'tabular-nums' }}>
                         {m.type==='in' ? '+' : '-'}{fmt(m.quantity)}
                       </td>
                       <td style={{ textAlign:'right', color:'var(--text2)', fontVariantNumeric:'tabular-nums' }}>{m.price ? fmt(m.price) + ' грн' : '—'}</td>
                       <td style={{ textAlign:'right', color:'var(--text2)', fontVariantNumeric:'tabular-nums' }}>{m.total ? fmtInt(m.total) + ' грн' : '—'}</td>
-                      <td style={{ fontSize:13, color:'var(--text2)' }}>{m.description || '—'}</td>
+                      <td>
+                        {m.documents ? (
+                          <button onClick={() => openDocPreview(m.documents)} style={{
+                            background:'none', border:'1px solid var(--border)', borderRadius:6,
+                            padding:'4px 8px', cursor:'pointer', fontSize:12, color:'var(--blue)',
+                            display:'flex', alignItems:'center', gap:4, fontFamily:'inherit',
+                          }}>
+                            <i className="ti ti-file-text" style={{ fontSize:13 }} />
+                            {m.documents.file_name?.substring(0, 20) || 'Документ'}
+                          </button>
+                        ) : (
+                          <span style={{ fontSize:12, color:'var(--text3)' }}>—</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -208,6 +234,32 @@ export default function Inventory({ user }) {
         </div>
 
         {/* Add movement modal */}
+        {/* Document preview */}
+        {previewDoc && (
+          <div className="modal-bg" onClick={e => e.target===e.currentTarget && setPreviewDoc(null)} style={{ zIndex:1100 }}>
+            <div className="modal modal-xl" style={{ padding:0, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:12, padding:'14px 18px', borderBottom:'1px solid var(--border)' }}>
+                <i className="ti ti-file-text" style={{ fontSize:20, color:'var(--blue)' }} />
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontWeight:600, fontSize:14, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{previewDoc.file_name}</div>
+                </div>
+                <button className="modal-close" onClick={() => setPreviewDoc(null)}>×</button>
+              </div>
+              <div style={{ flex:1, overflow:'auto', background:'var(--bg)', display:'flex', alignItems:'center', justifyContent:'center', minHeight:400 }}>
+                {previewUrl ? (
+                  previewDoc.file_type === 'application/pdf' ? (
+                    <iframe src={previewUrl} style={{ width:'100%', height:'75vh', border:'none' }} title={previewDoc.file_name} />
+                  ) : (
+                    <img src={previewUrl} alt={previewDoc.file_name} style={{ maxWidth:'100%', maxHeight:'75vh', objectFit:'contain' }} />
+                  )
+                ) : (
+                  <div style={{ color:'var(--text3)', padding:40 }}>Завантаження...</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {showMovement && (
           <div className="modal-bg" onClick={e => e.target===e.currentTarget && setShowMovement(false)}>
             <div className="modal">
