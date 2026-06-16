@@ -23,6 +23,12 @@ const SECTION_SIGN   = { income:+1, expense:-1, transfer:+1, other:+1 }
 const EXPENSE_COLORS = ['#2563EB','#6B6B6B','#0891b2','#059669','#4A7C59','#9B3A3A','#6B6B6B','#2563EB','#4A7C59','#ca8a04']
 const DIRS = ['Витрати','Доходи','ПФД','Внутрішні перекази','Відсотки банку','Інше']
 
+// Нормалізація суми: direction = джерело правди, amount може мати неправильний знак
+const normAmount = (tx) => {
+  const abs = Math.abs(tx.amount || 0)
+  return tx.direction === 'Витрати' ? -abs : abs
+}
+
 // ── Planning helpers ─────────────────────────────────────────────────────────
 function getMonthRange(from, to) {
   const months = []
@@ -190,7 +196,7 @@ export default function Reports() {
         const art = tx.article || (tx.direction === 'Доходи' ? '(без статті: доходи)' : '(без статті: витрати)')
         if (!grouped[art])    grouped[art] = {}
         if (!grouped[art][m]) grouped[art][m] = { sum: 0, txs: [] }
-        grouped[art][m].sum += tx.amount || 0
+        grouped[art][m].sum += normAmount(tx)
         grouped[art][m].txs.push(tx)
       })
       setArtData(grouped)
@@ -201,11 +207,11 @@ export default function Reports() {
         const m = tx.date?.substring(0,7)
         if (!m) return
         if (!byMonth[m]) byMonth[m] = { month:m, revenue:0, expenses:0, pfd:0, other:0 }
-        const a = tx.amount || 0
-        if      (tx.direction==='Доходи')  byMonth[m].revenue  += a
-        else if (tx.direction==='Витрати') byMonth[m].expenses += Math.abs(a)
-        else if (tx.direction==='ПФД')     byMonth[m].pfd      += a
-        else                               byMonth[m].other    += a
+        const abs = Math.abs(tx.amount || 0)
+        if      (tx.direction==='Доходи')  byMonth[m].revenue  += abs
+        else if (tx.direction==='Витрати') byMonth[m].expenses += abs
+        else if (tx.direction==='ПФД')     byMonth[m].pfd      += (tx.amount || 0)
+        else                               byMonth[m].other    += (tx.amount || 0)
       })
       let cum = 0
       const mArr = sortedMonths.map(m => {
@@ -249,7 +255,7 @@ export default function Reports() {
       const art = tx.article || (tx.direction === 'Доходи' ? '(без статті: доходи)' : '(без статті: витрати)')
       if (!grouped[art]) grouped[art] = {}
       if (!grouped[art][m]) grouped[art][m] = { sum: 0, txs: [] }
-      grouped[art][m].sum += tx.amount || 0
+      grouped[art][m].sum += normAmount(tx)
       grouped[art][m].txs.push(tx)
     })
     setArtData(grouped)
@@ -260,11 +266,11 @@ export default function Reports() {
       const m = rptPeriodKey(tx.date)
       if (!m) return
       if (!byPeriod[m]) byPeriod[m] = { month:m, revenue:0, expenses:0, pfd:0, other:0 }
-      const a = tx.amount || 0
-      if (tx.direction==='Доходи') byPeriod[m].revenue += a
-      else if (tx.direction==='Витрати') byPeriod[m].expenses += Math.abs(a)
-      else if (tx.direction==='ПФД') byPeriod[m].pfd += a
-      else byPeriod[m].other += a
+      const abs = Math.abs(tx.amount || 0)
+      if (tx.direction==='Доходи') byPeriod[m].revenue += abs
+      else if (tx.direction==='Витрати') byPeriod[m].expenses += abs
+      else if (tx.direction==='ПФД') byPeriod[m].pfd += (tx.amount || 0)
+      else byPeriod[m].other += (tx.amount || 0)
     })
     let cum = 0
     setMonthly(sortedPeriods.map(m => {
@@ -321,7 +327,7 @@ export default function Reports() {
           const art = tx.article || (tx.direction === 'Доходи' ? '(без статті: доходи)' : '(без статті: витрати)')
           if (!grouped[art])    grouped[art] = {}
           if (!grouped[art][m]) grouped[art][m] = { sum: 0, txs: [] }
-          grouped[art][m].sum += tx.amount || 0
+          grouped[art][m].sum += normAmount(tx)
           grouped[art][m].txs.push(tx)
         })
         setArtData(grouped)
@@ -333,7 +339,7 @@ export default function Reports() {
           setDrillDown(prev => prev ? ({
             ...prev,
             txs: updTxs,
-            sum: updTxs.reduce((s,t) => s+(t.amount||0), 0),
+            sum: updTxs.reduce((s,t) => s + normAmount(t), 0),
           }) : null)
         }
       })
