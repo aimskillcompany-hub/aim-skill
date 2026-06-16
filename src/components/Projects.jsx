@@ -535,12 +535,13 @@ export default function Projects({ user }) {
               const revenue = projTxs.filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
               // Додаткові витрати (bank_transactions з direction='Витрати')
               const extraExpenses = projTxs.filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
-              // Собівартість (FIFO) — з transaction_items
+              // Собівартість (FIFO → fallback product.buy_price)
               const allItems = projTxs.flatMap(tx => (tx.transaction_items || []).map(it => ({ ...it })))
               let goodsCost = 0
               allItems.forEach(it => {
                 const qty = parseFloat(it.quantity) || 0
-                const costPrice = it._costPrice || 0
+                const product = it.product_id ? allProducts.find(p => p.id === it.product_id) : null
+                const costPrice = it._costPrice || product?.buy_price || 0
                 if (costPrice > 0 && qty > 0) goodsCost += qty * costPrice
               })
               const totalExpenses = goodsCost + extraExpenses
