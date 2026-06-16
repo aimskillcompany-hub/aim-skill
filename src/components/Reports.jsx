@@ -697,7 +697,7 @@ export default function Reports() {
             натисніть на суму для деталізації
           </span>
           {planMonths.length > 0 && (
-            <span style={{ fontSize:11, fontWeight:400, color:'#6B6B6B', background:'#F0F2F5', border:'1px dashed #E2E8F0', borderRadius:6, padding:'2px 8px', display:'flex', alignItems:'center', gap:4 }}>
+            <span style={{ fontSize:11, fontWeight:400, color:'#8B6914', background:'#FEF9EF', border:'1px dashed #D4A843', borderRadius:6, padding:'2px 8px', display:'flex', alignItems:'center', gap:4 }}>
               <i className="ti ti-calendar-stats" style={{ fontSize:12 }} />
               {planMonths.length} планових місяців
             </span>
@@ -716,11 +716,11 @@ export default function Reports() {
               {allDisplayMonths.map(m => (
                 <th key={m} style={{
                   padding:'8px 12px',
-                  background: isPlan(m) ? '#F0F2F5' : isCurrent(m) ? '#F0F2F5' : 'var(--surface2)',
+                  background: isPlan(m) ? '#FEF9EF' : isCurrent(m) ? '#EFF4FF' : 'var(--surface2)',
                   borderBottom:'1px solid var(--border)',
-                  borderLeft: isPlan(m) && !isPlan(allDisplayMonths[allDisplayMonths.indexOf(m)-1]) ? '2px dashed #E2E8F0' : undefined,
+                  borderLeft: isPlan(m) && !isPlan(allDisplayMonths[allDisplayMonths.indexOf(m)-1]) ? '2px dashed #D4A843' : undefined,
                   textAlign:'right', fontWeight:500,
-                  color: isPlan(m) ? '#6B6B6B' : isCurrent(m) ? '#6B6B6B' : 'var(--text2)',
+                  color: isPlan(m) ? '#8B6914' : isCurrent(m) ? 'var(--blue)' : 'var(--text2)',
                   whiteSpace:'nowrap',
                 }}>
                   {m}
@@ -773,8 +773,8 @@ export default function Reports() {
                                 padding:'7px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums',
                                 color: pv === 0 ? 'var(--text3)' : pv > 0 ? '#4A7C59' : '#9B3A3A',
                                 fontStyle:'italic', fontSize:12.5,
-                                background:'#F0F2F5',
-                                borderLeft: !isPlan(allDisplayMonths[allDisplayMonths.indexOf(m)-1]) ? '2px dashed #E2E8F0' : undefined,
+                                background:'#FEF9EF',
+                                borderLeft: !isPlan(allDisplayMonths[allDisplayMonths.indexOf(m)-1]) ? '2px dashed #D4A843' : undefined,
                               }}>
                                 {pv === 0 ? '—' : fmtS(pv)}
                               </td>
@@ -784,11 +784,11 @@ export default function Reports() {
                           const v = (SECTION_SIGN[type] || 1) * raw
                           return (
                             <td key={m}
-                              style={{ ...cellStyle(v, false, true), background: isCurrent(m)?'#F0F2F5':'' }}
+                              style={{ ...cellStyle(v, false, true), background: isCurrent(m)?'#EFF4FF':'' }}
                               onClick={() => handleCellClick(artName, m)}
                               title={v !== 0 ? 'Натисніть для деталізації' : undefined}
                               onMouseEnter={e => { if(v!==0) e.currentTarget.style.background='#EFF4FF' }}
-                              onMouseLeave={e => e.currentTarget.style.background= isCurrent(m)?'#F0F2F5':''}
+                              onMouseLeave={e => e.currentTarget.style.background= isCurrent(m)?'#EFF4FF':''}
                             >
                               {fmtS(v)}
                             </td>
@@ -836,11 +836,11 @@ export default function Reports() {
                       const v = (SECTION_SIGN[type] || 1) * raw
                       return (
                         <td key={m}
-                          style={{ ...cellStyle(v, true, true), background: isCurrent(m)?'#F0F2F5':'var(--surface2)' }}
+                          style={{ ...cellStyle(v, true, true), background: isCurrent(m)?'#EFF4FF':'var(--surface2)' }}
                           onClick={() => handleSectionClick(type, m)}
                           title={v!==0?'Натисніть для деталізації':undefined}
                           onMouseEnter={e => { if(v!==0) e.currentTarget.style.background='#EFF4FF' }}
-                          onMouseLeave={e => e.currentTarget.style.background= isCurrent(m)?'#F0F2F5':'var(--surface2)'}
+                          onMouseLeave={e => e.currentTarget.style.background= isCurrent(m)?'#EFF4FF':'var(--surface2)'}
                         >
                           {fmtS(v)}
                         </td>
@@ -888,11 +888,11 @@ export default function Reports() {
                 const v = ARTICLE_TYPE_ORDER.reduce((s, type) => s + (SECTION_SIGN[type] || 1) * (sectionTotals[type]?.[m] || 0), 0)
                 return (
                   <td key={m}
-                    style={{ ...cellStyle(v, true, true), background: isCurrent(m)?'#F0F2F5':'var(--surface2)', fontSize:13 }}
+                    style={{ ...cellStyle(v, true, true), background: isCurrent(m)?'#EFF4FF':'var(--surface2)', fontSize:13 }}
                     onClick={() => handleTotalClick(m)}
                     title={v!==0?'Натисніть для деталізації':undefined}
                     onMouseEnter={e => { if(v!==0) e.currentTarget.style.background='#EFF4FF' }}
-                    onMouseLeave={e => e.currentTarget.style.background= isCurrent(m)?'#F0F2F5':'var(--surface2)'}
+                    onMouseLeave={e => e.currentTarget.style.background= isCurrent(m)?'#EFF4FF':'var(--surface2)'}
                   >
                     {fmtS(v)}
                   </td>
