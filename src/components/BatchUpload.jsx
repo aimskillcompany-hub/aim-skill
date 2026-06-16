@@ -121,13 +121,13 @@ export default function BatchUpload({ user, onSaved }) {
     try {
       const data = await extractDocumentMulti([card.file], articles)
 
-      // Check DB for existing duplicate
-      const dbDup = await findDbDuplicate(data)
+      // Find matching bank transaction to link document to
+      const bankMatch = await findDbDuplicate(data)
 
       setCards(prev => {
         const updated = prev.map(c => c.id === cardId ? {
           ...c, status: 'done', data,
-          dbDuplicate: dbDup || null,
+          bankMatch: bankMatch || null,
           form: {
             ...c.form,
             direction: data.suggestedDirection || 'Витрати',
@@ -249,7 +249,7 @@ export default function BatchUpload({ user, onSaved }) {
   const saveAll = async () => {
     setSavingAll(true)
     setSavedCount(0)
-    const toSave = cards.filter(c => c.status === 'done' && !c.saved && !c.isDuplicate && !c.dbDuplicate)
+    const toSave = cards.filter(c => c.status === 'done' && !c.saved && !c.isDuplicate && true)
     let count = 0
     for (const card of toSave) {
       const ok = await saveCard(card)
@@ -262,9 +262,9 @@ export default function BatchUpload({ user, onSaved }) {
   const pendingCount = cards.filter(c => c.status === 'pending').length
   const doneCount = cards.filter(c => c.status === 'done').length
   const dupCount = cards.filter(c => c.isDuplicate).length
-  const dbDupCount = cards.filter(c => c.dbDuplicate).length
+  const linkedCount = cards.filter(c => c.bankMatch).length
   const savedCards = cards.filter(c => c.saved).length
-  const readyToSave = cards.filter(c => c.status === 'done' && !c.saved && !c.isDuplicate && !c.dbDuplicate).length
+  const readyToSave = cards.filter(c => c.status === 'done' && !c.saved && !c.isDuplicate).length
 
   return (
     <div>
@@ -298,7 +298,7 @@ export default function BatchUpload({ user, onSaved }) {
           {pendingCount > 0 && <span style={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:6, padding:'4px 10px', fontSize:12, color:'var(--text2)' }}>Очікують: {pendingCount}</span>}
           {doneCount > 0 && <span style={{ background:'var(--green-bg)', border:'1px solid var(--border)', borderRadius:6, padding:'4px 10px', fontSize:12, color:'var(--green)' }}>Розпізнано: {doneCount}</span>}
           {dupCount > 0 && <span style={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:6, padding:'4px 10px', fontSize:12, color:'var(--text2)' }}>⚠ Дублікати в пакеті: {dupCount}</span>}
-          {dbDupCount > 0 && <span style={{ background:'var(--red-bg)', border:'1px solid var(--border)', borderRadius:6, padding:'4px 10px', fontSize:12, color:'var(--red)' }}>🚫 Вже в базі: {dbDupCount}</span>}
+          {linkedCount > 0 && <span style={{ background:'var(--green-bg)', border:'1px solid var(--border)', borderRadius:6, padding:'4px 10px', fontSize:12, color:'var(--green)' }}>🔗 Привʼязано до операцій: {linkedCount}</span>}
           {savedCards > 0 && <span style={{ background:'var(--blue-bg)', border:'1px solid var(--border)', borderRadius:6, padding:'4px 10px', fontSize:12, color:'var(--blue)' }}>✓ Збережено: {savedCards}</span>}
         </div>
       )}
@@ -355,23 +355,14 @@ export default function BatchUpload({ user, onSaved }) {
                   <i className="ti ti-check" style={{ fontSize:13 }} /> Збережено
                 </div>
               )}
-              {card.dbDuplicate && !card.saved && (
-                <div style={{ background:'var(--red-bg)', color:'var(--red)', borderRadius:6, padding:'8px 10px', fontSize:12, fontWeight:500, marginBottom:8 }}>
-                  🚫 Вже є в базі — збереження заблоковано
-                  <div style={{ fontWeight:400, marginTop:3, fontSize:11, lineHeight:1.4 }}>
-                    {card.dbDuplicate.date} · {card.dbDuplicate.contractor?.substring(0,30)}
-                    {card.dbDuplicate.doc_number && ` · №${card.dbDuplicate.doc_number}`}
-                    · {new Intl.NumberFormat('uk-UA').format(Math.round(Math.abs(card.dbDuplicate.amount)))} грн
+              {card.bankMatch && !card.saved && (
+                <div style={{ background:'var(--green-bg)', color:'var(--green)', borderRadius:6, padding:'8px 10px', fontSize:12, fontWeight:500, marginBottom:8 }}>
+                  🔗 Буде привʼязано до банківської операції
+                  <div style={{ fontWeight:400, marginTop:3, fontSize:11, lineHeight:1.4, color:'var(--text2)' }}>
+                    {card.bankMatch.date} · {card.bankMatch.contractor?.substring(0,30)}
+                    {card.bankMatch.doc_number && ` · №${card.bankMatch.doc_number}`}
+                    · {new Intl.NumberFormat('uk-UA').format(Math.round(Math.abs(card.bankMatch.amount)))} грн
                   </div>
-                  <div style={{ fontWeight:400, marginTop:2, fontSize:11, color:'var(--red)' }}>
-                    Правило: {card.dbDuplicate.rule === 'doc_number+edrpou' ? 'номер документу + ЄДРПОУ' : 'ЄДРПОУ + сума + дата'}
-                  </div>
-                  <button
-                    onClick={() => setCards(prev => prev.map(c => c.id === card.id ? {...c, dbDuplicate: null} : c))}
-                    style={{ marginTop:6, background:'none', border:'1px solid var(--border)', borderRadius:6, padding:'3px 10px', fontSize:11, cursor:'pointer', color:'var(--red)', fontFamily:'inherit' }}
-                  >
-                    Все одно зберегти
-                  </button>
                 </div>
               )}
               {card.isDuplicate && !card.saved && (
@@ -451,7 +442,7 @@ export default function BatchUpload({ user, onSaved }) {
                     </div>
                   </div>
 
-                  {!card.dbDuplicate && (
+                  {!card.bankMatch && (
                     <button
                       className="btn btn-primary"
                       style={{ width:'100%', justifyContent:'center', display:'flex', gap:6, fontSize:13 }}
