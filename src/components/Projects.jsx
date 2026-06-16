@@ -535,10 +535,11 @@ export default function Projects({ user }) {
               const revenue = projTxs.filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
               // Додаткові витрати (bank_transactions з direction='Витрати')
               const extraExpenses = projTxs.filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
-              // Собівартість (FIFO → fallback product.buy_price) + ПДВ
-              const allItems = projTxs.flatMap(tx => (tx.transaction_items || []).map(it => ({ ...it })))
+              // Собівартість (FIFO + ПДВ) — тільки з проданих товарів (direction='Доходи')
+              const allItems = projTxs.flatMap(tx => (tx.transaction_items || []).map(it => ({ ...it, _dir: tx.direction })))
               let goodsCost = 0
               allItems.forEach(it => {
+                if (it._dir !== 'Доходи') return // тільки продажі
                 const qty = parseFloat(it.quantity) || 0
                 const product = it.product_id ? allProducts.find(p => p.id === it.product_id) : null
                 const costPrice = it._costPrice || product?.buy_price || 0
@@ -668,20 +669,30 @@ export default function Projects({ user }) {
               if (allItems.length === 0) return null
               const linked = allItems.filter(it => it.product_id).length
 
-              // Calculate cost & revenue (FIFO cost_price з stock_movements + ПДВ)
+              // Calculate cost & revenue
+              // Продажі (direction='Доходи'): реалізація = amount з накладної (з ПДВ), собівартість = FIFO + ПДВ
+              // Закупки (direction='Витрати'): тільки собівартість
               const itemsWithCost = allItems.map(it => {
                 const product = it.product_id ? allProducts.find(p => p.id === it.product_id) : null
                 const qty = parseFloat(it.quantity) || 0
-                const sellPrice = parseFloat(it.unit_price) || 0
-                const buyPriceNet = it._costPrice || product?.buy_price || 0
                 const vatRate = parseFloat(it.vat_rate) || 20
-                const buyPrice = buyPriceNet * (1 + vatRate / 100)
-                const costTotal = qty * buyPrice
-                const sellTotal = qty * sellPrice
-                return { ...it, _product: product, _buyPrice: buyPrice, _costTotal: costTotal, _sellTotal: sellTotal }
+                const isSale = it._direction === 'Доходи'
+
+                // Собівартість (FIFO + ПДВ)
+                const buyPriceNet = it._costPrice || product?.buy_price || 0
+                const buyPrice = buyPriceNet > 0 ? buyPriceNet * (1 + vatRate / 100) : 0
+                const costTotal = isSale ? qty * buyPrice : 0
+
+                // Реалізація (amount з накладної — вже з ПДВ)
+                const sellTotal = isSale ? Math.abs(parseFloat(it.amount) || 0) : 0
+                const sellPrice = qty > 0 && sellTotal > 0 ? sellTotal / qty : 0
+
+                return { ...it, _product: product, _buyPrice: buyPrice, _costTotal: costTotal, _sellTotal: sellTotal, _sellPrice: sellPrice, _isSale: isSale }
               })
-              const totalCost = itemsWithCost.reduce((s, it) => s + it._costTotal, 0)
-              const totalRevenue = itemsWithCost.reduce((s, it) => s + it._sellTotal, 0)
+              // Тільки продажі для маржі
+              const salesItems = itemsWithCost.filter(it => it._isSale)
+              const totalCost = salesItems.reduce((s, it) => s + it._costTotal, 0)
+              const totalRevenue = salesItems.reduce((s, it) => s + it._sellTotal, 0)
               const totalMargin = totalRevenue - totalCost
 
               const handleLinkProduct = async (itemId, productId) => {
@@ -698,8 +709,28 @@ export default function Projects({ user }) {
                 <div style={{ marginBottom: 20 }}>
                   <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <i className="ti ti-package" style={{ fontSize: 15, color: 'var(--blue)' }} />
-                    Товари / послуги ({allItems.length})
+                    Товари / послуги ({salesItems.length} продано)
                   </div>
+                  {/* Підсумок зверху */}
+                  {totalCost > 0 && (
+                    <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+                      <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: '8px 14px', flex: 1, minWidth: 120 }}>
+                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>Собівартість (з ПДВ)</div>
+                        <div style={{ fontSize: 16, fontWeight: 500 }}>{fmtInt(totalCost)} грн</div>
+                      </div>
+                      <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: '8px 14px', flex: 1, minWidth: 120 }}>
+                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>Реалізація</div>
+                        <div style={{ fontSize: 16, fontWeight: 500 }}>{fmtInt(totalRevenue)} грн</div>
+                      </div>
+                      <div style={{ background: totalMargin >= 0 ? 'var(--green-bg)' : 'var(--red-bg)', borderRadius: 8, padding: '8px 14px', flex: 1, minWidth: 120 }}>
+                        <div style={{ fontSize: 11, color: totalMargin >= 0 ? 'var(--green)' : 'var(--red)' }}>Маржа товарів</div>
+                        <div style={{ fontSize: 16, fontWeight: 500, color: totalMargin >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                          {totalMargin >= 0 ? '+' : '−'}{fmtInt(Math.abs(totalMargin))} грн
+                          {totalRevenue > 0 && <span style={{ fontSize: 12, fontWeight: 400 }}> ({((totalMargin / totalRevenue) * 100).toFixed(0)}%)</span>}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div className="tbl-wrap">
                     <table>
                       <thead>
@@ -714,7 +745,7 @@ export default function Projects({ user }) {
                         </tr>
                       </thead>
                       <tbody>
-                        {itemsWithCost.map((it, i) => {
+                        {salesItems.map((it, i) => {
                           const product = it._product
                           const isLinking = linkingItemId === it.id
                           const searchResults = isLinking && productSearch.length >= 2
