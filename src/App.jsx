@@ -6,7 +6,7 @@ import Auth from './components/Auth'
 import Layout from './components/Layout'
 import AddDocument from './components/AddDocument'
 import Registry from './components/Registry'
-import Projects from './components/Projects'
+// import Projects from './components/Projects' // Прибрано — маржа в картці контрагента
 import Reports from './components/Reports'
 import Bank from './components/Bank'
 import Cash from './components/Cash'
@@ -25,7 +25,7 @@ function Dashboard({ user, onPage }) {
   const [stats, setStats] = useState({
     revenue: 0, expenses: 0, net: 0,
     cashBalance: 0, bankFlow: 0,
-    projects: 0, docs: 0, noArticle: 0,
+    docs: 0, noArticle: 0,
   })
   const [recentTxs, setRecentTxs] = useState([])
   const [selectedTx, setSelectedTx] = useState(null)
@@ -33,12 +33,10 @@ function Dashboard({ user, onPage }) {
   useEffect(() => {
     Promise.all([
       supabase.from('bank_transactions').select('amount, direction, date, counterparty, description, article').eq('is_ignored', false).order('date', { ascending: false }),
-      supabase.from('projects').select('id', { count: 'exact' }).eq('status', 'active'),
       supabase.from('documents').select('id', { count: 'exact' }),
       supabase.from('cash_transactions').select('amount, type'),
     ]).then(([
       { data: bankTxs },
-      { count: projCount },
       { count: docCount },
       { data: cashTxs },
     ]) => {
@@ -57,7 +55,6 @@ function Dashboard({ user, onPage }) {
       setStats({
         revenue, expenses, net: revenue - expenses,
         cashBalance, bankFlow,
-        projects: projCount || 0,
         docs: docCount || 0,
         noArticle,
       })
@@ -140,7 +137,7 @@ function Dashboard({ user, onPage }) {
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div className="card-title" style={{ marginBottom: 0 }}>Останні операції</div>
-          <div style={{ fontSize: 12, color: 'var(--text3)' }}>{stats.projects} активних проєктів · {stats.docs} документів</div>
+          <div style={{ fontSize: 12, color: 'var(--text3)' }}>{stats.docs} документів</div>
         </div>
         {recentTxs.length === 0 && <p style={{ color: 'var(--text3)', fontSize: 13 }}>Ще немає операцій.</p>}
         <div className="tbl-wrap" style={{ border: 'none' }}>
@@ -317,7 +314,6 @@ export default function App() {
     bank: <Bank user={user} />,
     cash: <Cash user={user} />,
     contractors: <Contractors user={user} />,
-    projects: <Projects key={`projects-${page}`} user={user} />,
     inventory: <Inventory user={user} />,
     reports: <Reports />,
     planning: <Planning user={user} />,
