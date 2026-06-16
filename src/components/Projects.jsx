@@ -683,10 +683,10 @@ export default function Projects({ user }) {
                 const buyPrice = buyPriceNet > 0 ? buyPriceNet * (1 + vatRate / 100) : 0
                 const costTotal = isSale ? qty * buyPrice : 0
 
-                // Реалізація (amount з накладної + ПДВ)
-                const sellNet = isSale ? Math.abs(parseFloat(it.amount) || 0) : 0
-                const sellTotal = sellNet > 0 ? sellNet * (1 + vatRate / 100) : 0
-                const sellPrice = qty > 0 && sellTotal > 0 ? sellTotal / qty : 0
+                // Реалізація: unit_price та amount без ПДВ, додаємо ПДВ
+                const unitPriceNet = parseFloat(it.unit_price) || 0
+                const sellPrice = isSale ? unitPriceNet * (1 + vatRate / 100) : 0
+                const sellTotal = isSale ? qty * sellPrice : 0
 
                 return { ...it, _product: product, _buyPrice: buyPrice, _costTotal: costTotal, _sellTotal: sellTotal, _sellPrice: sellPrice, _isSale: isSale }
               })
