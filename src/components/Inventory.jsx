@@ -32,6 +32,11 @@ export default function Inventory({ user }) {
   const [showMovement, setShowMovement] = useState(false)
   const [movForm, setMovForm] = useState({ type:'in', quantity:'', price:'', description:'', date:new Date().toISOString().split('T')[0] })
 
+  // Merge
+  const [showMerge, setShowMerge] = useState(false)
+  const [mergeSearch, setMergeSearch] = useState('')
+  const [mergeTarget, setMergeTarget] = useState(null)
+
   useEffect(() => { loadAll() }, [])
 
   const loadAll = async () => {
@@ -95,6 +100,25 @@ export default function Inventory({ user }) {
     if (editId) await supabase.from('products').update(payload).eq('id', editId)
     else await supabase.from('products').insert(payload)
     setSaving(false); setShowForm(false); loadAll()
+  }
+
+  // Merge: объединить mergeTarget в detail (перенести рухи, позиції, видалити дублікат)
+  const handleMerge = async () => {
+    if (!detail || !mergeTarget || detail.id === mergeTarget.id) return
+    setSaving(true)
+    // Перенести stock_movements
+    await supabase.from('stock_movements').update({ product_id: detail.id }).eq('product_id', mergeTarget.id)
+    // Перенести transaction_items
+    await supabase.from('transaction_items').update({ product_id: detail.id }).eq('product_id', mergeTarget.id)
+    // Архівувати дублікат
+    await supabase.from('products').update({ status: 'archived' }).eq('id', mergeTarget.id)
+    // Перерахувати залишок
+    const { data: movs } = await supabase.from('stock_movements').select('type, quantity').eq('product_id', detail.id)
+    const newStock = (movs || []).reduce((s, m) => s + (m.type === 'in' || m.type === 'adjustment' ? m.quantity : -m.quantity), 0)
+    await supabase.from('products').update({ current_stock: newStock }).eq('id', detail.id)
+    setSaving(false); setShowMerge(false); setMergeTarget(null)
+    openDetail({ ...detail, current_stock: newStock })
+    loadAll()
   }
 
   const handleDelete = async (id) => {
@@ -161,6 +185,10 @@ export default function Inventory({ user }) {
           </div>
           <button onClick={() => openEdit(detail)} className="btn btn-secondary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}>
             <i className="ti ti-pencil" style={{ fontSize:14 }} /> Редагувати
+          </button>
+          <button onClick={() => { setShowMerge(true); setMergeSearch(''); setMergeTarget(null) }}
+            className="btn btn-secondary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}>
+            <i className="ti ti-arrows-merge" style={{ fontSize:14 }} /> Об'єднати
           </button>
           <button onClick={() => { setShowMovement(true); setMovForm({ type:'in', quantity:'', price:'', description:'', date:new Date().toISOString().split('T')[0] }) }}
             className="btn btn-primary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}>
@@ -255,6 +283,59 @@ export default function Inventory({ user }) {
                 ) : (
                   <div style={{ color:'var(--text3)', padding:40 }}>Завантаження...</div>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Merge modal */}
+        {showMerge && (
+          <div className="modal-bg" onClick={e => e.target===e.currentTarget && setShowMerge(false)}>
+            <div className="modal modal-lg">
+              <div className="modal-header">
+                <h2>Об'єднати з іншим товаром</h2>
+                <button className="modal-close" onClick={() => setShowMerge(false)}>×</button>
+              </div>
+              <div style={{ background:'var(--surface2)', borderRadius:8, padding:'12px 16px', marginBottom:16, fontSize:13 }}>
+                <strong>Основний товар:</strong> {detail.name}
+                <div style={{ color:'var(--text2)', marginTop:4 }}>Всі рухи та позиції з обраного товару будуть перенесені сюди. Дублікат буде архівовано.</div>
+              </div>
+              <div style={{ position:'relative', marginBottom:12 }}>
+                <i className="ti ti-search" style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'var(--text3)', fontSize:16 }} />
+                <input className="form-input" style={{ width:'100%', paddingLeft:38 }}
+                  placeholder="Знайти товар для об'єднання..."
+                  value={mergeSearch} onChange={e => setMergeSearch(e.target.value)} />
+              </div>
+              {mergeSearch.length >= 2 && (
+                <div style={{ maxHeight:300, overflowY:'auto', display:'flex', flexDirection:'column', gap:6 }}>
+                  {products.filter(p => p.id !== detail.id && p.name.toLowerCase().includes(mergeSearch.toLowerCase())).map(p => (
+                    <div key={p.id} onClick={() => setMergeTarget(p)} style={{
+                      padding:'10px 14px', borderRadius:8, cursor:'pointer',
+                      border: mergeTarget?.id === p.id ? '2px solid var(--blue)' : '1px solid var(--border)',
+                      background: mergeTarget?.id === p.id ? 'var(--blue-bg)' : 'var(--surface)',
+                    }}>
+                      <div style={{ fontWeight:500, fontSize:14 }}>{p.name}</div>
+                      <div style={{ fontSize:12, color:'var(--text2)', marginTop:2 }}>
+                        Залишок: {fmt(p.current_stock)} {p.unit} · {p.sku || 'без SKU'}
+                      </div>
+                    </div>
+                  ))}
+                  {products.filter(p => p.id !== detail.id && p.name.toLowerCase().includes(mergeSearch.toLowerCase())).length === 0 && (
+                    <div style={{ padding:20, textAlign:'center', color:'var(--text3)' }}>Не знайдено</div>
+                  )}
+                </div>
+              )}
+              {mergeTarget && (
+                <div style={{ marginTop:12, padding:'12px 16px', background:'var(--red-bg)', borderRadius:8, fontSize:13, color:'var(--red)' }}>
+                  <i className="ti ti-alert-triangle" style={{ marginRight:6 }} />
+                  <strong>"{mergeTarget.name}"</strong> буде архівовано, всі його рухи перенесуться до <strong>"{detail.name}"</strong>
+                </div>
+              )}
+              <div className="btn-row">
+                <button className="btn btn-primary" onClick={handleMerge} disabled={saving || !mergeTarget} style={{ width:'auto' }}>
+                  {saving ? 'Об\'єднання...' : 'Об\'єднати'}
+                </button>
+                <button className="btn btn-secondary" onClick={() => setShowMerge(false)} style={{ width:'auto' }}>Скасувати</button>
               </div>
             </div>
           </div>
