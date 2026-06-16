@@ -615,7 +615,7 @@ export default function Registry({ user }) {
                     <td style={{ color:'var(--text2)', fontSize:13, whiteSpace:'nowrap' }}>{tx.date}</td>
                     <td style={{ minWidth:250 }}>
                       <div style={{ fontSize:14, fontWeight:500, whiteSpace:'normal', wordBreak:'break-word', lineHeight:'1.3' }}>{tx.counterparty}</div>
-                      {tx.description && <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:12, color:'var(--text2)', marginTop:2, maxWidth:300 }}>{tx.description}</div>}
+                      {tx.description && <div style={{ fontSize:12, color:'var(--text2)', marginTop:2, whiteSpace:'normal', wordBreak:'break-word', lineHeight:'1.4' }}>{tx.description}</div>}
                     </td>
                     <td style={{ textAlign:'right', fontWeight:500, fontVariantNumeric:'tabular-nums', color: tx.amount > 0 ? 'var(--green)' : tx.amount < 0 ? 'var(--red)' : 'var(--text3)', whiteSpace:'nowrap' }}>
                       {tx.amount > 0 ? '+' : ''}{fmt(tx.amount)}
