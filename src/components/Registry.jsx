@@ -947,7 +947,21 @@ export default function Registry({ user }) {
                       <i className="ti ti-eye" style={{ fontSize:13 }} />Перегляд
                     </button>
                     <button className="btn btn-sm btn-secondary" style={{ display:'flex', alignItems:'center', gap:4 }} onClick={() => downloadDoc(doc)}>
-                      <i className="ti ti-download" style={{ fontSize:13 }} />Завантажити
+                      <i className="ti ti-download" style={{ fontSize:13 }} />
+                    </button>
+                    <button className="btn btn-sm" style={{ display:'flex', alignItems:'center', gap:4, color:'var(--red)', background:'none', border:'1px solid var(--border)' }}
+                      onClick={async () => {
+                        if (!confirm(`Видалити документ "${doc.file_name}"?`)) return
+                        // Видалити файл зі storage
+                        if (doc.file_path) {
+                          await supabase.storage.from('documents').remove([doc.file_path])
+                        }
+                        // Видалити запис з БД
+                        await supabase.from('documents').delete().eq('id', doc.id)
+                        // Оновити список
+                        setSelectedDocs(prev => prev.filter(d => d.id !== doc.id))
+                      }}>
+                      <i className="ti ti-trash" style={{ fontSize:13 }} />
                     </button>
                   </div>
                 </div>
