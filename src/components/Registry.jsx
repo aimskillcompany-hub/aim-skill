@@ -320,7 +320,7 @@ export default function Registry({ user }) {
   }
 
   const openEdit = (tx) => {
-    setEditForm({ id:tx.id,contractor:tx.counterparty,direction:tx.direction,article:tx.article||'',description:tx.description||'' })
+    setEditForm({ id:tx.id,contractor:tx.counterparty,direction:tx.direction,article:tx.article||'',project_id:tx.project_id||'',description:tx.description||'' })
     setEdit(tx)
   }
 
@@ -329,6 +329,7 @@ export default function Registry({ user }) {
     await supabase.from('bank_transactions').update({
       direction: editForm.direction,
       article: editForm.article || null,
+      project_id: editForm.project_id || null,
       description: editForm.description || null,
       counterparty: editForm.contractor,
     }).eq('id', editForm.id)
@@ -865,6 +866,7 @@ export default function Registry({ user }) {
 /></div>
               <div className="form-group"><label>Напрям</label><select className="form-input" value={editForm.direction} onChange={e => setEditForm(f=>({...f,direction:e.target.value}))}>{DIRS.map(d=><option key={d}>{d}</option>)}</select></div>
               <div className="form-group"><label>Стаття</label><ArticleSelect value={editForm.article} onChange={e => setEditForm(f=>({...f,article:e.target.value}))} articles={articles} direction={editForm.direction} /></div>
+              <div className="form-group"><label>Проєкт</label><select className="form-input" value={editForm.project_id} onChange={e => setEditForm(f=>({...f,project_id:e.target.value}))}><option value="">— без проєкту —</option>{projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
               <div className="form-group full"><label>Призначення</label><textarea className="form-input" rows={2} value={editForm.description} onChange={e => setEditForm(f=>({...f,description:e.target.value}))}/></div>
             </div>
             <div className="btn-row">
