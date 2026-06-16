@@ -30,20 +30,26 @@ export function normalizeName(name) {
     .join(' ')
 }
 
-// ── Визначити напрям руху по типу документу ──
+// ── Визначити напрям руху на складі ──
+// docRole = головний індикатор (incoming = ми отримали = прихід, outgoing = ми видали = видача)
+// docType використовується тільки як fallback коли docRole не вказаний
 export function getMovementType(docType, docRole) {
+  // docRole — джерело правди
+  // "Видаткова накладна" від постачальника (incoming) = прихід на склад
+  // "Видаткова накладна" від нас клієнту (outgoing) = видача зі складу
+  if (docRole === 'outgoing') return 'out'
+  if (docRole === 'incoming') return 'in'
+
+  // Fallback на docType (тільки коли docRole не вказаний)
   if (docType) {
     const normalized = docType.toLowerCase().trim()
-    // Точний збіг
     if (DOC_TYPE_STOCK_MAP[normalized]) return DOC_TYPE_STOCK_MAP[normalized]
-    // Частковий збіг
     for (const [key, direction] of Object.entries(DOC_TYPE_STOCK_MAP)) {
       if (normalized.includes(key) || key.includes(normalized)) return direction
     }
   }
-  // Fallback на docRole
-  if (docRole === 'outgoing') return 'out'
-  return 'in' // default = incoming/purchase
+
+  return 'in' // default = прихід
 }
 
 // ── Порівняти два нормалізовані рядки (нечітко) ──
