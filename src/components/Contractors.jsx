@@ -596,44 +596,38 @@ export default function Contractors({ user }) {
               <>
                 {(() => {
                   // Торгова маржинальність
-                  const salesTxs = detailTxs.filter(t => t.direction === 'Доходи')
-                  const salesItems = salesTxs.flatMap(tx => (tx.transaction_items || []))
-                  let goodsRevenue = 0, goodsCost = 0
+                  const salesItems = detailTxs.filter(t => t.direction === 'Доходи').flatMap(tx => (tx.transaction_items || []))
+                  let goodsCost = 0
                   salesItems.forEach(it => {
                     const qty = parseFloat(it.quantity) || 0
-                    const sellPrice = parseFloat(it.unit_price) || 0
                     const costPrice = it._costPrice || 0
-                    goodsRevenue += qty * sellPrice
                     goodsCost += qty * costPrice
                   })
-                  const goodsMargin = goodsRevenue - goodsCost
-                  const hasGoods = goodsRevenue > 0
+                  // Витрати = собівартість + дод. витрати (оплати з direction='Витрати')
+                  const totalExpenses = goodsCost + txExpense
+                  // Маржа = дохід − витрати
+                  const margin = txIncome - totalExpenses
 
                   return (
                     <div style={{ display:'flex', gap:12, marginBottom:16, flexWrap:'wrap' }}>
                       <div style={{ background:'var(--green-bg)', borderRadius:12, padding:'12px 16px', flex:1, minWidth:100 }}>
-                        <div style={{ fontSize:11, color:'var(--green)' }}>Дохід (оплати)</div>
+                        <div style={{ fontSize:11, color:'var(--green)' }}>Дохід</div>
                         <div style={{ fontSize:18, fontWeight:500, color:'var(--green)' }}>+{fmt(txIncome)} грн</div>
                       </div>
                       <div style={{ background:'var(--red-bg)', borderRadius:12, padding:'12px 16px', flex:1, minWidth:100 }}>
-                        <div style={{ fontSize:11, color:'var(--red)' }}>Витрати (оплати)</div>
-                        <div style={{ fontSize:18, fontWeight:500, color:'var(--red)' }}>-{fmt(txExpense)} грн</div>
+                        <div style={{ fontSize:11, color:'var(--red)' }}>Витрати</div>
+                        <div style={{ fontSize:18, fontWeight:500, color:'var(--red)' }}>-{fmt(totalExpenses)} грн</div>
+                        <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>
+                          с/в {fmt(goodsCost)}{txExpense > 0 ? ` + дод. ${fmt(txExpense)}` : ''}
+                        </div>
                       </div>
-                      {hasGoods && (
-                        <>
-                          <div style={{ background:'var(--surface2)', borderRadius:12, padding:'12px 16px', flex:1, minWidth:100 }}>
-                            <div style={{ fontSize:11, color:'var(--text3)' }}>Собівартість</div>
-                            <div style={{ fontSize:18, fontWeight:500 }}>{fmt(goodsCost)} грн</div>
-                          </div>
-                          <div style={{ background: goodsMargin >= 0 ? 'var(--green-bg)' : 'var(--red-bg)', borderRadius:12, padding:'12px 16px', flex:1, minWidth:100 }}>
-                            <div style={{ fontSize:11, color: goodsMargin >= 0 ? 'var(--green)' : 'var(--red)' }}>Маржа товарів</div>
-                            <div style={{ fontSize:18, fontWeight:500, color: goodsMargin >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                              {goodsMargin >= 0 ? '+' : '−'}{fmt(Math.abs(goodsMargin))} грн
-                              {goodsRevenue > 0 && <span style={{ fontSize:12, fontWeight:400 }}> ({((goodsMargin / goodsRevenue) * 100).toFixed(0)}%)</span>}
-                            </div>
-                          </div>
-                        </>
-                      )}
+                      <div style={{ background: margin >= 0 ? 'var(--green-bg)' : 'var(--red-bg)', borderRadius:12, padding:'12px 16px', flex:1, minWidth:100 }}>
+                        <div style={{ fontSize:11, color: margin >= 0 ? 'var(--green)' : 'var(--red)' }}>Маржа</div>
+                        <div style={{ fontSize:18, fontWeight:500, color: margin >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                          {margin >= 0 ? '+' : '−'}{fmt(Math.abs(margin))} грн
+                          {txIncome > 0 && <span style={{ fontSize:12, fontWeight:400 }}> ({((margin / txIncome) * 100).toFixed(0)}%)</span>}
+                        </div>
+                      </div>
                     </div>
                   )
                 })()}
