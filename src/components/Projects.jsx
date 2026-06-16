@@ -488,6 +488,48 @@ export default function Projects({ user }) {
               })()}
             </div>
 
+            {/* Items / Products */}
+            {(() => {
+              const allItems = projTxs.flatMap(tx => (tx.transaction_items || []).map(it => ({ ...it, _date: tx.date, _counterparty: tx.counterparty })))
+              if (allItems.length === 0) return null
+              const totalSum = allItems.reduce((s, it) => s + Math.abs(it.amount || 0), 0)
+              return (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <i className="ti ti-package" style={{ fontSize: 15, color: 'var(--blue)' }} />
+                    Товари / послуги ({allItems.length})
+                    <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text3)', marginLeft: 8 }}>на суму {fmt(totalSum)} грн</span>
+                  </div>
+                  <div className="tbl-wrap" style={{ maxHeight: 300 }}>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Назва</th>
+                          <th>Контрагент</th>
+                          <th>Дата</th>
+                          <th style={{ textAlign: 'right' }}>К-сть</th>
+                          <th style={{ textAlign: 'right' }}>Ціна</th>
+                          <th style={{ textAlign: 'right' }}>Сума</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allItems.map((it, i) => (
+                          <tr key={it.id || i}>
+                            <td style={{ fontWeight: 500, maxWidth: 250, wordBreak: 'break-word' }}>{it.name}</td>
+                            <td style={{ fontSize: 12, color: 'var(--text2)', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it._counterparty || '—'}</td>
+                            <td style={{ fontSize: 12, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{it._date}</td>
+                            <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{it.quantity || '—'} {it.unit || ''}</td>
+                            <td style={{ textAlign: 'right', color: 'var(--text2)', fontVariantNumeric: 'tabular-nums' }}>{it.unit_price ? fmt(it.unit_price) + ' грн' : '—'}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{fmt(Math.abs(it.amount || 0))} грн</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )
+            })()}
+
             {/* Transactions */}
             <div>
               <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
