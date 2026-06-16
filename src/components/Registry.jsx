@@ -333,9 +333,9 @@ export default function Registry({ user }) {
       description: editForm.description || null,
       counterparty: editForm.contractor,
     }).eq('id', editForm.id)
-    setTransactions(prev => prev.map(t => t.id === editForm.id ? { ...t, direction: editForm.direction, article: editForm.article, description: editForm.description, counterparty: editForm.contractor } : t))
     setEdit(null)
     setEditSaving(false)
+    load()
   }
 
   // ── Multi-select ─────────────────────────────────────────────────────────────
