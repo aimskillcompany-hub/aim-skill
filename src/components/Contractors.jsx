@@ -172,7 +172,7 @@ export default function Contractors({ user }) {
 
     // Fetch transactions by ЄДРПОУ (primary) or by name (fallback)
     let txQuery = supabase.from('bank_transactions')
-      .select('id,date,amount,direction,article,counterparty,description')
+      .select('id,date,amount,direction,article,counterparty,description,project_id')
       .eq('is_ignored', false)
       .order('date', { ascending: false }).limit(500)
 
