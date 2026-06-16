@@ -221,7 +221,7 @@ export default function AddDocument({ user, onSaved }) {
         }).eq('id', bankMatch.id)
       }
 
-      // 2. Save items
+      // 2. Save items + auto-link to products + stock movements
       if (form.items.length > 0) {
         const items = form.items.map(it => ({
           transaction_id: tx.id,
@@ -233,7 +233,57 @@ export default function AddDocument({ user, onSaved }) {
           amount: it.amount || 0,
           vat_rate: it.vatRate || 20,
         }))
-        await supabase.from('transaction_items').insert(items)
+        const { data: savedItems } = await supabase.from('transaction_items').insert(items).select('id, name, quantity, unit, unit_price, amount')
+
+        // Auto-link to products and create stock movements
+        if (savedItems?.length) {
+          const movementType = form.docRole === 'outgoing' ? 'out' : 'in'
+          for (const item of savedItems) {
+            if (!item.name || !item.quantity) continue
+            // Find or create product
+            const { data: existing } = await supabase.from('products')
+              .select('id, current_stock').ilike('name', item.name.trim()).eq('status', 'active').maybeSingle()
+
+            let productId
+            if (existing) {
+              productId = existing.id
+            } else {
+              const { data: newProd } = await supabase.from('products').insert({
+                name: item.name.trim(),
+                unit: item.unit || 'шт',
+                buy_price: item.unit_price || null,
+                status: 'active',
+                created_by: user.id,
+              }).select('id').single()
+              productId = newProd?.id
+            }
+
+            if (productId) {
+              // Link item to product
+              await supabase.from('transaction_items').update({ product_id: productId }).eq('id', item.id)
+              // Create stock movement
+              const qty = parseFloat(item.quantity) || 0
+              if (qty > 0) {
+                await supabase.from('stock_movements').insert({
+                  product_id: productId,
+                  type: movementType,
+                  quantity: qty,
+                  price: item.unit_price || null,
+                  total: item.amount || null,
+                  bank_transaction_id: bankMatch?.id || null,
+                  transaction_item_id: item.id,
+                  date: form.date || new Date().toISOString().split('T')[0],
+                  description: item.name,
+                  created_by: user.id,
+                })
+                // Update product stock
+                const stockChange = movementType === 'in' ? qty : -qty
+                const currentStock = existing?.current_stock || 0
+                await supabase.from('products').update({ current_stock: currentStock + stockChange }).eq('id', productId)
+              }
+            }
+          }
+        }
       }
 
       // 3. Upload all files
