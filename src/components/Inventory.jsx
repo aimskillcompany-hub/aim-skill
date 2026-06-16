@@ -130,10 +130,17 @@ export default function Inventory({ user }) {
   // Detail
   const openDetail = async (p) => {
     setDetail(p)
-    const { data } = await supabase.from('stock_movements')
+    const { data, error } = await supabase.from('stock_movements')
       .select('*, documents(id, file_name, file_path, file_type), bank_transactions(id, counterparty, amount, direction)')
       .eq('product_id', p.id).order('date', { ascending: false }).limit(100)
-    setDetailMovements(data || [])
+    if (error) {
+      // Fallback without joins
+      const { data: fallback } = await supabase.from('stock_movements')
+        .select('*').eq('product_id', p.id).order('date', { ascending: false }).limit(100)
+      setDetailMovements(fallback || [])
+    } else {
+      setDetailMovements(data || [])
+    }
   }
 
   const handleAddMovement = async () => {
