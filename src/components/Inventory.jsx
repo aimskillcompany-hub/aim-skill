@@ -127,6 +127,117 @@ export default function Inventory({ user }) {
     loadAll()
   }
 
+  // ── Перерахувати склад з існуючих документів ──
+  const [syncing, setSyncing] = useState(false)
+  const [syncLog, setSyncLog] = useState(null)
+
+  const syncStockFromDocs = async () => {
+    if (!confirm('Перерахувати склад?\n\nСистема знайде всі товарні позиції (transaction_items) без складського руху та створить відповідні рухи.\n\nІснуючі рухи НЕ будуть видалені.')) return
+    setSyncing(true)
+    setSyncLog(null)
+    let created = 0, linked = 0, errors = 0
+
+    try {
+      // 1. Завантажити всі transaction_items без складського руху
+      const { data: items } = await supabase.from('transaction_items')
+        .select('id, name, quantity, unit, unit_price, amount, bank_transaction_id, product_id')
+        .order('id')
+
+      // 2. Завантажити існуючі stock_movements для перевірки
+      const { data: existingMovs } = await supabase.from('stock_movements')
+        .select('transaction_item_id')
+      const movedItemIds = new Set((existingMovs || []).map(m => m.transaction_item_id).filter(Boolean))
+
+      // 3. Завантажити дати з bank_transactions
+      const bankIds = [...new Set((items || []).map(i => i.bank_transaction_id).filter(Boolean))]
+      let bankDateMap = {}
+      if (bankIds.length > 0) {
+        // Завантажити по частинах (Supabase limit)
+        for (let i = 0; i < bankIds.length; i += 50) {
+          const chunk = bankIds.slice(i, i + 50)
+          const { data: banks } = await supabase.from('bank_transactions')
+            .select('id, date, amount').in('id', chunk)
+          ;(banks || []).forEach(b => { bankDateMap[b.id] = b })
+        }
+      }
+
+      // 4. Для кожного item без руху — створити продукт + складський рух
+      const unprocessed = (items || []).filter(it => it.name && it.quantity && !movedItemIds.has(it.id))
+
+      for (const item of unprocessed) {
+        try {
+          const qty = parseFloat(item.quantity) || 0
+          if (qty <= 0) continue
+
+          // Знайти або створити продукт
+          let productId = item.product_id
+          let existingStock = 0
+          if (!productId) {
+            const { data: existing } = await supabase.from('products')
+              .select('id, current_stock').ilike('name', item.name.trim()).eq('status', 'active').maybeSingle()
+            if (existing) {
+              productId = existing.id
+              existingStock = existing.current_stock || 0
+            } else {
+              const { data: newProd } = await supabase.from('products').insert({
+                name: item.name.trim(),
+                unit: item.unit || 'шт',
+                buy_price: item.unit_price || null,
+                status: 'active',
+                created_by: user.id,
+              }).select('id').single()
+              productId = newProd?.id
+              created++
+            }
+          } else {
+            const { data: p } = await supabase.from('products').select('current_stock').eq('id', productId).maybeSingle()
+            existingStock = p?.current_stock || 0
+          }
+
+          if (!productId) continue
+
+          // Привʼязати item до product
+          if (!item.product_id) {
+            await supabase.from('transaction_items').update({ product_id: productId }).eq('id', item.id)
+          }
+
+          // Визначити тип руху: дохід (amount > 0 в банк.операції) = out, витрата = in
+          const bankTx = bankDateMap[item.bank_transaction_id]
+          const movType = bankTx && bankTx.amount > 0 ? 'out' : 'in'
+
+          // Створити складський рух
+          await supabase.from('stock_movements').insert({
+            product_id: productId,
+            type: movType,
+            quantity: qty,
+            price: item.unit_price || null,
+            total: item.amount || null,
+            bank_transaction_id: item.bank_transaction_id,
+            transaction_item_id: item.id,
+            date: bankTx?.date || new Date().toISOString().split('T')[0],
+            description: item.name,
+            created_by: user.id,
+          })
+
+          // Оновити залишок
+          const stockChange = movType === 'in' ? qty : -qty
+          await supabase.from('products').update({ current_stock: existingStock + stockChange }).eq('id', productId)
+
+          linked++
+        } catch (e) {
+          console.warn('Sync item error:', item.name, e.message)
+          errors++
+        }
+      }
+
+      setSyncLog({ total: unprocessed.length, created, linked, errors })
+    } catch (e) {
+      setSyncLog({ error: e.message })
+    }
+    setSyncing(false)
+    loadAll()
+  }
+
   // Detail
   const openDetail = async (p) => {
     setDetail(p)
@@ -489,10 +600,36 @@ export default function Inventory({ user }) {
     <div>
       <div className="page-header" style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:12 }}>
         <div><h1>Склад</h1><p>Залишки товарів та рух</p></div>
-        <button className="btn btn-primary" onClick={openAdd} style={{ width:'auto' }}>
-          <i className="ti ti-plus" style={{ fontSize:15 }} /> Додати товар
-        </button>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+          <button className="btn btn-secondary" onClick={syncStockFromDocs} disabled={syncing} style={{ width:'auto' }}>
+            <i className={`ti ${syncing ? 'ti-loader-2' : 'ti-refresh'}`} style={{ fontSize:15, animation: syncing ? 'spin 1s linear infinite' : 'none' }} />
+            {syncing ? 'Перерахунок...' : 'Перерахувати з документів'}
+          </button>
+          <button className="btn btn-primary" onClick={openAdd} style={{ width:'auto' }}>
+            <i className="ti ti-plus" style={{ fontSize:15 }} /> Додати товар
+          </button>
+        </div>
       </div>
+
+      {/* Sync result */}
+      {syncLog && (
+        <div style={{ background: syncLog.error ? 'var(--red-bg)' : 'var(--green-bg)', border:'1px solid var(--border)', borderRadius:10, padding:'12px 16px', marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <div style={{ fontSize:13 }}>
+            {syncLog.error ? (
+              <span style={{ color:'var(--red)' }}>Помилка: {syncLog.error}</span>
+            ) : (
+              <>
+                <strong style={{ color:'var(--green)' }}>Синхронізацію завершено.</strong>{' '}
+                Оброблено: {syncLog.linked} позицій
+                {syncLog.created > 0 && <span> · Створено нових товарів: {syncLog.created}</span>}
+                {syncLog.errors > 0 && <span style={{ color:'var(--red)' }}> · Помилок: {syncLog.errors}</span>}
+                {syncLog.total === 0 && <span> — всі позиції вже мають складські рухи</span>}
+              </>
+            )}
+          </div>
+          <button onClick={() => setSyncLog(null)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, color:'var(--text3)' }}>×</button>
+        </div>
+      )}
 
       {/* KPI */}
       <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(5,1fr)', marginBottom:20 }}>
