@@ -238,6 +238,113 @@ export default function Inventory({ user }) {
     loadAll()
   }
 
+  // ── Очистити дублікати продуктів ──
+  const [cleaning, setCleaning] = useState(false)
+  const [cleanLog, setCleanLog] = useState(null)
+
+  const cleanDuplicates = async () => {
+    if (!confirm('Очистити дублікати?\n\n1. Обʼєднає продукти з однаковими назвами\n2. Видалить дубльовані складські рухи\n3. Перерахує залишки\n\nЦю дію не можна відмінити.')) return
+    setCleaning(true)
+    setCleanLog(null)
+    let mergedProducts = 0, removedMovements = 0, recalculated = 0
+
+    try {
+      // 1. Завантажити всі активні продукти
+      const { data: allProds } = await supabase.from('products')
+        .select('id, name, unit, buy_price, sell_price, category, created_at')
+        .eq('status', 'active').order('created_at')
+
+      // 2. Групувати по нормалізованій назві (lowercase, trim)
+      const groups = {}
+      ;(allProds || []).forEach(p => {
+        const key = (p.name || '').trim().toLowerCase()
+        if (!groups[key]) groups[key] = []
+        groups[key].push(p)
+      })
+
+      // 3. Обʼєднати дублікати — залишити найстарішого
+      for (const [, group] of Object.entries(groups)) {
+        if (group.length <= 1) continue
+
+        const keep = group[0] // найстаріший
+        const duplicates = group.slice(1)
+
+        for (const dup of duplicates) {
+          // Перенести stock_movements
+          await supabase.from('stock_movements').update({ product_id: keep.id }).eq('product_id', dup.id)
+          // Перенести transaction_items
+          await supabase.from('transaction_items').update({ product_id: keep.id }).eq('product_id', dup.id)
+          // Архівувати дублікат
+          await supabase.from('products').update({ status: 'archived' }).eq('id', dup.id)
+          mergedProducts++
+        }
+
+        // Оновити keep з кращими даними (ціна, категорія)
+        const bestPrice = group.find(p => p.buy_price)?.buy_price
+        const bestSell = group.find(p => p.sell_price)?.sell_price
+        const bestCat = group.find(p => p.category)?.category
+        if (bestPrice || bestSell || bestCat) {
+          const upd = {}
+          if (bestPrice && !keep.buy_price) upd.buy_price = bestPrice
+          if (bestSell && !keep.sell_price) upd.sell_price = bestSell
+          if (bestCat && !keep.category) upd.category = bestCat
+          if (Object.keys(upd).length > 0) {
+            await supabase.from('products').update(upd).eq('id', keep.id)
+          }
+        }
+      }
+
+      // 4. Видалити дубльовані складські рухи (однаковий transaction_item_id)
+      const { data: allMovs } = await supabase.from('stock_movements')
+        .select('id, transaction_item_id, product_id, type, quantity, date')
+        .order('id')
+
+      const seenItems = new Map()
+      const movsToDelete = []
+      ;(allMovs || []).forEach(m => {
+        if (!m.transaction_item_id) return // ручні рухи — залишити
+        const key = m.transaction_item_id
+        if (seenItems.has(key)) {
+          movsToDelete.push(m.id) // дублікат — видалити
+        } else {
+          seenItems.set(key, m.id)
+        }
+      })
+
+      // Видалити дублікати по частинах
+      for (let i = 0; i < movsToDelete.length; i += 50) {
+        const chunk = movsToDelete.slice(i, i + 50)
+        await supabase.from('stock_movements').delete().in('id', chunk)
+        removedMovements += chunk.length
+      }
+
+      // 5. Перерахувати залишки для всіх активних продуктів
+      const { data: activeProds } = await supabase.from('products')
+        .select('id').eq('status', 'active')
+      const { data: finalMovs } = await supabase.from('stock_movements')
+        .select('product_id, type, quantity')
+
+      const stockMap = {}
+      ;(finalMovs || []).forEach(m => {
+        if (!stockMap[m.product_id]) stockMap[m.product_id] = 0
+        if (m.type === 'in' || m.type === 'adjustment') stockMap[m.product_id] += (m.quantity || 0)
+        else stockMap[m.product_id] -= (m.quantity || 0)
+      })
+
+      for (const p of (activeProds || [])) {
+        const newStock = stockMap[p.id] || 0
+        await supabase.from('products').update({ current_stock: newStock }).eq('id', p.id)
+        recalculated++
+      }
+
+      setCleanLog({ mergedProducts, removedMovements, recalculated })
+    } catch (e) {
+      setCleanLog({ error: e.message })
+    }
+    setCleaning(false)
+    loadAll()
+  }
+
   // Detail
   const openDetail = async (p) => {
     setDetail(p)
@@ -601,7 +708,11 @@ export default function Inventory({ user }) {
       <div className="page-header" style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:12 }}>
         <div><h1>Склад</h1><p>Залишки товарів та рух</p></div>
         <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-          <button className="btn btn-secondary" onClick={syncStockFromDocs} disabled={syncing} style={{ width:'auto' }}>
+          <button className="btn btn-secondary" onClick={cleanDuplicates} disabled={cleaning || syncing} style={{ width:'auto' }}>
+            <i className={`ti ${cleaning ? 'ti-loader-2' : 'ti-trash-x'}`} style={{ fontSize:15, animation: cleaning ? 'spin 1s linear infinite' : 'none' }} />
+            {cleaning ? 'Очищення...' : 'Очистити дублікати'}
+          </button>
+          <button className="btn btn-secondary" onClick={syncStockFromDocs} disabled={syncing || cleaning} style={{ width:'auto' }}>
             <i className={`ti ${syncing ? 'ti-loader-2' : 'ti-refresh'}`} style={{ fontSize:15, animation: syncing ? 'spin 1s linear infinite' : 'none' }} />
             {syncing ? 'Перерахунок...' : 'Перерахувати з документів'}
           </button>
@@ -628,6 +739,25 @@ export default function Inventory({ user }) {
             )}
           </div>
           <button onClick={() => setSyncLog(null)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, color:'var(--text3)' }}>×</button>
+        </div>
+      )}
+
+      {/* Clean result */}
+      {cleanLog && (
+        <div style={{ background: cleanLog.error ? 'var(--red-bg)' : 'var(--green-bg)', border:'1px solid var(--border)', borderRadius:10, padding:'12px 16px', marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <div style={{ fontSize:13 }}>
+            {cleanLog.error ? (
+              <span style={{ color:'var(--red)' }}>Помилка: {cleanLog.error}</span>
+            ) : (
+              <>
+                <strong style={{ color:'var(--green)' }}>Очищення завершено.</strong>{' '}
+                Обʼєднано дублікатів: {cleanLog.mergedProducts}
+                {cleanLog.removedMovements > 0 && <span> · Видалено дубл. рухів: {cleanLog.removedMovements}</span>}
+                <span> · Перераховано залишків: {cleanLog.recalculated}</span>
+              </>
+            )}
+          </div>
+          <button onClick={() => setCleanLog(null)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, color:'var(--text3)' }}>×</button>
         </div>
       )}
 
