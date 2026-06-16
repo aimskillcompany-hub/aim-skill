@@ -170,72 +170,81 @@ export default function Contractors({ user }) {
   const openDetail = async (c) => {
     setDetail(c); setDetailTab('info'); setView('detail')
     setReconcileFrom(''); setReconcileTo('')
+    setExpandedTx(null)
 
-    // Fetch transactions by ЄДРПОУ (primary) or by name (fallback)
-    const baseSelect = 'id,date,amount,direction,article,counterparty,description,project_id,edrpou,doc_type,doc_number,iban'
-    const fullSelect = `${baseSelect},documents(id,file_name,file_path,file_type,file_size,doc_role),transaction_items(id,name,quantity,unit,unit_price,amount)`
+    try {
+      // Fetch transactions by ЄДРПОУ (primary) or by name (fallback)
+      const baseSelect = 'id,date,amount,direction,article,counterparty,description,project_id,edrpou,doc_type,doc_number,iban'
+      const fullSelect = `${baseSelect},documents(id,file_name,file_path,file_type,file_size,doc_role),transaction_items(id,name,quantity,unit,unit_price,amount)`
 
-    const buildQuery = (sel) => {
-      let q = supabase.from('bank_transactions').select(sel)
-        .eq('is_ignored', false).order('date', { ascending: false }).limit(500)
-      if (c.edrpou?.trim()) q = q.eq('edrpou', c.edrpou.trim())
-      else q = q.ilike('counterparty', c.name)
-      return q
-    }
+      const buildQuery = (sel) => {
+        let q = supabase.from('bank_transactions').select(sel)
+          .eq('is_ignored', false).order('date', { ascending: false }).limit(500)
+        if (c.edrpou?.trim()) q = q.eq('edrpou', c.edrpou.trim())
+        else q = q.ilike('counterparty', c.name)
+        return q
+      }
 
-    // Спробувати з documents + items, fallback без них
-    let txResult = await buildQuery(fullSelect)
-    if (txResult.error) {
-      console.warn('Full select failed, fallback:', txResult.error.message)
-      txResult = await buildQuery(baseSelect)
-    }
+      // Спробувати з documents + items, fallback без них
+      let txResult = await buildQuery(fullSelect)
+      if (txResult.error) {
+        console.warn('Full select failed, fallback:', txResult.error.message)
+        txResult = await buildQuery(baseSelect)
+      }
 
-    const [{ data: plans }] = await Promise.all([
-      supabase.from('plans')
-        .select('id,year_month,planned_date,amount,direction,article,description')
-        .ilike('article', `%${c.default_article || '___NOMATCH___'}%`)
-        .order('planned_date'),
-    ])
-    const txs = txResult.data
+      const allTxs = txResult.data || []
+      setDetailTxs(allTxs)
 
-    const allTxs = txs || []
-    setDetailTxs(allTxs)
-    setDetailPlans(plans || [])
+      // Plans (non-blocking)
+      try {
+        const { data: plans } = await supabase.from('plans')
+          .select('id,year_month,planned_date,amount,direction,article,description')
+          .ilike('article', `%${c.default_article || '___NOMATCH___'}%`)
+          .order('planned_date')
+        setDetailPlans(plans || [])
+      } catch { setDetailPlans([]) }
 
-    // Find projects linked to this contractor's transactions
-    const txIds = allTxs.map(t => t.id).filter(Boolean)
-    const projIds = new Set(allTxs.map(t => t.project_id).filter(Boolean))
-    if (txIds.length > 0) {
-      const { data: items } = await supabase.from('transaction_items')
-        .select('project_id').in('bank_transaction_id', txIds).not('project_id', 'is', null)
-      ;(items || []).forEach(it => projIds.add(it.project_id))
-    }
-    if (projIds.size > 0) {
-      const { data: projs } = await supabase.from('projects').select('name').in('id', [...projIds])
-      setDetailProjects((projs || []).map(p => p.name))
-    } else {
+      // Find projects linked to this contractor's transactions
+      const txIds = allTxs.map(t => t.id).filter(Boolean)
+      const projIds = new Set(allTxs.map(t => t.project_id).filter(Boolean))
+      if (txIds.length > 0) {
+        const { data: items } = await supabase.from('transaction_items')
+          .select('project_id').in('bank_transaction_id', txIds).not('project_id', 'is', null)
+        ;(items || []).forEach(it => projIds.add(it.project_id))
+      }
+      if (projIds.size > 0) {
+        const { data: projs } = await supabase.from('projects').select('name').in('id', [...projIds])
+        setDetailProjects((projs || []).map(p => p.name))
+      } else {
+        setDetailProjects([])
+      }
+
+      // Build monthly balance
+      const byMonth = {}
+      allTxs.forEach(tx => {
+        const m = tx.date?.substring(0,7)
+        if (!m) return
+        if (!byMonth[m]) byMonth[m] = { month:m, income:0, expense:0, count:0 }
+        if (tx.amount > 0) byMonth[m].income += tx.amount
+        else byMonth[m].expense += Math.abs(tx.amount)
+        byMonth[m].count++
+      })
+      const months = Object.keys(byMonth).sort()
+      let cumBalance = 0
+      const rows = months.map(m => {
+        const r = byMonth[m]
+        const net = r.income - r.expense
+        cumBalance += net
+        return { ...r, net, cumBalance }
+      })
+      setBalanceByMonth(rows)
+    } catch (e) {
+      console.error('openDetail error:', e)
+      setDetailTxs([])
       setDetailProjects([])
+      setDetailPlans([])
+      setBalanceByMonth([])
     }
-
-    // Build monthly balance
-    const byMonth = {}
-    allTxs.forEach(tx => {
-      const m = tx.date?.substring(0,7)
-      if (!m) return
-      if (!byMonth[m]) byMonth[m] = { month:m, income:0, expense:0, count:0 }
-      if (tx.amount > 0) byMonth[m].income += tx.amount
-      else byMonth[m].expense += Math.abs(tx.amount)
-      byMonth[m].count++
-    })
-    const months = Object.keys(byMonth).sort()
-    let cumBalance = 0
-    const rows = months.map(m => {
-      const r = byMonth[m]
-      const net = r.income - r.expense
-      cumBalance += net
-      return { ...r, net, cumBalance }
-    })
-    setBalanceByMonth(rows)
   }
 
   const setF = k => e => setForm(f => ({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
