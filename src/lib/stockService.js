@@ -19,10 +19,15 @@ export function normalizeName(name) {
   if (!name) return ''
   return name
     .toLowerCase()
-    .replace(/[«»""''`]/g, '"')    // уніфікувати лапки
-    .replace(/\s+/g, ' ')          // колапс пробілів
-    .replace(/[^\wа-яіїєґёА-ЯІЇЄҐЁa-zA-Z0-9\s\-\.\/\,\(\)]/g, '') // тільки букви, цифри, базова пунктуація
+    .replace(/[«»""''"`]/g, '')       // прибрати лапки
+    .replace(/[()[\]{},;:!?]/g, ' ')  // пунктуація → пробіл
+    .replace(/[\/\\]/g, ' ')          // слеші → пробіл
+    .replace(/\s+/g, ' ')             // колапс пробілів
     .trim()
+    .split(' ')
+    .filter(Boolean)
+    .sort()                           // сортувати слова (порядок не важливий)
+    .join(' ')
 }
 
 // ── Визначити напрям руху по типу документу ──
@@ -41,6 +46,19 @@ export function getMovementType(docType, docRole) {
   return 'in' // default = incoming/purchase
 }
 
+// ── Порівняти два нормалізовані рядки (нечітко) ──
+function fuzzyMatch(a, b) {
+  if (a === b) return true
+  // Один містить інший (коротший ≥ 80% довшого)
+  const wordsA = a.split(' ')
+  const wordsB = b.split(' ')
+  const longer = wordsA.length >= wordsB.length ? wordsA : wordsB
+  const shorter = wordsA.length < wordsB.length ? wordsA : wordsB
+  // Мінімум 3 спільних слова і ≥ 75% збіг
+  const common = shorter.filter(w => longer.includes(w))
+  return common.length >= 3 && common.length >= shorter.length * 0.75
+}
+
 // ── Знайти або створити продукт по назві (через aliases) ──
 export async function resolveProduct(name, unit, price, userId) {
   if (!name?.trim()) return null
@@ -48,7 +66,7 @@ export async function resolveProduct(name, unit, price, userId) {
   const normalized = normalizeName(name)
   if (!normalized) return null
 
-  // 1. Пошук по aliases
+  // 1. Точний збіг по aliases
   const { data: alias } = await supabase
     .from('product_aliases')
     .select('product_id')
@@ -56,43 +74,55 @@ export async function resolveProduct(name, unit, price, userId) {
     .maybeSingle()
 
   if (alias?.product_id) {
-    // Оновити ціну якщо є нова
     if (price) {
-      await supabase.from('products')
-        .update({ buy_price: price })
-        .eq('id', alias.product_id)
-        .is('buy_price', null)
+      await supabase.from('products').update({ buy_price: price })
+        .eq('id', alias.product_id).is('buy_price', null)
     }
     return { productId: alias.product_id, isNew: false }
   }
 
-  // 2. Пошук по назві продукту (fallback для старих продуктів без aliases)
-  const { data: existing } = await supabase
-    .from('products')
-    .select('id')
-    .eq('status', 'active')
-    .or(`name.ilike.${name.trim()},name.ilike.${normalized}`)
-    .limit(1)
-    .maybeSingle()
+  // 2. Нечіткий збіг по aliases (для варіацій назви від AI)
+  const { data: allAliases } = await supabase
+    .from('product_aliases')
+    .select('product_id, normalized')
 
-  if (existing?.id) {
-    // Створити alias для знайденого продукту
+  const fuzzyHit = (allAliases || []).find(a => fuzzyMatch(normalized, a.normalized))
+  if (fuzzyHit?.product_id) {
+    // Записати новий alias для цього продукту
     await supabase.from('product_aliases').upsert({
-      product_id: existing.id,
+      product_id: fuzzyHit.product_id,
       alias: name.trim(),
       normalized,
     }, { onConflict: 'normalized', ignoreDuplicates: true })
 
     if (price) {
-      await supabase.from('products')
-        .update({ buy_price: price })
-        .eq('id', existing.id)
-        .is('buy_price', null)
+      await supabase.from('products').update({ buy_price: price })
+        .eq('id', fuzzyHit.product_id).is('buy_price', null)
+    }
+    return { productId: fuzzyHit.product_id, isNew: false }
+  }
+
+  // 3. Пошук по назві продукту (fallback для старих продуктів без aliases)
+  const { data: existing } = await supabase
+    .from('products')
+    .select('id')
+    .eq('status', 'active')
+    .ilike('name', name.trim())
+    .maybeSingle()
+
+  if (existing?.id) {
+    await supabase.from('product_aliases').upsert({
+      product_id: existing.id, alias: name.trim(), normalized,
+    }, { onConflict: 'normalized', ignoreDuplicates: true })
+
+    if (price) {
+      await supabase.from('products').update({ buy_price: price })
+        .eq('id', existing.id).is('buy_price', null)
     }
     return { productId: existing.id, isNew: false }
   }
 
-  // 3. Створити новий продукт + alias
+  // 4. Створити новий продукт + alias
   const { data: newProd } = await supabase.from('products').insert({
     name: name.trim(),
     unit: unit || 'шт',
@@ -103,11 +133,8 @@ export async function resolveProduct(name, unit, price, userId) {
 
   if (!newProd?.id) return null
 
-  // Записати alias
   await supabase.from('product_aliases').upsert({
-    product_id: newProd.id,
-    alias: name.trim(),
-    normalized,
+    product_id: newProd.id, alias: name.trim(), normalized,
   }, { onConflict: 'normalized', ignoreDuplicates: true })
 
   return { productId: newProd.id, isNew: true }
@@ -232,7 +259,7 @@ export async function migrateProductAliases() {
   return { added, skipped, total: (products || []).length }
 }
 
-// ── Обʼєднати дублікати продуктів по нормалізованій назві ──
+// ── Обʼєднати дублікати продуктів по нормалізованій назві (з fuzzy) ──
 export async function mergeProductDuplicates() {
   const { data: products } = await supabase
     .from('products')
@@ -240,13 +267,29 @@ export async function mergeProductDuplicates() {
     .eq('status', 'active')
     .order('created_at')
 
-  // Групувати по нормалізованій назві
+  // Групувати по нормалізованій назві + fuzzy
   const groups = {}
+  const groupKeys = [] // для fuzzy match
   ;(products || []).forEach(p => {
     const key = normalizeName(p.name)
     if (!key) return
-    if (!groups[key]) groups[key] = []
-    groups[key].push(p)
+
+    // Точний збіг
+    if (groups[key]) {
+      groups[key].push(p)
+      return
+    }
+
+    // Fuzzy збіг з існуючою групою
+    const matchKey = groupKeys.find(k => fuzzyMatch(key, k))
+    if (matchKey) {
+      groups[matchKey].push(p)
+      return
+    }
+
+    // Нова група
+    groups[key] = [p]
+    groupKeys.push(key)
   })
 
   let merged = 0, removedMovements = 0
