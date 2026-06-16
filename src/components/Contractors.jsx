@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import { upsertContractor, syncContractorStats, importMissingContractors, mergeDuplicates } from '../lib/contractors'
@@ -58,6 +58,7 @@ export default function Contractors({ user }) {
   const [detail, setDetail] = useState(null)
   const [detailTab, setDetailTab] = useState('info')
   const [detailTxs, setDetailTxs] = useState([])
+  const [expandedTx, setExpandedTx] = useState(null)
   const [detailProjects, setDetailProjects] = useState([])
   const [detailPlans, setDetailPlans] = useState([])
   const [balanceByMonth, setBalanceByMonth] = useState([])
@@ -172,7 +173,7 @@ export default function Contractors({ user }) {
 
     // Fetch transactions by ЄДРПОУ (primary) or by name (fallback)
     let txQuery = supabase.from('bank_transactions')
-      .select('id,date,amount,direction,article,counterparty,description,project_id')
+      .select('id,date,amount,direction,article,counterparty,description,project_id,edrpou,doc_type,doc_number,iban,documents(id,file_name,file_path,file_type,file_size,doc_role),transaction_items(id,name,quantity,unit,unit_price,amount)')
       .eq('is_ignored', false)
       .order('date', { ascending: false }).limit(500)
 
@@ -571,19 +572,97 @@ export default function Contractors({ user }) {
                 </div>
                 <div className="tbl-wrap">
                   <table>
-                    <thead><tr><th>Дата</th><th style={{ textAlign:'right' }}>Сума</th><th>Напрям</th><th>Стаття</th><th>Проєкт</th></tr></thead>
+                    <thead><tr><th>Дата</th><th style={{ textAlign:'right' }}>Сума</th><th>Напрям</th><th>Стаття</th><th>Опис</th><th style={{ width:40 }}></th></tr></thead>
                     <tbody>
-                      {detailTxs.map(tx => (
-                        <tr key={tx.id}>
-                          <td style={{ fontSize:13, color:'var(--text2)', whiteSpace:'nowrap' }}>{tx.date}</td>
-                          <td style={{ textAlign:'right', fontWeight:500, color:tx.amount>=0?'var(--green)':'var(--red)', fontVariantNumeric:'tabular-nums', whiteSpace:'nowrap' }}>
-                            {tx.amount>=0?'+':''}{fmt(tx.amount)} грн
-                          </td>
-                          <td style={{ fontSize:13, color:'var(--text2)' }}>{tx.direction}</td>
-                          <td style={{ fontSize:13, color:'var(--text2)' }}>{tx.article||'—'}</td>
-                          <td style={{ fontSize:13, color:'var(--text2)' }}>{'—'}</td>
-                        </tr>
-                      ))}
+                      {detailTxs.map(tx => {
+                        const isExpanded = expandedTx === tx.id
+                        const hasDocs = tx.documents?.length > 0
+                        const hasItems = tx.transaction_items?.length > 0
+                        const hasDetails = hasDocs || hasItems || tx.description
+                        return (
+                          <React.Fragment key={tx.id}>
+                            <tr style={{ cursor: hasDetails ? 'pointer' : 'default', background: isExpanded ? 'var(--bg)' : '' }}
+                              onClick={() => hasDetails && setExpandedTx(isExpanded ? null : tx.id)}>
+                              <td style={{ fontSize:13, color:'var(--text2)', whiteSpace:'nowrap' }}>{tx.date}</td>
+                              <td style={{ textAlign:'right', fontWeight:500, color:tx.amount>=0?'var(--green)':'var(--red)', fontVariantNumeric:'tabular-nums', whiteSpace:'nowrap' }}>
+                                {tx.amount>=0?'+':''}{fmt(tx.amount)} грн
+                              </td>
+                              <td style={{ fontSize:13, color:'var(--text2)' }}>{tx.direction}</td>
+                              <td style={{ fontSize:13, color:'var(--text2)' }}>{tx.article||'—'}</td>
+                              <td style={{ fontSize:12, color:'var(--text3)', maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{tx.description||'—'}</td>
+                              <td style={{ textAlign:'center' }}>
+                                {hasDetails && (
+                                  <span style={{ display:'flex', gap:4, justifyContent:'center', alignItems:'center' }}>
+                                    {hasDocs && <i className="ti ti-paperclip" style={{ fontSize:13, color:'var(--blue)' }} title={`${tx.documents.length} файл(ів)`} />}
+                                    {hasItems && <i className="ti ti-package" style={{ fontSize:13, color:'var(--text2)' }} title={`${tx.transaction_items.length} позицій`} />}
+                                    <i className={`ti ti-chevron-${isExpanded?'up':'down'}`} style={{ fontSize:13, color:'var(--text3)' }} />
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                            {isExpanded && (
+                              <tr><td colSpan={6} style={{ padding:0, background:'var(--bg)' }}>
+                                <div style={{ padding:'12px 18px', display:'flex', flexDirection:'column', gap:10 }}>
+                                  {tx.description && (
+                                    <div style={{ fontSize:12.5, color:'var(--text2)', lineHeight:1.5 }}>
+                                      <strong>Призначення:</strong> {tx.description}
+                                    </div>
+                                  )}
+                                  {tx.doc_type && (
+                                    <div style={{ fontSize:12, color:'var(--text3)' }}>
+                                      Тип: {tx.doc_type}{tx.doc_number ? ` №${tx.doc_number}` : ''}
+                                    </div>
+                                  )}
+                                  {hasItems && (
+                                    <div>
+                                      <div style={{ fontSize:12, fontWeight:500, color:'var(--text2)', marginBottom:4 }}>Позиції ({tx.transaction_items.length})</div>
+                                      <table style={{ width:'100%', fontSize:12 }}>
+                                        <thead><tr style={{ background:'var(--surface)' }}>
+                                          <th style={{ textAlign:'left', padding:'4px 8px' }}>Назва</th>
+                                          <th style={{ textAlign:'right', padding:'4px 8px' }}>К-сть</th>
+                                          <th style={{ textAlign:'left', padding:'4px 8px' }}>Од.</th>
+                                          <th style={{ textAlign:'right', padding:'4px 8px' }}>Ціна</th>
+                                          <th style={{ textAlign:'right', padding:'4px 8px' }}>Сума</th>
+                                        </tr></thead>
+                                        <tbody>
+                                          {tx.transaction_items.map(it => (
+                                            <tr key={it.id} style={{ borderBottom:'1px solid var(--border)' }}>
+                                              <td style={{ padding:'4px 8px' }}>{it.name}</td>
+                                              <td style={{ padding:'4px 8px', textAlign:'right' }}>{it.quantity||'—'}</td>
+                                              <td style={{ padding:'4px 8px' }}>{it.unit||''}</td>
+                                              <td style={{ padding:'4px 8px', textAlign:'right' }}>{it.unit_price ? fmt(it.unit_price) : '—'}</td>
+                                              <td style={{ padding:'4px 8px', textAlign:'right', fontWeight:500 }}>{it.amount ? fmt(it.amount) : '—'}</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  )}
+                                  {hasDocs && (
+                                    <div>
+                                      <div style={{ fontSize:12, fontWeight:500, color:'var(--text2)', marginBottom:4 }}>Документи ({tx.documents.length})</div>
+                                      {tx.documents.map(doc => (
+                                        <div key={doc.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 0' }}>
+                                          <i className="ti ti-file-text" style={{ fontSize:14, color:'var(--blue)' }} />
+                                          <span style={{ fontSize:12, color:'var(--text2)', flex:1 }}>{doc.file_name}</span>
+                                          <button className="btn btn-sm btn-secondary" style={{ padding:'2px 8px', fontSize:11 }}
+                                            onClick={async (e) => {
+                                              e.stopPropagation()
+                                              const { data } = await supabase.storage.from('documents').createSignedUrl(doc.file_path, 300)
+                                              if (data?.signedUrl) window.open(data.signedUrl, '_blank')
+                                            }}>
+                                            <i className="ti ti-eye" style={{ fontSize:12 }} />
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </td></tr>
+                            )}
+                          </React.Fragment>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
