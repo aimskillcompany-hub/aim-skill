@@ -196,8 +196,6 @@ export default function Contractors({ user }) {
 
     // Find projects linked to this contractor's transactions
     const txIds = allTxs.map(t => t.id).filter(Boolean)
-    const withProj = allTxs.filter(t => t.project_id)
-    console.log('[Contractor] Txs:', allTxs.length, '| With project_id:', withProj.length, withProj.slice(0,3).map(t => ({ id:t.id, project_id:t.project_id })))
     const projIds = new Set(allTxs.map(t => t.project_id).filter(Boolean))
     if (txIds.length > 0) {
       const { data: items } = await supabase.from('transaction_items')
