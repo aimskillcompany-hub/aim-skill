@@ -116,6 +116,55 @@ export default function AddDocument({ user, onSaved }) {
   const [bankMatch, setBankMatch] = useState(null)    // matched bank transaction
   const [similarTxs, setSimilarTxs] = useState([])   // similar transactions to attach doc to
   const [attachMode, setAttachMode] = useState(false) // show attach UI instead of save
+  const [manualLinkMode, setManualLinkMode] = useState(false)
+  const [manualSearch, setManualSearch] = useState('')
+  const [manualResults, setManualResults] = useState([])
+  const [manualSearching, setManualSearching] = useState(false)
+
+  const searchBankTx = async (query) => {
+    if (!query || query.length < 2) { setManualResults([]); return }
+    setManualSearching(true)
+    try {
+      // Пошук по сумі, контрагенту або ЄДРПОУ
+      const isNumber = /^[\d\s,.]+$/.test(query.trim())
+      let results = []
+
+      if (isNumber) {
+        const searchAmt = parseFloat(query.replace(/\s/g, '').replace(',', '.')) || 0
+        if (searchAmt > 0) {
+          const tolerance = Math.max(10, searchAmt * 0.01)
+          const { data } = await supabase.from('bank_transactions')
+            .select('id, date, counterparty, amount, edrpou, iban')
+            .eq('is_ignored', false)
+            .order('date', { ascending: false }).limit(500)
+          results = (data || []).filter(b => Math.abs(Math.abs(b.amount) - searchAmt) <= tolerance)
+        }
+      } else {
+        const { data: byCp } = await supabase.from('bank_transactions')
+          .select('id, date, counterparty, amount, edrpou, iban')
+          .ilike('counterparty', `%${query.trim()}%`)
+          .eq('is_ignored', false)
+          .order('date', { ascending: false }).limit(50)
+
+        const { data: byCode } = await supabase.from('bank_transactions')
+          .select('id, date, counterparty, amount, edrpou, iban')
+          .ilike('edrpou', `%${query.trim()}%`)
+          .eq('is_ignored', false)
+          .order('date', { ascending: false }).limit(50)
+
+        const seen = new Set()
+        results = [...(byCp || []), ...(byCode || [])].filter(b => {
+          if (seen.has(b.id)) return false
+          seen.add(b.id)
+          return true
+        })
+      }
+      setManualResults(results.slice(0, 20))
+    } catch (e) {
+      console.error('Manual search error:', e)
+    }
+    setManualSearching(false)
+  }
 
   const handleSave = async (forceSave = false) => {
     if (saving) return // захист від подвійного натискання
@@ -136,44 +185,58 @@ export default function AddDocument({ user, onSaved }) {
         finalContractorId = await upsertContractor(supabase, { name: form.contractor, edrpou: form.edrpou, default_direction: form.direction, userId: user.id })
       }
 
-      // Шукаємо банківську операцію по ЄДРПОУ + сумі або по сумі + даті
+      // Шукаємо банківську операцію для прикріплення документа
       const absAmt = Math.abs(total)
       const toDate = dt => new Date(dt).toISOString().split('T')[0]
       const d = new Date(form.date)
-      const dMinus = new Date(d); dMinus.setDate(d.getDate() - 10)
-      const dPlus = new Date(d); dPlus.setDate(d.getDate() + 10)
+      const dMinus = new Date(d); dMinus.setDate(d.getDate() - 30)
+      const dPlus = new Date(d); dPlus.setDate(d.getDate() + 30)
 
       let bankMatch = null
 
-      // Допуск: 10 грн або 0.1% від суми (що більше)
-      const tolerance = Math.max(10, absAmt * 0.001)
+      // Допуск: 10 грн або 0.5% від суми (що більше)
+      const tolerance = Math.max(10, absAmt * 0.005)
+      console.log('[AddDoc] Шукаю банк.операцію: сума=', absAmt, 'ЄДРПОУ=', form.edrpou, 'дата=', form.date, 'допуск=', tolerance)
 
-      // Спочатку по ЄДРПОУ + сумі
+      // 1. По ЄДРПОУ + сумі (без обмеження дати)
       if (form.edrpou?.trim()) {
+        const edrpouClean = form.edrpou.trim().replace(/\s/g, '')
         const { data: byCode } = await supabase.from('bank_transactions')
           .select('id, date, counterparty, amount, edrpou, documents(id)')
-          .eq('edrpou', form.edrpou.trim())
+          .eq('edrpou', edrpouClean)
           .eq('is_ignored', false)
-          .order('date', { ascending: false }).limit(100)
+          .order('date', { ascending: false }).limit(200)
 
+        console.log('[AddDoc] По ЄДРПОУ знайдено:', byCode?.length, 'записів')
         bankMatch = (byCode || []).find(b => Math.abs(Math.abs(b.amount) - absAmt) <= tolerance)
+        if (!bankMatch && byCode?.length) {
+          console.log('[AddDoc] Суми не збіглися. Перші 5:', byCode.slice(0,5).map(b => ({ amt: b.amount, date: b.date })))
+        }
       }
 
-      // Потім по сумі + даті
+      // 2. По сумі + даті (±30 днів, без перевірки знаку)
       if (!bankMatch) {
         const { data: byAmount } = await supabase.from('bank_transactions')
           .select('id, date, counterparty, amount, edrpou, documents(id)')
           .eq('is_ignored', false)
           .gte('date', toDate(dMinus))
           .lte('date', toDate(dPlus))
-          .limit(100)
+          .limit(200)
 
-        bankMatch = (byAmount || []).find(b => {
-          const amtMatch = Math.abs(Math.abs(b.amount) - absAmt) <= tolerance
-          const signMatch = (signed > 0) === (b.amount > 0)
-          return amtMatch && signMatch
-        })
+        console.log('[AddDoc] По даті знайдено:', byAmount?.length, 'записів')
+        bankMatch = (byAmount || []).find(b => Math.abs(Math.abs(b.amount) - absAmt) <= tolerance)
+        if (!bankMatch && byAmount?.length) {
+          // Шукаємо найближчу суму для діагностики
+          const closest = (byAmount || []).reduce((best, b) => {
+            const diff = Math.abs(Math.abs(b.amount) - absAmt)
+            return diff < best.diff ? { diff, amt: b.amount, date: b.date, cp: b.counterparty } : best
+          }, { diff: Infinity })
+          console.log('[AddDoc] Найближча сума:', closest)
+        }
       }
+
+      if (bankMatch) console.log('[AddDoc] ✓ Знайдено банк.операцію:', bankMatch.id, bankMatch.amount, bankMatch.counterparty)
+      else console.log('[AddDoc] ✗ Банк.операцію НЕ знайдено')
 
       // Якщо знайдено банківську операцію — оновити її і прикріпити документ
       if (bankMatch) {
@@ -621,14 +684,75 @@ export default function AddDocument({ user, onSaved }) {
               <i className="ti ti-building-bank" style={{ fontSize:22, color:'var(--green)', flexShrink:0 }} />
               <div>
                 <div style={{ fontWeight:500, fontSize:13, color:'var(--green)', marginBottom:2 }}>
-                  Знайдено збіг з банківською транзакцією!
+                  Привʼязано до банківської операції
                 </div>
                 <div style={{ fontSize:12, color:'var(--green)' }}>
-                  {bankMatch.date} · {bankMatch.counterparty || 'Банк'} · {bankMatch.amount > 0 ? '+' : ''}{new Intl.NumberFormat('uk-UA').format(Math.round(Math.abs(bankMatch.amount)))} грн
+                  {bankMatch.date} · {bankMatch.counterparty || 'Банк'} · {bankMatch.amount > 0 ? '+' : ''}{fmt(Math.abs(bankMatch.amount))} грн
                   {bankMatch.edrpou && <span> · ЄДРПОУ {bankMatch.edrpou}</span>}
                 </div>
               </div>
-              <button onClick={() => setBankMatch(null)} style={{ marginLeft:'auto', background:'none', border:'none', cursor:'pointer', color:'var(--green)', fontSize:18 }}>×</button>
+              <button onClick={() => { setBankMatch(null); setManualLinkMode(true) }} style={{ marginLeft:'auto', background:'none', border:'1px solid var(--border)', borderRadius:6, cursor:'pointer', color:'var(--text2)', fontSize:11, padding:'4px 10px', fontFamily:'inherit' }}>Змінити</button>
+            </div>
+          )}
+
+          {/* Manual bank link */}
+          {!bankMatch && step === 'form' && (
+            <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 16px', marginBottom:14 }}>
+              {!manualLinkMode ? (
+                <button
+                  onClick={() => setManualLinkMode(true)}
+                  style={{ background:'none', border:'1px dashed var(--border)', borderRadius:8, padding:'8px 16px', width:'100%', cursor:'pointer', color:'var(--blue)', fontSize:12.5, fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}
+                >
+                  <i className="ti ti-link" style={{ fontSize:16 }} />
+                  Привʼязати до банківської операції вручну
+                </button>
+              ) : (
+                <div>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+                    <div style={{ fontSize:12.5, fontWeight:500, color:'var(--text1)' }}>Пошук банківської операції</div>
+                    <button onClick={() => { setManualLinkMode(false); setManualResults([]) }} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', fontSize:16 }}>×</button>
+                  </div>
+                  <input
+                    className="form-input"
+                    placeholder="Введіть суму, ЄДРПОУ або назву контрагента..."
+                    value={manualSearch}
+                    onChange={e => {
+                      setManualSearch(e.target.value)
+                      clearTimeout(window._manualSearchTimer)
+                      window._manualSearchTimer = setTimeout(() => searchBankTx(e.target.value), 400)
+                    }}
+                    style={{ marginBottom:8 }}
+                    autoFocus
+                  />
+                  {manualSearching && <div style={{ fontSize:12, color:'var(--text3)', padding:4 }}>Пошук...</div>}
+                  {manualResults.length > 0 && (
+                    <div style={{ maxHeight:240, overflowY:'auto', borderRadius:8, border:'1px solid var(--border)' }}>
+                      {manualResults.map(b => (
+                        <div
+                          key={b.id}
+                          onClick={() => { setBankMatch(b); setManualLinkMode(false); setManualResults([]) }}
+                          style={{ padding:'8px 12px', cursor:'pointer', borderBottom:'1px solid var(--border)', fontSize:12.5, display:'flex', justifyContent:'space-between', alignItems:'center', background:'var(--surface)' }}
+                          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'var(--surface)'}
+                        >
+                          <div>
+                            <div style={{ fontWeight:500, color:'var(--text1)' }}>{b.counterparty || '—'}</div>
+                            <div style={{ fontSize:11, color:'var(--text3)' }}>
+                              {b.date}{b.edrpou ? ` · ЄДРПОУ ${b.edrpou}` : ''}{b.iban ? ` · ${b.iban.substring(0,10)}...` : ''}
+                            </div>
+                          </div>
+                          <div style={{ fontWeight:600, color: b.amount > 0 ? 'var(--green)' : 'var(--red)', whiteSpace:'nowrap', marginLeft:12 }}>
+                            {b.amount > 0 ? '+' : ''}{fmt(b.amount)} грн
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {manualSearch.length >= 2 && !manualSearching && manualResults.length === 0 && (
+                    <div style={{ fontSize:12, color:'var(--text3)', padding:'8px 4px' }}>Нічого не знайдено</div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
