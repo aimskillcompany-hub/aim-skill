@@ -275,8 +275,8 @@ export default function Contractors({ user }) {
   // ═══════════════════════════════════════════
   if (view === 'detail' && detail) {
     const balance = (detail.total_income||0) - (detail.total_expense||0)
-    const txIncome = detailTxs.filter(t=>t.amount>0).reduce((s,t)=>s+(t.amount||0),0)
-    const txExpense = detailTxs.filter(t=>t.amount<0).reduce((s,t)=>s+Math.abs(t.amount||0),0)
+    const txIncome = detailTxs.filter(t=>t.direction==='Доходи').reduce((s,t)=>s+Math.abs(t.amount||0),0)
+    const txExpense = detailTxs.filter(t=>t.direction==='Витрати').reduce((s,t)=>s+Math.abs(t.amount||0),0)
 
     return (
       <div>
