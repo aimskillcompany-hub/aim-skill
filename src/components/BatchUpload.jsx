@@ -181,34 +181,17 @@ export default function BatchUpload({ user, onSaved }) {
         }).eq('id', bankTxId)
       }
 
-      // Save to transactions for backward compatibility
-      const { data: tx, error: txErr } = await supabase.from('transactions').insert({
-        date: d.date || new Date().toISOString().split('T')[0],
-        contractor: d.contractor || 'Невідомо',
-        edrpou: d.edrpou || null,
-        doc_type: d.docType || null,
-        doc_number: d.docNumber || null,
-        amount: signed,
-        vat_amount: parseFloat(String(d.vatAmount || '0').replace(/\s/g, '').replace(',', '.')) || 0,
-        amount_no_vat: parseFloat(String(d.amountNoVat || '0').replace(/\s/g, '').replace(',', '.')) || 0,
-        direction: card.form.direction,
-        article: card.form.article || null,
-        project_id: card.form.projectId || null,
-        description: d.description || null,
-        created_by: user.id,
-      }).select().single()
-
-      if (txErr) throw txErr
+      // bank_transactions = єдине джерело правди
+      const docFolder = bankTxId || crypto.randomUUID()
 
       // Upload file
       const f = card.file
       const ext = f.name.split('.').pop()?.toLowerCase() || 'jpg'
-      const safePath = `${tx.id}/${Date.now()}.${ext}`
+      const safePath = `${docFolder}/${Date.now()}.${ext}`
       const displayName = buildDocFileName(d.docType, d.docNumber, d.contractor, d.date, ext)
       const { error: uploadErr } = await supabase.storage.from('documents').upload(safePath, f, { contentType: f.type })
       if (!uploadErr) {
         await supabase.from('documents').insert({
-          transaction_id: tx.id,
           bank_transaction_id: bankTxId,
           file_name: displayName,
           file_path: safePath,
@@ -225,7 +208,6 @@ export default function BatchUpload({ user, onSaved }) {
         if (validItems.length > 0) {
           const { error: itemsErr } = await supabase.from('transaction_items').insert(
             validItems.map(it => ({
-              transaction_id: tx.id,
               bank_transaction_id: bankTxId,
               name: it.name,
               quantity: parseFloat(it.quantity) || null,
