@@ -38,6 +38,50 @@ export default function Inventory({ user }) {
   const [mergeSearch, setMergeSearch] = useState('')
   const [mergeTarget, setMergeTarget] = useState(null)
 
+  // Пари для обʼєднання
+  const [showPairs, setShowPairs] = useState(false)
+  const [pairs, setPairs] = useState({ outOnly: [], inOnly: [] })
+  const [pairsLoading, setPairsLoading] = useState(false)
+
+  const findPairs = async () => {
+    setPairsLoading(true)
+    setShowPairs(true)
+    // Товари з тільки OUT (продані без закупки)
+    const { data: allMovs } = await supabase.from('stock_movements')
+      .select('product_id, type')
+    const hasIn = new Set(), hasOut = new Set()
+    ;(allMovs || []).forEach(m => {
+      if (m.type === 'in') hasIn.add(m.product_id)
+      if (m.type === 'out') hasOut.add(m.product_id)
+    })
+    const outOnlyIds = [...hasOut].filter(id => !hasIn.has(id))
+    const inOnlyIds = [...hasIn].filter(id => !hasOut.has(id))
+
+    const { data: outProds } = outOnlyIds.length > 0
+      ? await supabase.from('products').select('id, name').in('id', outOnlyIds).eq('status', 'active').order('name')
+      : { data: [] }
+    const { data: inProds } = inOnlyIds.length > 0
+      ? await supabase.from('products').select('id, name').in('id', inOnlyIds).eq('status', 'active').order('name')
+      : { data: [] }
+
+    setPairs({ outOnly: outProds || [], inOnly: inProds || [] })
+    setPairsLoading(false)
+  }
+
+  const mergePair = async (outId, inId) => {
+    // Перенести все з inId на outId
+    await supabase.from('stock_movements').update({ product_id: outId }).eq('product_id', inId)
+    await supabase.from('transaction_items').update({ product_id: outId }).eq('product_id', inId)
+    await supabase.from('product_aliases').update({ product_id: outId }).eq('product_id', inId)
+    await supabase.from('products').update({ status: 'archived' }).eq('id', inId)
+    // Оновити списки
+    setPairs(prev => ({
+      outOnly: prev.outOnly.filter(p => p.id !== outId),
+      inOnly: prev.inOnly.filter(p => p.id !== inId),
+    }))
+    loadAll()
+  }
+
   useEffect(() => { loadAll() }, [])
 
   const loadAll = async () => {
@@ -620,6 +664,10 @@ export default function Inventory({ user }) {
       <div className="page-header" style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:12 }}>
         <div><h1>Склад</h1><p>Залишки товарів та рух</p></div>
         <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+          <button className="btn btn-secondary" onClick={findPairs} disabled={pairsLoading} style={{ width:'auto' }}>
+            <i className={`ti ${pairsLoading ? 'ti-loader-2' : 'ti-link'}`} style={{ fontSize:15, animation: pairsLoading ? 'spin 1s linear infinite' : 'none' }} />
+            Знайти пари
+          </button>
           <button className="btn btn-secondary" onClick={cleanDuplicates} disabled={cleaning || syncing} style={{ width:'auto' }}>
             <i className={`ti ${cleaning ? 'ti-loader-2' : 'ti-trash-x'}`} style={{ fontSize:15, animation: cleaning ? 'spin 1s linear infinite' : 'none' }} />
             {cleaning ? 'Очищення...' : 'Очистити дублікати'}
@@ -749,6 +797,79 @@ export default function Inventory({ user }) {
       </div>
 
       {showForm && renderForm()}
+
+      {/* ── Модалка пар для обʼєднання ── */}
+      {showPairs && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
+          onClick={e => { if (e.target === e.currentTarget) setShowPairs(false) }}>
+          <div style={{ background:'var(--surface)', borderRadius:16, width:'100%', maxWidth:900, maxHeight:'85vh', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+            <div style={{ padding:'16px 20px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <div>
+                <div style={{ fontWeight:600, fontSize:16 }}>Знайти пари для обʼєднання</div>
+                <div style={{ fontSize:12, color:'var(--text3)', marginTop:2 }}>
+                  Зліва — продані без закупки ({pairs.outOnly.length}). Справа — закуплені без продажу ({pairs.inOnly.length}).
+                </div>
+              </div>
+              <button onClick={() => setShowPairs(false)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:22, color:'var(--text3)' }}>×</button>
+            </div>
+            <div style={{ flex:1, overflowY:'auto', padding:'16px 20px' }}>
+              {pairs.outOnly.length === 0 ? (
+                <div style={{ textAlign:'center', padding:40, color:'var(--text3)' }}>Всі товари мають і прихід і видачу</div>
+              ) : (
+                pairs.outOnly.map(outProd => {
+                  // Знайти кандидатів серед inOnly — по спільних словах
+                  const outWords = outProd.name.toLowerCase().split(/[\s,./()[\]{}\-]+/).filter(w => w.length > 2)
+                  const candidates = pairs.inOnly
+                    .map(inProd => {
+                      const inWords = inProd.name.toLowerCase().split(/[\s,./()[\]{}\-]+/).filter(w => w.length > 2)
+                      const common = outWords.filter(w => inWords.some(iw => iw.includes(w) || w.includes(iw)))
+                      const score = common.length
+                      return { ...inProd, score, common }
+                    })
+                    .filter(c => c.score >= 2)
+                    .sort((a, b) => b.score - a.score)
+                    .slice(0, 5)
+
+                  return (
+                    <div key={outProd.id} style={{ marginBottom:16, border:'1px solid var(--border)', borderRadius:10, padding:14 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                        <i className="ti ti-arrow-up-circle" style={{ fontSize:16, color:'var(--red)' }} />
+                        <div style={{ fontWeight:500, fontSize:13, color:'var(--red)' }}>Продано (без закупки):</div>
+                      </div>
+                      <div style={{ fontWeight:600, fontSize:14, marginBottom:10, paddingLeft:24 }}>{outProd.name}</div>
+
+                      {candidates.length > 0 ? (
+                        <div style={{ paddingLeft:24 }}>
+                          <div style={{ fontSize:12, color:'var(--text3)', marginBottom:6 }}>
+                            <i className="ti ti-arrow-down-circle" style={{ fontSize:14, color:'var(--green)', marginRight:4 }} />
+                            Можливі пари (закуплено):
+                          </div>
+                          {candidates.map(c => (
+                            <div key={c.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 10px', borderRadius:6, border:'1px solid var(--border)', marginBottom:4, background:'var(--bg)' }}>
+                              <div style={{ flex:1 }}>
+                                <div style={{ fontSize:13 }}>{c.name}</div>
+                                <div style={{ fontSize:10, color:'var(--text3)' }}>збіг: {c.common.join(', ')}</div>
+                              </div>
+                              <button className="btn btn-sm btn-primary" style={{ flexShrink:0, fontSize:12 }}
+                                onClick={() => { if (confirm(`Обʼєднати?\n\n"${outProd.name}"\n← "${c.name}"\n\nВсі рухи та позиції будуть перенесені.`)) mergePair(outProd.id, c.id) }}>
+                                Обʼєднати
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ paddingLeft:24, fontSize:12, color:'var(--text3)', fontStyle:'italic' }}>
+                          Автоматичних кандидатів не знайдено — потрібно завантажити документ закупки
+                        </div>
+                      )}
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
