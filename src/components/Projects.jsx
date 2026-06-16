@@ -529,25 +529,38 @@ export default function Projects({ user }) {
               </div>
             )}
 
-            {/* Stats */}
+            {/* Stats — рахуються з projTxs (реальні дані відкритого проекту) */}
             {(() => {
-              const s = getStats(selected)
-              const marginPct = s.revenue > 0 ? ((s.margin / s.revenue) * 100).toFixed(0) : null
+              // Виручка = оплати від клієнта
+              const revenue = projTxs.filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+              // Додаткові витрати (bank_transactions з direction='Витрати')
+              const extraExpenses = projTxs.filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+              // Собівартість (FIFO) — з transaction_items
+              const allItems = projTxs.flatMap(tx => (tx.transaction_items || []).map(it => ({ ...it })))
+              let goodsCost = 0
+              allItems.forEach(it => {
+                const qty = parseFloat(it.quantity) || 0
+                const costPrice = it._costPrice || 0
+                if (costPrice > 0 && qty > 0) goodsCost += qty * costPrice
+              })
+              const totalExpenses = goodsCost + extraExpenses
+              const margin = revenue - totalExpenses
+              const marginPct = revenue > 0 ? ((margin / revenue) * 100).toFixed(0) : null
               return (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 20 }}>
                   <div className="kpi">
                     <div className="kpi-label">Виручка</div>
-                    <div className="kpi-value blue">{fmt(s.revenue)} грн</div>
+                    <div className="kpi-value blue">{fmt(revenue)} грн</div>
                   </div>
                   <div className="kpi">
                     <div className="kpi-label">Витрати</div>
-                    <div className="kpi-value red">{fmt(s.totalExpenses)} грн</div>
-                    {s.goodsCost > 0 && <div className="kpi-sub">с/в {fmt(s.goodsCost)}{s.extraExpenses > 0 ? ` + дод. ${fmt(s.extraExpenses)}` : ''}</div>}
+                    <div className="kpi-value red">{fmt(totalExpenses)} грн</div>
+                    {goodsCost > 0 && <div className="kpi-sub">с/в {fmt(goodsCost)}{extraExpenses > 0 ? ` + дод. ${fmt(extraExpenses)}` : ''}</div>}
                   </div>
                   <div className="kpi">
                     <div className="kpi-label">Маржа</div>
-                    <div className={`kpi-value ${s.margin >= 0 ? 'green' : 'red'}`}>
-                      {s.margin >= 0 ? '+' : '−'}{fmt(Math.abs(s.margin))} грн
+                    <div className={`kpi-value ${margin >= 0 ? 'green' : 'red'}`}>
+                      {margin >= 0 ? '+' : '−'}{fmt(Math.abs(margin))} грн
                     </div>
                     {marginPct && <div className="kpi-sub">{marginPct}% від виручки</div>}
                   </div>
