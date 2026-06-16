@@ -61,6 +61,9 @@ export default function Projects({ user }) {
   const [projDocs, setProjDocs] = useState([])
   const [projTxs, setProjTxs] = useState([])
   const [docTab, setDocTab] = useState('incoming')
+  const [allProducts, setAllProducts] = useState([])
+  const [productSearch, setProductSearch] = useState('')
+  const [linkingItemId, setLinkingItemId] = useState(null)
 
   const [form, setForm] = useState({ description: '', budget: '', contractor: '', edrpou: '', start_date: new Date().toISOString().split('T')[0] })
   const [saving, setSaving] = useState(false)
@@ -116,6 +119,10 @@ export default function Projects({ user }) {
     })
     const allTxs = Object.values(txMap).sort((a, b) => b.date > a.date ? 1 : -1)
     setProjTxs(allTxs)
+
+    // Load products for linking
+    const { data: prods } = await supabase.from('products').select('id, name, current_stock, unit').eq('status', 'active').order('name')
+    setAllProducts(prods || [])
 
     // Load documents — by project_id OR by transaction_id (для старих записів)
     const txIds = (txs || []).map(t => t.id)
@@ -493,38 +500,121 @@ export default function Projects({ user }) {
               const allItems = projTxs.flatMap(tx => (tx.transaction_items || []).map(it => ({ ...it, _date: tx.date, _counterparty: tx.counterparty })))
               if (allItems.length === 0) return null
               const totalSum = allItems.reduce((s, it) => s + Math.abs(it.amount || 0), 0)
+              const linked = allItems.filter(it => it.product_id).length
+
+              const handleLinkProduct = async (itemId, productId) => {
+                await supabase.from('transaction_items').update({ product_id: productId }).eq('id', itemId)
+                setProjTxs(prev => prev.map(tx => ({
+                  ...tx,
+                  transaction_items: (tx.transaction_items || []).map(it => it.id === itemId ? { ...it, product_id: productId } : it)
+                })))
+                setLinkingItemId(null)
+                setProductSearch('')
+              }
+
               return (
                 <div style={{ marginBottom: 20 }}>
                   <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <i className="ti ti-package" style={{ fontSize: 15, color: 'var(--blue)' }} />
                     Товари / послуги ({allItems.length})
-                    <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text3)', marginLeft: 8 }}>на суму {fmt(totalSum)} грн</span>
+                    <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text3)', marginLeft: 8 }}>
+                      на суму {fmt(totalSum)} грн · {linked}/{allItems.length} на складі
+                    </span>
                   </div>
-                  <div className="tbl-wrap" style={{ maxHeight: 300 }}>
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Назва</th>
-                          <th>Контрагент</th>
-                          <th>Дата</th>
-                          <th style={{ textAlign: 'right' }}>К-сть</th>
-                          <th style={{ textAlign: 'right' }}>Ціна</th>
-                          <th style={{ textAlign: 'right' }}>Сума</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {allItems.map((it, i) => (
-                          <tr key={it.id || i}>
-                            <td style={{ fontWeight: 500, maxWidth: 250, wordBreak: 'break-word' }}>{it.name}</td>
-                            <td style={{ fontSize: 12, color: 'var(--text2)', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it._counterparty || '—'}</td>
-                            <td style={{ fontSize: 12, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{it._date}</td>
-                            <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{it.quantity || '—'} {it.unit || ''}</td>
-                            <td style={{ textAlign: 'right', color: 'var(--text2)', fontVariantNumeric: 'tabular-nums' }}>{it.unit_price ? fmt(it.unit_price) + ' грн' : '—'}</td>
-                            <td style={{ textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{fmt(Math.abs(it.amount || 0))} грн</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {allItems.map((it, i) => {
+                      const product = it.product_id ? allProducts.find(p => p.id === it.product_id) : null
+                      const isLinking = linkingItemId === it.id
+                      const searchResults = isLinking && productSearch.length >= 2
+                        ? allProducts.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase())).slice(0, 8)
+                        : []
+                      // Auto-suggest: product with same name
+                      const autoMatch = !it.product_id ? allProducts.find(p => p.name.trim().toLowerCase() === it.name?.trim().toLowerCase()) : null
+
+                      return (
+                        <div key={it.id || i} style={{
+                          border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px',
+                          background: product ? 'var(--surface)' : 'var(--surface2)',
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 500, fontSize: 14, wordBreak: 'break-word' }}>{it.name}</div>
+                              <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 3, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                                <span>{it._counterparty}</span>
+                                <span>{it._date}</span>
+                                <span>{it.quantity || '—'} {it.unit || 'шт'}</span>
+                                <span style={{ fontWeight: 500 }}>{fmt(Math.abs(it.amount || 0))} грн</span>
+                              </div>
+                            </div>
+                            <div style={{ flexShrink: 0 }}>
+                              {product ? (
+                                <div style={{
+                                  display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
+                                  background: 'var(--green-bg)', borderRadius: 6, fontSize: 12, color: 'var(--green)',
+                                }}>
+                                  <i className="ti ti-check" style={{ fontSize: 13 }} />
+                                  {product.current_stock} {product.unit} на складі
+                                </div>
+                              ) : autoMatch ? (
+                                <button onClick={() => handleLinkProduct(it.id, autoMatch.id)} style={{
+                                  background: 'var(--green-bg)', border: '1px solid var(--border)', borderRadius: 6,
+                                  padding: '4px 10px', cursor: 'pointer', fontSize: 12, color: 'var(--green)',
+                                  display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'inherit',
+                                }}>
+                                  <i className="ti ti-sparkles" style={{ fontSize: 12 }} />
+                                  Привʼязати ({autoMatch.current_stock} {autoMatch.unit})
+                                </button>
+                              ) : (
+                                <button onClick={() => { setLinkingItemId(isLinking ? null : it.id); setProductSearch('') }} style={{
+                                  background: 'none', border: '1px solid var(--border)', borderRadius: 6,
+                                  padding: '4px 10px', cursor: 'pointer', fontSize: 12, color: 'var(--blue)',
+                                  display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'inherit',
+                                }}>
+                                  <i className="ti ti-link" style={{ fontSize: 12 }} />
+                                  Привʼязати
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Link search dropdown */}
+                          {isLinking && (
+                            <div style={{ marginTop: 10, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+                              <input
+                                className="form-input"
+                                style={{ height: 36, fontSize: 13, marginBottom: 6 }}
+                                placeholder="Пошук товару на складі..."
+                                value={productSearch}
+                                onChange={e => setProductSearch(e.target.value)}
+                                autoFocus
+                              />
+                              {searchResults.length > 0 && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 200, overflowY: 'auto' }}>
+                                  {searchResults.map(p => (
+                                    <div key={p.id} onClick={() => handleLinkProduct(it.id, p.id)} style={{
+                                      padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
+                                      border: '1px solid var(--border)', background: 'var(--surface)',
+                                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                    }}
+                                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
+                                      onMouseLeave={e => e.currentTarget.style.background = 'var(--surface)'}
+                                    >
+                                      <span style={{ fontWeight: 500, fontSize: 13 }}>{p.name}</span>
+                                      <span style={{ fontSize: 12, color: p.current_stock > 0 ? 'var(--green)' : 'var(--red)' }}>
+                                        {p.current_stock} {p.unit}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {productSearch.length >= 2 && searchResults.length === 0 && (
+                                <div style={{ padding: 12, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>Не знайдено</div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )
