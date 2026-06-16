@@ -97,7 +97,7 @@ export default function Registry({ user }) {
     const dbCol = COL_MAP[sort.col] || 'date'
 
     let q = supabase.from('bank_transactions')
-      .select('*, documents(id), transaction_items(id)', { count: 'exact' })
+      .select('*, documents(id), transaction_items(id), projects(name)', { count: 'exact' })
       .eq('is_ignored', false)
       .order(dbCol, { ascending: sort.dir === 'asc' })
       .range((page - 1) * PER_PAGE, page * PER_PAGE - 1)
@@ -624,7 +624,7 @@ export default function Registry({ user }) {
                     <td style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color: noArticle ? 'var(--amber)' : 'var(--text2)', maxWidth:150 }} title={tx.article}>
                       {noArticle ? <span style={{ display:'flex', alignItems:'center', gap:4 }}><i className="ti ti-tag-off" style={{ fontSize:13 }} />без статті</span> : tx.article}
                     </td>
-                    <td style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color:'var(--text2)', maxWidth:100 }}>—</td>
+                    <td style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color:'var(--text2)', maxWidth:100 }}>{tx.projects?.name || '—'}</td>
                     <td style={{ textAlign:'center' }}>
                       <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:13 }}>
                         {tx.documents?.length > 0 && <span>📄{tx.documents.length > 1 ? tx.documents.length : ''}</span>}
