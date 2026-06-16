@@ -353,6 +353,46 @@ create index if not exists idx_products_sku on products(sku);
 create index if not exists idx_items_product on transaction_items(product_id);
 
 -- ═══════════════════════════════════════════════════
+-- PRODUCT ALIASES (запобігання дублікатам продуктів)
+-- ═══════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS product_aliases (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  product_id uuid REFERENCES products(id) ON DELETE CASCADE NOT NULL,
+  alias text NOT NULL,
+  normalized text NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  UNIQUE(normalized)
+);
+CREATE INDEX IF NOT EXISTS idx_alias_normalized ON product_aliases(normalized);
+CREATE INDEX IF NOT EXISTS idx_alias_product ON product_aliases(product_id);
+
+ALTER TABLE product_aliases ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "View aliases" ON product_aliases FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Insert aliases" ON product_aliases FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Update aliases" ON product_aliases FOR UPDATE TO authenticated USING (true);
+CREATE POLICY "Delete aliases" ON product_aliases FOR DELETE TO authenticated USING (true);
+
+-- Захист від дубльованих складських рухів по одній позиції
+CREATE UNIQUE INDEX IF NOT EXISTS idx_stock_movement_item_unique
+  ON stock_movements(transaction_item_id) WHERE transaction_item_id IS NOT NULL;
+
+-- View: обчислюваний залишок (замість products.current_stock)
+CREATE OR REPLACE VIEW product_stock AS
+SELECT p.*,
+  COALESCE(s.stock, 0) AS computed_stock,
+  COALESCE(s.total_in, 0) AS total_in,
+  COALESCE(s.total_out, 0) AS total_out
+FROM products p
+LEFT JOIN (
+  SELECT product_id,
+    SUM(CASE WHEN type='in' THEN quantity WHEN type='out' THEN -quantity
+             WHEN type='adjustment' THEN quantity ELSE 0 END) AS stock,
+    SUM(CASE WHEN type='in' THEN quantity ELSE 0 END) AS total_in,
+    SUM(CASE WHEN type='out' THEN quantity ELSE 0 END) AS total_out
+  FROM stock_movements GROUP BY product_id
+) s ON s.product_id = p.id;
+
+-- ═══════════════════════════════════════════════════
 -- INDEXES для швидкості
 -- ═══════════════════════════════════════════════════
 create index if not exists idx_tx_date on transactions(date desc);

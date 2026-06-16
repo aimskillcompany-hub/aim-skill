@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { extractDocumentMulti } from '../lib/ai'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
+import { processDocumentItems } from '../lib/stockService'
 
 const DIRECTIONS = ['Витрати', 'Доходи', 'ПФД', 'Внутрішні перекази', 'Відсотки банку', 'Інше']
 const fmt = n => n ? new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(n)) : '—'
@@ -264,7 +265,7 @@ export default function BatchUpload({ user, onSaved }) {
         savedDocId = docData?.id
       }
 
-      // Save items + auto-create products + stock movements
+      // Save items + auto-create products + stock movements через stockService
       if (d.items?.length > 0) {
         const validItems = d.items.filter(it => it.name)
         if (validItems.length > 0) {
@@ -281,58 +282,15 @@ export default function BatchUpload({ user, onSaved }) {
           ).select('id, name, quantity, unit, unit_price, amount')
           if (itemsErr) console.error('Items save error:', itemsErr)
 
-          // Auto-link to products and create stock movements
+          // Централізований stockService: resolve products + stock movements
           if (savedItems?.length) {
-            const movementType = card.form.docRole === 'outgoing' ? 'out' : 'in'
-            for (const item of savedItems) {
-              if (!item.name || !item.quantity) continue
-              try {
-                // Find or create product
-                const { data: existing } = await supabase.from('products')
-                  .select('id, current_stock').ilike('name', item.name.trim()).eq('status', 'active').maybeSingle()
-
-                let productId
-                if (existing) {
-                  productId = existing.id
-                } else {
-                  const { data: newProd } = await supabase.from('products').insert({
-                    name: item.name.trim(),
-                    unit: item.unit || 'шт',
-                    buy_price: item.unit_price || null,
-                    status: 'active',
-                    created_by: user.id,
-                  }).select('id').single()
-                  productId = newProd?.id
-                }
-
-                if (productId) {
-                  // Link item to product
-                  await supabase.from('transaction_items').update({ product_id: productId }).eq('id', item.id)
-                  // Create stock movement
-                  const qty = parseFloat(item.quantity) || 0
-                  if (qty > 0) {
-                    await supabase.from('stock_movements').insert({
-                      product_id: productId,
-                      type: movementType,
-                      quantity: qty,
-                      price: item.unit_price || null,
-                      total: item.amount || null,
-                      bank_transaction_id: bankTxId,
-                      transaction_item_id: item.id,
-                      date: d.date || new Date().toISOString().split('T')[0],
-                      description: item.name,
-                      created_by: user.id,
-                    })
-                    // Update product stock
-                    const stockChange = movementType === 'in' ? qty : -qty
-                    const currentStock = existing?.current_stock || 0
-                    await supabase.from('products').update({ current_stock: currentStock + stockChange }).eq('id', productId)
-                  }
-                }
-              } catch (e) {
-                console.warn('Stock movement error for', item.name, e.message)
-              }
-            }
+            await processDocumentItems(savedItems, {
+              docType: d.docType,
+              docRole: card.form.docRole,
+              bankTransactionId: bankTxId,
+              date: d.date,
+              userId: user.id,
+            })
           }
         }
       }

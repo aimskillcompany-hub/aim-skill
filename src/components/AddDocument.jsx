@@ -4,6 +4,7 @@ import { extractDocumentMulti } from '../lib/ai'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import ContractorSelect from './ui/ContractorSelect'
 import { upsertContractor } from '../lib/contractors'
+import { processDocumentItems } from '../lib/stockService'
 
 const DIRECTIONS = ['Витрати', 'Доходи', 'ПФД', 'Внутрішні перекази', 'Відсотки банку', 'Інше']
 
@@ -269,54 +270,15 @@ export default function AddDocument({ user, onSaved }) {
         }))
         const { data: savedItems } = await supabase.from('transaction_items').insert(items).select('id, name, quantity, unit, unit_price, amount')
 
-        // Auto-link to products and create stock movements
+        // Через централізований stockService: resolve products + stock movements
         if (savedItems?.length) {
-          const movementType = form.docRole === 'outgoing' ? 'out' : 'in'
-          for (const item of savedItems) {
-            if (!item.name || !item.quantity) continue
-            // Find or create product
-            const { data: existing } = await supabase.from('products')
-              .select('id, current_stock').ilike('name', item.name.trim()).eq('status', 'active').maybeSingle()
-
-            let productId
-            if (existing) {
-              productId = existing.id
-            } else {
-              const { data: newProd } = await supabase.from('products').insert({
-                name: item.name.trim(),
-                unit: item.unit || 'шт',
-                buy_price: item.unit_price || null,
-                status: 'active',
-                created_by: user.id,
-              }).select('id').single()
-              productId = newProd?.id
-            }
-
-            if (productId) {
-              // Link item to product
-              await supabase.from('transaction_items').update({ product_id: productId }).eq('id', item.id)
-              // Create stock movement
-              const qty = parseFloat(item.quantity) || 0
-              if (qty > 0) {
-                await supabase.from('stock_movements').insert({
-                  product_id: productId,
-                  type: movementType,
-                  quantity: qty,
-                  price: item.unit_price || null,
-                  total: item.amount || null,
-                  bank_transaction_id: bankMatch?.id || null,
-                  transaction_item_id: item.id,
-                  date: form.date || new Date().toISOString().split('T')[0],
-                  description: item.name,
-                  created_by: user.id,
-                })
-                // Update product stock
-                const stockChange = movementType === 'in' ? qty : -qty
-                const currentStock = existing?.current_stock || 0
-                await supabase.from('products').update({ current_stock: currentStock + stockChange }).eq('id', productId)
-              }
-            }
-          }
+          await processDocumentItems(savedItems, {
+            docType: form.docType,
+            docRole: form.docRole,
+            bankTransactionId: bankMatch?.id,
+            date: form.date,
+            userId: user.id,
+          })
         }
       }
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { processDocumentItems, migrateProductAliases, mergeProductDuplicates } from '../lib/stockService'
 
 const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(n || 0)
 const fmtInt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(n || 0))
@@ -41,24 +42,30 @@ export default function Inventory({ user }) {
 
   const loadAll = async () => {
     setLoading(true)
-    const [{ data: prods }, { data: movs }] = await Promise.all([
-      supabase.from('products').select('*').eq('status','active').order('name'),
-      supabase.from('stock_movements').select('product_id, type, quantity').order('date', { ascending: false }),
-    ])
+    // Спочатку спробувати view product_stock, fallback на products
+    let prods
+    const { data: viewData, error: viewErr } = await supabase
+      .from('product_stock')
+      .select('*')
+      .eq('status', 'active')
+      .order('name')
 
-    // Calculate current stock from movements
-    const stockMap = {}
-    ;(movs || []).forEach(m => {
-      if (!stockMap[m.product_id]) stockMap[m.product_id] = 0
-      if (m.type === 'in' || m.type === 'adjustment') stockMap[m.product_id] += (m.quantity || 0)
-      else stockMap[m.product_id] -= (m.quantity || 0)
-    })
+    if (!viewErr && viewData) {
+      prods = viewData.map(p => ({ ...p, current_stock: p.computed_stock ?? p.current_stock ?? 0 }))
+    } else {
+      // Fallback: view ще не створений
+      const { data: fallback } = await supabase.from('products').select('*').eq('status','active').order('name')
+      const { data: movs } = await supabase.from('stock_movements').select('product_id, type, quantity')
+      const stockMap = {}
+      ;(movs || []).forEach(m => {
+        if (!stockMap[m.product_id]) stockMap[m.product_id] = 0
+        if (m.type === 'in' || m.type === 'adjustment') stockMap[m.product_id] += (m.quantity || 0)
+        else stockMap[m.product_id] -= (m.quantity || 0)
+      })
+      prods = (fallback || []).map(p => ({ ...p, current_stock: stockMap[p.id] || p.current_stock || 0 }))
+    }
 
-    setProducts((prods || []).map(p => ({
-      ...p,
-      current_stock: stockMap[p.id] || p.current_stock || 0,
-    })))
-    setMovements(movs || [])
+    setProducts(prods || [])
     setLoading(false)
   }
 
@@ -102,7 +109,7 @@ export default function Inventory({ user }) {
     setSaving(false); setShowForm(false); loadAll()
   }
 
-  // Merge: объединить mergeTarget в detail (перенести рухи, позиції, видалити дублікат)
+  // Merge: обʼєднати mergeTarget в detail (перенести рухи, позиції, aliases)
   const handleMerge = async () => {
     if (!detail || !mergeTarget || detail.id === mergeTarget.id) return
     setSaving(true)
@@ -110,15 +117,15 @@ export default function Inventory({ user }) {
     await supabase.from('stock_movements').update({ product_id: detail.id }).eq('product_id', mergeTarget.id)
     // Перенести transaction_items
     await supabase.from('transaction_items').update({ product_id: detail.id }).eq('product_id', mergeTarget.id)
+    // Перенести aliases
+    await supabase.from('product_aliases').update({ product_id: detail.id }).eq('product_id', mergeTarget.id)
     // Архівувати дублікат
     await supabase.from('products').update({ status: 'archived' }).eq('id', mergeTarget.id)
-    // Перерахувати залишок
-    const { data: movs } = await supabase.from('stock_movements').select('type, quantity').eq('product_id', detail.id)
-    const newStock = (movs || []).reduce((s, m) => s + (m.type === 'in' || m.type === 'adjustment' ? m.quantity : -m.quantity), 0)
-    await supabase.from('products').update({ current_stock: newStock }).eq('id', detail.id)
+    // current_stock обчислюється через VIEW — не потрібно перераховувати
     setSaving(false); setShowMerge(false); setMergeTarget(null)
-    openDetail({ ...detail, current_stock: newStock })
-    loadAll()
+    await loadAll()
+    const updated = products.find(p => p.id === detail.id)
+    openDetail(updated || detail)
   }
 
   const handleDelete = async (id) => {
@@ -132,13 +139,12 @@ export default function Inventory({ user }) {
   const [syncLog, setSyncLog] = useState(null)
 
   const syncStockFromDocs = async () => {
-    if (!confirm('Перерахувати склад?\n\nСистема знайде всі товарні позиції (transaction_items) без складського руху та створить відповідні рухи.\n\nІснуючі рухи НЕ будуть видалені.')) return
+    if (!confirm('Перерахувати склад?\n\nСистема знайде всі товарні позиції без складського руху та створить відповідні рухи через stockService.\n\nІснуючі рухи НЕ будуть дублюватися.')) return
     setSyncing(true)
     setSyncLog(null)
-    let created = 0, linked = 0, errors = 0
 
     try {
-      // 1. Завантажити всі transaction_items без складського руху
+      // 1. Завантажити всі transaction_items
       const { data: items } = await supabase.from('transaction_items')
         .select('id, name, quantity, unit, unit_price, amount, bank_transaction_id, product_id')
         .order('id')
@@ -148,89 +154,37 @@ export default function Inventory({ user }) {
         .select('transaction_item_id')
       const movedItemIds = new Set((existingMovs || []).map(m => m.transaction_item_id).filter(Boolean))
 
-      // 3. Завантажити дати з bank_transactions
+      // 3. Завантажити дані з bank_transactions для визначення дати і docType
       const bankIds = [...new Set((items || []).map(i => i.bank_transaction_id).filter(Boolean))]
-      let bankDateMap = {}
-      if (bankIds.length > 0) {
-        // Завантажити по частинах (Supabase limit)
-        for (let i = 0; i < bankIds.length; i += 50) {
-          const chunk = bankIds.slice(i, i + 50)
-          const { data: banks } = await supabase.from('bank_transactions')
-            .select('id, date, amount').in('id', chunk)
-          ;(banks || []).forEach(b => { bankDateMap[b.id] = b })
-        }
+      const bankMap = {}
+      for (let i = 0; i < bankIds.length; i += 50) {
+        const chunk = bankIds.slice(i, i + 50)
+        const { data: banks } = await supabase.from('bank_transactions')
+          .select('id, date, doc_type, direction').in('id', chunk)
+        ;(banks || []).forEach(b => { bankMap[b.id] = b })
       }
 
-      // 4. Для кожного item без руху — створити продукт + складський рух
+      // 4. Групувати items по bank_transaction для пакетної обробки
       const unprocessed = (items || []).filter(it => it.name && it.quantity && !movedItemIds.has(it.id))
 
+      let totalProcessed = 0, totalCreated = 0, totalErrors = []
+
+      // Обробляти по одному (processDocumentItems перевіряє дублікати)
       for (const item of unprocessed) {
-        try {
-          const qty = parseFloat(item.quantity) || 0
-          if (qty <= 0) continue
-
-          // Знайти або створити продукт
-          let productId = item.product_id
-          let existingStock = 0
-          if (!productId) {
-            const { data: existing } = await supabase.from('products')
-              .select('id, current_stock').ilike('name', item.name.trim()).eq('status', 'active').maybeSingle()
-            if (existing) {
-              productId = existing.id
-              existingStock = existing.current_stock || 0
-            } else {
-              const { data: newProd } = await supabase.from('products').insert({
-                name: item.name.trim(),
-                unit: item.unit || 'шт',
-                buy_price: item.unit_price || null,
-                status: 'active',
-                created_by: user.id,
-              }).select('id').single()
-              productId = newProd?.id
-              created++
-            }
-          } else {
-            const { data: p } = await supabase.from('products').select('current_stock').eq('id', productId).maybeSingle()
-            existingStock = p?.current_stock || 0
-          }
-
-          if (!productId) continue
-
-          // Привʼязати item до product
-          if (!item.product_id) {
-            await supabase.from('transaction_items').update({ product_id: productId }).eq('id', item.id)
-          }
-
-          // Визначити тип руху: дохід (amount > 0 в банк.операції) = out, витрата = in
-          const bankTx = bankDateMap[item.bank_transaction_id]
-          const movType = bankTx && bankTx.amount > 0 ? 'out' : 'in'
-
-          // Створити складський рух
-          await supabase.from('stock_movements').insert({
-            product_id: productId,
-            type: movType,
-            quantity: qty,
-            price: item.unit_price || null,
-            total: item.amount || null,
-            bank_transaction_id: item.bank_transaction_id,
-            transaction_item_id: item.id,
-            date: bankTx?.date || new Date().toISOString().split('T')[0],
-            description: item.name,
-            created_by: user.id,
-          })
-
-          // Оновити залишок
-          const stockChange = movType === 'in' ? qty : -qty
-          await supabase.from('products').update({ current_stock: existingStock + stockChange }).eq('id', productId)
-
-          linked++
-        } catch (e) {
-          console.warn('Sync item error:', item.name, e.message)
-          errors++
-        }
+        const bankTx = bankMap[item.bank_transaction_id]
+        const result = await processDocumentItems([item], {
+          docType: bankTx?.doc_type || null,
+          docRole: bankTx?.direction === 'Доходи' ? 'outgoing' : 'incoming',
+          bankTransactionId: item.bank_transaction_id,
+          date: bankTx?.date || new Date().toISOString().split('T')[0],
+          userId: user.id,
+        })
+        totalProcessed += result.processed
+        totalCreated += result.created
+        totalErrors.push(...result.errors)
       }
 
-      setSyncLog({ total: unprocessed.length, created, linked, errors })
+      setSyncLog({ total: unprocessed.length, created: totalCreated, linked: totalProcessed, errors: totalErrors.length })
     } catch (e) {
       setSyncLog({ error: e.message })
     }
@@ -243,101 +197,22 @@ export default function Inventory({ user }) {
   const [cleanLog, setCleanLog] = useState(null)
 
   const cleanDuplicates = async () => {
-    if (!confirm('Очистити дублікати?\n\n1. Обʼєднає продукти з однаковими назвами\n2. Видалить дубльовані складські рухи\n3. Перерахує залишки\n\nЦю дію не можна відмінити.')) return
+    if (!confirm('Очистити дублікати?\n\n1. Обʼєднає продукти з однаковими назвами\n2. Видалить дубльовані складські рухи\n3. Заповнить aliases для запобігання повторних дублікатів\n\nЦю дію не можна відмінити.')) return
     setCleaning(true)
     setCleanLog(null)
-    let mergedProducts = 0, removedMovements = 0, recalculated = 0
 
     try {
-      // 1. Завантажити всі активні продукти
-      const { data: allProds } = await supabase.from('products')
-        .select('id, name, unit, buy_price, sell_price, category, created_at')
-        .eq('status', 'active').order('created_at')
+      // 1. Обʼєднати дублікати через stockService
+      const mergeResult = await mergeProductDuplicates()
 
-      // 2. Групувати по нормалізованій назві (lowercase, trim)
-      const groups = {}
-      ;(allProds || []).forEach(p => {
-        const key = (p.name || '').trim().toLowerCase()
-        if (!groups[key]) groups[key] = []
-        groups[key].push(p)
+      // 2. Заповнити aliases
+      const aliasResult = await migrateProductAliases()
+
+      setCleanLog({
+        mergedProducts: mergeResult.merged,
+        removedMovements: mergeResult.removedMovements,
+        aliases: aliasResult.added,
       })
-
-      // 3. Обʼєднати дублікати — залишити найстарішого
-      for (const [, group] of Object.entries(groups)) {
-        if (group.length <= 1) continue
-
-        const keep = group[0] // найстаріший
-        const duplicates = group.slice(1)
-
-        for (const dup of duplicates) {
-          // Перенести stock_movements
-          await supabase.from('stock_movements').update({ product_id: keep.id }).eq('product_id', dup.id)
-          // Перенести transaction_items
-          await supabase.from('transaction_items').update({ product_id: keep.id }).eq('product_id', dup.id)
-          // Архівувати дублікат
-          await supabase.from('products').update({ status: 'archived' }).eq('id', dup.id)
-          mergedProducts++
-        }
-
-        // Оновити keep з кращими даними (ціна, категорія)
-        const bestPrice = group.find(p => p.buy_price)?.buy_price
-        const bestSell = group.find(p => p.sell_price)?.sell_price
-        const bestCat = group.find(p => p.category)?.category
-        if (bestPrice || bestSell || bestCat) {
-          const upd = {}
-          if (bestPrice && !keep.buy_price) upd.buy_price = bestPrice
-          if (bestSell && !keep.sell_price) upd.sell_price = bestSell
-          if (bestCat && !keep.category) upd.category = bestCat
-          if (Object.keys(upd).length > 0) {
-            await supabase.from('products').update(upd).eq('id', keep.id)
-          }
-        }
-      }
-
-      // 4. Видалити дубльовані складські рухи (однаковий transaction_item_id)
-      const { data: allMovs } = await supabase.from('stock_movements')
-        .select('id, transaction_item_id, product_id, type, quantity, date')
-        .order('id')
-
-      const seenItems = new Map()
-      const movsToDelete = []
-      ;(allMovs || []).forEach(m => {
-        if (!m.transaction_item_id) return // ручні рухи — залишити
-        const key = m.transaction_item_id
-        if (seenItems.has(key)) {
-          movsToDelete.push(m.id) // дублікат — видалити
-        } else {
-          seenItems.set(key, m.id)
-        }
-      })
-
-      // Видалити дублікати по частинах
-      for (let i = 0; i < movsToDelete.length; i += 50) {
-        const chunk = movsToDelete.slice(i, i + 50)
-        await supabase.from('stock_movements').delete().in('id', chunk)
-        removedMovements += chunk.length
-      }
-
-      // 5. Перерахувати залишки для всіх активних продуктів
-      const { data: activeProds } = await supabase.from('products')
-        .select('id').eq('status', 'active')
-      const { data: finalMovs } = await supabase.from('stock_movements')
-        .select('product_id, type, quantity')
-
-      const stockMap = {}
-      ;(finalMovs || []).forEach(m => {
-        if (!stockMap[m.product_id]) stockMap[m.product_id] = 0
-        if (m.type === 'in' || m.type === 'adjustment') stockMap[m.product_id] += (m.quantity || 0)
-        else stockMap[m.product_id] -= (m.quantity || 0)
-      })
-
-      for (const p of (activeProds || [])) {
-        const newStock = stockMap[p.id] || 0
-        await supabase.from('products').update({ current_stock: newStock }).eq('id', p.id)
-        recalculated++
-      }
-
-      setCleanLog({ mergedProducts, removedMovements, recalculated })
     } catch (e) {
       setCleanLog({ error: e.message })
     }
@@ -373,16 +248,14 @@ export default function Inventory({ user }) {
       date: movForm.date, description: movForm.description || null,
       created_by: user?.id,
     })
-    // Update current_stock on product
-    const newStock = movForm.type === 'out'
-      ? (detail.current_stock || 0) - qty
-      : (detail.current_stock || 0) + qty
-    await supabase.from('products').update({ current_stock: newStock }).eq('id', detail.id)
-
+    // current_stock обчислюється через VIEW — не оновлюємо вручну
     setSaving(false); setShowMovement(false)
     setMovForm({ type:'in', quantity:'', price:'', description:'', date:new Date().toISOString().split('T')[0] })
-    openDetail({ ...detail, current_stock: newStock })
-    loadAll()
+    await loadAll()
+    // Перезавантажити detail з новим залишком
+    const updated = products.find(p => p.id === detail.id)
+    if (updated) openDetail(updated)
+    else openDetail(detail)
   }
 
   const setF = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
@@ -753,7 +626,7 @@ export default function Inventory({ user }) {
                 <strong style={{ color:'var(--green)' }}>Очищення завершено.</strong>{' '}
                 Обʼєднано дублікатів: {cleanLog.mergedProducts}
                 {cleanLog.removedMovements > 0 && <span> · Видалено дубл. рухів: {cleanLog.removedMovements}</span>}
-                <span> · Перераховано залишків: {cleanLog.recalculated}</span>
+                {cleanLog.aliases > 0 && <span> · Створено aliases: {cleanLog.aliases}</span>}
               </>
             )}
           </div>
