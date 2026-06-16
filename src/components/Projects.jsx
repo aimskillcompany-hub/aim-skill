@@ -84,16 +84,47 @@ export default function Projects({ user }) {
   const load = async () => {
     setLoading(true)
     const [{ data: projs }, { data: items }] = await Promise.all([
-      supabase.from('projects').select('*, bank_transactions(amount, direction)').order('created_at', { ascending: false }),
-      supabase.from('transaction_items').select('project_id, amount').not('project_id', 'is', null),
+      supabase.from('projects').select('*, bank_transactions(id, amount, direction)').order('created_at', { ascending: false }),
+      supabase.from('transaction_items').select('id, project_id, quantity, unit_price, amount, bank_transaction_id').not('project_id', 'is', null),
     ])
-    // Додати суми з transaction_items до проєктів
-    const itemsByProject = {}
+
+    // Завантажити stock_movements з cost_price для маржі
+    const allItemIds = (items || []).map(it => it.id).filter(Boolean)
+    let movMap = {}
+    if (allItemIds.length > 0) {
+      // По частинах (Supabase limit)
+      for (let i = 0; i < allItemIds.length; i += 200) {
+        const chunk = allItemIds.slice(i, i + 200)
+        const { data: movs } = await supabase.from('stock_movements')
+          .select('transaction_item_id, type, quantity, price, cost_price')
+          .in('transaction_item_id', chunk)
+        ;(movs || []).forEach(m => { if (m.transaction_item_id) movMap[m.transaction_item_id] = m })
+      }
+    }
+
+    // Розрахувати маржу по проектах
+    const projMargins = {}
     ;(items || []).forEach(it => {
-      if (!itemsByProject[it.project_id]) itemsByProject[it.project_id] = { total: 0 }
-      itemsByProject[it.project_id].total += Math.abs(it.amount || 0)
+      const pid = it.project_id
+      if (!projMargins[pid]) projMargins[pid] = { cost: 0, revenue: 0 }
+      const mov = movMap[it.id]
+      const qty = parseFloat(it.quantity) || 0
+      const sellPrice = parseFloat(it.unit_price) || 0
+
+      if (mov?.type === 'out' && mov.cost_price) {
+        // Продаж з FIFO собівартістю
+        projMargins[pid].cost += qty * (parseFloat(mov.cost_price) || 0)
+        projMargins[pid].revenue += qty * sellPrice
+      } else if (mov?.type === 'in') {
+        // Закупка — рахуємо як витрату
+        projMargins[pid].cost += qty * (parseFloat(mov.price) || sellPrice)
+      }
     })
-    setProjects((projs || []).map(p => ({ ...p, _itemsTotal: itemsByProject[p.id]?.total || 0 })))
+
+    setProjects((projs || []).map(p => ({
+      ...p,
+      _margin: projMargins[p.id] || { cost: 0, revenue: 0 },
+    })))
     setLoading(false)
   }
 
@@ -248,9 +279,20 @@ export default function Projects({ user }) {
 
   const getStats = (proj) => {
     const txs = proj.bank_transactions || []
-    const revenue = txs.filter(t => t.direction === 'Доходи').reduce((s, t) => s + (t.amount || 0), 0)
-    const expenses = txs.filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
-    return { revenue, expenses, gp: revenue - expenses }
+    // Оплати (bank_transactions)
+    const paidRevenue = txs.filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+    const paidExpenses = txs.filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+    // Товарна маржа (FIFO)
+    const m = proj._margin || { cost: 0, revenue: 0 }
+    const goodsMargin = m.revenue - m.cost
+    return {
+      revenue: paidRevenue,
+      expenses: paidExpenses,
+      gp: paidRevenue - paidExpenses,
+      goodsCost: m.cost,
+      goodsRevenue: m.revenue,
+      goodsMargin,
+    }
   }
 
   // Group docs by type within a role
@@ -335,7 +377,7 @@ export default function Projects({ user }) {
         return (
           <div className="proj-grid">
             {filtered.map(proj => {
-              const { revenue, expenses, gp } = getStats(proj)
+              const { revenue, expenses, gp, goodsCost, goodsRevenue, goodsMargin } = getStats(proj)
               const margin = revenue > 0 ? ((gp / revenue) * 100).toFixed(0) : null
               return (
                 <div key={proj.id} className="proj-card" style={{ cursor: 'pointer' }} onClick={() => openProject(proj)}>
@@ -384,9 +426,9 @@ export default function Projects({ user }) {
                   {/* Фінанси */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, borderTop:'1px solid var(--border)', paddingTop:8 }}>
                     {[
-                      { l: 'Виручка', v: fmt(revenue), c: 'var(--blue)' },
-                      { l: 'Витрати', v: fmt(expenses), c: 'var(--red)' },
-                      { l: 'Маржа', v: `${fmt(gp)}${margin ? ` (${margin}%)` : ''}`, c: gp >= 0 ? 'var(--green)' : 'var(--red)' },
+                      { l: 'Оплати ↑', v: fmt(revenue), c: 'var(--blue)' },
+                      { l: 'Оплати ↓', v: fmt(expenses), c: 'var(--red)' },
+                      { l: 'Баланс', v: fmt(gp), c: gp >= 0 ? 'var(--green)' : 'var(--red)' },
                     ].map(({ l, v, c }) => (
                       <div key={l}>
                         <div style={{ fontSize: 10, color: 'var(--text3)' }}>{l}</div>
@@ -394,6 +436,24 @@ export default function Projects({ user }) {
                       </div>
                     ))}
                   </div>
+                  {goodsCost > 0 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, borderTop:'1px solid var(--border)', paddingTop:6, marginTop:6 }}>
+                      <div>
+                        <div style={{ fontSize: 10, color: 'var(--text3)' }}>Собівартість</div>
+                        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text2)' }}>{fmt(goodsCost)}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 10, color: 'var(--text3)' }}>Реалізація</div>
+                        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text2)' }}>{fmt(goodsRevenue)}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 10, color: 'var(--text3)' }}>Маржа товарів</div>
+                        <div style={{ fontSize: 12, fontWeight: 500, color: goodsMargin >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                          {fmt(goodsMargin)}{goodsCost > 0 ? ` (${((goodsMargin / goodsCost) * 100).toFixed(0)}%)` : ''}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             })}
