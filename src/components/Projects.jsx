@@ -73,6 +73,8 @@ export default function Projects({ user }) {
   const [editForm, setEditForm] = useState({})
   const [editSaving, setEditSaving] = useState(false)
   const [selectedTx, setSelectedTx] = useState(null)
+  const [search, setSearch] = useState('')
+  const [filterStatus, setFilterStatus] = useState('all')
 
   // Preview generated ID
   const previewId = form.contractor && form.start_date
@@ -258,58 +260,126 @@ export default function Projects({ user }) {
         <button className="btn btn-primary" onClick={() => setShowForm(true)}>+ Новий проєкт</button>
       </div>
 
-      {projects.length === 0 && (
-        <div className="card">
-          <div className="empty">
-            <i className="ti ti-folder-open" style={{ fontSize: 48, color: 'var(--text3)', display: 'block', margin: '0 auto 12px' }} />
-            <p>Немає проєктів.<br />Натисніть «Новий проєкт» щоб почати.</p>
-          </div>
+      {/* Фільтри */}
+      <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
+        <div style={{ position:'relative', flex:'1 1 250px', maxWidth:350 }}>
+          <i className="ti ti-search" style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', fontSize:15, color:'var(--text3)' }} />
+          <input
+            className="form-input"
+            placeholder="Пошук по назві, контрагенту..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ paddingLeft:36 }}
+          />
         </div>
-      )}
-
-      <div className="proj-grid">
-        {projects.map(proj => {
-          const { revenue, expenses, gp } = getStats(proj)
-          return (
-            <div key={proj.id} className="proj-card" style={{ cursor: 'pointer' }} onClick={() => openProject(proj)}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div style={{ flex: 1, marginRight: 8 }}>
-                <div className="proj-name">{proj.project_id_display || proj.name}</div>
-                {proj.contractor && proj.project_id_display && (
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{proj.contractor}</div>
-                )}
-              </div>
-                <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
-                  <span className={`badge badge-${proj.status}`}>
-                    {proj.status === 'active' ? 'Активний' : proj.status === 'completed' ? 'Завершено' : 'Архів'}
-                  </span>
-                  <button
-                    style={{ background: 'none', border: '1px solid var(--border2)', borderRadius: 6, width: 26, height: 26, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text2)', flexShrink: 0 }}
-                    onClick={e => openEdit(e, proj)} title="Редагувати"
-                  ><i className="ti ti-pencil" style={{ fontSize: 13 }} /></button>
-                  <button
-                    style={{ background: 'none', border: '1px solid #E2E8F0', borderRadius: 6, width: 26, height: 26, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red)', flexShrink: 0 }}
-                    onClick={e => handleDelete(e, proj)} title="Видалити"
-                  ><i className="ti ti-trash" style={{ fontSize: 13 }} /></button>
-                </div>
-              </div>
-              {proj.description && <div className="proj-meta">{proj.description}</div>}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginTop: 4 }}>
-                {[
-                  { l: 'Виручка', v: fmt(revenue), c: 'var(--blue)' },
-                  { l: 'Витрати', v: fmt(expenses), c: 'var(--red)' },
-                  { l: 'Маржа', v: fmt(gp), c: gp >= 0 ? 'var(--green)' : 'var(--red)' },
-                ].map(({ l, v, c }) => (
-                  <div key={l}>
-                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>{l}</div>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: c }}>{v}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )
-        })}
+        <div style={{ display:'flex', border:'1px solid var(--border)', borderRadius:8, overflow:'hidden' }}>
+          {[
+            { id:'all', label:'Всі' },
+            { id:'active', label:'Активні' },
+            { id:'completed', label:'Завершені' },
+            { id:'archived', label:'Архів' },
+          ].map(f => (
+            <button key={f.id} onClick={() => setFilterStatus(f.id)} style={{
+              padding:'7px 14px', border:'none', cursor:'pointer', fontSize:12.5, fontWeight:500,
+              fontFamily:'inherit',
+              background: filterStatus===f.id ? '#000' : 'var(--surface)',
+              color: filterStatus===f.id ? '#fff' : 'var(--text2)',
+            }}>{f.label}</button>
+          ))}
+        </div>
       </div>
+
+      {(() => {
+        const filtered = projects.filter(p => {
+          if (filterStatus !== 'all' && p.status !== filterStatus) return false
+          if (search) {
+            const q = search.toLowerCase()
+            const nameMatch = (p.name || '').toLowerCase().includes(q)
+            const idMatch = (p.project_id_display || '').toLowerCase().includes(q)
+            const contrMatch = (p.contractor || '').toLowerCase().includes(q)
+            const descMatch = (p.description || '').toLowerCase().includes(q)
+            if (!nameMatch && !idMatch && !contrMatch && !descMatch) return false
+          }
+          return true
+        })
+
+        if (filtered.length === 0) return (
+          <div className="card">
+            <div className="empty">
+              <i className="ti ti-folder-open" style={{ fontSize: 48, color: 'var(--text3)', display: 'block', margin: '0 auto 12px' }} />
+              <p>{search || filterStatus !== 'all' ? 'Нічого не знайдено' : 'Немає проєктів. Натисніть «Новий проєкт» щоб почати.'}</p>
+            </div>
+          </div>
+        )
+
+        return (
+          <div className="proj-grid">
+            {filtered.map(proj => {
+              const { revenue, expenses, gp } = getStats(proj)
+              const margin = revenue > 0 ? ((gp / revenue) * 100).toFixed(0) : null
+              return (
+                <div key={proj.id} className="proj-card" style={{ cursor: 'pointer' }} onClick={() => openProject(proj)}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                    <div style={{ flex: 1, marginRight: 8 }}>
+                      <div className="proj-name">{proj.project_id_display || proj.name}</div>
+                      {proj.contractor && (
+                        <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 3, display:'flex', alignItems:'center', gap:4 }}>
+                          <i className="ti ti-building" style={{ fontSize:12, flexShrink:0 }} />
+                          {shortContractor(proj.contractor)}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
+                      <span className={`badge badge-${proj.status}`}>
+                        {proj.status === 'active' ? 'Активний' : proj.status === 'completed' ? 'Завершено' : 'Архів'}
+                      </span>
+                      <button
+                        style={{ background: 'none', border: '1px solid var(--border2)', borderRadius: 6, width: 26, height: 26, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text2)', flexShrink: 0 }}
+                        onClick={e => openEdit(e, proj)} title="Редагувати"
+                      ><i className="ti ti-pencil" style={{ fontSize: 13 }} /></button>
+                      <button
+                        style={{ background: 'none', border: '1px solid #E2E8F0', borderRadius: 6, width: 26, height: 26, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red)', flexShrink: 0 }}
+                        onClick={e => handleDelete(e, proj)} title="Видалити"
+                      ><i className="ti ti-trash" style={{ fontSize: 13 }} /></button>
+                    </div>
+                  </div>
+
+                  {/* Дата та опис */}
+                  <div style={{ display:'flex', gap:12, fontSize:11, color:'var(--text3)', marginBottom:8 }}>
+                    {proj.start_date && (
+                      <span style={{ display:'flex', alignItems:'center', gap:3 }}>
+                        <i className="ti ti-calendar" style={{ fontSize:12 }} />
+                        {proj.start_date}
+                      </span>
+                    )}
+                    {proj.budget > 0 && (
+                      <span style={{ display:'flex', alignItems:'center', gap:3 }}>
+                        <i className="ti ti-wallet" style={{ fontSize:12 }} />
+                        Бюджет: {fmt(proj.budget)} грн
+                      </span>
+                    )}
+                  </div>
+                  {proj.description && <div className="proj-meta" style={{ marginBottom:8 }}>{proj.description}</div>}
+
+                  {/* Фінанси */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, borderTop:'1px solid var(--border)', paddingTop:8 }}>
+                    {[
+                      { l: 'Виручка', v: fmt(revenue), c: 'var(--blue)' },
+                      { l: 'Витрати', v: fmt(expenses), c: 'var(--red)' },
+                      { l: 'Маржа', v: `${fmt(gp)}${margin ? ` (${margin}%)` : ''}`, c: gp >= 0 ? 'var(--green)' : 'var(--red)' },
+                    ].map(({ l, v, c }) => (
+                      <div key={l}>
+                        <div style={{ fontSize: 10, color: 'var(--text3)' }}>{l}</div>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: c }}>{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )
+      })()}
 
       {/* New project modal */}
       {showForm && (
