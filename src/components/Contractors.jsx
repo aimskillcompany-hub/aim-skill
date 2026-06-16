@@ -193,7 +193,21 @@ export default function Contractors({ user }) {
     const allTxs = txs || []
     setDetailTxs(allTxs)
     setDetailPlans(plans || [])
-    setDetailProjects([])
+
+    // Find projects linked to this contractor's transactions
+    const txIds = allTxs.map(t => t.id).filter(Boolean)
+    const projIds = new Set(allTxs.map(t => t.project_id).filter(Boolean))
+    if (txIds.length > 0) {
+      const { data: items } = await supabase.from('transaction_items')
+        .select('project_id').in('bank_transaction_id', txIds).not('project_id', 'is', null)
+      ;(items || []).forEach(it => projIds.add(it.project_id))
+    }
+    if (projIds.size > 0) {
+      const { data: projs } = await supabase.from('projects').select('name').in('id', [...projIds])
+      setDetailProjects((projs || []).map(p => p.name))
+    } else {
+      setDetailProjects([])
+    }
 
     // Build monthly balance
     const byMonth = {}
