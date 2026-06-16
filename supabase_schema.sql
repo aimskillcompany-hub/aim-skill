@@ -372,6 +372,9 @@ CREATE POLICY "Insert aliases" ON product_aliases FOR INSERT TO authenticated WI
 CREATE POLICY "Update aliases" ON product_aliases FOR UPDATE TO authenticated USING (true);
 CREATE POLICY "Delete aliases" ON product_aliases FOR DELETE TO authenticated USING (true);
 
+-- FIFO собівартість для OUT рухів
+ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS cost_price numeric(15,2);
+
 -- Захист від дубльованих складських рухів по одній позиції
 CREATE UNIQUE INDEX IF NOT EXISTS idx_stock_movement_item_unique
   ON stock_movements(transaction_item_id) WHERE transaction_item_id IS NOT NULL;

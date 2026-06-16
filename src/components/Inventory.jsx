@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { processDocumentItems, migrateProductAliases, mergeProductDuplicates } from '../lib/stockService'
+import { processDocumentItems, migrateProductAliases, mergeProductDuplicates, backfillCostPrices } from '../lib/stockService'
 
 const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(n || 0)
 const fmtInt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(n || 0))
@@ -627,6 +627,17 @@ export default function Inventory({ user }) {
           <button className="btn btn-secondary" onClick={syncStockFromDocs} disabled={syncing || cleaning} style={{ width:'auto' }}>
             <i className={`ti ${syncing ? 'ti-loader-2' : 'ti-refresh'}`} style={{ fontSize:15, animation: syncing ? 'spin 1s linear infinite' : 'none' }} />
             {syncing ? 'Перерахунок...' : 'Перерахувати з документів'}
+          </button>
+          <button className="btn btn-secondary" onClick={async () => {
+            if (!confirm('Перерахувати FIFO собівартість для всіх OUT рухів?')) return
+            setSyncing(true)
+            const result = await backfillCostPrices()
+            setSyncLog({ total: result.updated, linked: result.updated, created: 0, errors: result.errors, label: 'Собівартість' })
+            setSyncing(false)
+            loadAll()
+          }} disabled={syncing || cleaning} style={{ width:'auto' }}>
+            <i className="ti ti-calculator" style={{ fontSize:15 }} />
+            Перерахувати собівартість
           </button>
           <button className="btn btn-primary" onClick={openAdd} style={{ width:'auto' }}>
             <i className="ti ti-plus" style={{ fontSize:15 }} /> Додати товар

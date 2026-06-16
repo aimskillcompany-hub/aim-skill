@@ -124,11 +124,31 @@ export default function Projects({ user }) {
     setProjTxs(allTxs)
 
     // Load products for linking
-    const { data: prods } = await supabase.from('products').select('id, name, current_stock, unit').eq('status', 'active').order('name')
+    const { data: prods } = await supabase.from('products').select('id, name, current_stock, unit, buy_price').eq('status', 'active').order('name')
     setAllProducts(prods || [])
 
-    // Load documents — by project_id OR by transaction_id (для старих записів)
-    const txIds = (txs || []).map(t => t.id)
+    // Load stock_movements для маржинальності (OUT рухи з cost_price)
+    const allItemIds = allTxs.flatMap(tx => (tx.transaction_items || []).map(it => it.id)).filter(Boolean)
+    if (allItemIds.length > 0) {
+      const { data: movs } = await supabase.from('stock_movements')
+        .select('id, product_id, type, quantity, price, cost_price, transaction_item_id')
+        .in('transaction_item_id', allItemIds)
+      // Прикріпити cost_price до items
+      const movMap = {}
+      ;(movs || []).forEach(m => { if (m.transaction_item_id) movMap[m.transaction_item_id] = m })
+      allTxs.forEach(tx => {
+        ;(tx.transaction_items || []).forEach(it => {
+          const mov = movMap[it.id]
+          if (mov) {
+            it._costPrice = mov.cost_price
+            it._movType = mov.type
+          }
+        })
+      })
+    }
+
+    // Load documents
+    const txIds = allTxs.map(t => t.id).filter(Boolean)
     let docs = []
 
     const { data: byProject } = await supabase
@@ -572,12 +592,13 @@ export default function Projects({ user }) {
               if (allItems.length === 0) return null
               const linked = allItems.filter(it => it.product_id).length
 
-              // Calculate cost & revenue
+              // Calculate cost & revenue (FIFO cost_price з stock_movements)
               const itemsWithCost = allItems.map(it => {
                 const product = it.product_id ? allProducts.find(p => p.id === it.product_id) : null
                 const qty = parseFloat(it.quantity) || 0
                 const sellPrice = parseFloat(it.unit_price) || 0
-                const buyPrice = product?.buy_price || 0
+                // FIFO собівартість: _costPrice з stock_movement, fallback на product.buy_price
+                const buyPrice = it._costPrice || product?.buy_price || 0
                 const costTotal = qty * buyPrice
                 const sellTotal = qty * sellPrice
                 return { ...it, _product: product, _buyPrice: buyPrice, _costTotal: costTotal, _sellTotal: sellTotal }

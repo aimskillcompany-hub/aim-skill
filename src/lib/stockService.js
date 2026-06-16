@@ -146,6 +146,65 @@ export async function resolveProduct(name, unit, price, userId) {
   return { productId: newProd.id, isNew: true }
 }
 
+// ── FIFO собівартість: розрахувати cost_price для OUT руху ──
+export async function getFifoCost(productId, quantity) {
+  if (!productId || !quantity) return null
+
+  // Всі IN рухи по даті (FIFO)
+  const { data: inMovs } = await supabase.from('stock_movements')
+    .select('id, quantity, price, date')
+    .eq('product_id', productId).eq('type', 'in')
+    .order('date').order('created_at')
+
+  // Всі OUT рухи з cost_price (вже розподілені)
+  const { data: outMovs } = await supabase.from('stock_movements')
+    .select('id, quantity, cost_price')
+    .eq('product_id', productId).eq('type', 'out')
+    .not('cost_price', 'is', null)
+
+  if (!inMovs?.length) return null
+
+  // Розрахувати скільки з кожного IN вже спожито
+  const consumed = {} // inMov.id → consumed qty
+  ;(inMovs || []).forEach(m => { consumed[m.id] = 0 })
+
+  // Розподілити існуючі OUT по IN (FIFO)
+  let outRemaining = (outMovs || []).map(m => ({ ...m, remaining: parseFloat(m.quantity) || 0 }))
+  for (const inMov of inMovs) {
+    const inQty = parseFloat(inMov.quantity) || 0
+    let available = inQty
+    for (const out of outRemaining) {
+      if (out.remaining <= 0) continue
+      const take = Math.min(available, out.remaining)
+      consumed[inMov.id] += take
+      out.remaining -= take
+      available -= take
+      if (available <= 0) break
+    }
+  }
+
+  // Тепер розподілити нові quantity по залишках IN (FIFO)
+  let needQty = parseFloat(quantity)
+  let totalCost = 0
+  let totalQty = 0
+
+  for (const inMov of inMovs) {
+    if (needQty <= 0) break
+    const inQty = parseFloat(inMov.quantity) || 0
+    const available = inQty - (consumed[inMov.id] || 0)
+    if (available <= 0) continue
+
+    const take = Math.min(available, needQty)
+    const unitPrice = parseFloat(inMov.price) || 0
+    totalCost += take * unitPrice
+    totalQty += take
+    needQty -= take
+  }
+
+  if (totalQty <= 0) return null
+  return totalCost / totalQty // середньозважена FIFO ціна
+}
+
 // ── Створити складський рух (ідемпотентно) ──
 export async function createStockMovement({
   productId, type, quantity, price, total,
@@ -163,12 +222,19 @@ export async function createStockMovement({
     if (existing) return existing // вже створений
   }
 
+  // Для OUT рухів — розрахувати FIFO собівартість
+  let costPrice = null
+  if (type === 'out') {
+    costPrice = await getFifoCost(productId, quantity)
+  }
+
   const { data: movement, error } = await supabase.from('stock_movements').insert({
     product_id: productId,
     type: type || 'in',
     quantity,
     price: price || null,
     total: total || null,
+    cost_price: costPrice,
     bank_transaction_id: bankTransactionId || null,
     transaction_item_id: transactionItemId || null,
     date: date || new Date().toISOString().split('T')[0],
@@ -177,13 +243,72 @@ export async function createStockMovement({
   }).select('id').single()
 
   if (error) {
-    // Unique constraint on transaction_item_id — вже існує
     if (error.code === '23505') return null
     console.warn('Stock movement error:', error.message)
     return null
   }
 
   return movement
+}
+
+// ── Перерахувати cost_price для всіх існуючих OUT рухів (FIFO) ──
+export async function backfillCostPrices() {
+  // Отримати всі продукти з OUT рухами
+  const { data: products } = await supabase.from('products')
+    .select('id').eq('status', 'active')
+
+  let updated = 0, errors = 0
+
+  for (const prod of (products || [])) {
+    try {
+      // Всі IN рухи (FIFO по даті)
+      const { data: inMovs } = await supabase.from('stock_movements')
+        .select('id, quantity, price')
+        .eq('product_id', prod.id).eq('type', 'in')
+        .order('date').order('created_at')
+
+      if (!inMovs?.length) continue
+
+      // Всі OUT рухи (по даті)
+      const { data: outMovs } = await supabase.from('stock_movements')
+        .select('id, quantity')
+        .eq('product_id', prod.id).eq('type', 'out')
+        .order('date').order('created_at')
+
+      if (!outMovs?.length) continue
+
+      // FIFO розподіл
+      const inQueue = inMovs.map(m => ({ price: parseFloat(m.price) || 0, remaining: parseFloat(m.quantity) || 0 }))
+
+      for (const out of outMovs) {
+        let needQty = parseFloat(out.quantity) || 0
+        let totalCost = 0, totalQty = 0
+
+        for (const inItem of inQueue) {
+          if (needQty <= 0) break
+          if (inItem.remaining <= 0) continue
+          const take = Math.min(inItem.remaining, needQty)
+          totalCost += take * inItem.price
+          totalQty += take
+          inItem.remaining -= take
+          needQty -= take
+        }
+
+        const costPrice = totalQty > 0 ? totalCost / totalQty : null
+        if (costPrice !== null) {
+          await supabase.from('stock_movements')
+            .update({ cost_price: costPrice })
+            .eq('id', out.id)
+          updated++
+        }
+      }
+    } catch (e) {
+      console.warn('backfill error:', prod.id, e.message)
+      errors++
+    }
+  }
+
+  return { updated, errors }
 }
 
 // ── Обробити всі позиції документа: resolve + movement ──
