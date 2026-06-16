@@ -535,14 +535,18 @@ export default function Projects({ user }) {
               const revenue = projTxs.filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
               // Додаткові витрати (bank_transactions з direction='Витрати')
               const extraExpenses = projTxs.filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
-              // Собівартість (FIFO → fallback product.buy_price)
+              // Собівартість (FIFO → fallback product.buy_price) + ПДВ
               const allItems = projTxs.flatMap(tx => (tx.transaction_items || []).map(it => ({ ...it })))
               let goodsCost = 0
               allItems.forEach(it => {
                 const qty = parseFloat(it.quantity) || 0
                 const product = it.product_id ? allProducts.find(p => p.id === it.product_id) : null
                 const costPrice = it._costPrice || product?.buy_price || 0
-                if (costPrice > 0 && qty > 0) goodsCost += qty * costPrice
+                if (costPrice > 0 && qty > 0) {
+                  const vatRate = parseFloat(it.vat_rate) || 20
+                  const costWithVat = costPrice * (1 + vatRate / 100)
+                  goodsCost += qty * costWithVat
+                }
               })
               const totalExpenses = goodsCost + extraExpenses
               const margin = revenue - totalExpenses
@@ -664,13 +668,14 @@ export default function Projects({ user }) {
               if (allItems.length === 0) return null
               const linked = allItems.filter(it => it.product_id).length
 
-              // Calculate cost & revenue (FIFO cost_price з stock_movements)
+              // Calculate cost & revenue (FIFO cost_price з stock_movements + ПДВ)
               const itemsWithCost = allItems.map(it => {
                 const product = it.product_id ? allProducts.find(p => p.id === it.product_id) : null
                 const qty = parseFloat(it.quantity) || 0
                 const sellPrice = parseFloat(it.unit_price) || 0
-                // FIFO собівартість: _costPrice з stock_movement, fallback на product.buy_price
-                const buyPrice = it._costPrice || product?.buy_price || 0
+                const buyPriceNet = it._costPrice || product?.buy_price || 0
+                const vatRate = parseFloat(it.vat_rate) || 20
+                const buyPrice = buyPriceNet * (1 + vatRate / 100)
                 const costTotal = qty * buyPrice
                 const sellTotal = qty * sellPrice
                 return { ...it, _product: product, _buyPrice: buyPrice, _costTotal: costTotal, _sellTotal: sellTotal }
