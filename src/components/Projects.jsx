@@ -160,16 +160,13 @@ export default function Projects({ user }) {
 
     // Load stock_movements для маржинальності (OUT рухи з cost_price)
     const allItemIds = allTxs.flatMap(tx => (tx.transaction_items || []).map(it => it.id)).filter(Boolean)
-    const productIds = new Set()
     if (allItemIds.length > 0) {
       const { data: movs } = await supabase.from('stock_movements')
         .select('id, product_id, type, quantity, price, cost_price, transaction_item_id')
         .in('transaction_item_id', allItemIds)
+      // Прикріпити cost_price до items
       const movMap = {}
-      ;(movs || []).forEach(m => {
-        if (m.transaction_item_id) movMap[m.transaction_item_id] = m
-        if (m.product_id) productIds.add(m.product_id)
-      })
+      ;(movs || []).forEach(m => { if (m.transaction_item_id) movMap[m.transaction_item_id] = m })
       allTxs.forEach(tx => {
         ;(tx.transaction_items || []).forEach(it => {
           const mov = movMap[it.id]
@@ -181,34 +178,7 @@ export default function Projects({ user }) {
       })
     }
 
-    // Знайти закупівельні операції через IN рухи тих самих продуктів
-    const purchaseBankIds = new Set()
-    if (productIds.size > 0) {
-      const { data: inMovs } = await supabase.from('stock_movements')
-        .select('bank_transaction_id')
-        .in('product_id', [...productIds])
-        .eq('type', 'in')
-        .not('bank_transaction_id', 'is', null)
-      ;(inMovs || []).forEach(m => purchaseBankIds.add(m.bank_transaction_id))
-    }
-
-    // Підтягнути закупівельні bank_transactions (якщо ще не в allTxs)
-    const existingTxIds = new Set(allTxs.map(t => t.id))
-    const missingPurchaseIds = [...purchaseBankIds].filter(id => !existingTxIds.has(id))
-    if (missingPurchaseIds.length > 0) {
-      const { data: purchaseTxs } = await supabase.from('bank_transactions')
-        .select('*, transaction_items(*)')
-        .in('id', missingPurchaseIds)
-        .eq('is_ignored', false)
-      ;(purchaseTxs || []).forEach(tx => {
-        tx._isPurchase = true // позначити як закупку
-        allTxs.push(tx)
-      })
-      allTxs.sort((a, b) => b.date > a.date ? 1 : -1)
-      setProjTxs([...allTxs])
-    }
-
-    // Load documents — по проекту + по закупівлях
+    // Load documents
     const txIds = allTxs.map(t => t.id).filter(Boolean)
     let docs = []
 
@@ -217,31 +187,14 @@ export default function Projects({ user }) {
       .select('*, bank_transactions(doc_type, doc_number, counterparty, date)')
       .eq('project_id', proj.id)
 
-    docs = byProject || []
-
-    // Додати документи із закупівельних операцій
-    if (missingPurchaseIds.length > 0) {
-      const { data: purchaseDocs } = await supabase
-        .from('documents')
-        .select('*, bank_transactions(doc_type, doc_number, counterparty, date)')
-        .in('bank_transaction_id', missingPurchaseIds)
-      ;(purchaseDocs || []).forEach(d => {
-        if (!docs.find(existing => existing.id === d.id)) {
-          d._isPurchase = true
-          docs.push(d)
-        }
-      })
-    }
-
-    // Також підтягнути документи з операцій проекту
-    if (txIds.length > 0) {
-      const { data: txDocs } = await supabase
+    if (byProject?.length > 0) {
+      docs = byProject
+    } else if (txIds.length > 0) {
+      const { data: byTx } = await supabase
         .from('documents')
         .select('*, bank_transactions(doc_type, doc_number, counterparty, date)')
         .in('bank_transaction_id', txIds)
-      ;(txDocs || []).forEach(d => {
-        if (!docs.find(existing => existing.id === d.id)) docs.push(d)
-      })
+      docs = byTx || []
     }
 
     setProjDocs(docs)
@@ -858,11 +811,8 @@ export default function Projects({ user }) {
                   </thead>
                   <tbody>
                     {projTxs.map(tx => (
-                      <tr key={tx.id} style={{ cursor: 'pointer', background: tx._isPurchase ? 'var(--bg)' : '' }} onClick={() => setSelectedTx(tx)}>
-                        <td style={{ color: 'var(--text2)' }}>
-                          {tx.date}
-                          {tx._isPurchase && <div style={{ fontSize:10, color:'var(--blue)', fontWeight:500 }}>ЗАКУПКА</div>}
-                        </td>
+                      <tr key={tx.id} style={{ cursor: 'pointer' }} onClick={() => setSelectedTx(tx)}>
+                        <td style={{ color: 'var(--text2)' }}>{tx.date}</td>
                         <td className="trunc">{tx.counterparty}</td>
                         <td className={tx.amount >= 0 ? 'amt-pos' : 'amt-neg'}>{tx.amount >= 0 ? '+' : ''}{fmt(tx.amount)}</td>
                         <td className="trunc" style={{ color: 'var(--text2)' }}>{tx.article || '—'}</td>
