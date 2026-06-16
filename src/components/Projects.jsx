@@ -279,20 +279,16 @@ export default function Projects({ user }) {
 
   const getStats = (proj) => {
     const txs = proj.bank_transactions || []
-    // Оплати (bank_transactions)
-    const paidRevenue = txs.filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
-    const paidExpenses = txs.filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
-    // Товарна маржа (FIFO)
+    // Виручка = оплати від клієнта
+    const revenue = txs.filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+    // Додаткові витрати (привʼязані до проекту, не собівартість товарів)
+    const extraExpenses = txs.filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+    // Собівартість товарів (FIFO)
     const m = proj._margin || { cost: 0, revenue: 0 }
-    const goodsMargin = m.revenue - m.cost
-    return {
-      revenue: paidRevenue,
-      expenses: paidExpenses,
-      gp: paidRevenue - paidExpenses,
-      goodsCost: m.cost,
-      goodsRevenue: m.revenue,
-      goodsMargin,
-    }
+    const goodsCost = m.cost
+    // Маржа = Виручка - Собівартість - Додаткові витрати
+    const margin = revenue - goodsCost - extraExpenses
+    return { revenue, goodsCost, extraExpenses, margin }
   }
 
   // Group docs by type within a role
@@ -377,8 +373,8 @@ export default function Projects({ user }) {
         return (
           <div className="proj-grid">
             {filtered.map(proj => {
-              const { revenue, expenses, gp, goodsCost, goodsRevenue, goodsMargin } = getStats(proj)
-              const margin = revenue > 0 ? ((gp / revenue) * 100).toFixed(0) : null
+              const stats = getStats(proj)
+              const marginPct = stats.revenue > 0 ? ((stats.margin / stats.revenue) * 100).toFixed(0) : null
               return (
                 <div key={proj.id} className="proj-card" style={{ cursor: 'pointer' }} onClick={() => openProject(proj)}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
@@ -424,36 +420,31 @@ export default function Projects({ user }) {
                   {proj.description && <div className="proj-meta" style={{ marginBottom:8 }}>{proj.description}</div>}
 
                   {/* Фінанси */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, borderTop:'1px solid var(--border)', paddingTop:8 }}>
-                    {[
-                      { l: 'Оплати ↑', v: fmt(revenue), c: 'var(--blue)' },
-                      { l: 'Оплати ↓', v: fmt(expenses), c: 'var(--red)' },
-                      { l: 'Баланс', v: fmt(gp), c: gp >= 0 ? 'var(--green)' : 'var(--red)' },
-                    ].map(({ l, v, c }) => (
-                      <div key={l}>
-                        <div style={{ fontSize: 10, color: 'var(--text3)' }}>{l}</div>
-                        <div style={{ fontSize: 13, fontWeight: 500, color: c }}>{v}</div>
-                      </div>
-                    ))}
-                  </div>
-                  {goodsCost > 0 && (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, borderTop:'1px solid var(--border)', paddingTop:6, marginTop:6 }}>
-                      <div>
-                        <div style={{ fontSize: 10, color: 'var(--text3)' }}>Собівартість</div>
-                        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text2)' }}>{fmt(goodsCost)}</div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 10, color: 'var(--text3)' }}>Реалізація</div>
-                        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text2)' }}>{fmt(goodsRevenue)}</div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 10, color: 'var(--text3)' }}>Маржа товарів</div>
-                        <div style={{ fontSize: 12, fontWeight: 500, color: goodsMargin >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                          {fmt(goodsMargin)}{goodsCost > 0 ? ` (${((goodsMargin / goodsCost) * 100).toFixed(0)}%)` : ''}
-                        </div>
-                      </div>
+                  <div style={{ borderTop:'1px solid var(--border)', paddingTop:8 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, padding:'2px 0' }}>
+                      <span style={{ color:'var(--text3)' }}>Виручка</span>
+                      <span style={{ fontWeight:500, color:'var(--blue)' }}>{fmt(stats.revenue)} грн</span>
                     </div>
-                  )}
+                    {stats.goodsCost > 0 && (
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, padding:'2px 0' }}>
+                        <span style={{ color:'var(--text3)' }}>Собівартість</span>
+                        <span style={{ fontWeight:500, color:'var(--red)' }}>−{fmt(stats.goodsCost)} грн</span>
+                      </div>
+                    )}
+                    {stats.extraExpenses > 0 && (
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, padding:'2px 0' }}>
+                        <span style={{ color:'var(--text3)' }}>Дод. витрати</span>
+                        <span style={{ fontWeight:500, color:'var(--red)' }}>−{fmt(stats.extraExpenses)} грн</span>
+                      </div>
+                    )}
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, padding:'4px 0 0', borderTop:'1px solid var(--border)', marginTop:4 }}>
+                      <span style={{ fontWeight:600, color:'var(--text)' }}>Маржа</span>
+                      <span style={{ fontWeight:600, color: stats.margin >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                        {stats.margin >= 0 ? '+' : '−'}{fmt(Math.abs(stats.margin))} грн
+                        {marginPct && <span style={{ fontWeight:400, fontSize:11 }}> ({marginPct}%)</span>}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               )
             })}
