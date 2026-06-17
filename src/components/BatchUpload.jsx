@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { extractDocumentMulti } from '../lib/ai'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
-import { processDocumentItems } from '../lib/stockService'
+import { processDocumentItems, matchProduct } from '../lib/stockService'
 
 const DIRECTIONS = ['Витрати', 'Доходи', 'ПФД', 'Внутрішні перекази', 'Відсотки банку', 'Інше']
 const fmt = n => n ? new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(n)) : '—'
@@ -126,9 +126,19 @@ export default function BatchUpload({ user, onSaved }) {
       // Find matching bank transaction to link document to
       const bankMatch = await findDbDuplicate(data)
 
+      // Match products for each item
+      const items = data.items || []
+      for (let i = 0; i < items.length; i++) {
+        if (!items[i].name) continue
+        const match = await matchProduct(items[i].name)
+        items[i]._match = match
+        items[i]._action = match.matchType !== 'none' ? 'auto' : 'new'
+        items[i]._matchedProductId = match.productId || null
+      }
+
       setCards(prev => {
         const updated = prev.map(c => c.id === cardId ? {
-          ...c, status: 'done', data,
+          ...c, status: 'done', data: { ...data, items },
           bankMatch: bankMatch || null,
           form: {
             ...c.form,
@@ -284,7 +294,11 @@ export default function BatchUpload({ user, onSaved }) {
 
           // Централізований stockService: resolve products + stock movements
           if (savedItems?.length) {
-            await processDocumentItems(savedItems, {
+            const enrichedItems = savedItems.map((si, idx) => {
+              const srcItem = validItems[idx]
+              return { ...si, _matchedProductId: srcItem?._matchedProductId || null, _action: srcItem?._action || 'auto' }
+            })
+            await processDocumentItems(enrichedItems, {
               docType: d.docType,
               docRole: card.form.docRole,
               bankTransactionId: bankTxId,
@@ -474,6 +488,16 @@ export default function BatchUpload({ user, onSaved }) {
                       {card.data.docNumber && <span>№{card.data.docNumber}</span>}
                     </div>
                     {card.data.edrpou && <div style={{ color:'var(--text3)', fontSize:11, marginTop:2 }}>ЄДРПОУ: {card.data.edrpou}</div>}
+                    {card.data.items?.length > 0 && (() => {
+                      const matched = card.data.items.filter(it => it._match?.matchType === 'exact' || it._match?.matchType === 'fuzzy').length
+                      const newItems = card.data.items.filter(it => !it._match || it._match.matchType === 'none').length
+                      return (
+                        <div style={{ display:'flex', gap:6, marginTop:3 }}>
+                          {matched > 0 && <span style={{ fontSize:10, background:'var(--green-bg)', color:'var(--green)', padding:'1px 5px', borderRadius:4 }}>✓ {matched} на складі</span>}
+                          {newItems > 0 && <span style={{ fontSize:10, background:'var(--surface2)', color:'var(--text3)', padding:'1px 5px', borderRadius:4 }}>+ {newItems} нових</span>}
+                        </div>
+                      )
+                    })()}
                   </div>
 
                   {/* Mini form */}
