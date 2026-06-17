@@ -277,7 +277,14 @@ export default function BatchUpload({ user, onSaved }) {
 
       // Save items + auto-create products + stock movements через stockService
       if (d.items?.length > 0) {
-        const validItems = d.items.filter(it => it.name)
+        let validItems = d.items.filter(it => it.name)
+        // Перевірити дублікати позицій в цій bank_transaction
+        if (bankTxId && validItems.length > 0) {
+          const { data: existing } = await supabase.from('transaction_items')
+            .select('name').eq('bank_transaction_id', bankTxId)
+          const existingNames = new Set((existing || []).map(e => e.name?.toLowerCase()))
+          validItems = validItems.filter(it => !existingNames.has(it.name?.toLowerCase()))
+        }
         if (validItems.length > 0) {
           const { data: savedItems, error: itemsErr } = await supabase.from('transaction_items').insert(
             validItems.map(it => ({

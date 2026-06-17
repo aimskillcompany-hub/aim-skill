@@ -274,7 +274,19 @@ export default function AddDocument({ user, onSaved }) {
       const docFolder = bankMatch?.id || crypto.randomUUID()
 
       if (form.items.length > 0) {
-        const items = form.items.map(it => ({
+        // Перевірити чи вже є позиції в цій bank_transaction
+        let itemsToInsert = form.items
+        if (bankMatch?.id) {
+          const { data: existing } = await supabase.from('transaction_items')
+            .select('name').eq('bank_transaction_id', bankMatch.id)
+          const existingNames = new Set((existing || []).map(e => e.name?.toLowerCase()))
+          itemsToInsert = form.items.filter(it => !existingNames.has(it.name?.toLowerCase()))
+          if (itemsToInsert.length < form.items.length) {
+            console.warn(`Пропущено ${form.items.length - itemsToInsert.length} дублікатів позицій`)
+          }
+        }
+        if (itemsToInsert.length === 0) { /* всі позиції вже є */ }
+        const items = itemsToInsert.map(it => ({
           bank_transaction_id: bankMatch?.id || null,
           name: it.name,
           quantity: it.quantity || null,
@@ -283,7 +295,9 @@ export default function AddDocument({ user, onSaved }) {
           amount: it.amount || 0,
           vat_rate: it.vatRate || 20,
         }))
-        const { data: savedItems } = await supabase.from('transaction_items').insert(items).select('id, name, quantity, unit, unit_price, amount')
+        const { data: savedItems } = items.length > 0
+          ? await supabase.from('transaction_items').insert(items).select('id, name, quantity, unit, unit_price, amount')
+          : { data: [] }
 
         // Через централізований stockService: resolve products + stock movements
         if (savedItems?.length) {
