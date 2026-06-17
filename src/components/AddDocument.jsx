@@ -4,7 +4,7 @@ import { extractDocumentMulti } from '../lib/ai'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import ContractorSelect from './ui/ContractorSelect'
 import { upsertContractor } from '../lib/contractors'
-import { processDocumentItems } from '../lib/stockService'
+import { processDocumentItems, matchProduct } from '../lib/stockService'
 
 const DIRECTIONS = ['Витрати', 'Доходи', 'ПФД', 'Внутрішні перекази', 'Відсотки банку', 'Інше']
 
@@ -102,8 +102,23 @@ export default function AddDocument({ user, onSaved }) {
         article: d.suggestedArticle || '',
         description: d.description || '',
         docRole: d.docRole || 'incoming',
-        items: (d.items || []).map((it, i) => ({ ...it, id: i })),
+        items: (d.items || []).map((it, i) => ({ ...it, id: i, _match: null, _action: 'auto' })),
       }))
+      // Знайти кандидатів для кожного item
+      const items = d.items || []
+      for (let i = 0; i < items.length; i++) {
+        if (!items[i].name) continue
+        const match = await matchProduct(items[i].name)
+        setForm(prev => ({
+          ...prev,
+          items: prev.items.map((it, j) => j === i ? {
+            ...it,
+            _match: match,
+            _action: match.matchType === 'exact' ? 'auto' : match.matchType === 'fuzzy' ? 'auto' : 'new',
+            _matchedProductId: match.productId || null,
+          } : it),
+        }))
+      }
       setStep('form')
     } catch (e) {
       setError('Помилка розпізнавання: ' + e.message)
@@ -272,7 +287,12 @@ export default function AddDocument({ user, onSaved }) {
 
         // Через централізований stockService: resolve products + stock movements
         if (savedItems?.length) {
-          await processDocumentItems(savedItems, {
+          // Передати _matchedProductId і _action з форми
+          const enrichedItems = savedItems.map((si, idx) => {
+            const formItem = form.items[idx]
+            return { ...si, _matchedProductId: formItem?._matchedProductId || null, _action: formItem?._action || 'auto' }
+          })
+          await processDocumentItems(enrichedItems, {
             docType: form.docType,
             docRole: form.docRole,
             bankTransactionId: bankMatch?.id,
@@ -775,11 +795,12 @@ export default function AddDocument({ user, onSaved }) {
                 <table>
                   <thead>
                     <tr>
-                      <th style={{ minWidth: 200 }}>Назва</th>
+                      <th style={{ minWidth: 180 }}>Назва</th>
                       <th>К-сть</th>
                       <th>Од.</th>
                       <th>Ціна</th>
                       <th>Сума</th>
+                      <th style={{ minWidth: 140 }}>Продукт</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -790,6 +811,36 @@ export default function AddDocument({ user, onSaved }) {
                         <td><input className="form-input" value={it.unit || ''} onChange={e => updateItem(i, 'unit', e.target.value)} style={{ width: 60 }} /></td>
                         <td><input type="number" className="form-input" value={it.unitPrice || ''} onChange={e => updateItem(i, 'unitPrice', e.target.value)} style={{ width: 90 }} /></td>
                         <td style={{ fontWeight: 500 }}>{fmt(it.amount)}</td>
+                        <td>
+                          {it._match?.matchType === 'exact' && (
+                            <span style={{ fontSize:11, background:'var(--green-bg)', color:'var(--green)', padding:'2px 6px', borderRadius:4, display:'inline-flex', alignItems:'center', gap:3 }}>
+                              <i className="ti ti-check" style={{ fontSize:11 }} />{(it._match.productName || '').substring(0, 25)}
+                            </span>
+                          )}
+                          {it._match?.matchType === 'fuzzy' && (
+                            <div style={{ display:'flex', gap:4, alignItems:'center', flexWrap:'wrap' }}>
+                              <span style={{ fontSize:10, background:'var(--amber-bg)', color:'var(--amber)', padding:'2px 5px', borderRadius:4 }} title={it._match.productName}>
+                                {(it._match.productName || '').substring(0, 20)}?
+                              </span>
+                              <button style={{ fontSize:10, background:'var(--green-bg)', border:'none', borderRadius:4, padding:'2px 5px', cursor:'pointer', color:'var(--green)', fontFamily:'inherit' }}
+                                onClick={() => updateItem(i, '_action', 'auto')}>Так</button>
+                              <button style={{ fontSize:10, background:'var(--red-bg)', border:'none', borderRadius:4, padding:'2px 5px', cursor:'pointer', color:'var(--red)', fontFamily:'inherit' }}
+                                onClick={() => { updateItem(i, '_action', 'new'); updateItem(i, '_matchedProductId', null) }}>Ні</button>
+                            </div>
+                          )}
+                          {(!it._match || it._match.matchType === 'none') && (
+                            <div style={{ display:'flex', gap:4 }}>
+                              <span style={{ fontSize:10, background:'var(--surface2)', color:'var(--text3)', padding:'2px 5px', borderRadius:4 }}>
+                                {it._action === 'service' ? 'Послуга' : 'Новий'}
+                              </span>
+                              <button style={{ fontSize:10, background:'none', border:'1px solid var(--border)', borderRadius:4, padding:'2px 5px', cursor:'pointer', color:'var(--text2)', fontFamily:'inherit' }}
+                                onClick={() => updateItem(i, '_action', it._action === 'service' ? 'new' : 'service')}>
+                                {it._action === 'service' ? 'Товар' : 'Послуга'}
+                              </button>
+                            </div>
+                          )}
+                          {it._match === null && <span style={{ fontSize:10, color:'var(--text3)' }}>...</span>}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
