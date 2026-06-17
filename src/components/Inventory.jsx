@@ -216,8 +216,28 @@ export default function Inventory({ user }) {
       sell_price: parseFloat(form.sell_price) || null, min_stock: parseFloat(form.min_stock) || 0,
       notes: form.notes || null, created_by: user?.id,
     }
-    if (editId) await supabase.from('products').update(payload).eq('id', editId)
-    else await supabase.from('products').insert(payload)
+    if (editId) {
+      // Перевірити чи назва змінилась
+      const oldProduct = products.find(p => p.id === editId)
+      const nameChanged = oldProduct && oldProduct.name !== form.name
+      await supabase.from('products').update(payload).eq('id', editId)
+      if (nameChanged) {
+        // Оновити transaction_items
+        await supabase.from('transaction_items').update({ name: form.name }).eq('product_id', editId)
+        // Оновити stock_movements description
+        await supabase.from('stock_movements').update({ description: form.name }).eq('product_id', editId)
+        // Додати новий alias
+        const { normalizeName } = await import('../lib/stockService')
+        const normalized = normalizeName(form.name)
+        if (normalized) {
+          await supabase.from('product_aliases').upsert({
+            product_id: editId, alias: form.name.trim(), normalized,
+          }, { onConflict: 'normalized', ignoreDuplicates: true })
+        }
+      }
+    } else {
+      await supabase.from('products').insert(payload)
+    }
     setSaving(false); setShowForm(false); loadAll()
   }
 
@@ -332,9 +352,15 @@ export default function Inventory({ user }) {
     loadAll()
   }
 
+  const [detailAliases, setDetailAliases] = useState([])
+
   // Detail
   const openDetail = async (p) => {
     setDetail(p)
+    // Завантажити aliases (історичні назви)
+    const { data: aliases } = await supabase.from('product_aliases')
+      .select('alias').eq('product_id', p.id)
+    setDetailAliases((aliases || []).map(a => a.alias).filter(a => a !== p.name))
     // Завантажити рухи
     const { data: movs, error } = await supabase.from('stock_movements')
       .select('*')
@@ -410,6 +436,13 @@ export default function Inventory({ user }) {
             <div style={{ display:'flex', alignItems:'center', gap:8 }}>
               <h1 style={{ fontSize:22, fontWeight:600, margin:0 }}>{detail.name}</h1>
               {detail.is_verified && <i className="ti ti-circle-check-filled" style={{ fontSize:18, color:'var(--green)' }} title="Верифіковано" />}
+              {detailAliases.length > 0 && (
+                <span title={`Історичні назви:\n${detailAliases.join('\n')}`}
+                  style={{ fontSize:14, color:'var(--amber)', cursor:'help', display:'flex', alignItems:'center', gap:2 }}>
+                  <i className="ti ti-alert-circle" style={{ fontSize:16 }} />
+                  <span style={{ fontSize:10 }}>{detailAliases.length}</span>
+                </span>
+              )}
             </div>
             <div style={{ fontSize:13, color:'var(--text2)', marginTop:4, display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
               {detail.product_type && detail.product_type !== 'goods' && (
