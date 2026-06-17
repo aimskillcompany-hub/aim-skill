@@ -6,6 +6,7 @@ import Auth from './components/Auth'
 import Layout from './components/Layout'
 import AddDocument from './components/AddDocument'
 import Registry from './components/Registry'
+// import Projects from './components/Projects' // Прибрано — маржа в картці контрагента
 import Reports from './components/Reports'
 import Bank from './components/Bank'
 import Cash from './components/Cash'
@@ -260,7 +261,7 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(() => {
     const saved = sessionStorage.getItem('aim-page')
-    return saved && saved !== 'projects' ? saved : 'dashboard'
+    return saved || 'dashboard'
   })
   const [toast, setToast] = useState(null)
 
