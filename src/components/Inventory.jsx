@@ -826,7 +826,7 @@ export default function Inventory({ user }) {
         <div style={{ display:'flex', border:'1px solid var(--border)', borderRadius:8, overflow:'hidden' }}>
           {[
             { id:'goods', label:'Товари' },
-            { id:'other', label:'Послуги / Витрати' },
+            { id:'other', label:'Послуги' },
             { id:'all', label:'Всі' },
           ].map(f => (
             <button key={f.id} onClick={() => setFilterType(f.id)} style={{
