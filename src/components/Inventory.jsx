@@ -175,6 +175,8 @@ export default function Inventory({ user }) {
   }
 
   const categories = [...new Set(products.map(p => p.category).filter(Boolean))]
+  const manufacturers = [...new Set(products.map(p => p.manufacturer).filter(Boolean))].sort()
+  const [filterMfr, setFilterMfr] = useState('')
 
   const filtered = products.filter(p => {
     if (filterType && filterType !== 'all') {
@@ -183,6 +185,7 @@ export default function Inventory({ user }) {
       if (filterType === 'other' && pt !== 'service' && pt !== 'expense') return false
     }
     if (filterCat && p.category !== filterCat) return false
+    if (filterMfr && p.manufacturer !== filterMfr) return false
     if (search) {
       const q = search.toLowerCase()
       if (!(p.name||'').toLowerCase().includes(q) && !(p.sku||'').toLowerCase().includes(q)) return false
@@ -904,13 +907,19 @@ export default function Inventory({ user }) {
             }}>{f.label}</button>
           ))}
         </div>
+        {manufacturers.length > 0 && (
+          <select className="form-input" style={{ width:'auto', height:36, fontSize:12.5, padding:'4px 10px' }}
+            value={filterMfr} onChange={e => setFilterMfr(e.target.value)}>
+            <option value="">Всі виробники</option>
+            {manufacturers.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        )}
         {categories.length > 0 && (
-          <>
-            <button onClick={() => setFilterCat('')} className={`btn btn-sm ${!filterCat?'btn-primary':'btn-secondary'}`} style={{ width:'auto' }}>Всі кат.</button>
-            {categories.map(c => (
-              <button key={c} onClick={() => setFilterCat(c)} className={`btn btn-sm ${filterCat===c?'btn-primary':'btn-secondary'}`} style={{ width:'auto' }}>{c}</button>
-            ))}
-          </>
+          <select className="form-input" style={{ width:'auto', height:36, fontSize:12.5, padding:'4px 10px' }}
+            value={filterCat} onChange={e => setFilterCat(e.target.value)}>
+            <option value="">Всі категорії</option>
+            {categories.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
         )}
       </div>
 
@@ -954,8 +963,9 @@ export default function Inventory({ user }) {
                 }} />
               </th>
               <th>Назва</th>
+              <th>Виробник</th>
               <th>SKU</th>
-              <th>Категорія</th>
+              <th>УКТЗЕД</th>
               <th style={{ textAlign:'right' }}>Залишок</th>
               <th style={{ textAlign:'right' }}>Ціна закуп.</th>
               <th style={{ textAlign:'right' }}>Вартість</th>
@@ -963,7 +973,7 @@ export default function Inventory({ user }) {
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 && <tr><td colSpan={8} style={{ textAlign:'center', padding:32, color:'var(--text3)' }}>Немає товарів</td></tr>}
+            {filtered.length === 0 && <tr><td colSpan={9} style={{ textAlign:'center', padding:32, color:'var(--text3)' }}>Немає товарів</td></tr>}
             {filtered.map(p => {
               const stockColor = p.current_stock <= 0 ? 'var(--red)' : p.current_stock <= (p.min_stock||0) ? '#D97706' : 'var(--green)'
               return (
@@ -982,8 +992,9 @@ export default function Inventory({ user }) {
                       {p.is_verified && <i className="ti ti-circle-check-filled" style={{ fontSize:13, color:'var(--green)', flexShrink:0 }} />}
                     </div>
                   </td>
-                  <td style={{ fontSize:13, color:'var(--text2)' }}>{p.sku || '—'}</td>
-                  <td style={{ fontSize:13, color:'var(--text2)' }}>{p.category || '—'}</td>
+                  <td style={{ fontSize:12, color:'var(--text2)' }}>{p.manufacturer || '—'}</td>
+                  <td style={{ fontSize:12, color:'var(--text2)' }}>{p.sku || '—'}</td>
+                  <td style={{ fontSize:11, color:'var(--text3)' }}>{p.uktzed || '—'}</td>
                   <td style={{ textAlign:'right', fontWeight:500, color: stockColor, fontVariantNumeric:'tabular-nums' }}>
                     {fmt(p.current_stock)} {p.unit}
                   </td>
