@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase } from '../lib/supabase'
-import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
+import { fetchArticles, groupByType, TYPE_LABELS, PL_SIGN } from '../lib/articles'
+import PlTable, { buildPlData } from './PlTable'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend, AreaChart, Area, Cell, PieChart, Pie,
@@ -426,6 +427,13 @@ export default function Reports() {
     sectionTotals[type]._total = months.reduce((s,m) => s + (sectionTotals[type][m]||0), 0)
   })
 
+  // P&L ієрархія з pl_level
+  const plData = buildPlData(articles, artData, months)
+  const totGP = plData.calcRows._gp?._total || 0
+  const totEBIT = plData.calcRows._ebit?._total || 0
+  const totNetPL = plData.calcRows._net?._total || 0
+  const gpMargin = totRevenue > 0 ? ((totGP / totRevenue) * 100).toFixed(1) : null
+
   const cellStyle = (v, bold = false, clickable = false) => ({
     padding: '7px 12px',
     textAlign: 'right',
@@ -512,18 +520,17 @@ export default function Reports() {
           )}
         </div>
         <div className="kpi">
-          <div className="kpi-label">Загальні витрати</div>
-          <div className="kpi-value red">{fmt(totExpenses)} грн</div>
-          {prevRevenue && (
-            <div className="kpi-sub" style={{ color: totExpenses <= prevRevenue.expenses ? 'var(--green)' : 'var(--red)' }}>
-              {totExpenses >= prevRevenue.expenses ? '+' : ''}{((totExpenses - prevRevenue.expenses) / (prevRevenue.expenses || 1) * 100).toFixed(1)}% vs попередній
-            </div>
-          )}
+          <div className="kpi-label">Валовий прибуток (GP)</div>
+          <div className={`kpi-value ${totGP>=0?'green':'red'}`}>{fmt(totGP)} грн</div>
+          {gpMargin && <div className="kpi-sub">{gpMargin}% від виручки</div>}
         </div>
         <div className="kpi">
-          <div className="kpi-label">Чистий результат</div>
-          <div className={`kpi-value ${totNet>=0?'green':'red'}`}>{fmt(totNet)} грн</div>
-          {margin && <div className="kpi-sub">{margin}% маржа</div>}
+          <div className="kpi-label">EBIT</div>
+          <div className={`kpi-value ${totEBIT>=0?'green':'red'}`}>{fmt(totEBIT)} грн</div>
+        </div>
+        <div className="kpi">
+          <div className="kpi-label">Чистий прибуток (Net)</div>
+          <div className={`kpi-value ${totNetPL>=0?'green':'red'}`}>{fmt(totNetPL)} грн</div>
           {prevRevenue && (
             <div className="kpi-sub" style={{ color: totNet >= prevRevenue.net ? 'var(--green)' : 'var(--red)' }}>
               {totNet >= prevRevenue.net ? '+' : ''}{((totNet - prevRevenue.net) / (Math.abs(prevRevenue.net) || 1) * 100).toFixed(1)}% vs попередній
@@ -736,7 +743,15 @@ export default function Reports() {
               </th>
             </tr>
           </thead>
-          <tbody>
+          <PlTable
+            artData={artData}
+            months={months}
+            plData={plData}
+            isCurrent={isCurrent}
+            onCellClick={handleCellClick}
+            onSectionClick={handleSectionClick}
+          />
+          {false && <tbody>
             {ARTICLE_TYPE_ORDER.map(type => {
               const rows = byType[type] || []
               if (rows.length === 0) return null
@@ -913,7 +928,7 @@ export default function Reports() {
                 </>)
               })()}
             </tr>
-          </tbody>
+          </tbody>}
         </table>
       </div>
         )
