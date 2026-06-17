@@ -20,6 +20,8 @@ const CASH_DIR = {
   advance_return: +1, bank_to_cash: +1, cash_to_bank: -1
 }
 
+const VALID_PAGES = ['dashboard','add','registry','bank','cash','contractors','inventory','reports','planning','settings','batch']
+
 function Dashboard({ user, onPage }) {
   const [stats, setStats] = useState({
     revenue: 0, expenses: 0, net: 0,
@@ -253,8 +255,6 @@ function Settings({ user }) {
     </div>
   )
 }
-
-const VALID_PAGES = ['dashboard','add','registry','bank','cash','contractors','inventory','reports','planning','settings','batch']
 
 export default function App() {
   const [session, setSession] = useState(null)
