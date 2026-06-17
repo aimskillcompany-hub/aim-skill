@@ -609,8 +609,8 @@ export default function Registry({ user }) {
         </div>
         <div style={{ borderTop:'1px solid var(--border)', marginTop:10, paddingTop:10 }}>
           <div style={{ fontSize:12, color:'var(--text3)', marginBottom:2 }}>Сальдо</div>
-          <div style={{ fontSize:18, fontWeight:500, color: inc+exp >= 0 ? 'var(--green)' : 'var(--red)' }}>
-            {inc+exp >= 0 ? '+' : ''}{fmt(inc+exp)} грн
+          <div style={{ fontSize:18, fontWeight:500, color: inc-exp >= 0 ? 'var(--green)' : 'var(--red)' }}>
+            {inc-exp >= 0 ? '+' : ''}{fmt(inc-exp)} грн
           </div>
         </div>
       </div>
