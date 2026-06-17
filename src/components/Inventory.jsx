@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { processDocumentItems, migrateProductAliases, mergeProductDuplicates, backfillCostPrices } from '../lib/stockService'
+import MovementFixer from './MovementFixer'
 
 const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(n || 0)
 const fmtInt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(n || 0))
@@ -24,6 +25,7 @@ export default function Inventory({ user }) {
   const [filterCat, setFilterCat] = useState('')
   const [filterType, setFilterType] = useState('goods')
   const [showServiceMenu, setShowServiceMenu] = useState(false)
+  const [showFixer, setShowFixer] = useState(false)
   const [checkedIds, setCheckedIds] = useState(new Set())
   const [bulkSaving, setBulkSaving] = useState(false)
 
@@ -822,6 +824,7 @@ export default function Inventory({ user }) {
                     setSyncing(false)
                     loadAll()
                   }, disabled: syncing || cleaning },
+                  { label:'Виправити невідповідності', icon:'ti-arrows-exchange', action: () => { setShowServiceMenu(false); setShowFixer(true) } },
                 ].map((item, i) => (
                   <button key={i} onClick={item.action} disabled={item.disabled}
                     style={{ display:'flex', alignItems:'center', gap:8, width:'100%', padding:'8px 12px', border:'none', background:'none', cursor: item.disabled ? 'default' : 'pointer', borderRadius:6, fontSize:13, fontFamily:'inherit', color: item.disabled ? 'var(--text3)' : 'var(--text)', opacity: item.disabled ? 0.5 : 1 }}
@@ -1016,6 +1019,22 @@ export default function Inventory({ user }) {
       </div>
 
       {showForm && renderForm()}
+
+      {/* ── Виправлення невідповідностей ── */}
+      {showFixer && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
+          onClick={e => { if (e.target === e.currentTarget) { setShowFixer(false); loadAll() } }}>
+          <div style={{ background:'var(--surface)', borderRadius:16, width:'100%', maxWidth:800, maxHeight:'85vh', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+            <div style={{ padding:'12px 20px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <span style={{ fontWeight:600, fontSize:15 }}>Виправлення невідповідностей</span>
+              <button onClick={() => { setShowFixer(false); loadAll() }} style={{ background:'none', border:'none', cursor:'pointer', fontSize:22, color:'var(--text3)' }}>×</button>
+            </div>
+            <div style={{ flex:1, overflowY:'auto', padding:'16px 20px' }}>
+              <MovementFixer />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Модалка пар для обʼєднання ── */}
       {showPairs && (
