@@ -238,7 +238,17 @@ export default function Inventory({ user }) {
     } else {
       await supabase.from('products').insert(payload)
     }
-    setSaving(false); setShowForm(false); loadAll()
+    setSaving(false); setShowForm(false)
+    await loadAll()
+    // Оновити detail view якщо відкритий
+    if (editId && detail?.id === editId) {
+      const { data: updated } = await supabase.from('product_stock').select('*').eq('id', editId).single()
+      if (updated) {
+        const p = { ...updated, current_stock: updated.computed_stock ?? updated.current_stock ?? 0 }
+        setDetail(p)
+        openDetail(p)
+      }
+    }
   }
 
   // Merge: обʼєднати mergeTarget в detail (перенести рухи, позиції, aliases)
