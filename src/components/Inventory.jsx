@@ -385,11 +385,31 @@ export default function Inventory({ user }) {
             <i className="ti ti-arrow-left" style={{ fontSize:16 }} /> Назад
           </button>
           <div style={{ flex:1 }}>
-            <h1 style={{ fontSize:22, fontWeight:600, margin:0 }}>{detail.name}</h1>
-            <div style={{ fontSize:13, color:'var(--text2)', marginTop:4 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <h1 style={{ fontSize:22, fontWeight:600, margin:0 }}>{detail.name}</h1>
+              {detail.is_verified && <i className="ti ti-circle-check-filled" style={{ fontSize:18, color:'var(--green)' }} title="Верифіковано" />}
+            </div>
+            <div style={{ fontSize:13, color:'var(--text2)', marginTop:4, display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+              {detail.product_type && detail.product_type !== 'goods' && (
+                <span style={{ fontSize:10, background:'var(--blue-bg)', color:'var(--blue)', padding:'1px 6px', borderRadius:4 }}>
+                  {detail.product_type === 'service' ? 'Послуга' : detail.product_type === 'license' ? 'Ліцензія' : detail.product_type === 'bundle' ? 'Комплект' : detail.product_type}
+                </span>
+              )}
               {detail.sku && <span>SKU: {detail.sku} · </span>}
               {detail.category && <span>{detail.category} · </span>}
-              {detail.unit}
+              <span>{detail.unit}</span>
+              <button
+                onClick={async () => {
+                  const newVal = !detail.is_verified
+                  await supabase.from('products').update({ is_verified: newVal }).eq('id', detail.id)
+                  setDetail(prev => ({ ...prev, is_verified: newVal }))
+                  loadAll()
+                }}
+                style={{ fontSize:11, background:'none', border:'1px solid var(--border)', borderRadius:6, padding:'2px 8px', cursor:'pointer', color: detail.is_verified ? 'var(--green)' : 'var(--text3)', fontFamily:'inherit', display:'flex', alignItems:'center', gap:3 }}
+              >
+                <i className={`ti ${detail.is_verified ? 'ti-circle-check-filled' : 'ti-circle-check'}`} style={{ fontSize:12 }} />
+                {detail.is_verified ? 'Верифіковано' : 'Верифікувати'}
+              </button>
             </div>
           </div>
           <button onClick={() => openEdit(detail)} className="btn btn-secondary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}>
