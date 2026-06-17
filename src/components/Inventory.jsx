@@ -22,6 +22,7 @@ export default function Inventory({ user }) {
   }
   const [search, setSearch] = useState('')
   const [filterCat, setFilterCat] = useState('')
+  const [filterType, setFilterType] = useState('goods')
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY_PRODUCT)
   const [editId, setEditId] = useState(null)
@@ -156,6 +157,11 @@ export default function Inventory({ user }) {
   const categories = [...new Set(products.map(p => p.category).filter(Boolean))]
 
   const filtered = products.filter(p => {
+    if (filterType && filterType !== 'all') {
+      const pt = p.product_type || 'goods'
+      if (filterType === 'goods' && pt !== 'goods' && pt !== 'bundle') return false
+      if (filterType === 'service' && pt !== 'service' && pt !== 'license') return false
+    }
     if (filterCat && p.category !== filterCat) return false
     if (search) {
       const q = search.toLowerCase()
@@ -782,15 +788,31 @@ export default function Inventory({ user }) {
       </div>
 
       {/* Search + filter */}
-      <div style={{ display:'flex', gap:8, marginBottom:14, flexWrap:'wrap' }}>
+      <div style={{ display:'flex', gap:8, marginBottom:14, flexWrap:'wrap', alignItems:'center' }}>
         <div style={{ flex:1, position:'relative', minWidth:200 }}>
           <i className="ti ti-search" style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'var(--text3)', fontSize:16 }} />
           <input className="form-input" style={{ width:'100%', paddingLeft:38 }} placeholder="Пошук по назві або SKU..." value={search} onChange={e => setSearch(e.target.value)} />
         </div>
-        <button onClick={() => setFilterCat('')} className={`btn btn-sm ${!filterCat?'btn-primary':'btn-secondary'}`} style={{ width:'auto' }}>Всі</button>
-        {categories.map(c => (
-          <button key={c} onClick={() => setFilterCat(c)} className={`btn btn-sm ${filterCat===c?'btn-primary':'btn-secondary'}`} style={{ width:'auto' }}>{c}</button>
-        ))}
+        <div style={{ display:'flex', border:'1px solid var(--border)', borderRadius:8, overflow:'hidden' }}>
+          {[
+            { id:'goods', label:'Товари' },
+            { id:'service', label:'Послуги' },
+            { id:'all', label:'Всі' },
+          ].map(f => (
+            <button key={f.id} onClick={() => setFilterType(f.id)} style={{
+              padding:'7px 14px', border:'none', cursor:'pointer', fontSize:12.5, fontWeight:500, fontFamily:'inherit',
+              background: filterType===f.id ? '#000' : 'var(--surface)', color: filterType===f.id ? '#fff' : 'var(--text2)',
+            }}>{f.label}</button>
+          ))}
+        </div>
+        {categories.length > 0 && (
+          <>
+            <button onClick={() => setFilterCat('')} className={`btn btn-sm ${!filterCat?'btn-primary':'btn-secondary'}`} style={{ width:'auto' }}>Всі кат.</button>
+            {categories.map(c => (
+              <button key={c} onClick={() => setFilterCat(c)} className={`btn btn-sm ${filterCat===c?'btn-primary':'btn-secondary'}`} style={{ width:'auto' }}>{c}</button>
+            ))}
+          </>
+        )}
       </div>
 
       {/* Table */}

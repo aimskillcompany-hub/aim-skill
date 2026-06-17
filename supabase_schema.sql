@@ -301,6 +301,8 @@ create table if not exists products (
   min_stock numeric(15,4) default 0,
   current_stock numeric(15,4) default 0,
   status text default 'active' check (status in ('active','archived')),
+  product_type text default 'goods' check (product_type in ('goods','service','license','bundle')),
+  is_verified boolean default false,
   notes text,
   created_by uuid references profiles(id) on delete set null,
   created_at timestamptz default now()

@@ -340,7 +340,16 @@ export async function processDocumentItems(savedItems, {
           .eq('id', item.id)
       }
 
-      // 3. Створити складський рух
+      // 3. Перевірити product_type — послуги/ліцензії не потребують складського руху
+      const { data: prodInfo } = await supabase.from('products')
+        .select('product_type').eq('id', result.productId).maybeSingle()
+      if (prodInfo?.product_type === 'service' || prodInfo?.product_type === 'license') {
+        processed++
+        if (result.isNew) created++
+        continue // пропустити stock_movement
+      }
+
+      // 4. Створити складський рух
       await createStockMovement({
         productId: result.productId,
         type: movementType,

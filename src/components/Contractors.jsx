@@ -25,9 +25,10 @@ function ItemsTable({ items, isSale, onProductClick }) {
         <tbody>
           {items.map(it => {
             const qty = parseFloat(it.quantity) || 0
-            const cp = it._costPrice || 0
+            const cp = it._costPrice
+            const hasCost = cp !== null && cp !== undefined && cp > 0
             const sell = parseFloat(it.amount) || 0
-            const margin = sell - qty * cp
+            const margin = hasCost ? sell - qty * cp : null
             return (
               <tr key={it.id} style={{ borderBottom:'1px solid var(--border)' }}>
                 <td style={{ padding:'4px 8px' }}>
@@ -40,9 +41,9 @@ function ItemsTable({ items, isSale, onProductClick }) {
                 <td style={{ padding:'4px 8px', textAlign:'right' }}>{qty || '—'}</td>
                 <td style={{ padding:'4px 8px' }}>{it.unit || ''}</td>
                 <td style={{ padding:'4px 8px', textAlign:'right' }}>{it.unit_price ? fmt(it.unit_price) : '—'}</td>
-                {isSale && <td style={{ padding:'4px 8px', textAlign:'right', color:'var(--text3)' }}>{cp ? fmt(cp) : '—'}</td>}
+                {isSale && <td style={{ padding:'4px 8px', textAlign:'right', color:'var(--text3)' }}>{hasCost ? fmt(cp) : '—'}</td>}
                 <td style={{ padding:'4px 8px', textAlign:'right', fontWeight:500 }}>{sell ? fmt(sell) : '—'}</td>
-                {isSale && <td style={{ padding:'4px 8px', textAlign:'right', fontWeight:500, color: margin >= 0 ? 'var(--green)' : 'var(--red)' }}>{cp ? (margin >= 0 ? '+' : '') + fmt(margin) : '—'}</td>}
+                {isSale && <td style={{ padding:'4px 8px', textAlign:'right', fontWeight:500, color: margin !== null ? (margin >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--text3)' }}>{margin !== null ? (margin >= 0 ? '+' : '') + fmt(margin) : '—'}</td>}
               </tr>
             )
           })}
@@ -65,8 +66,8 @@ function TxStats({ txs, txIncome, txExpense }) {
   txs.filter(t => t.direction === 'Доходи').forEach(tx => {
     (tx.transaction_items || []).forEach(it => {
       const qty = parseFloat(it.quantity) || 0
-      const cp = it._costPrice || 0
-      goodsCost += qty * cp
+      const cp = it._costPrice
+      if (cp && cp > 0) goodsCost += qty * cp
     })
   })
   const totalExp = goodsCost + txExpense
