@@ -102,7 +102,7 @@ export default function Contractors({ user }) {
     setList(contractors.map(c => {
       const code = c.edrpou?.trim()
       const s = (code && statsByCode[code]) || statsByName[c.name?.trim().toLowerCase()] || {}
-      return { ...c, total_income:s.income||c.total_income||0, total_expense:s.expense||c.total_expense||0, total_otherIn:s.otherIn||0, total_otherOut:s.otherOut||0, operations_count:s.count||c.operations_count||0, last_operation_date:s.lastDate||c.last_operation_date }
+      return { ...c, total_income:s.income||0, total_expense:s.expense||0, total_otherIn:s.otherIn||0, total_otherOut:s.otherOut||0, operations_count:s.count||0, last_operation_date:s.lastDate||null }
     }))
     setLoading(false)
   }
@@ -239,9 +239,9 @@ export default function Contractors({ user }) {
   // DETAIL VIEW — full screen
   // ═══════════════════════════════════════════
   if (view === 'detail' && detail) {
-    const balance = (detail.total_income||0) - (detail.total_expense||0)
-    const txIncome = detailTxs.filter(t=>t.amount>0).reduce((s,t)=>s+(t.amount||0),0)
-    const txExpense = detailTxs.filter(t=>t.amount<0).reduce((s,t)=>s+Math.abs(t.amount||0),0)
+    const txIncome = detailTxs.filter(t=>t.direction==='Доходи').reduce((s,t)=>s+Math.abs(t.amount||0),0)
+    const txExpense = detailTxs.filter(t=>t.direction==='Витрати').reduce((s,t)=>s+Math.abs(t.amount||0),0)
+    const balance = txIncome - txExpense
 
     return (
       <div>
@@ -272,8 +272,8 @@ export default function Contractors({ user }) {
 
         {/* KPI row */}
         <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(4,1fr)', marginBottom:12 }}>
-          <div className="kpi"><div className="kpi-label">Доходи</div><div className="kpi-value" style={{ color:'var(--green)' }}>+{fmt(detail.total_income)}</div><div className="kpi-sub">грн</div></div>
-          <div className="kpi"><div className="kpi-label">Витрати</div><div className="kpi-value" style={{ color:'var(--red)' }}>-{fmt(detail.total_expense)}</div><div className="kpi-sub">грн</div></div>
+          <div className="kpi"><div className="kpi-label">Доходи</div><div className="kpi-value" style={{ color:'var(--green)' }}>+{fmt(txIncome)}</div><div className="kpi-sub">грн</div></div>
+          <div className="kpi"><div className="kpi-label">Витрати</div><div className="kpi-value" style={{ color:'var(--red)' }}>-{fmt(txExpense)}</div><div className="kpi-sub">грн</div></div>
           <div className="kpi"><div className="kpi-label">Сальдо</div><div className="kpi-value" style={{ color:balance>=0?'var(--green)':'var(--red)' }}>{balance>=0?'+':'-'}{fmt(balance)}</div><div className="kpi-sub">грн</div></div>
           <div className="kpi"><div className="kpi-label">Операцій</div><div className="kpi-value">{detail.operations_count||0}</div><div className="kpi-sub">остання: {detail.last_operation_date||'—'}</div></div>
         </div>
