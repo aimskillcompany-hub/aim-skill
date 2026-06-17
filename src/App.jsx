@@ -15,6 +15,7 @@ import ArticlesSettings from './components/ArticlesSettings'
 import Planning from './components/Planning'
 import Contractors from './components/Contractors'
 import Inventory from './components/Inventory'
+import Assembly from './components/Assembly'
 
 const CASH_DIR = {
   income: +1, expense: -1, advance: -1,
@@ -315,6 +316,7 @@ export default function App() {
     cash: <Cash user={user} />,
     contractors: <Contractors user={user} onNavigate={setPage} />,
     inventory: <Inventory user={user} />,
+    assembly: <Assembly user={user} />,
     reports: <Reports />,
     planning: <Planning user={user} />,
     settings: <Settings user={user} />,

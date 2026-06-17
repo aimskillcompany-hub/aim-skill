@@ -353,6 +353,79 @@ export async function backfillCostPrices() {
   return { updated, errors }
 }
 
+// ── Складська збірка ──
+export async function assembleProduct({ name, resultProductId, quantity, components, date, notes, userId }) {
+  // 1. Створити або знайти готовий виріб
+  let productId = resultProductId
+  if (!productId) {
+    const { data: newProd } = await supabase.from('products').insert({
+      name, unit: 'шт', product_type: 'goods', status: 'active', created_by: userId,
+    }).select('id').single()
+    if (!newProd) return { error: 'Не вдалося створити продукт' }
+    productId = newProd.id
+    // Alias
+    const normalized = normalizeName(name)
+    if (normalized) {
+      await supabase.from('product_aliases').upsert({
+        product_id: productId, alias: name.trim(), normalized,
+      }, { onConflict: 'normalized', ignoreDuplicates: true })
+    }
+  }
+
+  // 2. Розрахувати FIFO собівартість компонентів
+  let totalCost = 0
+  const enrichedComponents = []
+  for (const comp of components) {
+    const costPrice = await getFifoCost(comp.productId, comp.quantity * quantity) || comp.costPrice || 0
+    const total = comp.quantity * quantity * costPrice
+    totalCost += total
+    enrichedComponents.push({ ...comp, costPrice, total })
+  }
+
+  // 3. Зберегти assembly
+  const { data: assembly, error: aErr } = await supabase.from('assemblies').insert({
+    name, result_product_id: productId, quantity,
+    total_cost: totalCost, notes: notes || null,
+    assembled_at: date || new Date().toISOString().split('T')[0],
+    created_by: userId,
+  }).select('id').single()
+
+  if (aErr || !assembly) return { error: aErr?.message || 'Помилка збереження збірки' }
+
+  // 4. Зберегти assembly_items
+  await supabase.from('assembly_items').insert(
+    enrichedComponents.map(c => ({
+      assembly_id: assembly.id, product_id: c.productId,
+      quantity: c.quantity * quantity, cost_price: c.costPrice, total: c.total,
+    }))
+  )
+
+  // 5. Списати компоненти (OUT)
+  for (const c of enrichedComponents) {
+    await supabase.from('stock_movements').insert({
+      product_id: c.productId, type: 'out',
+      quantity: c.quantity * quantity, price: c.costPrice, total: c.total,
+      date: date || new Date().toISOString().split('T')[0],
+      description: `Збірка: ${name}`, created_by: userId,
+    })
+  }
+
+  // 6. Оприбуткувати готовий виріб (IN)
+  const unitCost = quantity > 0 ? totalCost / quantity : totalCost
+  await supabase.from('stock_movements').insert({
+    product_id: productId, type: 'in',
+    quantity, price: unitCost, total: totalCost,
+    date: date || new Date().toISOString().split('T')[0],
+    description: `Збірка: ${name} (${enrichedComponents.length} компонентів)`,
+    created_by: userId,
+  })
+
+  // Оновити buy_price готового виробу
+  await supabase.from('products').update({ buy_price: unitCost }).eq('id', productId)
+
+  return { assemblyId: assembly.id, productId, totalCost }
+}
+
 // ── Обробити всі позиції документа: resolve + movement ──
 export async function processDocumentItems(savedItems, {
   docType, docRole, bankTransactionId, date, userId
