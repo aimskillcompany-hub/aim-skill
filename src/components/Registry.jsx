@@ -53,6 +53,17 @@ export default function Registry({ user }) {
   const [showFilters, setShowFilters] = useState(false)
   const [articles, setArticles] = useState([])
 
+  // Додати товар до операції
+  const [addItemMode, setAddItemMode] = useState(false)
+  const [addItemSearch, setAddItemSearch] = useState('')
+  const [addItemProduct, setAddItemProduct] = useState(null)
+  const [addItemQty, setAddItemQty] = useState('')
+  const [addItemPrice, setAddItemPrice] = useState('')
+  const [allProducts, setAllProducts] = useState([])
+  const addItemResults = addItemSearch.length >= 2
+    ? allProducts.filter(p => p.name.toLowerCase().includes(addItemSearch.toLowerCase())).slice(0, 8)
+    : []
+
   // Recover items
   const [showRecover, setShowRecover] = useState(false)
   const [recoverList, setRecoverList] = useState([])   // txs without items but with docs
@@ -127,6 +138,7 @@ export default function Registry({ user }) {
 
   useEffect(() => {
     supabase.from('projects').select('id, name').order('name').then(({ data }) => setProjects(data || []))
+    supabase.from('product_stock').select('id, name, computed_stock, unit, product_type').eq('status', 'active').order('name').then(({ data }) => setAllProducts(data || []))
     fetchArticles().then(setArticles)
   }, [])
 
@@ -929,6 +941,78 @@ export default function Registry({ user }) {
                 </div>
               </div>
             )}
+            {/* Додати товар вручну */}
+            <div style={{ marginBottom:12 }}>
+              <button className="btn btn-sm btn-secondary" style={{ display:'flex', alignItems:'center', gap:4 }}
+                onClick={() => setAddItemMode(prev => !prev)}>
+                <i className="ti ti-package-import" style={{ fontSize:13 }} />
+                Додати товар до операції
+              </button>
+              {addItemMode && (
+                <div style={{ marginTop:8, border:'1px solid var(--border)', borderRadius:8, padding:12, background:'var(--bg)' }}>
+                  <div style={{ position:'relative', marginBottom:8 }}>
+                    <input className="form-input" style={{ height:36, fontSize:13 }}
+                      placeholder="Пошук товару зі складу..."
+                      value={addItemSearch}
+                      onChange={e => setAddItemSearch(e.target.value)} />
+                    {addItemSearch.length >= 2 && (
+                      <div style={{ position:'absolute', top:'100%', left:0, right:0, background:'var(--surface)', border:'1px solid var(--border)', borderRadius:8, zIndex:10, maxHeight:200, overflowY:'auto', boxShadow:'0 4px 12px rgba(0,0,0,.1)' }}>
+                        {(addItemResults || []).map(p => (
+                          <div key={p.id} onClick={() => { setAddItemProduct(p); setAddItemSearch(p.name) }}
+                            style={{ padding:'8px 12px', cursor:'pointer', fontSize:13, display:'flex', justifyContent:'space-between', borderBottom:'1px solid var(--border)' }}
+                            onMouseEnter={e => e.currentTarget.style.background='var(--bg)'}
+                            onMouseLeave={e => e.currentTarget.style.background=''}>
+                            <span>{p.name}</span>
+                            <span style={{ fontSize:11, color: p.computed_stock > 0 ? 'var(--green)' : 'var(--red)' }}>{p.computed_stock} {p.unit}</span>
+                          </div>
+                        ))}
+                        {addItemResults.length === 0 && <div style={{ padding:12, textAlign:'center', color:'var(--text3)', fontSize:12 }}>Не знайдено</div>}
+                      </div>
+                    )}
+                  </div>
+                  {addItemProduct && (
+                    <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                      <span style={{ fontSize:12, fontWeight:500 }}>{addItemProduct.name}</span>
+                      <input type="number" className="form-input" style={{ width:80, height:32, fontSize:12 }}
+                        placeholder="К-сть" value={addItemQty} onChange={e => setAddItemQty(e.target.value)} />
+                      <input type="number" className="form-input" style={{ width:100, height:32, fontSize:12 }}
+                        placeholder="Ціна" value={addItemPrice} onChange={e => setAddItemPrice(e.target.value)} />
+                      <button className="btn btn-sm btn-primary" disabled={!addItemQty}
+                        onClick={async () => {
+                          const qty = parseFloat(addItemQty) || 0
+                          const price = parseFloat(addItemPrice) || 0
+                          if (qty <= 0) return
+                          const movType = selected.direction === 'Доходи' ? 'out' : 'in'
+                          // Створити transaction_item
+                          await supabase.from('transaction_items').insert({
+                            bank_transaction_id: selected.id, name: addItemProduct.name,
+                            quantity: qty, unit: addItemProduct.unit || 'шт',
+                            unit_price: price, amount: qty * price, product_id: addItemProduct.id,
+                          })
+                          // Створити stock_movement
+                          if (addItemProduct.product_type === 'goods') {
+                            const { getFifoCost } = await import('../lib/stockService')
+                            const costPrice = movType === 'out' ? await getFifoCost(addItemProduct.id, qty) : null
+                            await supabase.from('stock_movements').insert({
+                              product_id: addItemProduct.id, type: movType,
+                              quantity: qty, price, total: qty * price,
+                              cost_price: costPrice, bank_transaction_id: selected.id,
+                              date: selected.date, description: `${addItemProduct.name} — ${selected.counterparty}`,
+                            })
+                          }
+                          // Оновити UI
+                          setAddItemMode(false); setAddItemSearch(''); setAddItemProduct(null)
+                          setAddItemQty(''); setAddItemPrice('')
+                          openDetail(selected)
+                        }}>
+                        Додати
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div>
               <div style={{ fontSize:13, fontWeight:600, marginBottom:8, display:'flex', alignItems:'center', gap:6 }}>
                 <i className="ti ti-paperclip" style={{ fontSize:15, color:'var(--blue)' }} />
