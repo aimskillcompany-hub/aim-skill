@@ -254,11 +254,12 @@ function Settings({ user }) {
   )
 }
 
+const VALID_PAGES = ['dashboard','add','registry','bank','cash','contractors','inventory','reports','planning','settings','batch']
+
 export default function App() {
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
-  const VALID_PAGES = ['dashboard','add','registry','bank','cash','contractors','inventory','reports','planning','settings','batch']
   const [page, setPage] = useState(() => {
     const saved = sessionStorage.getItem('aim-page')
     return saved && VALID_PAGES.includes(saved) ? saved : 'dashboard'
