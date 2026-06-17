@@ -102,7 +102,7 @@ export default function Contractors({ user }) {
     setList(contractors.map(c => {
       const code = c.edrpou?.trim()
       const s = (code && statsByCode[code]) || statsByName[c.name?.trim().toLowerCase()] || {}
-      return { ...c, total_income:s.income||0, total_expense:s.expense||0, total_otherIn:s.otherIn||0, total_otherOut:s.otherOut||0, operations_count:s.count||c.operations_count||0, last_operation_date:s.lastDate||c.last_operation_date }
+      return { ...c, total_income:s.income||c.total_income||0, total_expense:s.expense||c.total_expense||0, total_otherIn:s.otherIn||0, total_otherOut:s.otherOut||0, operations_count:s.count||c.operations_count||0, last_operation_date:s.lastDate||c.last_operation_date }
     }))
     setLoading(false)
   }
@@ -170,100 +170,65 @@ export default function Contractors({ user }) {
   const openDetail = async (c) => {
     setDetail(c); setDetailTab('info'); setView('detail')
     setReconcileFrom(''); setReconcileTo('')
-    setExpandedTx(null)
 
-    try {
-      // Fetch transactions by ЄДРПОУ (primary) or by name (fallback)
-      const baseSelect = 'id,date,amount,direction,article,counterparty,description,project_id,edrpou,doc_type,doc_number'
-      const fullSelect = `${baseSelect},documents(id,file_name,file_path,file_type,file_size,doc_role),transaction_items(id,name,quantity,unit,unit_price,amount)`
+    // Fetch transactions by ЄДРПОУ (primary) or by name (fallback)
+    let txQuery = supabase.from('bank_transactions')
+      .select('id,date,amount,direction,article,counterparty,description,project_id,edrpou,doc_type,doc_number,iban,documents(id,file_name,file_path,file_type,file_size,doc_role),transaction_items(id,name,quantity,unit,unit_price,amount)')
+      .eq('is_ignored', false)
+      .order('date', { ascending: false }).limit(500)
 
-      const buildQuery = (sel) => {
-        let q = supabase.from('bank_transactions').select(sel)
-          .eq('is_ignored', false).order('date', { ascending: false }).limit(500)
-        if (c.edrpou?.trim()) q = q.eq('edrpou', c.edrpou.trim())
-        else q = q.ilike('counterparty', c.name)
-        return q
-      }
-
-      // Спробувати з documents + items, fallback без них
-      let txResult = await buildQuery(fullSelect)
-      if (txResult.error) {
-        console.warn('Full select failed, fallback:', txResult.error.message)
-        txResult = await buildQuery(baseSelect)
-      }
-
-      const allTxs = txResult.data || []
-
-      // Підвантажити stock_movements з cost_price для маржинальності
-      const allItemIds = allTxs.flatMap(tx => (tx.transaction_items || []).map(it => it.id)).filter(Boolean)
-      if (allItemIds.length > 0) {
-        try {
-          const { data: movs } = await supabase.from('stock_movements')
-            .select('transaction_item_id, type, cost_price')
-            .in('transaction_item_id', allItemIds)
-          const movMap = {}
-          ;(movs || []).forEach(m => { if (m.transaction_item_id) movMap[m.transaction_item_id] = m })
-          allTxs.forEach(tx => {
-            ;(tx.transaction_items || []).forEach(it => {
-              const mov = movMap[it.id]
-              if (mov) it._costPrice = mov.cost_price
-            })
-          })
-        } catch (e) { console.warn('stock_movements load:', e.message) }
-      }
-
-      setDetailTxs(allTxs)
-
-      // Plans (non-blocking)
-      try {
-        const { data: plans } = await supabase.from('plans')
-          .select('id,year_month,planned_date,amount,direction,article,description')
-          .ilike('article', `%${c.default_article || '___NOMATCH___'}%`)
-          .order('planned_date')
-        setDetailPlans(plans || [])
-      } catch { setDetailPlans([]) }
-
-      // Find projects linked to this contractor's transactions
-      const txIds = allTxs.map(t => t.id).filter(Boolean)
-      const projIds = new Set(allTxs.map(t => t.project_id).filter(Boolean))
-      if (txIds.length > 0) {
-        const { data: items } = await supabase.from('transaction_items')
-          .select('project_id').in('bank_transaction_id', txIds).not('project_id', 'is', null)
-        ;(items || []).forEach(it => projIds.add(it.project_id))
-      }
-      if (projIds.size > 0) {
-        const { data: projs } = await supabase.from('projects').select('name').in('id', [...projIds])
-        setDetailProjects((projs || []).map(p => p.name))
-      } else {
-        setDetailProjects([])
-      }
-
-      // Build monthly balance
-      const byMonth = {}
-      allTxs.forEach(tx => {
-        const m = tx.date?.substring(0,7)
-        if (!m) return
-        if (!byMonth[m]) byMonth[m] = { month:m, income:0, expense:0, count:0 }
-        if (tx.amount > 0) byMonth[m].income += tx.amount
-        else byMonth[m].expense += Math.abs(tx.amount)
-        byMonth[m].count++
-      })
-      const months = Object.keys(byMonth).sort()
-      let cumBalance = 0
-      const rows = months.map(m => {
-        const r = byMonth[m]
-        const net = r.income - r.expense
-        cumBalance += net
-        return { ...r, net, cumBalance }
-      })
-      setBalanceByMonth(rows)
-    } catch (e) {
-      console.error('openDetail error:', e)
-      setDetailTxs([])
-      setDetailProjects([])
-      setDetailPlans([])
-      setBalanceByMonth([])
+    if (c.edrpou?.trim()) {
+      txQuery = txQuery.eq('edrpou', c.edrpou.trim())
+    } else {
+      txQuery = txQuery.ilike('counterparty', c.name)
     }
+
+    const [{ data:txs }, { data:plans }] = await Promise.all([
+      txQuery,
+      supabase.from('plans')
+        .select('id,year_month,planned_date,amount,direction,article,description')
+        .ilike('article', `%${c.default_article || '___NOMATCH___'}%`)
+        .order('planned_date'),
+    ])
+
+    const allTxs = txs || []
+    setDetailTxs(allTxs)
+    setDetailPlans(plans || [])
+
+    // Find projects linked to this contractor's transactions
+    const txIds = allTxs.map(t => t.id).filter(Boolean)
+    const projIds = new Set(allTxs.map(t => t.project_id).filter(Boolean))
+    if (txIds.length > 0) {
+      const { data: items } = await supabase.from('transaction_items')
+        .select('project_id').in('bank_transaction_id', txIds).not('project_id', 'is', null)
+      ;(items || []).forEach(it => projIds.add(it.project_id))
+    }
+    if (projIds.size > 0) {
+      const { data: projs } = await supabase.from('projects').select('name').in('id', [...projIds])
+      setDetailProjects((projs || []).map(p => p.name))
+    } else {
+      setDetailProjects([])
+    }
+
+    // Build monthly balance
+    const byMonth = {}
+    allTxs.forEach(tx => {
+      const m = tx.date?.substring(0,7)
+      if (!m) return
+      if (!byMonth[m]) byMonth[m] = { month:m, income:0, expense:0, count:0 }
+      if (tx.amount > 0) byMonth[m].income += tx.amount
+      else byMonth[m].expense += Math.abs(tx.amount)
+      byMonth[m].count++
+    })
+    const months = Object.keys(byMonth).sort()
+    let cumBalance = 0
+    const rows = months.map(m => {
+      const r = byMonth[m]
+      const net = r.income - r.expense
+      cumBalance += net
+      return { ...r, net, cumBalance }
+    })
+    setBalanceByMonth(rows)
   }
 
   const setF = k => e => setForm(f => ({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
@@ -274,9 +239,9 @@ export default function Contractors({ user }) {
   // DETAIL VIEW — full screen
   // ═══════════════════════════════════════════
   if (view === 'detail' && detail) {
-    const balance = txIncome - txExpense
-    const txIncome = detailTxs.filter(t=>t.direction==='Доходи').reduce((s,t)=>s+Math.abs(t.amount||0),0)
-    const txExpense = detailTxs.filter(t=>t.direction==='Витрати').reduce((s,t)=>s+Math.abs(t.amount||0),0)
+    const balance = (detail.total_income||0) - (detail.total_expense||0)
+    const txIncome = detailTxs.filter(t=>t.amount>0).reduce((s,t)=>s+(t.amount||0),0)
+    const txExpense = detailTxs.filter(t=>t.amount<0).reduce((s,t)=>s+Math.abs(t.amount||0),0)
 
     return (
       <div>
@@ -307,8 +272,8 @@ export default function Contractors({ user }) {
 
         {/* KPI row */}
         <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(4,1fr)', marginBottom:12 }}>
-          <div className="kpi"><div className="kpi-label">Доходи</div><div className="kpi-value" style={{ color:'var(--green)' }}>+{fmt(txIncome)}</div><div className="kpi-sub">грн</div></div>
-          <div className="kpi"><div className="kpi-label">Витрати</div><div className="kpi-value" style={{ color:'var(--red)' }}>-{fmt(txExpense)}</div><div className="kpi-sub">грн</div></div>
+          <div className="kpi"><div className="kpi-label">Доходи</div><div className="kpi-value" style={{ color:'var(--green)' }}>+{fmt(detail.total_income)}</div><div className="kpi-sub">грн</div></div>
+          <div className="kpi"><div className="kpi-label">Витрати</div><div className="kpi-value" style={{ color:'var(--red)' }}>-{fmt(detail.total_expense)}</div><div className="kpi-sub">грн</div></div>
           <div className="kpi"><div className="kpi-label">Сальдо</div><div className="kpi-value" style={{ color:balance>=0?'var(--green)':'var(--red)' }}>{balance>=0?'+':'-'}{fmt(balance)}</div><div className="kpi-sub">грн</div></div>
           <div className="kpi"><div className="kpi-label">Операцій</div><div className="kpi-value">{detail.operations_count||0}</div><div className="kpi-sub">остання: {detail.last_operation_date||'—'}</div></div>
         </div>
@@ -326,6 +291,7 @@ export default function Contractors({ user }) {
             { id:'info', label:'Реквізити', icon:'ti-file-info' },
             { id:'balance', label:'Баланс', icon:'ti-scale' },
             { id:'txs', label:`Операції (${detailTxs.length})`, icon:'ti-list-details' },
+            { id:'projects', label:`Проєкти (${detailProjects.length})`, icon:'ti-briefcase' },
             { id:'notes', label:'Нотатки', icon:'ti-notes' },
           ].map(t => (
             <button key={t.id} onClick={() => setDetailTab(t.id)} style={{
@@ -594,49 +560,16 @@ export default function Contractors({ user }) {
               <div className="card"><div className="empty"><p>Немає операцій з цим контрагентом</p></div></div>
             ) : (
               <>
-                {(() => {
-                  // Торгова маржинальність
-                  const salesTxs = detailTxs.filter(t => t.direction === 'Доходи')
-                  const salesItems = salesTxs.flatMap(tx => (tx.transaction_items || []))
-                  let goodsRevenue = 0, goodsCost = 0
-                  salesItems.forEach(it => {
-                    const qty = parseFloat(it.quantity) || 0
-                    const sellPrice = parseFloat(it.unit_price) || 0
-                    const costPrice = it._costPrice || 0
-                    goodsRevenue += qty * sellPrice
-                    goodsCost += qty * costPrice
-                  })
-                  const goodsMargin = goodsRevenue - goodsCost
-                  const hasGoods = goodsRevenue > 0
-
-                  return (
-                    <div style={{ display:'flex', gap:12, marginBottom:16, flexWrap:'wrap' }}>
-                      <div style={{ background:'var(--green-bg)', borderRadius:12, padding:'12px 16px', flex:1, minWidth:100 }}>
-                        <div style={{ fontSize:11, color:'var(--green)' }}>Дохід (оплати)</div>
-                        <div style={{ fontSize:18, fontWeight:500, color:'var(--green)' }}>+{fmt(txIncome)} грн</div>
-                      </div>
-                      <div style={{ background:'var(--red-bg)', borderRadius:12, padding:'12px 16px', flex:1, minWidth:100 }}>
-                        <div style={{ fontSize:11, color:'var(--red)' }}>Витрати (оплати)</div>
-                        <div style={{ fontSize:18, fontWeight:500, color:'var(--red)' }}>-{fmt(txExpense)} грн</div>
-                      </div>
-                      {hasGoods && (
-                        <>
-                          <div style={{ background:'var(--surface2)', borderRadius:12, padding:'12px 16px', flex:1, minWidth:100 }}>
-                            <div style={{ fontSize:11, color:'var(--text3)' }}>Собівартість</div>
-                            <div style={{ fontSize:18, fontWeight:500 }}>{fmt(goodsCost)} грн</div>
-                          </div>
-                          <div style={{ background: goodsMargin >= 0 ? 'var(--green-bg)' : 'var(--red-bg)', borderRadius:12, padding:'12px 16px', flex:1, minWidth:100 }}>
-                            <div style={{ fontSize:11, color: goodsMargin >= 0 ? 'var(--green)' : 'var(--red)' }}>Маржа товарів</div>
-                            <div style={{ fontSize:18, fontWeight:500, color: goodsMargin >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                              {goodsMargin >= 0 ? '+' : '−'}{fmt(Math.abs(goodsMargin))} грн
-                              {goodsRevenue > 0 && <span style={{ fontSize:12, fontWeight:400 }}> ({((goodsMargin / goodsRevenue) * 100).toFixed(0)}%)</span>}
-                            </div>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )
-                })()}
+                <div style={{ display:'flex', gap:16, marginBottom:16 }}>
+                  <div style={{ background:'var(--green-bg)', borderRadius:12, padding:'12px 20px' }}>
+                    <div style={{ fontSize:12, color:'var(--green)' }}>Дохід</div>
+                    <div style={{ fontSize:20, fontWeight:500, color:'var(--green)' }}>+{fmt(txIncome)} грн</div>
+                  </div>
+                  <div style={{ background:'var(--red-bg)', borderRadius:12, padding:'12px 20px' }}>
+                    <div style={{ fontSize:12, color:'var(--red)' }}>Витрати</div>
+                    <div style={{ fontSize:20, fontWeight:500, color:'var(--red)' }}>-{fmt(txExpense)} грн</div>
+                  </div>
+                </div>
                 <div className="tbl-wrap">
                   <table>
                     <thead><tr><th>Дата</th><th style={{ textAlign:'right' }}>Сума</th><th>Напрям</th><th>Стаття</th><th>Опис</th><th style={{ width:40 }}></th></tr></thead>
@@ -683,52 +616,26 @@ export default function Contractors({ user }) {
                                   {hasItems && (
                                     <div>
                                       <div style={{ fontSize:12, fontWeight:500, color:'var(--text2)', marginBottom:4 }}>Позиції ({tx.transaction_items.length})</div>
-                                      {(() => {
-                                        const isSale = tx.direction === 'Доходи'
-                                        const items = tx.transaction_items
-                                        const txCost = isSale ? items.reduce((s, it) => s + (parseFloat(it.quantity) || 0) * (it._costPrice || 0), 0) : 0
-                                        const txSell = isSale ? items.reduce((s, it) => s + (parseFloat(it.quantity) || 0) * (parseFloat(it.unit_price) || 0), 0) : 0
-                                        const txMargin = txSell - txCost
-                                        return (<>
                                       <table style={{ width:'100%', fontSize:12 }}>
                                         <thead><tr style={{ background:'var(--surface)' }}>
                                           <th style={{ textAlign:'left', padding:'4px 8px' }}>Назва</th>
                                           <th style={{ textAlign:'right', padding:'4px 8px' }}>К-сть</th>
                                           <th style={{ textAlign:'left', padding:'4px 8px' }}>Од.</th>
                                           <th style={{ textAlign:'right', padding:'4px 8px' }}>Ціна</th>
-                                          {isSale && <th style={{ textAlign:'right', padding:'4px 8px' }}>С/в</th>}
                                           <th style={{ textAlign:'right', padding:'4px 8px' }}>Сума</th>
-                                          {isSale && <th style={{ textAlign:'right', padding:'4px 8px' }}>Маржа</th>}
                                         </tr></thead>
                                         <tbody>
-                                          {items.map(it => {
-                                            const qty = parseFloat(it.quantity) || 0
-                                            const costPrice = it._costPrice || 0
-                                            const margin = isSale ? qty * (parseFloat(it.unit_price) || 0) - qty * costPrice : 0
-                                            return (
+                                          {tx.transaction_items.map(it => (
                                             <tr key={it.id} style={{ borderBottom:'1px solid var(--border)' }}>
                                               <td style={{ padding:'4px 8px' }}>{it.name}</td>
                                               <td style={{ padding:'4px 8px', textAlign:'right' }}>{it.quantity||'—'}</td>
                                               <td style={{ padding:'4px 8px' }}>{it.unit||''}</td>
                                               <td style={{ padding:'4px 8px', textAlign:'right' }}>{it.unit_price ? fmt(it.unit_price) : '—'}</td>
-                                              {isSale && <td style={{ padding:'4px 8px', textAlign:'right', color:'var(--text3)' }}>{costPrice ? fmt(costPrice) : '—'}</td>}
                                               <td style={{ padding:'4px 8px', textAlign:'right', fontWeight:500 }}>{it.amount ? fmt(it.amount) : '—'}</td>
-                                              {isSale && <td style={{ padding:'4px 8px', textAlign:'right', fontWeight:500, color: margin >= 0 ? 'var(--green)' : 'var(--red)' }}>{costPrice ? `${margin>=0?'+':''}${fmt(margin)}` : '—'}</td>}
                                             </tr>
-                                          )})}
+                                          ))}
                                         </tbody>
-                                        {isSale && txCost > 0 && (
-                                          <tfoot><tr style={{ borderTop:'2px solid var(--border)', fontWeight:600, fontSize:12 }}>
-                                            <td colSpan={4} style={{ padding:'4px 8px' }}>Разом</td>
-                                            <td style={{ padding:'4px 8px', textAlign:'right' }}>{fmt(txCost)}</td>
-                                            <td style={{ padding:'4px 8px', textAlign:'right' }}>{fmt(txSell)}</td>
-                                            <td style={{ padding:'4px 8px', textAlign:'right', color: txMargin >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                                              {txMargin>=0?'+':''}{fmt(txMargin)}
-                                            </td>
-                                          </tr></tfoot>
-                                        )}
                                       </table>
-                                      </>)})()}
                                     </div>
                                   )}
                                   {hasDocs && (
