@@ -829,14 +829,16 @@ export default function AddDocument({ user, onSaved }) {
                             </div>
                           )}
                           {(!it._match || it._match.matchType === 'none') && (
-                            <div style={{ display:'flex', gap:4 }}>
-                              <span style={{ fontSize:10, background:'var(--surface2)', color:'var(--text3)', padding:'2px 5px', borderRadius:4 }}>
-                                {it._action === 'service' ? 'Послуга' : 'Новий'}
-                              </span>
-                              <button style={{ fontSize:10, background:'none', border:'1px solid var(--border)', borderRadius:4, padding:'2px 5px', cursor:'pointer', color:'var(--text2)', fontFamily:'inherit' }}
-                                onClick={() => updateItem(i, '_action', it._action === 'service' ? 'new' : 'service')}>
-                                {it._action === 'service' ? 'Товар' : 'Послуга'}
-                              </button>
+                            <div style={{ display:'flex', gap:3, flexWrap:'wrap' }}>
+                              {['new', 'service', 'expense'].map(act => (
+                                <button key={act}
+                                  style={{ fontSize:10, background: it._action === act ? (act === 'new' ? 'var(--blue-bg)' : act === 'service' ? 'var(--green-bg)' : 'var(--amber-bg)') : 'none',
+                                    border:'1px solid var(--border)', borderRadius:4, padding:'2px 5px', cursor:'pointer',
+                                    color: it._action === act ? (act === 'new' ? 'var(--blue)' : act === 'service' ? 'var(--green)' : 'var(--amber)') : 'var(--text3)', fontFamily:'inherit' }}
+                                  onClick={() => updateItem(i, '_action', act)}>
+                                  {act === 'new' ? 'Товар' : act === 'service' ? 'Послуга' : 'Госп.'}
+                                </button>
+                              ))}
                             </div>
                           )}
                           {it._match === null && <span style={{ fontSize:10, color:'var(--text3)' }}>...</span>}

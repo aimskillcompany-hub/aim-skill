@@ -160,8 +160,8 @@ export default function Inventory({ user }) {
   const filtered = products.filter(p => {
     if (filterType && filterType !== 'all') {
       const pt = p.product_type || 'goods'
-      if (filterType === 'goods' && pt !== 'goods' && pt !== 'bundle') return false
-      if (filterType === 'service' && pt !== 'service' && pt !== 'license') return false
+      if (filterType === 'goods' && pt !== 'goods') return false
+      if (filterType === 'other' && pt !== 'service' && pt !== 'expense') return false
     }
     if (filterCat && p.category !== filterCat) return false
     if (search) {
@@ -392,8 +392,8 @@ export default function Inventory({ user }) {
             </div>
             <div style={{ fontSize:13, color:'var(--text2)', marginTop:4, display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
               {detail.product_type && detail.product_type !== 'goods' && (
-                <span style={{ fontSize:10, background:'var(--blue-bg)', color:'var(--blue)', padding:'1px 6px', borderRadius:4 }}>
-                  {detail.product_type === 'service' ? 'Послуга' : detail.product_type === 'license' ? 'Ліцензія' : detail.product_type === 'bundle' ? 'Комплект' : detail.product_type}
+                <span style={{ fontSize:10, background: detail.product_type === 'service' ? 'var(--blue-bg)' : 'var(--amber-bg)', color: detail.product_type === 'service' ? 'var(--blue)' : 'var(--amber)', padding:'1px 6px', borderRadius:4 }}>
+                  {detail.product_type === 'service' ? 'Послуга' : 'Госп. витрата'}
                 </span>
               )}
               {detail.sku && <span>SKU: {detail.sku} · </span>}
@@ -826,7 +826,7 @@ export default function Inventory({ user }) {
         <div style={{ display:'flex', border:'1px solid var(--border)', borderRadius:8, overflow:'hidden' }}>
           {[
             { id:'goods', label:'Товари' },
-            { id:'service', label:'Послуги' },
+            { id:'other', label:'Послуги / Витрати' },
             { id:'all', label:'Всі' },
           ].map(f => (
             <button key={f.id} onClick={() => setFilterType(f.id)} style={{

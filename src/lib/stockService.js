@@ -402,7 +402,7 @@ export async function processDocumentItems(savedItems, {
       // 3. Перевірити product_type — послуги/ліцензії не потребують складського руху
       const { data: prodInfo } = await supabase.from('products')
         .select('product_type').eq('id', result.productId).maybeSingle()
-      if (prodInfo?.product_type === 'service' || prodInfo?.product_type === 'license') {
+      if (prodInfo?.product_type === 'service' || prodInfo?.product_type === 'expense') {
         processed++
         if (result.isNew) created++
         continue // пропустити stock_movement
