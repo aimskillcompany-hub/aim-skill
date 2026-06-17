@@ -23,6 +23,7 @@ export default function Inventory({ user }) {
   const [search, setSearch] = useState('')
   const [filterCat, setFilterCat] = useState('')
   const [filterType, setFilterType] = useState('goods')
+  const [showServiceMenu, setShowServiceMenu] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY_PRODUCT)
   const [editId, setEditId] = useState(null)
@@ -730,29 +731,38 @@ export default function Inventory({ user }) {
       <div className="page-header" style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:12 }}>
         <div><h1>Склад</h1><p>Залишки товарів та рух</p></div>
         <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-          <button className="btn btn-secondary" onClick={findPairs} disabled={pairsLoading} style={{ width:'auto' }}>
-            <i className={`ti ${pairsLoading ? 'ti-loader-2' : 'ti-link'}`} style={{ fontSize:15, animation: pairsLoading ? 'spin 1s linear infinite' : 'none' }} />
-            Знайти пари
-          </button>
-          <button className="btn btn-secondary" onClick={cleanDuplicates} disabled={cleaning || syncing} style={{ width:'auto' }}>
-            <i className={`ti ${cleaning ? 'ti-loader-2' : 'ti-trash-x'}`} style={{ fontSize:15, animation: cleaning ? 'spin 1s linear infinite' : 'none' }} />
-            {cleaning ? 'Очищення...' : 'Очистити дублікати'}
-          </button>
-          <button className="btn btn-secondary" onClick={syncStockFromDocs} disabled={syncing || cleaning} style={{ width:'auto' }}>
-            <i className={`ti ${syncing ? 'ti-loader-2' : 'ti-refresh'}`} style={{ fontSize:15, animation: syncing ? 'spin 1s linear infinite' : 'none' }} />
-            {syncing ? 'Перерахунок...' : 'Перерахувати з документів'}
-          </button>
-          <button className="btn btn-secondary" onClick={async () => {
-            if (!confirm('Перерахувати FIFO собівартість для всіх OUT рухів?')) return
-            setSyncing(true)
-            const result = await backfillCostPrices()
-            setSyncLog({ total: result.updated, linked: result.updated, created: 0, errors: result.errors, label: 'Собівартість' })
-            setSyncing(false)
-            loadAll()
-          }} disabled={syncing || cleaning} style={{ width:'auto' }}>
-            <i className="ti ti-calculator" style={{ fontSize:15 }} />
-            Перерахувати собівартість
-          </button>
+          <div style={{ position:'relative' }}>
+            <button className="btn btn-secondary" onClick={() => setShowServiceMenu(v => !v)} style={{ width:'auto', display:'flex', alignItems:'center', gap:4 }}>
+              <i className="ti ti-settings" style={{ fontSize:15 }} /> Сервіс <i className="ti ti-chevron-down" style={{ fontSize:12 }} />
+            </button>
+            {showServiceMenu && (
+              <div style={{ position:'absolute', right:0, top:'100%', marginTop:4, background:'var(--surface)', border:'1px solid var(--border)', borderRadius:10, boxShadow:'0 4px 16px rgba(0,0,0,.1)', zIndex:100, minWidth:220, padding:4 }}>
+                {[
+                  { label:'Знайти пари', icon:'ti-link', action: () => { setShowServiceMenu(false); findPairs() }, disabled: pairsLoading },
+                  { label: cleaning ? 'Очищення...' : 'Очистити дублікати', icon: cleaning ? 'ti-loader-2' : 'ti-trash-x', action: () => { setShowServiceMenu(false); cleanDuplicates() }, disabled: cleaning || syncing },
+                  { label: syncing ? 'Перерахунок...' : 'Перерахувати з документів', icon: syncing ? 'ti-loader-2' : 'ti-refresh', action: () => { setShowServiceMenu(false); syncStockFromDocs() }, disabled: syncing || cleaning },
+                  { label:'Перерахувати собівартість', icon:'ti-calculator', action: async () => {
+                    setShowServiceMenu(false)
+                    if (!confirm('Перерахувати FIFO собівартість для всіх OUT рухів?')) return
+                    setSyncing(true)
+                    const result = await backfillCostPrices()
+                    setSyncLog({ total: result.updated, linked: result.updated, created: 0, errors: result.errors, label: 'Собівартість' })
+                    setSyncing(false)
+                    loadAll()
+                  }, disabled: syncing || cleaning },
+                ].map((item, i) => (
+                  <button key={i} onClick={item.action} disabled={item.disabled}
+                    style={{ display:'flex', alignItems:'center', gap:8, width:'100%', padding:'8px 12px', border:'none', background:'none', cursor: item.disabled ? 'default' : 'pointer', borderRadius:6, fontSize:13, fontFamily:'inherit', color: item.disabled ? 'var(--text3)' : 'var(--text)', opacity: item.disabled ? 0.5 : 1 }}
+                    onMouseEnter={e => { if (!item.disabled) e.currentTarget.style.background = 'var(--bg)' }}
+                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                  >
+                    <i className={`ti ${item.icon}`} style={{ fontSize:14, color:'var(--text2)' }} />
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button className="btn btn-primary" onClick={openAdd} style={{ width:'auto' }}>
             <i className="ti ti-plus" style={{ fontSize:15 }} /> Додати товар
           </button>
