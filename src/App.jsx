@@ -20,8 +20,6 @@ const CASH_DIR = {
   advance_return: +1, bank_to_cash: +1, cash_to_bank: -1
 }
 
-const VALID_PAGES = ['dashboard','add','registry','bank','cash','contractors','inventory','reports','planning','settings','batch']
-
 function Dashboard({ user, onPage }) {
   const [stats, setStats] = useState({
     revenue: 0, expenses: 0, net: 0,
@@ -262,7 +260,7 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(() => {
     const saved = sessionStorage.getItem('aim-page')
-    return saved && VALID_PAGES.includes(saved) ? saved : 'dashboard'
+    return saved && saved !== 'projects' ? saved : 'dashboard'
   })
   const [toast, setToast] = useState(null)
 
