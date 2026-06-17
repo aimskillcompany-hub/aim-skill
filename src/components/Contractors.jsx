@@ -291,7 +291,6 @@ export default function Contractors({ user }) {
             { id:'info', label:'Реквізити', icon:'ti-file-info' },
             { id:'balance', label:'Баланс', icon:'ti-scale' },
             { id:'txs', label:`Операції (${detailTxs.length})`, icon:'ti-list-details' },
-            { id:'projects', label:`Проєкти (${detailProjects.length})`, icon:'ti-briefcase' },
             { id:'notes', label:'Нотатки', icon:'ti-notes' },
           ].map(t => (
             <button key={t.id} onClick={() => setDetailTab(t.id)} style={{
