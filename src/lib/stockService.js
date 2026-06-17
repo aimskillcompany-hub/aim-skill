@@ -65,6 +65,48 @@ function fuzzyMatch(a, b) {
   return common.length >= 3 && common.length >= shorter.length * 0.75
 }
 
+// ── Знайти продукт по назві (НЕ створює!) — для підтвердження ──
+export async function matchProduct(name) {
+  if (!name?.trim()) return { matchType: 'none' }
+
+  const normalized = normalizeName(name)
+  if (!normalized) return { matchType: 'none' }
+
+  // 1. Точний збіг по aliases
+  const { data: alias } = await supabase
+    .from('product_aliases')
+    .select('product_id')
+    .eq('normalized', normalized)
+    .maybeSingle()
+
+  if (alias?.product_id) {
+    const { data: prod } = await supabase.from('products')
+      .select('id, name, product_type').eq('id', alias.product_id).maybeSingle()
+    if (prod) return { productId: prod.id, productName: prod.name, productType: prod.product_type, matchType: 'exact' }
+  }
+
+  // 2. Fuzzy збіг по aliases
+  const { data: allAliases } = await supabase
+    .from('product_aliases')
+    .select('product_id, normalized')
+
+  const fuzzyHit = (allAliases || []).find(a => fuzzyMatch(normalized, a.normalized))
+  if (fuzzyHit?.product_id) {
+    const { data: prod } = await supabase.from('products')
+      .select('id, name, product_type').eq('id', fuzzyHit.product_id).maybeSingle()
+    if (prod) return { productId: prod.id, productName: prod.name, productType: prod.product_type, matchType: 'fuzzy' }
+  }
+
+  // 3. Пошук по назві продукту
+  const { data: existing } = await supabase.from('products')
+    .select('id, name, product_type').eq('status', 'active')
+    .ilike('name', name.trim()).maybeSingle()
+
+  if (existing) return { productId: existing.id, productName: existing.name, productType: existing.product_type, matchType: 'fuzzy' }
+
+  return { matchType: 'none' }
+}
+
 // ── Знайти або створити продукт по назві (через aliases) ──
 export async function resolveProduct(name, unit, price, userId) {
   if (!name?.trim()) return null
@@ -324,10 +366,27 @@ export async function processDocumentItems(savedItems, {
     if (qty <= 0) continue
 
     try {
+      // Якщо позначено як послуга — пропустити
+      if (item._action === 'service') {
+        processed++
+        continue
+      }
+
       // 1. Знайти або створити продукт
-      const result = await resolveProduct(
-        item.name, item.unit, item.unit_price, userId
-      )
+      let result
+      if (item._matchedProductId) {
+        // Підтверджений продукт з UI
+        result = { productId: item._matchedProductId, isNew: false }
+        // Додати alias для цієї назви
+        const normalized = normalizeName(item.name)
+        if (normalized) {
+          await supabase.from('product_aliases').upsert({
+            product_id: item._matchedProductId, alias: item.name.trim(), normalized,
+          }, { onConflict: 'normalized', ignoreDuplicates: true })
+        }
+      } else {
+        result = await resolveProduct(item.name, item.unit, item.unit_price, userId)
+      }
       if (!result) {
         errors.push(`Не вдалося створити продукт: ${item.name}`)
         continue
