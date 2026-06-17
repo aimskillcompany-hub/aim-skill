@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase } from '../lib/supabase'
-import { fetchArticles, groupByType, TYPE_LABELS, PL_ORDER, PL_LABELS, PL_SIGN } from '../lib/articles'
+import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend, AreaChart, Area, Cell, PieChart, Pie,
@@ -357,14 +357,11 @@ export default function Reports() {
   )
 
   // ── KPIs ────────────────────────────────────────────────────────────────────
-  const totRevenue  = sectionTotals.revenue?._total || 0
-  const totCogs     = sectionTotals.cogs?._total || 0
-  const totGP       = calcRows._gp?._total || 0
-  const totOpex     = sectionTotals.opex?._total || 0
-  const totEBIT     = calcRows._ebit?._total || 0
-  const totNet      = calcRows._net?._total || 0
+  const totRevenue  = monthly.reduce((s,m)=>s+m.revenue,0)
+  const totExpenses = monthly.reduce((s,m)=>s+m.expenses,0)
+  const totNet      = totRevenue - totExpenses
   const lastCF      = monthly[monthly.length-1]?.cumCF || 0
-  const margin      = totRevenue > 0 ? ((totGP/totRevenue)*100).toFixed(1) : null
+  const margin      = totRevenue > 0 ? ((totNet/totRevenue)*100).toFixed(1) : null
 
   // Calculate previous period for comparison
   const prevRevenue = compareMode && rptFrom && rptTo ? (() => {
@@ -385,77 +382,49 @@ export default function Reports() {
   const allArticleNamesInData = new Set(Object.keys(artData))
   const allNames = new Set([...activeArticleNames, ...allArticleNamesInData])
 
-  // Map article name → pl_level (та type для fallback)
+  // Map article name → type
   const artTypeMap = {}
-  const artPlMap = {}
-  articles.forEach(a => { artTypeMap[a.name] = a.type; artPlMap[a.name] = a.pl_level || 'none' })
+  articles.forEach(a => { artTypeMap[a.name] = a.type })
+  // Infer type for articles not in settings
   ;[...allArticleNamesInData].forEach(name => {
-    if (!artPlMap[name]) {
+    if (!artTypeMap[name]) {
+      // Guess from transactions
       const txsForArt = Object.values(artData[name] || {}).flatMap(d => d.txs)
       const dir = txsForArt[0]?.direction
-      if (dir === 'Доходи') { artTypeMap[name] = 'income'; artPlMap[name] = 'revenue' }
-      else if (dir === 'Витрати') { artTypeMap[name] = 'expense'; artPlMap[name] = 'opex' }
-      else { artTypeMap[name] = 'transfer'; artPlMap[name] = 'transfer' }
+      if (dir === 'Доходи') artTypeMap[name] = 'income'
+      else if (dir === 'Витрати') artTypeMap[name] = 'expense'
+      else if (dir === 'ПФД' || dir === 'Внутрішні перекази') artTypeMap[name] = 'transfer'
+      else artTypeMap[name] = 'other'
     }
   })
 
-  // Group article names by pl_level
-  const plSections = ['revenue', 'cogs', 'opex', 'other_income', 'below_line']
+  // Group article names by type, ordered by article sort_order
   const byType = {}
-  plSections.forEach(t => { byType[t] = [] })
-  // First, add articles in defined order (from settings)
+  ARTICLE_TYPE_ORDER.forEach(t => { byType[t] = [] })
+  // First, add articles in defined order
   articles.forEach(a => {
-    const level = a.pl_level || 'none'
-    if (level === 'transfer' || level === 'none') return // не в P&L
     if (artData[a.name] || activeArticleNames.has(a.name)) {
-      if (!byType[level]) byType[level] = []
-      if (!byType[level].includes(a.name)) byType[level].push(a.name)
+      const t = a.type || 'other'
+      if (!byType[t]) byType[t] = []
+      if (!byType[t].includes(a.name)) byType[t].push(a.name)
     }
   })
-  // Then, add from data not in settings
+  // Then, add articles from data that aren't in settings
   ;[...allArticleNamesInData].forEach(name => {
-    const level = artPlMap[name] || 'opex'
-    if (level === 'transfer' || level === 'none') return
-    if (!byType[level]) byType[level] = []
-    if (!byType[level].includes(name)) byType[level].push(name)
+    const t = artTypeMap[name] || 'other'
+    if (!byType[t]) byType[t] = []
+    if (!byType[t].includes(name)) byType[t].push(name)
   })
 
-  // Section totals per month (всі суми додатні через absAmount)
+  // Section totals per month
   const sectionTotals = {}
-  plSections.forEach(type => {
+  ARTICLE_TYPE_ORDER.forEach(type => {
     sectionTotals[type] = {}
     months.forEach(m => {
       sectionTotals[type][m] = (byType[type] || []).reduce((s, name) => s + (artData[name]?.[m]?.sum || 0), 0)
     })
     sectionTotals[type]._total = months.reduce((s,m) => s + (sectionTotals[type][m]||0), 0)
   })
-
-  // Розрахункові рядки P&L
-  const calcRow = (id) => {
-    const row = {}
-    months.forEach(m => {
-      const rev = sectionTotals.revenue?.[m] || 0
-      const cogs = sectionTotals.cogs?.[m] || 0
-      const opex = sectionTotals.opex?.[m] || 0
-      const other = sectionTotals.other_income?.[m] || 0
-      const below = sectionTotals.below_line?.[m] || 0
-      const gp = rev - cogs
-      const ebit = gp - opex
-      const np = ebit + other
-      const net = np - below
-      if (id === '_gp') row[m] = gp
-      else if (id === '_ebit') row[m] = ebit
-      else if (id === '_np') row[m] = np
-      else if (id === '_net') row[m] = net
-    })
-    row._total = months.reduce((s, m) => s + (row[m] || 0), 0)
-    return row
-  }
-  const calcRows = {}
-  ;['_gp', '_ebit', '_np', '_net'].forEach(id => { calcRows[id] = calcRow(id) })
-
-  // Для сумісності з існуючим кодом (KPI, charts)
-  const ARTICLE_TYPE_ORDER = plSections
 
   const cellStyle = (v, bold = false, clickable = false) => ({
     padding: '7px 12px',
@@ -543,17 +512,18 @@ export default function Reports() {
           )}
         </div>
         <div className="kpi">
-          <div className="kpi-label">Валовий прибуток (GP)</div>
-          <div className={`kpi-value ${totGP>=0?'green':'red'}`}>{fmt(totGP)} грн</div>
-          {margin && <div className="kpi-sub">{margin}% від виручки</div>}
+          <div className="kpi-label">Загальні витрати</div>
+          <div className="kpi-value red">{fmt(totExpenses)} грн</div>
+          {prevRevenue && (
+            <div className="kpi-sub" style={{ color: totExpenses <= prevRevenue.expenses ? 'var(--green)' : 'var(--red)' }}>
+              {totExpenses >= prevRevenue.expenses ? '+' : ''}{((totExpenses - prevRevenue.expenses) / (prevRevenue.expenses || 1) * 100).toFixed(1)}% vs попередній
+            </div>
+          )}
         </div>
         <div className="kpi">
-          <div className="kpi-label">EBIT</div>
-          <div className={`kpi-value ${totEBIT>=0?'green':'red'}`}>{fmt(totEBIT)} грн</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-label">Чистий прибуток (Net)</div>
+          <div className="kpi-label">Чистий результат</div>
           <div className={`kpi-value ${totNet>=0?'green':'red'}`}>{fmt(totNet)} грн</div>
+          {margin && <div className="kpi-sub">{margin}% маржа</div>}
           {prevRevenue && (
             <div className="kpi-sub" style={{ color: totNet >= prevRevenue.net ? 'var(--green)' : 'var(--red)' }}>
               {totNet >= prevRevenue.net ? '+' : ''}{((totNet - prevRevenue.net) / (Math.abs(prevRevenue.net) || 1) * 100).toFixed(1)}% vs попередній
@@ -767,55 +737,26 @@ export default function Reports() {
             </tr>
           </thead>
           <tbody>
-            {PL_ORDER.map(level => {
-              // Розрахункові рядки (GP, EBIT, NP, Net)
-              if (level.startsWith('_')) {
-                const row = calcRows[level]
-                if (!row) return null
-                const isNet = level === '_net'
-                return (
-                  <tr key={level} style={{ borderTop:'2px solid var(--border)', background: isNet ? '#EFF5EF' : 'var(--surface2)' }}>
-                    <td style={{ padding: isNet?'10px 18px':'8px 18px', fontWeight:700, fontSize: isNet?14:13, color:'var(--text)', position:'sticky', left:0, background: isNet?'#EFF5EF':'var(--surface2)' }}>
-                      {PL_LABELS[level]}
-                    </td>
-                    {months.map(m => {
-                      const v = row[m] || 0
-                      return (
-                        <td key={m} style={{ ...cellStyle(v, true), background: isCurrent(m)?'#EFF4FF': isNet?'#EFF5EF':'var(--surface2)', fontSize: isNet?13:12.5 }}>
-                          {fmtS(v)}
-                        </td>
-                      )
-                    })}
-                    <td style={{ ...cellStyle(row._total, true), background:'#EFF4FF', borderLeft:'2px solid #E2E8F0', fontSize: isNet?13:12.5 }}>
-                      {fmtS(row._total)}
-                    </td>
-                    <td style={{ ...cellStyle(row._total, true), background: isNet?'#EFF5EF':'#F0F2F5' }}>
-                      {fmtS(row._total)}
-                    </td>
-                  </tr>
-                )
-              }
-
-              // Секції з статтями
-              const rows = byType[level] || []
+            {ARTICLE_TYPE_ORDER.map(type => {
+              const rows = byType[type] || []
               if (rows.length === 0) return null
-              const secTotal = sectionTotals[level]?._total || 0
+              const secTotal = months.reduce((s,m) => s+(sectionTotals[type][m]||0), 0)
               if (secTotal === 0 && rows.every(name => !artData[name])) return null
-              const sign = PL_SIGN[level] || 1
 
               return (
-                <React.Fragment key={level}>
+                <>
                   {/* Section header */}
-                  <tr>
-                    <td colSpan={months.length + 3} style={{ padding:'10px 18px 4px', fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.6px', color:'var(--text3)', background:'var(--surface2)', borderTop:'1px solid var(--border)' }}>
-                      {PL_LABELS[level] || level}
+                  <tr key={`sec-${type}`}>
+                    <td colSpan={months.length + 2} style={{ padding:'10px 18px 4px', fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.6px', color:'var(--text3)', background:'var(--surface2)', borderTop:'1px solid var(--border)' }}>
+                      {SECTION_LABELS[type]}
                     </td>
                   </tr>
 
                   {/* Article rows */}
                   {rows.map(artName => {
                     const rowTotal = months.reduce((s,m) => s+(artData[artName]?.[m]?.sum||0), 0)
-                    if (rowTotal === 0 && !artData[artName]) return null
+                    const hasAnyPlan = allDisplayMonths.some(m => isPlan(m) && planData[artName]?.[m])
+                    if (rowTotal === 0 && !artData[artName] && !hasAnyPlan) return null
                     return (
                       <tr key={artName} style={{ borderBottom:'1px solid #F0F2F5' }}
                         onMouseEnter={e => e.currentTarget.style.background='var(--surface2)'}
@@ -824,9 +765,23 @@ export default function Reports() {
                         <td style={{ padding:'7px 18px 7px 28px', fontSize:13, color:'var(--text)', position:'sticky', left:0, background:'var(--surface)', zIndex:1 }}>
                           {artName}
                         </td>
-                        {months.map(m => {
+                        {allDisplayMonths.map(m => {
+                          if (isPlan(m)) {
+                            const pv = planData[artName]?.[m] || 0
+                            return (
+                              <td key={m} style={{
+                                padding:'7px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums',
+                                color: pv === 0 ? 'var(--text3)' : pv > 0 ? '#4A7C59' : '#9B3A3A',
+                                fontStyle:'italic', fontSize:12.5,
+                                background:'#FEF9EF',
+                                borderLeft: !isPlan(allDisplayMonths[allDisplayMonths.indexOf(m)-1]) ? '2px dashed #D4A843' : undefined,
+                              }}>
+                                {pv === 0 ? '—' : fmtS(pv)}
+                              </td>
+                            )
+                          }
                           const raw = artData[artName]?.[m]?.sum || 0
-                          const v = sign * raw
+                          const v = (SECTION_SIGN[type] || 1) * raw
                           return (
                             <td key={m}
                               style={{ ...cellStyle(v, false, true), background: isCurrent(m)?'#EFF4FF':'' }}
@@ -839,42 +794,125 @@ export default function Reports() {
                             </td>
                           )
                         })}
-                        <td style={{ ...cellStyle(sign * rowTotal, true), background:'#EFF4FF', borderLeft:'2px solid #E2E8F0' }}>
-                          {fmtS(sign * rowTotal)}
-                        </td>
-                        <td style={{ ...cellStyle(sign * rowTotal, true), background:'#F0F2F5' }}>
-                          {fmtS(sign * rowTotal)}
-                        </td>
+                        {(() => {
+                          const sign = SECTION_SIGN[type] || 1
+                          const factTotal = sign * months.reduce((s,m) => s+(artData[artName]?.[m]?.sum||0), 0)
+                          const planTotal = sign * allDisplayMonths.filter(m=>isPlan(m)).reduce((s,m) => s+(planData[artName]?.[m]||0), 0)
+                          const forecast = factTotal + planTotal
+                          return (<>
+                            <td style={{ ...cellStyle(factTotal, true), background:'#EFF4FF', cursor: factTotal!==0?'pointer':'default', borderLeft:'2px solid #E2E8F0' }}>
+                              {fmtS(factTotal)}
+                            </td>
+                            <td style={{ ...cellStyle(forecast, true), background: forecast===factTotal?'#F0F2F5':'#EFF5EF', fontStyle: planTotal!==0?'italic':'' }}>
+                              {forecast===0?'—':fmtS(forecast)}
+                            </td>
+                          </>)
+                        })()}
                       </tr>
                     )
                   })}
 
                   {/* Section total */}
-                  <tr style={{ borderTop:'2px solid var(--border)', borderBottom:'1px solid var(--border)' }}>
+                  <tr key={`total-${type}`} style={{ borderTop:'2px solid var(--border)', borderBottom:'1px solid var(--border)' }}>
                     <td style={{ padding:'8px 18px', fontWeight:700, fontSize:13, color:'var(--text2)', background:'var(--surface2)', position:'sticky', left:0 }}>
-                      Разом {(PL_LABELS[level] || level).toLowerCase()}
+                      Разом {SECTION_LABELS[type].toLowerCase()}
                     </td>
-                    {months.map(m => {
-                      const v = sign * (sectionTotals[level]?.[m] || 0)
+                    {allDisplayMonths.map(m => {
+                      if (isPlan(m)) {
+                        const pv = planSectionTotals[type][m] || 0
+                        return (
+                          <td key={m} style={{
+                            padding:'8px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums',
+                            color: pv===0?'var(--text3)':pv>0?'#4A7C59':'#9B3A3A',
+                            fontWeight:700, fontStyle:'italic', fontSize:12.5,
+                            background:'#F0F2F5',
+                            borderLeft: !isPlan(allDisplayMonths[allDisplayMonths.indexOf(m)-1]) ? '2px dashed #E2E8F0' : undefined,
+                          }}>
+                            {pv===0?'—':fmtS(pv)}
+                          </td>
+                        )
+                      }
+                      const raw = sectionTotals[type][m] || 0
+                      const v = (SECTION_SIGN[type] || 1) * raw
                       return (
                         <td key={m}
                           style={{ ...cellStyle(v, true, true), background: isCurrent(m)?'#EFF4FF':'var(--surface2)' }}
-                          onClick={() => handleSectionClick(level, m)}
+                          onClick={() => handleSectionClick(type, m)}
+                          title={v!==0?'Натисніть для деталізації':undefined}
+                          onMouseEnter={e => { if(v!==0) e.currentTarget.style.background='#EFF4FF' }}
+                          onMouseLeave={e => e.currentTarget.style.background= isCurrent(m)?'#EFF4FF':'var(--surface2)'}
                         >
                           {fmtS(v)}
                         </td>
                       )
                     })}
-                    <td style={{ ...cellStyle(sign * secTotal, true), background:'#EFF4FF', borderLeft:'2px solid #E2E8F0' }}>
-                      {fmtS(sign * secTotal)}
-                    </td>
-                    <td style={{ ...cellStyle(sign * secTotal, true), background:'#F0F2F5' }}>
-                      {fmtS(sign * secTotal)}
-                    </td>
+                    {(() => {
+                      const sign = SECTION_SIGN[type] || 1
+                      const factT = sign * (sectionTotals[type]._total || 0)
+                      const planT = sign * allDisplayMonths.filter(m=>isPlan(m)).reduce((s,m) => s+(planSectionTotals[type][m]||0), 0)
+                      const forecastT = factT + planT
+                      return (<>
+                        <td style={{ ...cellStyle(factT, true), background:'#EFF4FF', borderLeft:'2px solid #E2E8F0' }}>
+                          {fmtS(factT)}
+                        </td>
+                        <td style={{ ...cellStyle(forecastT, true), background: planT!==0?'#EFF5EF':'#F0F2F5', fontStyle: planT!==0?'italic':'' }}>
+                          {forecastT===0?'—':fmtS(forecastT)}
+                        </td>
+                      </>)
+                    })()}
                   </tr>
-                </React.Fragment>
+                </>
               )
             })}
+
+            {/* Net result row */}
+            <tr style={{ borderTop:'2px solid var(--border)' }}>
+              <td style={{ padding:'10px 18px', fontWeight:700, fontSize:14, background:'var(--surface2)', position:'sticky', left:0 }}>
+                ЧИСТИЙ РЕЗУЛЬТАТ
+              </td>
+              {allDisplayMonths.map(m => {
+                if (isPlan(m)) {
+                  const pv = Object.values(planData).reduce((s,d) => s+(d[m]||0), 0)
+                  return (
+                    <td key={m} style={{
+                      padding:'10px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums',
+                      color: pv===0?'var(--text3)':pv>0?'#4A7C59':'#9B3A3A',
+                      fontWeight:700, fontStyle:'italic', fontSize:13,
+                      background:'#F0F2F5',
+                      borderLeft: !isPlan(allDisplayMonths[allDisplayMonths.indexOf(m)-1]) ? '2px dashed #E2E8F0' : undefined,
+                    }}>
+                      {pv===0?'—':fmtS(pv)}
+                    </td>
+                  )
+                }
+                const v = ARTICLE_TYPE_ORDER.reduce((s, type) => s + (SECTION_SIGN[type] || 1) * (sectionTotals[type]?.[m] || 0), 0)
+                return (
+                  <td key={m}
+                    style={{ ...cellStyle(v, true, true), background: isCurrent(m)?'#EFF4FF':'var(--surface2)', fontSize:13 }}
+                    onClick={() => handleTotalClick(m)}
+                    title={v!==0?'Натисніть для деталізації':undefined}
+                    onMouseEnter={e => { if(v!==0) e.currentTarget.style.background='#EFF4FF' }}
+                    onMouseLeave={e => e.currentTarget.style.background= isCurrent(m)?'#EFF4FF':'var(--surface2)'}
+                  >
+                    {fmtS(v)}
+                  </td>
+                )
+              })}
+              {(() => {
+                const planNetTotal = allDisplayMonths.filter(m=>isPlan(m)).reduce((s,m) => {
+                  return s + Object.values(planData).reduce((ps,d) => ps+(d[m]||0), 0)
+                }, 0)
+                const forecastNet = totNet + planNetTotal
+                return (<>
+                  <td style={{ ...cellStyle(totNet, true), background:'#EFF4FF', fontSize:13, borderLeft:'2px solid #E2E8F0' }}>
+                    {fmtS(totNet)}
+                  </td>
+                  <td style={{ ...cellStyle(forecastNet, true), background: planNetTotal!==0?'#EFF5EF':'#F0F2F5', fontSize:13, fontStyle: planNetTotal!==0?'italic':'' }}>
+                    {forecastNet===0?'—':fmtS(forecastNet)}
+                  </td>
+                </>)
+              })()}
+            </tr>
           </tbody>
         </table>
       </div>
