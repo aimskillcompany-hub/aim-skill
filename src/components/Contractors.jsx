@@ -5,6 +5,61 @@ import { upsertContractor, syncContractorStats, importMissingContractors, mergeD
 
 const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
 
+function ItemsTable({ items, isSale, onProductClick }) {
+  const totalSell = items.reduce((s, it) => s + (parseFloat(it.amount) || 0), 0)
+  const totalCost = isSale ? items.reduce((s, it) => s + (parseFloat(it.quantity) || 0) * (it._costPrice || 0), 0) : 0
+  const totalMargin = totalSell - totalCost
+  return (
+    <div>
+      <div style={{ fontSize:12, fontWeight:500, color:'var(--text2)', marginBottom:4 }}>Позиції ({items.length})</div>
+      <table style={{ width:'100%', fontSize:12 }}>
+        <thead><tr style={{ background:'var(--surface)' }}>
+          <th style={{ textAlign:'left', padding:'4px 8px' }}>Назва</th>
+          <th style={{ textAlign:'right', padding:'4px 8px' }}>К-сть</th>
+          <th style={{ textAlign:'left', padding:'4px 8px' }}>Од.</th>
+          <th style={{ textAlign:'right', padding:'4px 8px' }}>Ціна</th>
+          {isSale && <th style={{ textAlign:'right', padding:'4px 8px' }}>С/в</th>}
+          <th style={{ textAlign:'right', padding:'4px 8px' }}>Сума</th>
+          {isSale && <th style={{ textAlign:'right', padding:'4px 8px' }}>Маржа</th>}
+        </tr></thead>
+        <tbody>
+          {items.map(it => {
+            const qty = parseFloat(it.quantity) || 0
+            const cp = it._costPrice || 0
+            const sell = parseFloat(it.amount) || 0
+            const margin = sell - qty * cp
+            return (
+              <tr key={it.id} style={{ borderBottom:'1px solid var(--border)' }}>
+                <td style={{ padding:'4px 8px' }}>
+                  {it.product_id && onProductClick ? (
+                    <span style={{ color:'var(--blue)', cursor:'pointer', textDecoration:'underline dotted' }}
+                      onClick={e => { e.stopPropagation(); onProductClick(it.product_id) }}
+                      title="Відкрити на складі">{it.name}</span>
+                  ) : it.name}
+                </td>
+                <td style={{ padding:'4px 8px', textAlign:'right' }}>{qty || '—'}</td>
+                <td style={{ padding:'4px 8px' }}>{it.unit || ''}</td>
+                <td style={{ padding:'4px 8px', textAlign:'right' }}>{it.unit_price ? fmt(it.unit_price) : '—'}</td>
+                {isSale && <td style={{ padding:'4px 8px', textAlign:'right', color:'var(--text3)' }}>{cp ? fmt(cp) : '—'}</td>}
+                <td style={{ padding:'4px 8px', textAlign:'right', fontWeight:500 }}>{sell ? fmt(sell) : '—'}</td>
+                {isSale && <td style={{ padding:'4px 8px', textAlign:'right', fontWeight:500, color: margin >= 0 ? 'var(--green)' : 'var(--red)' }}>{cp ? (margin >= 0 ? '+' : '') + fmt(margin) : '—'}</td>}
+              </tr>
+            )
+          })}
+        </tbody>
+        {isSale && totalCost > 0 && (
+          <tfoot><tr style={{ borderTop:'2px solid var(--border)', fontWeight:600 }}>
+            <td colSpan={4} style={{ padding:'4px 8px' }}>Разом</td>
+            <td style={{ padding:'4px 8px', textAlign:'right' }}>{fmt(totalCost)}</td>
+            <td style={{ padding:'4px 8px', textAlign:'right' }}>{fmt(totalSell)}</td>
+            <td style={{ padding:'4px 8px', textAlign:'right', color: totalMargin >= 0 ? 'var(--green)' : 'var(--red)' }}>{totalMargin >= 0 ? '+' : ''}{fmt(totalMargin)}</td>
+          </tr></tfoot>
+        )}
+      </table>
+    </div>
+  )
+}
+
 function TxStats({ txs, txIncome, txExpense }) {
   let goodsCost = 0
   txs.filter(t => t.direction === 'Доходи').forEach(tx => {
@@ -658,35 +713,11 @@ export default function Contractors({ user, onNavigate }) {
                                     </div>
                                   )}
                                   {hasItems && (
-                                    <div>
-                                      <div style={{ fontSize:12, fontWeight:500, color:'var(--text2)', marginBottom:4 }}>Позиції ({tx.transaction_items.length})</div>
-                                      <table style={{ width:'100%', fontSize:12 }}>
-                                        <thead><tr style={{ background:'var(--surface)' }}>
-                                          <th style={{ textAlign:'left', padding:'4px 8px' }}>Назва</th>
-                                          <th style={{ textAlign:'right', padding:'4px 8px' }}>К-сть</th>
-                                          <th style={{ textAlign:'left', padding:'4px 8px' }}>Од.</th>
-                                          <th style={{ textAlign:'right', padding:'4px 8px' }}>Ціна</th>
-                                          <th style={{ textAlign:'right', padding:'4px 8px' }}>Сума</th>
-                                        </tr></thead>
-                                        <tbody>
-                                          {tx.transaction_items.map(it => (
-                                            <tr key={it.id} style={{ borderBottom:'1px solid var(--border)' }}>
-                                              <td style={{ padding:'4px 8px' }}>
-                                                {it.product_id ? (
-                                                  <span style={{ color:'var(--blue)', cursor:'pointer', textDecoration:'underline dotted' }}
-                                                    onClick={e => { e.stopPropagation(); sessionStorage.setItem('aim-open-product', it.product_id); onNavigate && onNavigate('inventory') }}
-                                                    title="Відкрити на складі">{it.name}</span>
-                                                ) : it.name}
-                                              </td>
-                                              <td style={{ padding:'4px 8px', textAlign:'right' }}>{it.quantity||'—'}</td>
-                                              <td style={{ padding:'4px 8px' }}>{it.unit||''}</td>
-                                              <td style={{ padding:'4px 8px', textAlign:'right' }}>{it.unit_price ? fmt(it.unit_price) : '—'}</td>
-                                              <td style={{ padding:'4px 8px', textAlign:'right', fontWeight:500 }}>{it.amount ? fmt(it.amount) : '—'}</td>
-                                            </tr>
-                                          ))}
-                                        </tbody>
-                                      </table>
-                                    </div>
+                                    <ItemsTable
+                                      items={tx.transaction_items}
+                                      isSale={tx.direction === 'Доходи'}
+                                      onProductClick={pid => { sessionStorage.setItem('aim-open-product', pid); onNavigate && onNavigate('inventory') }}
+                                    />
                                   )}
                                   {hasDocs && (
                                     <div>
