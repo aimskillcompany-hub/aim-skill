@@ -83,7 +83,7 @@ function Field({ label, value }) {
   )
 }
 
-export default function Contractors({ user }) {
+export default function Contractors({ user, onNavigate }) {
   const [list, setList] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -208,7 +208,7 @@ export default function Contractors({ user }) {
 
     // Fetch transactions by ЄДРПОУ (primary) or by name (fallback)
     let txQuery = supabase.from('bank_transactions')
-      .select('id,date,amount,direction,article,counterparty,description,project_id,edrpou,doc_type,doc_number,documents(id,file_name,file_path,file_type,file_size,doc_role),transaction_items(id,name,quantity,unit,unit_price,amount)')
+      .select('id,date,amount,direction,article,counterparty,description,project_id,edrpou,doc_type,doc_number,documents(id,file_name,file_path,file_type,file_size,doc_role),transaction_items(id,name,quantity,unit,unit_price,amount,product_id)')
       .eq('is_ignored', false)
       .order('date', { ascending: false }).limit(500)
 
@@ -671,7 +671,13 @@ export default function Contractors({ user }) {
                                         <tbody>
                                           {tx.transaction_items.map(it => (
                                             <tr key={it.id} style={{ borderBottom:'1px solid var(--border)' }}>
-                                              <td style={{ padding:'4px 8px' }}>{it.name}</td>
+                                              <td style={{ padding:'4px 8px' }}>
+                                                {it.product_id ? (
+                                                  <span style={{ color:'var(--blue)', cursor:'pointer', textDecoration:'underline dotted' }}
+                                                    onClick={e => { e.stopPropagation(); sessionStorage.setItem('aim-open-product', it.product_id); onNavigate && onNavigate('inventory') }}
+                                                    title="Відкрити на складі">{it.name}</span>
+                                                ) : it.name}
+                                              </td>
                                               <td style={{ padding:'4px 8px', textAlign:'right' }}>{it.quantity||'—'}</td>
                                               <td style={{ padding:'4px 8px' }}>{it.unit||''}</td>
                                               <td style={{ padding:'4px 8px', textAlign:'right' }}>{it.unit_price ? fmt(it.unit_price) : '—'}</td>

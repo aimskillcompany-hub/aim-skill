@@ -313,7 +313,7 @@ export default function App() {
     registry: <Registry user={user} />,
     bank: <Bank user={user} />,
     cash: <Cash user={user} />,
-    contractors: <Contractors user={user} />,
+    contractors: <Contractors user={user} onNavigate={setPage} />,
     inventory: <Inventory user={user} />,
     reports: <Reports />,
     planning: <Planning user={user} />,

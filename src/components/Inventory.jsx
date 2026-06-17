@@ -112,7 +112,17 @@ export default function Inventory({ user }) {
     loadAll()
   }
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => {
+    loadAll().then(() => {
+      const openId = sessionStorage.getItem('aim-open-product')
+      if (openId) {
+        sessionStorage.removeItem('aim-open-product')
+        supabase.from('products').select('*').eq('id', openId).single().then(({ data }) => {
+          if (data) openDetail(data)
+        })
+      }
+    })
+  }, [])
 
   const loadAll = async () => {
     setLoading(true)
