@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { invalidateCache, TYPE_LABELS } from '../lib/articles'
+import { invalidateCache, TYPE_LABELS, PL_LABELS } from '../lib/articles'
 
 const TYPES = ['expense', 'income', 'transfer', 'other']
+const PL_LEVELS = ['revenue', 'cogs', 'opex', 'other_income', 'below_line', 'transfer', 'none']
 
 export default function ArticlesSettings() {
   const [articles, setArticles] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editItem, setEditItem] = useState(null)
-  const [form, setForm] = useState({ name: '', type: 'expense' })
+  const [form, setForm] = useState({ name: '', type: 'expense', pl_level: 'opex' })
   const [saving, setSaving] = useState(false)
   const [activeType, setActiveType] = useState('expense')
 
@@ -24,13 +25,13 @@ export default function ArticlesSettings() {
 
   const openAdd = () => {
     setEditItem(null)
-    setForm({ name: '', type: activeType })
+    setForm({ name: '', type: activeType, pl_level: activeType === 'transfer' ? 'transfer' : activeType === 'income' ? 'revenue' : 'opex' })
     setShowForm(true)
   }
 
   const openEdit = (a) => {
     setEditItem(a)
-    setForm({ name: a.name, type: a.type })
+    setForm({ name: a.name, type: a.type, pl_level: a.pl_level || 'none' })
     setShowForm(true)
   }
 
@@ -38,10 +39,10 @@ export default function ArticlesSettings() {
     if (!form.name.trim()) return
     setSaving(true)
     if (editItem) {
-      await supabase.from('articles').update({ name: form.name.trim(), type: form.type }).eq('id', editItem.id)
+      await supabase.from('articles').update({ name: form.name.trim(), type: form.type, pl_level: form.pl_level }).eq('id', editItem.id)
     } else {
       const maxOrder = Math.max(0, ...articles.filter(a => a.type === form.type).map(a => a.sort_order || 0))
-      await supabase.from('articles').insert({ name: form.name.trim(), type: form.type, sort_order: maxOrder + 10 })
+      await supabase.from('articles').insert({ name: form.name.trim(), type: form.type, pl_level: form.pl_level, sort_order: maxOrder + 10 })
     }
     invalidateCache()
     setSaving(false)
@@ -116,6 +117,11 @@ export default function ArticlesSettings() {
             }}>
               <i className="ti ti-grip-vertical" style={{ color: 'var(--text3)', fontSize: 14, cursor: 'grab' }} />
               <span style={{ flex: 1, fontSize: 13.5, fontWeight: a.is_active ? 500 : 400 }}>{a.name}</span>
+              {a.pl_level && a.pl_level !== 'none' && (
+                <span style={{ fontSize:10, background:'var(--blue-bg)', color:'var(--blue)', padding:'1px 6px', borderRadius:4 }}>
+                  {PL_LABELS[a.pl_level] || a.pl_level}
+                </span>
+              )}
               {!a.is_active && (
                 <span style={{ fontSize: 11, background: 'var(--border)', color: 'var(--text3)', padding: '1px 8px', borderRadius: 4 }}>
                   Вимкнено
@@ -167,10 +173,16 @@ export default function ArticlesSettings() {
                   onKeyDown={e => e.key === 'Enter' && handleSave()}
                 />
               </div>
-              <div className="form-group full">
+              <div className="form-group">
                 <label>Тип</label>
                 <select className="form-input" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
                   {TYPES.map(t => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Рівень P&L</label>
+                <select className="form-input" value={form.pl_level} onChange={e => setForm(f => ({ ...f, pl_level: e.target.value }))}>
+                  {PL_LEVELS.map(l => <option key={l} value={l}>{PL_LABELS[l] || (l === 'none' ? 'Не визначено' : l)}</option>)}
                 </select>
               </div>
             </div>

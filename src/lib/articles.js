@@ -37,3 +37,37 @@ export const TYPE_LABELS = {
   transfer: 'Перекази / ПФД',
   other:    'Інше',
 }
+
+// ── P&L ієрархія по pl_level ──
+export const PL_ORDER = ['revenue', 'cogs', '_gp', 'opex', '_ebit', 'other_income', '_np', 'below_line', '_net']
+
+export const PL_LABELS = {
+  revenue:      'Виручка',
+  cogs:         'Собівартість (COGS)',
+  _gp:          'Валовий прибуток (GP)',
+  opex:         'Операційні витрати (OpEx)',
+  _ebit:        'Операційний прибуток (EBIT)',
+  other_income: 'Інші доходи / витрати',
+  _np:          'Чистий прибуток (до податків)',
+  below_line:   'Податки та обовʼязкові платежі',
+  _net:         'Чистий прибуток (Net)',
+}
+
+// Знак секції: revenue додатній, cogs/opex/below_line від'ємний
+export const PL_SIGN = {
+  revenue: +1,
+  cogs: -1,
+  opex: -1,
+  other_income: +1, // може бути і + і -, direction визначає
+  below_line: -1,
+}
+
+export function groupByPlLevel(articles) {
+  const result = {}
+  PL_ORDER.filter(k => !k.startsWith('_')).forEach(level => { result[level] = [] })
+  articles.forEach(a => {
+    const level = a.pl_level || 'none'
+    if (result[level]) result[level].push(a)
+  })
+  return result
+}
