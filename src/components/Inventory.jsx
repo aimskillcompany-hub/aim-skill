@@ -31,8 +31,6 @@ export default function Inventory({ user }) {
     e.stopPropagation()
     setCheckedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
-  const allChecked = filtered.length > 0 && checkedIds.size === filtered.length
-  const someChecked = checkedIds.size > 0
 
   const bulkUpdate = async (updates) => {
     setBulkSaving(true)
@@ -191,6 +189,8 @@ export default function Inventory({ user }) {
     }
     return true
   })
+  const allChecked = filtered.length > 0 && checkedIds.size === filtered.length
+  const someChecked = checkedIds.size > 0
 
   const kpi = {
     total: products.length,
