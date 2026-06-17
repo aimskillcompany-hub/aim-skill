@@ -24,6 +24,27 @@ export default function Inventory({ user }) {
   const [filterCat, setFilterCat] = useState('')
   const [filterType, setFilterType] = useState('goods')
   const [showServiceMenu, setShowServiceMenu] = useState(false)
+  const [checkedIds, setCheckedIds] = useState(new Set())
+  const [bulkSaving, setBulkSaving] = useState(false)
+
+  const toggleCheck = (id, e) => {
+    e.stopPropagation()
+    setCheckedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+  const allChecked = filtered.length > 0 && checkedIds.size === filtered.length
+  const someChecked = checkedIds.size > 0
+
+  const bulkUpdate = async (updates) => {
+    setBulkSaving(true)
+    const ids = [...checkedIds]
+    for (let i = 0; i < ids.length; i += 50) {
+      const chunk = ids.slice(i, i + 50)
+      await supabase.from('products').update(updates).in('id', chunk)
+    }
+    setBulkSaving(false)
+    setCheckedIds(new Set())
+    loadAll()
+  }
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY_PRODUCT)
   const [editId, setEditId] = useState(null)
@@ -845,11 +866,45 @@ export default function Inventory({ user }) {
         )}
       </div>
 
+      {/* Bulk actions */}
+      {someChecked && (
+        <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px', background:'var(--blue-bg)', borderRadius:10, marginBottom:12, flexWrap:'wrap' }}>
+          <span style={{ fontSize:13, fontWeight:500 }}>Обрано: {checkedIds.size}</span>
+          <select style={{ fontSize:12, padding:'4px 8px', borderRadius:6, border:'1px solid var(--border)', fontFamily:'inherit' }}
+            onChange={e => { if (e.target.value) { bulkUpdate({ product_type: e.target.value }); e.target.value = '' } }}>
+            <option value="">Змінити тип...</option>
+            <option value="goods">Товар</option>
+            <option value="service">Послуга</option>
+            <option value="expense">Госп. витрата</option>
+          </select>
+          <input placeholder="Категорія..." style={{ fontSize:12, padding:'4px 8px', borderRadius:6, border:'1px solid var(--border)', width:120, fontFamily:'inherit' }}
+            onKeyDown={e => { if (e.key === 'Enter' && e.target.value) { bulkUpdate({ category: e.target.value }); e.target.value = '' } }} />
+          <button className="btn btn-sm btn-secondary" disabled={bulkSaving}
+            onClick={() => bulkUpdate({ is_verified: true })} style={{ fontSize:12 }}>
+            <i className="ti ti-circle-check" style={{ fontSize:12 }} /> Верифікувати
+          </button>
+          <button className="btn btn-sm" disabled={bulkSaving}
+            style={{ fontSize:12, color:'var(--red)', background:'none', border:'1px solid var(--border)' }}
+            onClick={() => { if (confirm(`Архівувати ${checkedIds.size} товарів?`)) bulkUpdate({ status: 'archived' }) }}>
+            <i className="ti ti-archive" style={{ fontSize:12 }} /> Архівувати
+          </button>
+          <button className="btn btn-sm btn-secondary" onClick={() => setCheckedIds(new Set())} style={{ fontSize:12, marginLeft:'auto' }}>
+            Скасувати
+          </button>
+        </div>
+      )}
+
       {/* Table */}
       <div className="tbl-wrap">
         <table>
           <thead>
             <tr>
+              <th style={{ width:36 }}>
+                <input type="checkbox" checked={allChecked} onChange={() => {
+                  if (allChecked) setCheckedIds(new Set())
+                  else setCheckedIds(new Set(filtered.map(p => p.id)))
+                }} />
+              </th>
               <th>Назва</th>
               <th>SKU</th>
               <th>Категорія</th>
@@ -860,12 +915,25 @@ export default function Inventory({ user }) {
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 && <tr><td colSpan={7} style={{ textAlign:'center', padding:32, color:'var(--text3)' }}>Немає товарів</td></tr>}
+            {filtered.length === 0 && <tr><td colSpan={8} style={{ textAlign:'center', padding:32, color:'var(--text3)' }}>Немає товарів</td></tr>}
             {filtered.map(p => {
               const stockColor = p.current_stock <= 0 ? 'var(--red)' : p.current_stock <= (p.min_stock||0) ? '#D97706' : 'var(--green)'
               return (
-                <tr key={p.id} style={{ cursor:'pointer' }} onClick={() => openDetail(p)}>
-                  <td><div style={{ fontWeight:500, fontSize:14 }}>{p.name}</div></td>
+                <tr key={p.id} style={{ cursor:'pointer', background: checkedIds.has(p.id) ? 'var(--blue-bg)' : '' }} onClick={() => openDetail(p)}>
+                  <td onClick={e => toggleCheck(p.id, e)}>
+                    <input type="checkbox" checked={checkedIds.has(p.id)} readOnly />
+                  </td>
+                  <td>
+                    <div style={{ fontWeight:500, fontSize:14, display:'flex', alignItems:'center', gap:6 }}>
+                      {p.name}
+                      {p.product_type && p.product_type !== 'goods' && (
+                        <span style={{ fontSize:9, background: p.product_type === 'service' ? 'var(--blue-bg)' : 'var(--amber-bg)', color: p.product_type === 'service' ? 'var(--blue)' : 'var(--amber)', padding:'1px 4px', borderRadius:3, flexShrink:0 }}>
+                          {p.product_type === 'service' ? 'послуга' : 'госп.'}
+                        </span>
+                      )}
+                      {p.is_verified && <i className="ti ti-circle-check-filled" style={{ fontSize:13, color:'var(--green)', flexShrink:0 }} />}
+                    </div>
+                  </td>
                   <td style={{ fontSize:13, color:'var(--text2)' }}>{p.sku || '—'}</td>
                   <td style={{ fontSize:13, color:'var(--text2)' }}>{p.category || '—'}</td>
                   <td style={{ textAlign:'right', fontWeight:500, color: stockColor, fontVariantNumeric:'tabular-nums' }}>
