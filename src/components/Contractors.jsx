@@ -4,6 +4,41 @@ import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import { upsertContractor, syncContractorStats, importMissingContractors, mergeDuplicates } from '../lib/contractors'
 
 const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
+
+function TxStats({ txs, txIncome, txExpense }) {
+  let goodsCost = 0
+  txs.filter(t => t.direction === 'Доходи').forEach(tx => {
+    (tx.transaction_items || []).forEach(it => {
+      const qty = parseFloat(it.quantity) || 0
+      const cp = it._costPrice || 0
+      goodsCost += qty * cp
+    })
+  })
+  const totalExp = goodsCost + txExpense
+  const margin = txIncome - totalExp
+  const marginColor = margin >= 0 ? 'var(--green)' : 'var(--red)'
+  const marginBg = margin >= 0 ? 'var(--green-bg)' : 'var(--red-bg)'
+  return (
+    <div style={{ display:'flex', gap:12, marginBottom:16, flexWrap:'wrap' }}>
+      <div style={{ background:'var(--green-bg)', borderRadius:12, padding:'12px 16px', flex:1, minWidth:100 }}>
+        <div style={{ fontSize:11, color:'var(--green)' }}>Дохід</div>
+        <div style={{ fontSize:18, fontWeight:500, color:'var(--green)' }}>+{fmt(txIncome)} грн</div>
+      </div>
+      <div style={{ background:'var(--red-bg)', borderRadius:12, padding:'12px 16px', flex:1, minWidth:100 }}>
+        <div style={{ fontSize:11, color:'var(--red)' }}>Витрати</div>
+        <div style={{ fontSize:18, fontWeight:500, color:'var(--red)' }}>-{fmt(totalExp)} грн</div>
+        {goodsCost > 0 && <div style={{ fontSize:10, color:'var(--text3)' }}>с/в {fmt(goodsCost)}{txExpense > 0 ? ` + дод. ${fmt(txExpense)}` : ''}</div>}
+      </div>
+      <div style={{ background:marginBg, borderRadius:12, padding:'12px 16px', flex:1, minWidth:100 }}>
+        <div style={{ fontSize:11, color:marginColor }}>Маржа</div>
+        <div style={{ fontSize:18, fontWeight:500, color:marginColor }}>
+          {margin >= 0 ? '+' : '−'}{fmt(Math.abs(margin))} грн
+          {txIncome > 0 && <span style={{ fontSize:12, fontWeight:400 }}> ({((margin / txIncome) * 100).toFixed(0)}%)</span>}
+        </div>
+      </div>
+    </div>
+  )
+}
 const TYPES = [
   { id: 'client', label: 'Клієнт', bg: '#EFF5EF', color: '#4A7C59' },
   { id: 'supplier', label: 'Постачальник', bg: '#F5EDED', color: '#9B3A3A' },
@@ -192,6 +227,25 @@ export default function Contractors({ user }) {
     ])
 
     const allTxs = txs || []
+
+    // Підвантажити cost_price з stock_movements для маржі
+    const allItemIds = allTxs.flatMap(tx => (tx.transaction_items || []).map(it => it.id)).filter(Boolean)
+    if (allItemIds.length > 0) {
+      try {
+        const { data: movs } = await supabase.from('stock_movements')
+          .select('transaction_item_id, cost_price')
+          .in('transaction_item_id', allItemIds)
+        const movMap = {}
+        ;(movs || []).forEach(m => { if (m.transaction_item_id) movMap[m.transaction_item_id] = m })
+        allTxs.forEach(tx => {
+          ;(tx.transaction_items || []).forEach(it => {
+            const mov = movMap[it.id]
+            if (mov && mov.cost_price) it._costPrice = mov.cost_price
+          })
+        })
+      } catch (e) { console.warn('cost_price load:', e.message) }
+    }
+
     setDetailTxs(allTxs)
     setDetailPlans(plans || [])
 
@@ -559,16 +613,7 @@ export default function Contractors({ user }) {
               <div className="card"><div className="empty"><p>Немає операцій з цим контрагентом</p></div></div>
             ) : (
               <>
-                <div style={{ display:'flex', gap:16, marginBottom:16 }}>
-                  <div style={{ background:'var(--green-bg)', borderRadius:12, padding:'12px 20px' }}>
-                    <div style={{ fontSize:12, color:'var(--green)' }}>Дохід</div>
-                    <div style={{ fontSize:20, fontWeight:500, color:'var(--green)' }}>+{fmt(txIncome)} грн</div>
-                  </div>
-                  <div style={{ background:'var(--red-bg)', borderRadius:12, padding:'12px 20px' }}>
-                    <div style={{ fontSize:12, color:'var(--red)' }}>Витрати</div>
-                    <div style={{ fontSize:20, fontWeight:500, color:'var(--red)' }}>-{fmt(txExpense)} грн</div>
-                  </div>
-                </div>
+                <TxStats txs={detailTxs} txIncome={txIncome} txExpense={txExpense} />
                 <div className="tbl-wrap">
                   <table>
                     <thead><tr><th>Дата</th><th style={{ textAlign:'right' }}>Сума</th><th>Напрям</th><th>Стаття</th><th>Опис</th><th style={{ width:40 }}></th></tr></thead>
