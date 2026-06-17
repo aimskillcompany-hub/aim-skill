@@ -208,7 +208,7 @@ export default function Contractors({ user }) {
 
     // Fetch transactions by ЄДРПОУ (primary) or by name (fallback)
     let txQuery = supabase.from('bank_transactions')
-      .select('id,date,amount,direction,article,counterparty,description,project_id,edrpou,doc_type,doc_number,iban,documents(id,file_name,file_path,file_type,file_size,doc_role),transaction_items(id,name,quantity,unit,unit_price,amount)')
+      .select('id,date,amount,direction,article,counterparty,description,project_id,edrpou,doc_type,doc_number,documents(id,file_name,file_path,file_type,file_size,doc_role),transaction_items(id,name,quantity,unit,unit_price,amount)')
       .eq('is_ignored', false)
       .order('date', { ascending: false }).limit(500)
 
