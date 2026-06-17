@@ -309,7 +309,6 @@ export async function mergeDuplicates(supabase) {
 
     // Transfer contractor_id references
     for (const dupId of dupIds) {
-      await supabase.from('transactions').update({ contractor_id: keep.id }).eq('contractor_id', dupId)
       await supabase.from('bank_transactions').update({ contractor_id: keep.id }).eq('contractor_id', dupId)
       await supabase.from('cash_transactions').update({ contractor_id: keep.id }).eq('contractor_id', dupId)
     }

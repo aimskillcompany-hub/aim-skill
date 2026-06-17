@@ -378,7 +378,8 @@ export default function Registry({ user }) {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Видалити операцію?')) return
-    await supabase.from('bank_transactions').update({ is_ignored: true }).eq('id', id)
+    const { error } = await supabase.from('bank_transactions').update({ is_ignored: true }).eq('id', id)
+    if (error) { alert('Помилка видалення: ' + error.message); return }
     setTransactions(prev => prev.filter(t => t.id !== id))
     setTotal(prev => prev - 1)
   }
@@ -390,13 +391,14 @@ export default function Registry({ user }) {
 
   const handleUpdate = async () => {
     setEditSaving(true)
-    await supabase.from('bank_transactions').update({
+    const { error } = await supabase.from('bank_transactions').update({
       direction: editForm.direction,
       article: editForm.article || null,
       project_id: editForm.project_id || null,
       description: editForm.description || null,
       counterparty: editForm.contractor,
     }).eq('id', editForm.id)
+    if (error) { alert('Помилка збереження: ' + error.message) }
     setEdit(null)
     setEditSaving(false)
     load()
@@ -442,8 +444,8 @@ export default function Registry({ user }) {
   }
   // ─────────────────────────────────────────────────────────────────────────────
 
-  const inc = transactions.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0)
-  const exp = transactions.filter(t => t.amount < 0).reduce((s, t) => s + t.amount, 0)
+  const inc = transactions.filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+  const exp = transactions.filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
   const totalPages = Math.ceil(total / PER_PAGE)
   const allChecked = transactions.length > 0 && checkedIds.size === transactions.length
   const someChecked = checkedIds.size > 0
@@ -598,10 +600,10 @@ export default function Registry({ user }) {
               <div style={{ fontSize:16, fontWeight:500, color:'var(--green)' }}>+{fmt(inc)} грн</div>
             </div>
           )}
-          {exp < 0 && (
+          {exp > 0 && (
             <div style={{ flex:'1 1 calc(50% - 6px)', minWidth:0 }}>
               <div style={{ fontSize:12, color:'var(--text3)', marginBottom:2 }}>Витрата</div>
-              <div style={{ fontSize:16, fontWeight:500, color:'var(--red)' }}>-{fmt(Math.abs(exp))} грн</div>
+              <div style={{ fontSize:16, fontWeight:500, color:'var(--red)' }}>-{fmt(exp)} грн</div>
             </div>
           )}
         </div>

@@ -22,10 +22,10 @@ export default function TransactionModal({ txId, tx: initialTx, onClose }) {
     if (!id) return
     setLoading(true)
     Promise.all([
-      // Load full transaction with project
-      supabase.from('transactions').select('*, projects(name)').eq('id', id).single(),
-      supabase.from('documents').select('*').eq('transaction_id', id),
-      supabase.from('transaction_items').select('*').eq('transaction_id', id),
+      // Load from bank_transactions (primary) with fallback to transactions
+      supabase.from('bank_transactions').select('*').eq('id', id).single(),
+      supabase.from('documents').select('*').eq('bank_transaction_id', id),
+      supabase.from('transaction_items').select('*').eq('bank_transaction_id', id),
     ]).then(([{ data: txData }, { data: docsData }, { data: itemsData }]) => {
       if (txData) setTx(txData)
       setDocs(docsData || [])

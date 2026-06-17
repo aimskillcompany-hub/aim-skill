@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
-import { upsertContractor, syncContractorStats, importMissingContractors, mergeDuplicates } from '../lib/contractors'
+import { upsertContractor, syncContractorStats, mergeDuplicates } from '../lib/contractors'
 
 const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
 const TYPES = [
@@ -102,7 +102,7 @@ export default function Contractors({ user }) {
     setList(contractors.map(c => {
       const code = c.edrpou?.trim()
       const s = (code && statsByCode[code]) || statsByName[c.name?.trim().toLowerCase()] || {}
-      return { ...c, total_income:s.income||0, total_expense:s.expense||0, total_otherIn:s.otherIn||0, total_otherOut:s.otherOut||0, operations_count:s.count||c.operations_count||0, last_operation_date:s.lastDate||c.last_operation_date }
+      return { ...c, total_income:s.income||0, total_expense:s.expense||0, total_otherIn:s.otherIn||0, total_otherOut:s.otherOut||0, operations_count:s.count||0, last_operation_date:s.lastDate||null }
     }))
     setLoading(false)
   }

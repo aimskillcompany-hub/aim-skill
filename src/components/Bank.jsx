@@ -327,9 +327,9 @@ export default function Bank({ user }) {
     setLinkedTxLoading(true)
     setLinkedTxDetail(null)
     const [{ data: tx }, { data: docs }, { data: items }] = await Promise.all([
-      supabase.from('transactions').select('*, projects(name)').eq('id', txId).single(),
-      supabase.from('documents').select('*').eq('transaction_id', txId),
-      supabase.from('transaction_items').select('*').eq('transaction_id', txId),
+      supabase.from('bank_transactions').select('*').eq('id', txId).single(),
+      supabase.from('documents').select('*').eq('bank_transaction_id', txId),
+      supabase.from('transaction_items').select('*').eq('bank_transaction_id', txId),
     ])
     setLinkedTxDetail(tx)
     setLinkedTxDocs(docs || [])
@@ -383,8 +383,8 @@ export default function Bank({ user }) {
         )
       }
 
-      // Load existing transactions for matching
-      const { data: existing } = await supabase.from('transactions').select('id,date,amount,contractor,direction,edrpou').limit(2000)
+      // Load existing bank_transactions for matching
+      const { data: existing } = await supabase.from('bank_transactions').select('id,date,amount,counterparty,direction,edrpou').eq('is_ignored', false).limit(2000)
 
       // Load existing bank_transactions to detect duplicates
       const { data: existingBank } = await supabase
@@ -504,28 +504,14 @@ export default function Bank({ user }) {
         if (data?.edrpou) edrpou = data.edrpou
       }
       const contractorId = await upsertContractor(supabase, { name: btx.counterparty, edrpou, iban: btx.account, default_direction: bulkForm.direction, userId: user.id })
-      const { data: tx } = await supabase.from('transactions').insert({
-        date: btx.date,
-        contractor: btx.counterparty || 'Банк',
-        edrpou,
-        contractor_id: contractorId,
-        amount: signed,
+      await supabase.from('bank_transactions').update({
         direction: bulkForm.direction,
         article: bulkForm.article || null,
         project_id: bulkForm.projectId || null,
-        description: btx.description || null,
-        created_by: user.id,
-      }).select().single()
-      if (tx) {
-        await supabase.from('bank_transactions').update({
-          matched_transaction_id: tx.id, is_matched: true,
-          direction: bulkForm.direction,
-          article: bulkForm.article || null,
-          project_id: bulkForm.projectId || null,
-          edrpou: edrpou || null,
-          contractor_id: contractorId,
-        }).eq('id', btx.id)
-      }
+        edrpou: edrpou || null,
+        contractor_id: contractorId,
+        is_matched: true,
+      }).eq('id', btx.id)
     }
     setBulkSaving(false)
     setShowBulk(false)
@@ -556,24 +542,17 @@ export default function Bank({ user }) {
     const amt = parseFloat(createForm.amount) || 0
     const signed = createForm.direction === 'Доходи' ? Math.abs(amt) : -Math.abs(amt)
     const contractorId = await upsertContractor(supabase, { name: createForm.contractor, edrpou: createForm.edrpou, iban: createFrom?.account, default_direction: createForm.direction, userId: user.id })
-    const { data: tx, error } = await supabase.from('transactions').insert({
-      date: createForm.date, contractor: createForm.contractor,
+    const { error } = await supabase.from('bank_transactions').update({
+      direction: createForm.direction,
+      article: createForm.article || null,
+      project_id: createForm.projectId || null,
+      edrpou: createForm.edrpou || null,
+      doc_type: createForm.docType || null,
+      doc_number: createForm.docNumber || null,
       contractor_id: contractorId,
-      edrpou: createForm.edrpou || null, doc_type: createForm.docType || null,
-      doc_number: createForm.docNumber || null, amount: signed,
-      direction: createForm.direction, article: createForm.article,
-      description: createForm.description || null,
-      project_id: createForm.projectId || null, created_by: user.id,
-    }).select().single()
+      is_matched: true,
+    }).eq('id', createFrom.id)
     if (!error) {
-      await supabase.from('bank_transactions').update({
-        matched_transaction_id: tx.id, is_matched: true,
-        direction: createForm.direction,
-        article: createForm.article || null,
-        project_id: createForm.projectId || null,
-        edrpou: createForm.edrpou || null,
-        contractor_id: contractorId,
-      }).eq('id', createFrom.id)
       setUnmatched(u => u.filter(t => t.id !== createFrom.id))
       setCreateFrom(null)
     }
@@ -583,15 +562,15 @@ export default function Bank({ user }) {
   const openLink = async (btx) => {
     setLinkFor(btx)
     setLinkSearch('')
-    const { data } = await supabase.from('transactions').select('id,date,amount,contractor,direction,article,doc_type,doc_number,edrpou,description,documents(id)')
-      .order('date', { ascending: false }).limit(50)
-    setLinkResults(data || [])
+    const { data } = await supabase.from('bank_transactions').select('id,date,amount,counterparty,direction,article,doc_type,doc_number,edrpou,description,documents(id)')
+      .eq('is_ignored', false).order('date', { ascending: false }).limit(50)
+    setLinkResults((data || []).map(t => ({ ...t, contractor: t.counterparty })))
   }
 
   const searchLink = async (q) => {
     setLinkSearch(q)
-    const { data } = await supabase.from('transactions').select('id,date,amount,contractor,direction,article,doc_type,doc_number,edrpou,description,documents(id)')
-      .or(`contractor.ilike.${q}%,description.ilike.${q}%,doc_number.ilike.${q}%,edrpou.ilike.${q}%`).order('date', { ascending: false }).limit(30)
+    const { data } = await supabase.from('bank_transactions').select('id,date,amount,counterparty,direction,article,doc_type,doc_number,edrpou,description,documents(id)')
+      .eq('is_ignored', false).or(`counterparty.ilike.%${q}%,description.ilike.%${q}%,doc_number.ilike.%${q}%,edrpou.ilike.%${q}%`).order('date', { ascending: false }).limit(30)
     setLinkResults(data || [])
   }
 

@@ -163,7 +163,9 @@ export default function Reports() {
         const m = tx.date?.substring(0,7)
         if (!m) return
         if (!cfByMonth[m]) cfByMonth[m] = { month:m, inflow:0, outflow:0 }
-        if (tx.amount > 0) cfByMonth[m].inflow += tx.amount
+        if (tx.direction === 'Доходи') cfByMonth[m].inflow += Math.abs(tx.amount || 0)
+        else if (tx.direction === 'Витрати') cfByMonth[m].outflow += Math.abs(tx.amount || 0)
+        else if (tx.amount > 0) cfByMonth[m].inflow += tx.amount
         else cfByMonth[m].outflow += Math.abs(tx.amount)
       })
       const cfMonths = Object.keys(cfByMonth).sort()
