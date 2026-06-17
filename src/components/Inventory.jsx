@@ -5,7 +5,7 @@ import { processDocumentItems, migrateProductAliases, mergeProductDuplicates, ba
 const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(n || 0)
 const fmtInt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(n || 0))
 
-const EMPTY_PRODUCT = { name:'', sku:'', category:'', unit:'шт', buy_price:'', sell_price:'', min_stock:'0', notes:'' }
+const EMPTY_PRODUCT = { name:'', sku:'', uktzed:'', category:'', unit:'шт', buy_price:'', sell_price:'', min_stock:'0', notes:'' }
 
 export default function Inventory({ user }) {
   const [products, setProducts] = useState([])
@@ -203,7 +203,7 @@ export default function Inventory({ user }) {
   // CRUD
   const openAdd = () => { setForm(EMPTY_PRODUCT); setEditId(null); setShowForm(true) }
   const openEdit = (p) => {
-    setForm({ name:p.name||'', sku:p.sku||'', category:p.category||'', unit:p.unit||'шт', buy_price:p.buy_price?.toString()||'', sell_price:p.sell_price?.toString()||'', min_stock:p.min_stock?.toString()||'0', notes:p.notes||'' })
+    setForm({ name:p.name||'', sku:p.sku||'', uktzed:p.uktzed||'', category:p.category||'', unit:p.unit||'шт', buy_price:p.buy_price?.toString()||'', sell_price:p.sell_price?.toString()||'', min_stock:p.min_stock?.toString()||'0', notes:p.notes||'' })
     setEditId(p.id); setShowForm(true)
   }
 
@@ -211,8 +211,8 @@ export default function Inventory({ user }) {
     if (!form.name) return
     setSaving(true)
     const payload = {
-      name: form.name, sku: form.sku || null, category: form.category || null,
-      unit: form.unit || 'шт', buy_price: parseFloat(form.buy_price) || null,
+      name: form.name, sku: form.sku || null, uktzed: form.uktzed || null,
+      category: form.category || null, unit: form.unit || 'шт', buy_price: parseFloat(form.buy_price) || null,
       sell_price: parseFloat(form.sell_price) || null, min_stock: parseFloat(form.min_stock) || 0,
       notes: form.notes || null, created_by: user?.id,
     }
@@ -461,6 +461,7 @@ export default function Inventory({ user }) {
                 </span>
               )}
               {detail.sku && <span>SKU: {detail.sku} · </span>}
+              {detail.uktzed && <span>УКТЗЕД: {detail.uktzed} · </span>}
               {detail.category && <span>{detail.category} · </span>}
               <span>{detail.unit}</span>
               <button
@@ -774,6 +775,7 @@ export default function Inventory({ user }) {
           <div className="form-grid">
             <div className="form-group full"><label>Назва *</label><input className="form-input" value={form.name} onChange={setF('name')} placeholder="Назва товару або послуги" /></div>
             <div className="form-group"><label>SKU / Артикул</label><input className="form-input" value={form.sku} onChange={setF('sku')} placeholder="ART-001" /></div>
+            <div className="form-group"><label>Код УКТЗЕД</label><input className="form-input" value={form.uktzed} onChange={setF('uktzed')} placeholder="8471300000" /></div>
             <div className="form-group"><label>Категорія</label><input className="form-input" value={form.category} onChange={setF('category')} placeholder="Електроніка" /></div>
             <div className="form-group"><label>Одиниця виміру</label><input className="form-input" value={form.unit} onChange={setF('unit')} placeholder="шт" /></div>
             <div className="form-group"><label>Мін. залишок</label><input type="number" className="form-input" value={form.min_stock} onChange={setF('min_stock')} /></div>
