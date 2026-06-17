@@ -62,23 +62,28 @@ function ItemsTable({ items, isSale, onProductClick }) {
 }
 
 function TxStats({ txs, txIncome, txExpense }) {
-  let goodsCost = 0
+  let goodsCost = 0, goodsRevenue = 0
   txs.filter(t => t.direction === 'Доходи').forEach(tx => {
     (tx.transaction_items || []).forEach(it => {
       const qty = parseFloat(it.quantity) || 0
       const cp = it._costPrice
+      const sell = parseFloat(it.unit_price) || 0
       if (cp && cp > 0) goodsCost += qty * cp
+      goodsRevenue += qty * sell
     })
   })
+  // Все без ПДВ: виручка з items, собівартість FIFO
+  const revenue = goodsRevenue > 0 ? goodsRevenue : txIncome
   const totalExp = goodsCost + txExpense
-  const margin = txIncome - totalExp
+  const margin = revenue - totalExp
   const marginColor = margin >= 0 ? 'var(--green)' : 'var(--red)'
   const marginBg = margin >= 0 ? 'var(--green-bg)' : 'var(--red-bg)'
   return (
     <div style={{ display:'flex', gap:12, marginBottom:16, flexWrap:'wrap' }}>
       <div style={{ background:'var(--green-bg)', borderRadius:12, padding:'12px 16px', flex:1, minWidth:100 }}>
-        <div style={{ fontSize:11, color:'var(--green)' }}>Дохід</div>
-        <div style={{ fontSize:18, fontWeight:500, color:'var(--green)' }}>+{fmt(txIncome)} грн</div>
+        <div style={{ fontSize:11, color:'var(--green)' }}>Виручка (без ПДВ)</div>
+        <div style={{ fontSize:18, fontWeight:500, color:'var(--green)' }}>+{fmt(revenue)} грн</div>
+        {goodsRevenue > 0 && txIncome !== revenue && <div style={{ fontSize:10, color:'var(--text3)' }}>Оплачено: {fmt(txIncome)} (з ПДВ)</div>}
       </div>
       <div style={{ background:'var(--red-bg)', borderRadius:12, padding:'12px 16px', flex:1, minWidth:100 }}>
         <div style={{ fontSize:11, color:'var(--red)' }}>Витрати</div>
