@@ -471,6 +471,7 @@ export default function Registry({ user }) {
 
   const inc = (allTxsData || []).filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
   const exp = (allTxsData || []).filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+  const bankBalance = (allTxsData || []).reduce((s, t) => s + (t.amount || 0), 0)
   const totalPages = Math.ceil(total / PER_PAGE)
   const allChecked = transactions.length > 0 && checkedIds.size === transactions.length
   const someChecked = checkedIds.size > 0
@@ -632,10 +633,18 @@ export default function Registry({ user }) {
             </div>
           )}
         </div>
-        <div style={{ borderTop:'1px solid var(--border)', marginTop:10, paddingTop:10 }}>
-          <div style={{ fontSize:12, color:'var(--text3)', marginBottom:2 }}>Сальдо</div>
-          <div style={{ fontSize:18, fontWeight:500, color: inc-exp >= 0 ? 'var(--green)' : 'var(--red)' }}>
-            {inc-exp >= 0 ? '+' : ''}{fmt(inc-exp)} грн
+        <div style={{ display:'flex', gap:12, borderTop:'1px solid var(--border)', marginTop:10, paddingTop:10, flexWrap:'wrap' }}>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:12, color:'var(--text3)', marginBottom:2 }}>Сальдо (доходи − витрати)</div>
+            <div style={{ fontSize:18, fontWeight:500, color: inc-exp >= 0 ? 'var(--green)' : 'var(--red)' }}>
+              {inc-exp >= 0 ? '+' : ''}{fmt(inc-exp)} грн
+            </div>
+          </div>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:12, color:'var(--text3)', marginBottom:2 }}>Банківський баланс (всі операції)</div>
+            <div style={{ fontSize:18, fontWeight:500, color: bankBalance >= 0 ? 'var(--green)' : 'var(--red)' }}>
+              {bankBalance >= 0 ? '+' : ''}{fmt(bankBalance)} грн
+            </div>
           </div>
         </div>
       </div>
