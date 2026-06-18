@@ -1100,51 +1100,66 @@ export default function Registry({ user }) {
                 <i className="ti ti-package-import" style={{ fontSize:13 }} />
                 Додати товар
               </button>
-              {selectedDocs.length > 0 && selectedItems.length === 0 && (
+              {selectedDocs.length > 0 && (
                 <button className="btn btn-sm btn-secondary" style={{ display:'flex', alignItems:'center', gap:4 }}
                   disabled={recognizing}
                   onClick={async () => {
                     setRecognizing(true)
                     try {
-                      const doc = selectedDocs[0]
-                      const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(doc.file_path, 120)
-                      if (!urlData?.signedUrl) { setRecognizing(false); return }
-                      const res = await fetch(urlData.signedUrl)
-                      const blob = await res.blob()
-                      const file = new File([blob], doc.file_name || 'doc', { type: doc.file_type || 'application/pdf' })
                       const { extractDocumentMulti } = await import('../lib/ai')
                       const { matchProduct, processDocumentItems } = await import('../lib/stockService')
                       const arts = await (await import('../lib/articles')).fetchArticles()
-                      const data = await extractDocumentMulti([file], arts)
-                      const items = data.items || []
-                      if (items.length === 0) { alert('Позиції не розпізнані'); setRecognizing(false); return }
-                      // Match products
-                      for (let i = 0; i < items.length; i++) {
-                        if (!items[i].name) continue
-                        const match = await matchProduct(items[i].name)
-                        items[i]._matchedProductId = match.productId || null
-                        items[i]._action = match.matchType !== 'none' ? 'auto' : 'new'
+                      // Існуючі назви позицій для перевірки дублікатів
+                      const { data: existingItems } = await supabase.from('transaction_items')
+                        .select('name').eq('bank_transaction_id', selected.id)
+                      const existingNames = new Set((existingItems || []).map(e => e.name?.toLowerCase()))
+                      let totalAdded = 0
+
+                      // Обробити ВСІ документи
+                      for (const doc of selectedDocs) {
+                        const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(doc.file_path, 120)
+                        if (!urlData?.signedUrl) continue
+                        const res = await fetch(urlData.signedUrl)
+                        const blob = await res.blob()
+                        const file = new File([blob], doc.file_name || 'doc', { type: doc.file_type || 'application/pdf' })
+                        const data = await extractDocumentMulti([file], arts)
+                        const items = (data.items || []).filter(it => it.name)
+                        if (items.length === 0) continue
+
+                        // Match products
+                        for (const it of items) {
+                          const match = await matchProduct(it.name)
+                          it._matchedProductId = match.productId || null
+                          it._action = match.matchType !== 'none' ? 'auto' : 'new'
+                        }
+
+                        // Фільтрувати дублікати
+                        const newItems = items.filter(it => !existingNames.has(it.name?.toLowerCase()))
+                        if (newItems.length === 0) continue
+
+                        const { data: savedItems } = await supabase.from('transaction_items').insert(
+                          newItems.map(it => ({
+                            bank_transaction_id: selected.id, name: it.name,
+                            quantity: parseFloat(it.quantity) || null, unit: it.unit || null,
+                            unit_price: parseFloat(it.unitPrice) || null,
+                            amount: parseFloat(it.amount) || 0, vat_rate: parseFloat(it.vatRate) || 20,
+                          }))
+                        ).select('id, name, quantity, unit, unit_price, amount')
+
+                        if (savedItems?.length) {
+                          const enriched = savedItems.map((si, idx) => ({
+                            ...si, _matchedProductId: newItems[idx]?._matchedProductId || null, _action: newItems[idx]?._action || 'auto'
+                          }))
+                          await processDocumentItems(enriched, {
+                            docType: data.docType, docRole: doc.doc_role || 'incoming',
+                            bankTransactionId: selected.id, date: selected.date, userId: user?.id,
+                          })
+                          newItems.forEach(it => existingNames.add(it.name?.toLowerCase()))
+                          totalAdded += savedItems.length
+                        }
                       }
-                      // Перевірити дублікати
-                      const validItems = items.filter(it => it.name)
-                      const { data: savedItems } = await supabase.from('transaction_items').insert(
-                        validItems.map(it => ({
-                          bank_transaction_id: selected.id, name: it.name,
-                          quantity: parseFloat(it.quantity) || null, unit: it.unit || null,
-                          unit_price: parseFloat(it.unitPrice) || null,
-                          amount: parseFloat(it.amount) || 0, vat_rate: parseFloat(it.vatRate) || 20,
-                        }))
-                      ).select('id, name, quantity, unit, unit_price, amount')
-                      if (savedItems?.length) {
-                        const enriched = savedItems.map((si, idx) => ({
-                          ...si, _matchedProductId: validItems[idx]?._matchedProductId || null, _action: validItems[idx]?._action || 'auto'
-                        }))
-                        await processDocumentItems(enriched, {
-                          docType: data.docType, docRole: doc.doc_role || 'incoming',
-                          bankTransactionId: selected.id, date: selected.date, userId: user?.id,
-                        })
-                      }
-                      openDetail(selected) // перезавантажити
+                      if (totalAdded === 0) alert('Нових позицій не знайдено')
+                      openDetail(selected)
                     } catch (e) {
                       alert('Помилка розпізнавання: ' + e.message)
                     }
