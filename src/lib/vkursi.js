@@ -1,7 +1,8 @@
 // ── Vkursi API інтеграція ──
 // Документація: https://github.com/vkursi-pro/API
+// Запити йдуть через /api/vkursi (Vercel serverless) щоб обійти CORS
 
-const BASE = 'https://vkursi-api.azurewebsites.net/api/1.0'
+const PROXY = '/api/vkursi'
 
 let cachedToken = null
 let tokenExpiry = 0
@@ -14,20 +15,17 @@ async function getToken() {
   const password = localStorage.getItem('vkursi_password')
   if (!email || !password) throw new Error('Вкурсі: не налаштовано логін/пароль')
 
-  const res = await fetch(`${BASE}/token/authorize`, {
+  const res = await fetch(PROXY, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ action: 'authorize', email, password }),
   })
 
   if (!res.ok) throw new Error(`Vkursi auth error: ${res.status}`)
   const data = await res.json()
+  if (data.error) throw new Error(data.error)
 
-  if (!data.token && typeof data === 'string') {
-    cachedToken = data
-  } else {
-    cachedToken = data.token || data
-  }
+  cachedToken = data.token
   tokenExpiry = Date.now() + 55 * 60 * 1000 // 55 хвилин
   return cachedToken
 }
@@ -38,13 +36,10 @@ export async function fetchByEdrpou(edrpou) {
   const code = edrpou.trim()
   const token = await getToken()
 
-  const res = await fetch(`${BASE}/organizations/getadvancedorganization`, {
+  const res = await fetch(PROXY, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    },
-    body: JSON.stringify({ Code: code }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'getadvancedorganization', token, code }),
   })
 
   if (!res.ok) {
@@ -56,6 +51,7 @@ export async function fetchByEdrpou(edrpou) {
   }
 
   const raw = await res.json()
+  if (raw.error) throw new Error(raw.error)
   return parseResponse(raw)
 }
 
