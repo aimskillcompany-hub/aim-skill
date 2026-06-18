@@ -1302,11 +1302,34 @@ export default function Registry({ user }) {
                         const price = parseFloat(manualItem.unit_price) || 0
                         const amount = qty * price
                         const vatRate = parseFloat(manualItem.vat_rate) || 20
-                        await supabase.from('transaction_items').insert({
+                        // Створити або знайти продукт
+                        const { resolveProduct, createStockMovement } = await import('../lib/stockService')
+                        const resolved = await resolveProduct(manualItem.name.trim(), manualItem.unit || 'шт', price, user.id)
+                        const productId = resolved?.productId || null
+                        // Створити transaction_item
+                        const { data: newItem } = await supabase.from('transaction_items').insert({
                           bank_transaction_id: selected.id, name: manualItem.name.trim(),
                           quantity: qty, unit: manualItem.unit || 'шт',
                           unit_price: price, amount, vat_rate: vatRate,
-                        })
+                          product_id: productId,
+                        }).select('id').single()
+                        // Створити складський рух якщо це товар
+                        if (productId) {
+                          const { data: prodInfo } = await supabase.from('products')
+                            .select('product_type').eq('id', productId).maybeSingle()
+                          if (prodInfo?.product_type === 'goods') {
+                            const movType = selected.direction === 'Доходи' ? 'out' : 'in'
+                            await createStockMovement({
+                              productId, type: movType, quantity: qty,
+                              price, total: amount,
+                              bankTransactionId: selected.id,
+                              transactionItemId: newItem?.id || null,
+                              date: selected.date,
+                              description: manualItem.name.trim(),
+                              userId: user.id,
+                            })
+                          }
+                        }
                         setManualItem({ name:'', quantity:'1', unit:'шт', unit_price:'', vat_rate:'20' })
                         openDetail(selected)
                       }} style={{ height:32 }}>Додати</button>
