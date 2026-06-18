@@ -31,27 +31,78 @@ async function getToken() {
 }
 
 // ── Отримати дані по ЄДРПОУ ──
-// Пробує advanced (повні дані), якщо недоступно — fallback на basic
+// 1. Vkursi (якщо налаштовано і є кредити)
+// 2. Безкоштовний ЄДР як fallback
 export async function fetchByEdrpou(edrpou) {
   if (!edrpou?.trim()) throw new Error('ЄДРПОУ не вказано')
   const code = edrpou.trim()
-  const token = await getToken()
 
-  const res = await fetch(PROXY, {
+  // Спробувати Vkursi якщо налаштовано
+  if (isVkursiConfigured()) {
+    try {
+      const token = await getToken()
+      const res = await fetch(PROXY, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'getorganization', token, code }),
+      })
+      if (res.ok) {
+        const raw = await res.json()
+        if (!raw.error) {
+          if (raw.source === 'advanced') return parseAdvancedResponse(raw.data)
+          return parseBasicResponse(raw.data)
+        }
+      }
+    } catch (e) {
+      console.warn('Vkursi failed, falling back to EDR:', e.message)
+    }
+  }
+
+  // Fallback — безкоштовний ЄДР
+  return fetchFromEdr(code)
+}
+
+// ── Безкоштовний пошук через ЄДР ──
+async function fetchFromEdr(code) {
+  const res = await fetch('/api/edr', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'getorganization', token, code }),
+    body: JSON.stringify({ code }),
   })
 
-  if (!res.ok) throw new Error(`Vkursi error: ${res.status}`)
-
+  if (!res.ok) throw new Error(`ЄДР error: ${res.status}`)
   const raw = await res.json()
   if (raw.error) throw new Error(raw.error)
 
-  if (raw.source === 'advanced') {
-    return parseAdvancedResponse(raw.data)
+  return parseEdrResponse(raw.data, raw.source)
+}
+
+// ── Парсинг відповіді від ЄДР ──
+function parseEdrResponse(d, source) {
+  return {
+    _source: source || 'edr',
+    name: d.name || d.full_name || d.officialName || null,
+    short_name: d.short_name || d.shortName || null,
+    edrpou: d.edrpou || d.code || null,
+    ipn: d.inn || d.ipn || null,
+    state: d.state || d.status || null,
+    director: d.director || d.head || d.ceo || null,
+    contact_person: d.director || d.head || d.ceo || null,
+    legal_address: d.address || d.location || null,
+    address: d.address || d.location || null,
+    primary_kved: d.kved || d.activity || d.primaryActivity || null,
+    registration_date: d.registration_date || d.registrationDate || null,
+    // Поля недоступні в безкоштовному ЄДР
+    phone: null, phone2: null, email: null, website: null,
+    city: null, region: null, postal_code: null,
+    legal_form: null, is_vat_payer: false,
+    founders: null, capital: null,
+    director_position: null, contact_position: null,
+    court_cases_count: null, enforcement_count: null,
+    express_score: null,
+    vkursi_data: null,
+    vkursi_updated_at: new Date().toISOString(),
   }
-  return parseBasicResponse(raw.data)
 }
 
 // ── Парсинг ADVANCED відповіді (повні дані) ──
