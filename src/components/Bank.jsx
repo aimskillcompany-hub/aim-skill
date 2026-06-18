@@ -327,9 +327,9 @@ export default function Bank({ user }) {
     setLinkedTxLoading(true)
     setLinkedTxDetail(null)
     const [{ data: tx }, { data: docs }, { data: items }] = await Promise.all([
-      supabase.from('transactions').select('*, projects(name)').eq('id', txId).single(),
-      supabase.from('documents').select('*').eq('transaction_id', txId),
-      supabase.from('transaction_items').select('*').eq('transaction_id', txId),
+      supabase.from('bank_transactions').select('*').eq('id', txId).single(),
+      supabase.from('documents').select('*').eq('bank_transaction_id', txId),
+      supabase.from('transaction_items').select('*').eq('bank_transaction_id', txId),
     ])
     setLinkedTxDetail(tx)
     setLinkedTxDocs(docs || [])
