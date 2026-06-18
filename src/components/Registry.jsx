@@ -1305,9 +1305,33 @@ export default function Registry({ user }) {
             </div>
 
             <div>
-              <div style={{ fontSize:13, fontWeight:600, marginBottom:8, display:'flex', alignItems:'center', gap:6 }}>
-                <i className="ti ti-paperclip" style={{ fontSize:15, color:'var(--blue)' }} />
-                Файли ({selectedDocs.length})
+              <div style={{ fontSize:13, fontWeight:600, marginBottom:8, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  <i className="ti ti-paperclip" style={{ fontSize:15, color:'var(--blue)' }} />
+                  Файли ({selectedDocs.length})
+                </div>
+                <label style={{ fontSize:12, color:'var(--blue)', cursor:'pointer', display:'flex', alignItems:'center', gap:4, fontWeight:400 }}>
+                  <i className="ti ti-upload" style={{ fontSize:13 }} /> Завантажити
+                  <input type="file" accept=".pdf,image/*" multiple style={{ display:'none' }}
+                    onChange={async (e) => {
+                      const files = Array.from(e.target.files || [])
+                      for (const f of files) {
+                        const ext = f.name.split('.').pop()?.toLowerCase() || 'jpg'
+                        const safePath = `${selected.id}/${Date.now()}.${ext}`
+                        const { error } = await supabase.storage.from('documents').upload(safePath, f, { contentType: f.type })
+                        if (!error) {
+                          await supabase.from('documents').insert({
+                            bank_transaction_id: selected.id,
+                            file_name: f.name, file_path: safePath,
+                            file_type: f.type, file_size: f.size,
+                            doc_role: 'incoming', uploaded_by: user?.id,
+                          })
+                        }
+                      }
+                      openDetail(selected)
+                      e.target.value = ''
+                    }} />
+                </label>
               </div>
               {selectedDocs.length===0 && <p style={{ fontSize:12, color:'var(--text3)' }}>Немає прикріплених файлів</p>}
               {selectedDocs.map(doc => (
