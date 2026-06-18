@@ -70,6 +70,18 @@ export async function saveDoc({ docType, docNumber, docDate, contractorId, contr
   return data
 }
 
+// ── Оновити документ ──
+export async function updateDoc(id, { docNumber, docDate, items, subtotal, vatAmount, total, notes }) {
+  const { error } = await supabase.from('generated_docs').update({
+    doc_number: docNumber,
+    doc_date: docDate,
+    items: JSON.stringify(cleanItems(items)),
+    subtotal, vat_amount: vatAmount, total,
+    notes: notes || null,
+  }).eq('id', id)
+  if (error) throw new Error(error.message)
+}
+
 // ── Оновити статус ──
 export async function updateDocStatus(id, status, bankTransactionId) {
   const upd = { status }

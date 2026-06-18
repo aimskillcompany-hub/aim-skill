@@ -7,17 +7,25 @@ import {
 
 const today = () => new Date().toISOString().split('T')[0]
 
-export default function DocGenModal({ contractor, userId, onClose, onSaved }) {
-  const [step, setStep] = useState(1) // 1=тип, 2=дані, 3=превʼю
-  const [docType, setDocType] = useState(null)
-  const [docNumber, setDocNumber] = useState('')
-  const [docDate, setDocDate] = useState(today())
-  const [notes, setNotes] = useState('')
-  const [items, setItems] = useState([{ name: '', quantity: 1, unit: 'шт', unitPrice: '', vatRate: 20, amount: '', productId: null }])
+export default function DocGenModal({ contractor, userId, onClose, onSaved, editDoc }) {
+  const isEdit = !!editDoc
+  const [step, setStep] = useState(isEdit ? 2 : 1) // при редагуванні одразу крок 2
+  const [docType, setDocType] = useState(editDoc?.doc_type || null)
+  const [docNumber, setDocNumber] = useState(editDoc?.doc_number || '')
+  const [docDate, setDocDate] = useState(editDoc?.doc_date || today())
+  const [notes, setNotes] = useState(editDoc?.notes || '')
+  const [editId] = useState(editDoc?.id || null)
+  const [items, setItems] = useState(() => {
+    if (editDoc?.items) {
+      const parsed = typeof editDoc.items === 'string' ? JSON.parse(editDoc.items) : editDoc.items
+      return parsed.length > 0 ? parsed : [{ name: '', quantity: 1, unit: 'шт', unitPrice: '', vatRate: 20, amount: '', productId: null }]
+    }
+    return [{ name: '', quantity: 1, unit: 'шт', unitPrice: '', vatRate: 20, amount: '', productId: null }]
+  })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [products, setProducts] = useState([])
-  const [searchIdx, setSearchIdx] = useState(null) // який рядок зараз шукає
+  const [searchIdx, setSearchIdx] = useState(null)
   const [searchText, setSearchText] = useState('')
 
   // Завантажити товари зі складу
@@ -27,9 +35,9 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved }) {
       .then(({ data }) => setProducts(data || []))
   }, [])
 
-  // Авто-нумерація при виборі типу
+  // Авто-нумерація при виборі типу (тільки для нових)
   useEffect(() => {
-    if (docType) {
+    if (docType && !isEdit) {
       getNextDocNumber(docType).then(n => setDocNumber(n))
     }
   }, [docType])
@@ -85,13 +93,24 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved }) {
   const handleSave = async (andDownload) => {
     setSaving(true); setError(null)
     try {
-      await saveDoc({
-        docType, docNumber, docDate,
-        contractorId: contractor.id,
-        contractorName: contractor.short_name || contractor.name,
-        items, subtotal: totals.subtotal, vatAmount: totals.vatAmount, total: totals.total,
-        notes, userId,
-      })
+      if (editId) {
+        // Оновити існуючий документ
+        const { updateDoc } = await import('../lib/docgen')
+        await updateDoc(editId, {
+          docNumber, docDate, items,
+          subtotal: totals.subtotal, vatAmount: totals.vatAmount, total: totals.total,
+          notes,
+        })
+      } else {
+        // Створити новий
+        await saveDoc({
+          docType, docNumber, docDate,
+          contractorId: contractor.id,
+          contractorName: contractor.short_name || contractor.name,
+          items, subtotal: totals.subtotal, vatAmount: totals.vatAmount, total: totals.total,
+          notes, userId,
+        })
+      }
       if (andDownload === 'pdf') generatePdf(docType, contractor, items, { docNumber, docDate, notes })
       if (andDownload === 'xlsx') generateXlsx(docType, contractor, items, { docNumber, docDate, notes })
       onSaved?.()
@@ -115,7 +134,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved }) {
     <div className="modal-bg" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal modal-lg" style={{ maxWidth: 800 }}>
         <div className="modal-header">
-          <h2>{step === 1 ? 'Створити документ' : step === 2 ? 'Позиції документа' : 'Перегляд та збереження'}</h2>
+          <h2>{step === 1 ? 'Створити документ' : step === 2 ? (isEdit ? 'Редагування документа' : 'Позиції документа') : 'Перегляд та збереження'}</h2>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
 

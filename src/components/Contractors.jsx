@@ -171,6 +171,7 @@ export default function Contractors({ user, onNavigate }) {
   const [vkursiError, setVkursiError] = useState(null)
   const [vkursiInfo, setVkursiInfo] = useState(null)
   const [showDocGen, setShowDocGen] = useState(false)
+  const [editingDoc, setEditingDoc] = useState(null)
   const [contractorDocs, setContractorDocs] = useState([])
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState(null)
@@ -420,7 +421,7 @@ export default function Contractors({ user, onNavigate }) {
             )}
             {vkursiError && <div style={{ fontSize:12, color:'var(--red)', padding:'6px 12px', background:'var(--red-bg)', borderRadius:8 }}>{vkursiError}</div>}
             {vkursiInfo && !vkursiError && <div style={{ fontSize:12, color:'var(--green)', padding:'6px 12px', background:'var(--green-bg)', borderRadius:8 }}>Дані оновлено з Vkursi</div>}
-            <button onClick={() => setShowDocGen(true)} className="btn btn-primary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}>
+            <button onClick={() => { setEditingDoc(null); setShowDocGen(true) }} className="btn btn-primary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}>
               <i className="ti ti-file-plus" style={{ fontSize:14 }} /> Створити документ
             </button>
             <button onClick={() => openEdit(detail)} className="btn btn-secondary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}>
@@ -909,6 +910,11 @@ export default function Contractors({ user, onNavigate }) {
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: 4 }}>
+                            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--blue)', fontSize: 15, padding: '0 4px' }}
+                              title="Редагувати"
+                              onClick={() => { setEditingDoc(doc); setShowDocGen(true) }}>
+                              <i className="ti ti-pencil" style={{ fontSize: 14 }} />
+                            </button>
                             <button className="btn btn-sm btn-secondary" style={{ padding: '2px 8px', fontSize: 11 }}
                               onClick={() => {
                                 const items = typeof doc.items === 'string' ? JSON.parse(doc.items) : doc.items
@@ -947,7 +953,8 @@ export default function Contractors({ user, onNavigate }) {
           <DocGenModal
             contractor={detail}
             userId={user.id}
-            onClose={() => setShowDocGen(false)}
+            editDoc={editingDoc}
+            onClose={() => { setShowDocGen(false); setEditingDoc(null) }}
             onSaved={() => loadContractorDocs(detail.id).then(docs => setContractorDocs(docs))}
           />
         )}
