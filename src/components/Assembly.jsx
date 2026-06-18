@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { assembleProduct, getFifoCost } from '../lib/stockService'
 
-const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
+const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(Math.round(Math.abs(n || 0)))
+const fmtDate = d => d ? new Date(d).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'
 
 export default function Assembly({ user }) {
   const [products, setProducts] = useState([])
   const [assemblies, setAssemblies] = useState([])
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState('list') // list | create
+  const [view, setView] = useState('list') // list | create | detail
+  const [selectedId, setSelectedId] = useState(null)
 
   // Create form
   const [name, setName] = useState('')
@@ -65,6 +67,38 @@ export default function Assembly({ user }) {
   }
 
   const totalCost = components.reduce((s, c) => s + c.total * quantity, 0)
+
+  // ── Скасувати збірку ──
+  const handleDelete = async (assembly) => {
+    if (!confirm(`Скасувати збірку "${assembly.name}"?\n\nКомпоненти повернуться на склад, готовий виріб буде списаний.`)) return
+    setSaving(true)
+    setError(null)
+
+    try {
+      // Видалити stock_movements повʼязані зі збіркою (description містить "Збірка:")
+      const { data: movements } = await supabase.from('stock_movements')
+        .select('id')
+        .or(`description.ilike.%Збірка: ${assembly.name}%`)
+        .eq('date', assembly.assembled_at)
+
+      if (movements?.length) {
+        await supabase.from('stock_movements').delete().in('id', movements.map(m => m.id))
+      }
+
+      // Видалити assembly_items
+      await supabase.from('assembly_items').delete().eq('assembly_id', assembly.id)
+
+      // Видалити assembly
+      await supabase.from('assemblies').delete().eq('id', assembly.id)
+
+      setSuccess(`Збірку "${assembly.name}" скасовано`)
+      if (view === 'detail') setView('list')
+      loadAll()
+    } catch (e) {
+      setError('Помилка: ' + e.message)
+    }
+    setSaving(false)
+  }
 
   const handleAssemble = async () => {
     if (!name.trim()) { setError('Вкажіть назву виробу'); return }
@@ -275,6 +309,98 @@ export default function Assembly({ user }) {
     </div>
   )
 
+  // ═══ DETAIL VIEW ═══
+  if (view === 'detail') {
+    const a = assemblies.find(x => x.id === selectedId)
+    if (!a) { setView('list'); return null }
+    const items = a.assembly_items || []
+    const unitCost = a.quantity > 0 ? a.total_cost / a.quantity : 0
+
+    return (
+      <div>
+        <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h1>{a.name}</h1>
+            <p>Збірка від {fmtDate(a.assembled_at)}</p>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-secondary" onClick={() => setView('list')}>← Назад</button>
+            <button className="btn btn-secondary" style={{ color: 'var(--red)' }} onClick={() => handleDelete(a)} disabled={saving}>
+              <i className="ti ti-trash" style={{ fontSize: 14 }} /> Скасувати збірку
+            </button>
+          </div>
+        </div>
+
+        {error && <div className="alert alert-error" style={{ marginBottom: 14 }}>{error}</div>}
+        {success && <div className="alert alert-success" style={{ marginBottom: 14 }}>{success}</div>}
+
+        {/* Підсумок */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
+          <div className="card" style={{ textAlign: 'center', padding: 16 }}>
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 4 }}>Кількість</div>
+            <div style={{ fontSize: 22, fontWeight: 600 }}>{a.quantity} шт</div>
+          </div>
+          <div className="card" style={{ textAlign: 'center', padding: 16 }}>
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 4 }}>Собівартість за од.</div>
+            <div style={{ fontSize: 22, fontWeight: 600 }}>{fmt(unitCost)} грн</div>
+          </div>
+          <div className="card" style={{ textAlign: 'center', padding: 16 }}>
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 4 }}>Загальна собівартість</div>
+            <div style={{ fontSize: 22, fontWeight: 600, color: 'var(--blue)' }}>{fmt(a.total_cost)} грн</div>
+          </div>
+          <div className="card" style={{ textAlign: 'center', padding: 16 }}>
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 4 }}>Компонентів</div>
+            <div style={{ fontSize: 22, fontWeight: 600 }}>{items.length}</div>
+          </div>
+        </div>
+
+        {/* Компоненти */}
+        <div className="card">
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <i className="ti ti-list-details" style={{ fontSize: 16, color: 'var(--blue)' }} />
+            Компоненти збірки
+          </div>
+          <div className="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ minWidth: 200 }}>Компонент</th>
+                  <th style={{ textAlign: 'right' }}>К-сть</th>
+                  <th>Од.</th>
+                  <th style={{ textAlign: 'right' }}>FIFO ціна</th>
+                  <th style={{ textAlign: 'right' }}>Сума</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(ai => (
+                  <tr key={ai.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ fontSize: 13, fontWeight: 500 }}>{ai.products?.name || '—'}</td>
+                    <td style={{ textAlign: 'right' }}>{ai.quantity}</td>
+                    <td style={{ fontSize: 12, color: 'var(--text3)' }}>{ai.products?.unit || 'шт'}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(ai.cost_price)} грн</td>
+                    <td style={{ textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{fmt(ai.total)} грн</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 600 }}>
+                  <td colSpan={4}>Разом</td>
+                  <td style={{ textAlign: 'right' }}>{fmt(a.total_cost)} грн</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          {a.notes && (
+            <div style={{ marginTop: 12, fontSize: 13, color: 'var(--text2)', padding: '8px 12px', background: 'var(--surface2)', borderRadius: 8 }}>
+              <strong>Нотатки:</strong> {a.notes}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   // ═══ LIST VIEW ═══
   return (
     <div>
@@ -287,6 +413,8 @@ export default function Assembly({ user }) {
           <i className="ti ti-plus" style={{ fontSize: 15 }} /> Нова збірка
         </button>
       </div>
+
+      {success && <div className="alert alert-success" style={{ marginBottom: 14 }}>{success}</div>}
 
       {assemblies.length === 0 ? (
         <div className="card">
@@ -304,23 +432,50 @@ export default function Assembly({ user }) {
                 <th>Виріб</th>
                 <th style={{ textAlign: 'right' }}>К-сть</th>
                 <th style={{ textAlign: 'right' }}>Собівартість</th>
+                <th style={{ textAlign: 'right' }}>За одиницю</th>
                 <th>Компоненти</th>
                 <th>Нотатки</th>
+                <th style={{ width: 36 }}></th>
               </tr>
             </thead>
             <tbody>
-              {assemblies.map(a => (
-                <tr key={a.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ fontSize: 13, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{a.assembled_at}</td>
-                  <td style={{ fontWeight: 500 }}>{a.name}</td>
-                  <td style={{ textAlign: 'right' }}>{a.quantity}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{fmt(a.total_cost)} грн</td>
-                  <td style={{ fontSize: 12, color: 'var(--text2)' }}>
-                    {(a.assembly_items || []).map(ai => `${ai.products?.name || '?'} ×${ai.quantity}`).join(', ')}
-                  </td>
-                  <td style={{ fontSize: 12, color: 'var(--text3)' }}>{a.notes || '—'}</td>
-                </tr>
-              ))}
+              {assemblies.map(a => {
+                const items = a.assembly_items || []
+                const unitCost = a.quantity > 0 ? a.total_cost / a.quantity : 0
+                return (
+                  <tr key={a.id} style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+                    onClick={() => { setSelectedId(a.id); setView('detail'); setError(null); setSuccess(null) }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
+                    onMouseLeave={e => e.currentTarget.style.background = ''}>
+                    <td style={{ fontSize: 13, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{fmtDate(a.assembled_at)}</td>
+                    <td style={{ fontWeight: 500 }}>
+                      {a.name}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>{a.quantity}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
+                      {fmt(a.total_cost)} грн
+                    </td>
+                    <td style={{ textAlign: 'right', fontSize: 12, color: 'var(--text2)', fontVariantNumeric: 'tabular-nums' }}>
+                      {fmt(unitCost)} грн
+                    </td>
+                    <td style={{ fontSize: 12, color: 'var(--text2)' }}>
+                      <span style={{ background: 'var(--surface2)', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>
+                        {items.length} комп.
+                      </span>
+                    </td>
+                    <td style={{ fontSize: 12, color: 'var(--text3)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {a.notes || '—'}
+                    </td>
+                    <td onClick={e => e.stopPropagation()}>
+                      <button onClick={() => handleDelete(a)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 16, padding: '2px 4px' }}
+                        title="Скасувати збірку">
+                        <i className="ti ti-trash" style={{ fontSize: 15 }} />
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
