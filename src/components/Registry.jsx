@@ -61,6 +61,8 @@ export default function Registry({ user }) {
   const [addItemQty, setAddItemQty] = useState('')
   const [addItemPrice, setAddItemPrice] = useState('')
   const [recognizing, setRecognizing] = useState(false)
+  const [manualItemMode, setManualItemMode] = useState(false)
+  const [manualItem, setManualItem] = useState({ name:'', quantity:'1', unit:'шт', unit_price:'', vat_rate:'20' })
   const [pricesIncludeVat, setPricesIncludeVat] = useState(false)
   const [allProducts, setAllProducts] = useState([])
   const addItemResults = addItemSearch.length >= 2
@@ -1107,12 +1109,17 @@ export default function Registry({ user }) {
                 </div>
               </div>
             )}
-            {/* Додати товар вручну + розпізнати */}
+            {/* Додати товар/позицію вручну + розпізнати */}
             <div style={{ marginBottom:12, display:'flex', gap:8, flexWrap:'wrap' }}>
               <button className="btn btn-sm btn-secondary" style={{ display:'flex', alignItems:'center', gap:4 }}
                 onClick={() => setAddItemMode(prev => !prev)}>
                 <i className="ti ti-package-import" style={{ fontSize:13 }} />
-                Додати товар
+                Додати товар зі складу
+              </button>
+              <button className="btn btn-sm btn-secondary" style={{ display:'flex', alignItems:'center', gap:4 }}
+                onClick={() => setManualItemMode(prev => !prev)}>
+                <i className="ti ti-pencil-plus" style={{ fontSize:13 }} />
+                Додати позицію вручну
               </button>
               {selectedDocs.length > 0 && (
                 <button className="btn btn-sm btn-secondary" style={{ display:'flex', alignItems:'center', gap:4 }}
@@ -1248,6 +1255,51 @@ export default function Registry({ user }) {
                       </button>
                     </div>
                   )}
+                </div>
+              )}
+              {manualItemMode && (
+                <div style={{ marginTop:8, border:'1px solid var(--border)', borderRadius:8, padding:12, background:'var(--bg)' }}>
+                  <div style={{ fontSize:12, fontWeight:500, marginBottom:8, color:'var(--text2)' }}>Нова позиція</div>
+                  <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr', gap:6, alignItems:'end' }}>
+                    <div>
+                      <div style={{ fontSize:10, color:'var(--text3)', marginBottom:2 }}>Назва *</div>
+                      <input className="form-input" style={{ height:32, fontSize:12 }} placeholder="Назва товару/послуги"
+                        value={manualItem.name} onChange={e => setManualItem(f => ({ ...f, name: e.target.value }))} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize:10, color:'var(--text3)', marginBottom:2 }}>К-сть</div>
+                      <input type="number" className="form-input" style={{ height:32, fontSize:12 }}
+                        value={manualItem.quantity} onChange={e => setManualItem(f => ({ ...f, quantity: e.target.value }))} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize:10, color:'var(--text3)', marginBottom:2 }}>Ціна (без ПДВ)</div>
+                      <input type="number" className="form-input" style={{ height:32, fontSize:12 }} placeholder="0.00"
+                        value={manualItem.unit_price} onChange={e => setManualItem(f => ({ ...f, unit_price: e.target.value }))} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize:10, color:'var(--text3)', marginBottom:2 }}>ПДВ%</div>
+                      <select className="form-input" style={{ height:32, fontSize:12, padding:'4px 6px' }}
+                        value={manualItem.vat_rate} onChange={e => setManualItem(f => ({ ...f, vat_rate: e.target.value }))}>
+                        <option value="20">20%</option>
+                        <option value="7">7%</option>
+                        <option value="0">0%</option>
+                      </select>
+                    </div>
+                    <button className="btn btn-sm btn-primary" disabled={!manualItem.name.trim() || !manualItem.unit_price}
+                      onClick={async () => {
+                        const qty = parseFloat(manualItem.quantity) || 1
+                        const price = parseFloat(manualItem.unit_price) || 0
+                        const amount = qty * price
+                        const vatRate = parseFloat(manualItem.vat_rate) || 20
+                        await supabase.from('transaction_items').insert({
+                          bank_transaction_id: selected.id, name: manualItem.name.trim(),
+                          quantity: qty, unit: manualItem.unit || 'шт',
+                          unit_price: price, amount, vat_rate: vatRate,
+                        })
+                        setManualItem({ name:'', quantity:'1', unit:'шт', unit_price:'', vat_rate:'20' })
+                        openDetail(selected)
+                      }} style={{ height:32 }}>Додати</button>
+                  </div>
                 </div>
               )}
             </div>
