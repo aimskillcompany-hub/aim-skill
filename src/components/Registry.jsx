@@ -906,13 +906,15 @@ export default function Registry({ user }) {
         </div>
       )}
 
-      {/* Detail modal */}
+      {/* Detail — full screen */}
       {selected && (
-        <div className="modal-bg" onClick={e => e.target===e.currentTarget && setSelected(null)}>
-          <div className="modal modal-lg">
-            <div className="modal-header">
-              <h2 style={{ fontSize:15 }}>{selected.counterparty}</h2>
-              <button className="modal-close" onClick={() => setSelected(null)}>×</button>
+        <div style={{ position:'fixed', inset:0, background:'var(--bg)', zIndex:1000, overflowY:'auto' }}>
+          <div style={{ maxWidth:1200, margin:'0 auto', padding:'24px 32px' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+              <h2 style={{ fontSize:18, fontWeight:600, margin:0 }}>{selected.counterparty}</h2>
+              <button className="btn btn-secondary" onClick={() => setSelected(null)} style={{ display:'flex', alignItems:'center', gap:4 }}>
+                <i className="ti ti-arrow-left" style={{ fontSize:14 }} /> Назад до реєстру
+              </button>
             </div>
             <div className="modal-detail-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16, fontSize:13 }}>
               {(() => {
@@ -987,7 +989,7 @@ export default function Registry({ user }) {
                     <tbody>
                       {selectedItems.map(it => (
                         <tr key={it.id} style={{ borderBottom:'1px solid var(--bg)' }}>
-                          <td style={{ padding:'6px 8px', maxWidth:200 }}>{it.name}</td>
+                          <td style={{ padding:'6px 8px', minWidth:250 }}>{it.name}</td>
                           <td style={{ padding:'6px 8px', whiteSpace:'nowrap', textAlign:'right' }}>{fmt2(it.quantity)} {it.unit||'шт'}</td>
                           <td style={{ padding:'4px 6px', textAlign:'right' }}>
                             <input type="number" style={{ width:80, border:'1px solid var(--border)', borderRadius:4, padding:'2px 6px', fontSize:12, textAlign:'right', fontFamily:'inherit' }}
