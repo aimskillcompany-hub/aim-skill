@@ -475,8 +475,8 @@ export default function Contractors({ user, onNavigate }) {
 
         {/* ── Tab: Баланс ── */}
         {detailTab === 'balance' && (() => {
-          const totalIncome = detailTxs.filter(t=>t.amount>0).reduce((s,t)=>s+(t.amount||0),0)
-          const totalExpense = detailTxs.filter(t=>t.amount<0).reduce((s,t)=>s+Math.abs(t.amount||0),0)
+          const totalIncome = detailTxs.filter(t=>t.direction==='Доходи').reduce((s,t)=>s+Math.abs(t.amount||0),0)
+          const totalExpense = detailTxs.filter(t=>t.direction==='Витрати').reduce((s,t)=>s+Math.abs(t.amount||0),0)
           const currentBalance = totalIncome - totalExpense
           const today = new Date().toISOString().split('T')[0]
 
