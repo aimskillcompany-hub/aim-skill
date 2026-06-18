@@ -8,11 +8,16 @@ import { supabase } from '../supabase'
 export { DOCUMENT_TYPES, getDocType, getDocLabel, STATUS_LABELS, STATUS_COLORS } from './templates/registry'
 export { calcTotals, amountInWords, formatMoney, formatDate } from './formatUtils'
 
+// Фільтрувати порожні позиції
+function cleanItems(items) {
+  return (items || []).filter(it => it.name?.trim())
+}
+
 // ── Генерація та завантаження PDF ──
 export function generatePdf(docTypeKey, contractor, items, options) {
   const dt = getDocType(docTypeKey)
   if (!dt) throw new Error(`Невідомий тип документа: ${docTypeKey}`)
-  const docDef = dt.template.pdf(COMPANY, contractor, items, options)
+  const docDef = dt.template.pdf(COMPANY, contractor, cleanItems(items), options)
   const fileName = `${dt.label}_${options.docNumber}_${options.docDate}.pdf`
   downloadPdf(docDef, fileName)
 }
@@ -21,7 +26,7 @@ export function generatePdf(docTypeKey, contractor, items, options) {
 export function generateXlsx(docTypeKey, contractor, items, options) {
   const dt = getDocType(docTypeKey)
   if (!dt) throw new Error(`Невідомий тип документа: ${docTypeKey}`)
-  const wb = dt.template.xlsx(COMPANY, contractor, items, options)
+  const wb = dt.template.xlsx(COMPANY, contractor, cleanItems(items), options)
   const fileName = `${dt.label}_${options.docNumber}_${options.docDate}.xlsx`
   downloadXlsx(wb, fileName)
 }
@@ -55,7 +60,7 @@ export async function saveDoc({ docType, docNumber, docDate, contractorId, contr
     doc_date: docDate,
     contractor_id: contractorId,
     contractor_name: contractorName,
-    items: JSON.stringify(items),
+    items: JSON.stringify(cleanItems(items)),
     subtotal, vat_amount: vatAmount, total,
     notes: notes || null,
     created_by: userId,
