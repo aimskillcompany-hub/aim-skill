@@ -70,78 +70,89 @@ export default function ItemsTable({ items, onUpdateItem }) {
 }
 
 function ProductBadge({ item, products, onAction, onLink }) {
-  const [searching, setSearching] = useState(false)
+  const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const m = item._match
+  const isLinked = m?.matchType === 'exact'
+  const isFuzzy = m?.matchType === 'fuzzy'
 
-  const searchResults = searching && search.length >= 2
-    ? (products || []).filter(p => p.name.toLowerCase().includes(search.toLowerCase())).slice(0, 6)
-    : []
+  const searchResults = search.length >= 1
+    ? (products || []).filter(p => p.name.toLowerCase().includes(search.toLowerCase())).slice(0, 8)
+    : (products || []).slice(0, 8)
 
   if (m === null || m === undefined) return <span style={{ fontSize: 10, color: 'var(--text3)' }}>...</span>
 
-  if (m.matchType === 'exact' && !searching) {
+  // Закритий стан — показати результат
+  if (!open) {
     return (
-      <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
-        <span style={{ fontSize: 10, background: 'var(--green-bg)', color: 'var(--green)', padding: '2px 5px', borderRadius: 4, display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-          <i className="ti ti-check" style={{ fontSize: 10 }} />{(m.productName || '').substring(0, 20)}
-        </span>
-        {onLink && <button onClick={() => setSearching(true)} style={{ fontSize: 9, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)' }} title="Змінити">✎</button>}
-      </div>
-    )
-  }
-
-  if (m.matchType === 'fuzzy' && !searching) {
-    return (
-      <div style={{ display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 10, background: 'var(--amber-bg)', color: 'var(--amber)', padding: '2px 4px', borderRadius: 4 }} title={m.productName}>
-          {(m.productName || '').substring(0, 16)}?
-        </span>
-        {onAction && <button style={{ fontSize: 9, background: 'var(--green-bg)', border: 'none', borderRadius: 3, padding: '1px 4px', cursor: 'pointer', color: 'var(--green)', fontFamily: 'inherit' }} onClick={() => onAction('auto')}>Так</button>}
-        {onLink && <button style={{ fontSize: 9, background: 'none', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 4px', cursor: 'pointer', color: 'var(--blue)', fontFamily: 'inherit' }} onClick={() => { setSearching(true); setSearch('') }}>Пошук</button>}
-      </div>
-    )
-  }
-
-  // none або searching
-  if (searching) {
-    return (
-      <div style={{ position: 'relative' }}>
-        <input style={{ width: '100%', border: '1px solid var(--blue)', borderRadius: 4, padding: '2px 6px', fontSize: 11, fontFamily: 'inherit' }}
-          value={search} onChange={e => setSearch(e.target.value)} placeholder="Пошук товару..."
-          autoFocus onBlur={() => setTimeout(() => setSearching(false), 200)} />
-        {searchResults.length > 0 && (
-          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, zIndex: 20, maxHeight: 160, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,.1)' }}>
-            {searchResults.map(p => (
-              <div key={p.id} onMouseDown={() => { onLink(p.id, p.name); setSearching(false); setSearch('') }}
-                style={{ padding: '5px 8px', cursor: 'pointer', fontSize: 11, display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
-                onMouseLeave={e => e.currentTarget.style.background = ''}>
-                <span>{p.name.substring(0, 35)}</span>
-                <span style={{ color: 'var(--text3)', flexShrink: 0, marginLeft: 4 }}>{p.computed_stock} {p.unit}</span>
-              </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        {/* Статус привʼязки */}
+        <div onClick={() => { if (onLink) { setOpen(true); setSearch('') } }}
+          style={{
+            fontSize: 11, padding: '3px 8px', borderRadius: 5, cursor: onLink ? 'pointer' : 'default',
+            display: 'flex', alignItems: 'center', gap: 4,
+            background: isLinked ? 'var(--green-bg)' : isFuzzy ? 'var(--amber-bg)' : 'var(--surface2)',
+            color: isLinked ? 'var(--green)' : isFuzzy ? 'var(--amber)' : 'var(--text3)',
+            border: '1px solid transparent',
+          }}
+          title={isLinked ? m.productName : isFuzzy ? `Можливо: ${m.productName}` : 'Натисніть щоб привʼязати'}>
+          {isLinked && <i className="ti ti-check" style={{ fontSize: 11 }} />}
+          {isFuzzy && <i className="ti ti-help" style={{ fontSize: 11 }} />}
+          {!isLinked && !isFuzzy && <i className="ti ti-plus" style={{ fontSize: 11 }} />}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 100 }}>
+            {isLinked ? m.productName : isFuzzy ? m.productName : 'Привʼязати'}
+          </span>
+          {onLink && <i className="ti ti-chevron-down" style={{ fontSize: 10, marginLeft: 'auto', flexShrink: 0 }} />}
+        </div>
+        {/* Тип (для нових) */}
+        {!isLinked && !isFuzzy && onAction && (
+          <div style={{ display: 'flex', gap: 2 }}>
+            {['new', 'service', 'expense'].map(act => (
+              <button key={act} style={{
+                fontSize: 9, border: '1px solid var(--border)', borderRadius: 3, padding: '1px 4px', cursor: 'pointer', fontFamily: 'inherit',
+                background: item._action === act ? (act === 'new' ? 'var(--blue-bg)' : act === 'service' ? 'var(--green-bg)' : 'var(--amber-bg)') : 'none',
+                color: item._action === act ? (act === 'new' ? 'var(--blue)' : act === 'service' ? 'var(--green)' : 'var(--amber)') : 'var(--text3)',
+              }} onClick={() => onAction(act)}>
+                {act === 'new' ? 'Товар' : act === 'service' ? 'Послуга' : 'Госп.'}
+              </button>
             ))}
+          </div>
+        )}
+        {/* Підтвердження для fuzzy */}
+        {isFuzzy && onAction && (
+          <div style={{ display: 'flex', gap: 3 }}>
+            <button style={{ fontSize: 10, background: 'var(--green-bg)', border: 'none', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', color: 'var(--green)', fontFamily: 'inherit' }}
+              onClick={() => onAction('auto')}>✓ Так, це він</button>
+            <button style={{ fontSize: 10, background: 'none', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', color: 'var(--text2)', fontFamily: 'inherit' }}
+              onClick={() => onAction('new')}>Ні, новий</button>
           </div>
         )}
       </div>
     )
   }
 
-  // none, not searching
-  if (!onAction) return <span style={{ fontSize: 10, color: 'var(--text3)' }}>Новий</span>
+  // Відкритий стан — пошук
   return (
-    <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-      {['new', 'service', 'expense'].map(act => (
-        <button key={act} style={{
-          fontSize: 9, border: '1px solid var(--border)', borderRadius: 3, padding: '1px 4px', cursor: 'pointer', fontFamily: 'inherit',
-          background: item._action === act ? (act === 'new' ? 'var(--blue-bg)' : act === 'service' ? 'var(--green-bg)' : 'var(--amber-bg)') : 'none',
-          color: item._action === act ? (act === 'new' ? 'var(--blue)' : act === 'service' ? 'var(--green)' : 'var(--amber)') : 'var(--text3)',
-        }} onClick={() => onAction(act)}>
-          {act === 'new' ? 'Товар' : act === 'service' ? 'Послуга' : 'Госп.'}
-        </button>
-      ))}
-      {onLink && <button style={{ fontSize: 9, border: '1px solid var(--border)', borderRadius: 3, padding: '1px 4px', cursor: 'pointer', color: 'var(--blue)', fontFamily: 'inherit' }}
-        onClick={() => { setSearching(true); setSearch('') }}>🔍</button>}
+    <div style={{ position: 'relative' }}>
+      <input style={{ width: '100%', border: '2px solid var(--blue)', borderRadius: 6, padding: '4px 8px', fontSize: 11, fontFamily: 'inherit', outline: 'none' }}
+        value={search} onChange={e => setSearch(e.target.value)} placeholder="Введіть назву товару..."
+        autoFocus onKeyDown={e => { if (e.key === 'Escape') setOpen(false) }} />
+      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, zIndex: 50, maxHeight: 200, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,.15)', marginTop: 2 }}>
+        {searchResults.map(p => (
+          <div key={p.id} onClick={() => { onLink(p.id, p.name); setOpen(false) }}
+            style={{ padding: '7px 10px', cursor: 'pointer', fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
+            onMouseLeave={e => e.currentTarget.style.background = ''}>
+            <span style={{ fontWeight: 500 }}>{p.name}</span>
+            <span style={{ fontSize: 10, color: p.computed_stock > 0 ? 'var(--green)' : 'var(--red)', flexShrink: 0, marginLeft: 8 }}>{p.computed_stock} {p.unit}</span>
+          </div>
+        ))}
+        {searchResults.length === 0 && <div style={{ padding: 10, textAlign: 'center', color: 'var(--text3)', fontSize: 11 }}>Не знайдено</div>}
+        <div onClick={() => setOpen(false)}
+          style={{ padding: '6px 10px', textAlign: 'center', color: 'var(--text3)', fontSize: 11, cursor: 'pointer', borderTop: '1px solid var(--border)' }}>
+          Скасувати
+        </div>
+      </div>
     </div>
   )
 }
