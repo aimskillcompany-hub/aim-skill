@@ -454,8 +454,8 @@ export default function Registry({ user }) {
   }
   // ─────────────────────────────────────────────────────────────────────────────
 
-  const inc = transactions.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0)
-  const exp = transactions.filter(t => t.amount < 0).reduce((s, t) => s + t.amount, 0)
+  const inc = transactions.filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+  const exp = transactions.filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
   const totalPages = Math.ceil(total / PER_PAGE)
   const allChecked = transactions.length > 0 && checkedIds.size === transactions.length
   const someChecked = checkedIds.size > 0
@@ -610,17 +610,17 @@ export default function Registry({ user }) {
               <div style={{ fontSize:16, fontWeight:500, color:'var(--green)' }}>+{fmt(inc)} грн</div>
             </div>
           )}
-          {exp < 0 && (
+          {exp > 0 && (
             <div style={{ flex:'1 1 calc(50% - 6px)', minWidth:0 }}>
               <div style={{ fontSize:12, color:'var(--text3)', marginBottom:2 }}>Витрата</div>
-              <div style={{ fontSize:16, fontWeight:500, color:'var(--red)' }}>-{fmt(Math.abs(exp))} грн</div>
+              <div style={{ fontSize:16, fontWeight:500, color:'var(--red)' }}>-{fmt(exp)} грн</div>
             </div>
           )}
         </div>
         <div style={{ borderTop:'1px solid var(--border)', marginTop:10, paddingTop:10 }}>
           <div style={{ fontSize:12, color:'var(--text3)', marginBottom:2 }}>Сальдо</div>
-          <div style={{ fontSize:18, fontWeight:500, color: inc+exp >= 0 ? 'var(--green)' : 'var(--red)' }}>
-            {inc+exp >= 0 ? '+' : ''}{fmt(inc+exp)} грн
+          <div style={{ fontSize:18, fontWeight:500, color: inc-exp >= 0 ? 'var(--green)' : 'var(--red)' }}>
+            {inc-exp >= 0 ? '+' : ''}{fmt(inc-exp)} грн
           </div>
         </div>
       </div>
@@ -693,8 +693,8 @@ export default function Registry({ user }) {
                       <div style={{ fontSize:14, fontWeight:500, whiteSpace:'normal', wordBreak:'break-word', lineHeight:'1.3' }}>{tx.counterparty}</div>
                       {tx.description && <div style={{ fontSize:12, color:'var(--text2)', marginTop:2, whiteSpace:'normal', wordBreak:'break-word', lineHeight:'1.4' }}>{tx.description}</div>}
                     </td>
-                    <td style={{ textAlign:'right', fontWeight:500, fontVariantNumeric:'tabular-nums', color: tx.amount > 0 ? 'var(--green)' : tx.amount < 0 ? 'var(--red)' : 'var(--text3)', whiteSpace:'nowrap' }}>
-                      {tx.amount > 0 ? '+' : ''}{fmt(tx.amount)}
+                    <td style={{ textAlign:'right', fontWeight:500, fontVariantNumeric:'tabular-nums', color: tx.direction === 'Доходи' ? 'var(--green)' : tx.direction === 'Витрати' ? 'var(--red)' : 'var(--text3)', whiteSpace:'nowrap' }}>
+                      {tx.direction === 'Доходи' ? '+' : tx.direction === 'Витрати' ? '-' : ''}{fmt(Math.abs(tx.amount))}
                     </td>
                     <td><Badge type={tx.direction} /></td>
                     <td style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color: noArticle ? 'var(--amber)' : 'var(--text2)', maxWidth:150 }} title={tx.article}>
@@ -740,8 +740,8 @@ export default function Registry({ user }) {
             <div style={{ flex:1, minWidth:0 }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', gap:8, marginBottom:4 }}>
                 <span style={{ fontSize:13, color:'var(--text2)' }}>{tx.date}</span>
-                <span style={{ fontSize:15, fontWeight:500, fontVariantNumeric:'tabular-nums', color: tx.amount > 0 ? 'var(--green)' : tx.amount < 0 ? 'var(--red)' : 'var(--text3)', whiteSpace:'nowrap', flexShrink:0 }}>
-                  {tx.amount > 0 ? '+' : ''}{fmt(tx.amount)} <span style={{ fontSize:12, fontWeight:500 }}>грн</span>
+                <span style={{ fontSize:15, fontWeight:500, fontVariantNumeric:'tabular-nums', color: tx.direction === 'Доходи' ? 'var(--green)' : tx.direction === 'Витрати' ? 'var(--red)' : 'var(--text3)', whiteSpace:'nowrap', flexShrink:0 }}>
+                  {tx.direction === 'Доходи' ? '+' : tx.direction === 'Витрати' ? '-' : ''}{fmt(Math.abs(tx.amount))} <span style={{ fontSize:12, fontWeight:500 }}>грн</span>
                 </span>
               </div>
               <div style={{ fontSize:14, fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:4 }}>{tx.counterparty}</div>
