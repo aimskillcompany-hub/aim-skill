@@ -186,9 +186,15 @@ function Dashboard({ user, onPage }) {
 function Settings({ user }) {
   const [tab, setTab] = useState('users')
   const [users, setUsers] = useState([])
+  const [vkEmail, setVkEmail] = useState('')
+  const [vkPass, setVkPass] = useState('')
+  const [vkSaved, setVkSaved] = useState(false)
 
   useEffect(() => {
     supabase.from('profiles').select('*').then(({ data }) => setUsers(data || []))
+    const e = localStorage.getItem('vkursi_email') || ''
+    const p = localStorage.getItem('vkursi_password') || ''
+    setVkEmail(e); setVkPass(p)
   }, [])
 
   const updateRole = async (id, role) => {
@@ -204,6 +210,7 @@ function Settings({ user }) {
         {[
           { id: 'users', label: 'Користувачі', icon: 'ti-users' },
           { id: 'articles', label: 'Статті доходів/витрат', icon: 'ti-tags' },
+          { id: 'integrations', label: 'Інтеграції', icon: 'ti-plug' },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer',
@@ -249,6 +256,37 @@ function Settings({ user }) {
       {tab === 'articles' && (
         <div className="card">
           <ArticlesSettings />
+        </div>
+      )}
+
+      {tab === 'integrations' && (
+        <div className="card">
+          <div style={{ fontWeight:600, fontSize:15, marginBottom:16, display:'flex', alignItems:'center', gap:8 }}>
+            <i className="ti ti-building" style={{ fontSize:18, color:'var(--blue)' }} />
+            Vkursi.pro — дані про контрагентів
+          </div>
+          <p style={{ fontSize:13, color:'var(--text2)', marginBottom:16 }}>
+            Підключіть акаунт vkursi.pro щоб автоматично заповнювати інформацію про контрагентів за ЄДРПОУ.
+            Зареєструйтесь на <a href="https://vkursi.pro/account/register" target="_blank" rel="noreferrer" style={{ color:'var(--blue)' }}>vkursi.pro</a> для отримання API доступу.
+          </p>
+          <div className="form-grid">
+            <div className="form-group">
+              <label>Email (Vkursi)</label>
+              <input className="form-input" value={vkEmail} onChange={e => setVkEmail(e.target.value)} placeholder="email@example.com" />
+            </div>
+            <div className="form-group">
+              <label>Пароль (Vkursi)</label>
+              <input type="password" className="form-input" value={vkPass} onChange={e => setVkPass(e.target.value)} placeholder="••••••" />
+            </div>
+          </div>
+          <div style={{ display:'flex', gap:8, marginTop:12, alignItems:'center' }}>
+            <button className="btn btn-primary" onClick={() => {
+              localStorage.setItem('vkursi_email', vkEmail)
+              localStorage.setItem('vkursi_password', vkPass)
+              setVkSaved(true); setTimeout(() => setVkSaved(false), 3000)
+            }} disabled={!vkEmail || !vkPass}>Зберегти</button>
+            {vkSaved && <span style={{ fontSize:13, color:'var(--green)' }}>Збережено!</span>}
+          </div>
         </div>
       )}
     </div>

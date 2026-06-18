@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import { upsertContractor, syncContractorStats, importMissingContractors, mergeDuplicates } from '../lib/contractors'
+import { fetchByEdrpou, isVkursiConfigured, getVkursiCredentials, setVkursiCredentials } from '../lib/vkursi'
 
 const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
 
@@ -164,6 +165,9 @@ export default function Contractors({ user, onNavigate }) {
   const [form, setForm] = useState(EMPTY)
   const [editId, setEditId] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [vkursiLoading, setVkursiLoading] = useState(false)
+  const [vkursiError, setVkursiError] = useState(null)
+  const [vkursiInfo, setVkursiInfo] = useState(null)
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState(null)
 
@@ -375,6 +379,35 @@ export default function Contractors({ user, onNavigate }) {
             {detail.edrpou && <div style={{ fontSize:13, color:'var(--text2)', marginTop:4 }}>ЄДРПОУ: {detail.edrpou}</div>}
           </div>
           <div style={{ display:'flex', gap:8 }}>
+            {detail.edrpou?.trim().length >= 6 && isVkursiConfigured() && (
+              <button className="btn btn-secondary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}
+                disabled={vkursiLoading}
+                onClick={async () => {
+                  setVkursiLoading(true); setVkursiError(null)
+                  try {
+                    const info = await fetchByEdrpou(detail.edrpou)
+                    const updates = {}
+                    if (info.name && !detail.name) updates.name = info.name
+                    if (info.short_name && !detail.short_name) updates.short_name = info.short_name
+                    if (info.legal_form && !detail.legal_form) updates.legal_form = info.legal_form
+                    if (info.is_vat_payer) updates.is_vat_payer = true
+                    if (info.phone && !detail.phone) updates.phone = info.phone
+                    if (info.email && !detail.email) updates.email = info.email
+                    if (info.website && !detail.website) updates.website = info.website
+                    if (info.legal_address && !detail.legal_address) updates.legal_address = info.legal_address
+                    if (info._director && !detail.contact_person) { updates.contact_person = info._director; updates.contact_position = info._directorRole || '' }
+                    if (Object.keys(updates).length > 0) {
+                      await supabase.from('contractors').update(updates).eq('id', detail.id)
+                      setDetail(d => ({ ...d, ...updates }))
+                      setList(l => l.map(c => c.id === detail.id ? { ...c, ...updates } : c))
+                    }
+                    setVkursiInfo(info)
+                  } catch (e) { setVkursiError(e.message) }
+                  setVkursiLoading(false)
+                }}>
+                <i className="ti ti-download" style={{ fontSize:14 }} /> {vkursiLoading ? '...' : 'Вкурсі'}
+              </button>
+            )}
             <button onClick={() => openEdit(detail)} className="btn btn-secondary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}>
               <i className="ti ti-pencil" style={{ fontSize:14 }} /> Редагувати
             </button>
@@ -809,7 +842,49 @@ export default function Contractors({ user, onNavigate }) {
           <div className="form-grid">
             <div className="form-group full"><label>Повна назва *</label><input className="form-input" value={form.name} onChange={setF('name')} placeholder="ТОВ Компанія" /></div>
             <div className="form-group"><label>Коротка назва</label><input className="form-input" value={form.short_name} onChange={setF('short_name')} /></div>
-            <div className="form-group"><label>ЄДРПОУ / ІПН</label><input className="form-input" value={form.edrpou} onChange={setF('edrpou')} /></div>
+            <div className="form-group">
+              <label>ЄДРПОУ / ІПН</label>
+              <div style={{ display:'flex', gap:6 }}>
+                <input className="form-input" value={form.edrpou} onChange={setF('edrpou')} style={{ flex:1 }} />
+                {form.edrpou?.trim().length >= 6 && (
+                  <button className="btn btn-secondary" style={{ flexShrink:0, fontSize:12, padding:'0 12px' }}
+                    disabled={vkursiLoading}
+                    onClick={async () => {
+                      setVkursiLoading(true); setVkursiError(null)
+                      try {
+                        const info = await fetchByEdrpou(form.edrpou)
+                        setForm(f => ({
+                          ...f,
+                          name: info.name || f.name,
+                          short_name: info.short_name || f.short_name,
+                          legal_form: info.legal_form || f.legal_form,
+                          is_vat_payer: info.is_vat_payer ?? f.is_vat_payer,
+                          phone: info.phone || f.phone,
+                          phone2: info.phone2 || f.phone2,
+                          email: info.email || f.email,
+                          website: info.website || f.website,
+                          legal_address: info.legal_address || f.legal_address,
+                          address: info.address || f.address,
+                          contact_person: info._director || f.contact_person,
+                          contact_position: info._directorRole || f.contact_position,
+                        }))
+                        setVkursiInfo(info)
+                      } catch (e) {
+                        setVkursiError(e.message)
+                      }
+                      setVkursiLoading(false)
+                    }}>
+                    {vkursiLoading ? '...' : <><i className="ti ti-download" style={{ fontSize:13 }} /> Вкурсі</>}
+                  </button>
+                )}
+              </div>
+              {vkursiError && <div style={{ fontSize:11, color:'var(--red)', marginTop:4 }}>{vkursiError}</div>}
+              {vkursiInfo && <div style={{ fontSize:11, color:'var(--green)', marginTop:4 }}>
+                {vkursiInfo._primaryActivity && <div>КВЕД: {vkursiInfo._primaryActivity}</div>}
+                {vkursiInfo._state && <div>Стан: {vkursiInfo._state}</div>}
+                {vkursiInfo._capital && <div>Статутний капітал: {vkursiInfo._capital} грн</div>}
+              </div>}
+            </div>
             <div className="form-group"><label>Тип</label><select className="form-input" value={form.type} onChange={setF('type')}>{TYPES.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}</select></div>
             <div className="form-group"><label>Юридична форма</label><select className="form-input" value={form.legal_form} onChange={setF('legal_form')}><option value="">—</option>{LEGAL_FORMS.map(f=><option key={f}>{f}</option>)}</select></div>
             <div className="form-group"><label>Система оподаткування</label><select className="form-input" value={form.tax_system} onChange={setF('tax_system')}><option value="">—</option>{TAX_SYSTEMS.map(s=><option key={s}>{s}</option>)}</select></div>
