@@ -906,10 +906,10 @@ export default function Registry({ user }) {
         </div>
       )}
 
-      {/* Detail — full screen */}
+      {/* Detail — full screen with sidebar */}
       {selected && (
-        <div style={{ position:'fixed', inset:0, background:'var(--bg)', zIndex:1000, overflowY:'auto' }}>
-          <div style={{ maxWidth:1200, margin:'0 auto', padding:'24px 32px' }}>
+        <div style={{ position:'fixed', inset:0, background:'var(--bg)', zIndex:1000, overflowY:'auto', paddingLeft:240 }}>
+          <div style={{ maxWidth:1400, margin:'0 auto', padding:'24px 32px' }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
               <h2 style={{ fontSize:18, fontWeight:600, margin:0 }}>{selected.counterparty}</h2>
               <button className="btn btn-secondary" onClick={() => setSelected(null)} style={{ display:'flex', alignItems:'center', gap:4 }}>
@@ -1089,9 +1089,9 @@ export default function Registry({ user }) {
                                         })
                                         setSelectedItems(prev => prev.map(item => item.id === it.id ? { ...item, product_id: p.id } : item))
                                         setItemMovements(prev => ({ ...prev, [it.id]: { type: movType, date: selected.date } }))
-                                      }} style={{ fontSize:10, background:'var(--bg)', border:'1px solid var(--border)', borderRadius:4, padding:'3px 6px', cursor:'pointer', textAlign:'left', fontFamily:'inherit', display:'flex', justifyContent:'space-between' }}>
-                                        <span>{p.name.substring(0, 30)}</span>
-                                        <span style={{ color:'var(--text3)', flexShrink:0, marginLeft:4 }}>{p.computed_stock} {p.unit}</span>
+                                      }} style={{ fontSize:11, background:'var(--bg)', border:'1px solid var(--border)', borderRadius:4, padding:'4px 8px', cursor:'pointer', textAlign:'left', fontFamily:'inherit', display:'flex', justifyContent:'space-between', gap:8, width:'100%' }}>
+                                        <span style={{ wordBreak:'break-word' }}>{p.name}</span>
+                                        <span style={{ color: p.computed_stock > 0 ? 'var(--green)' : 'var(--red)', flexShrink:0 }}>{p.computed_stock} {p.unit}</span>
                                       </button>
                                     ))}
                                   </div>
