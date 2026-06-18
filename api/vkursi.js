@@ -6,6 +6,7 @@ async function vkursiFetch(url, token, body) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'ContentType': 'application/json',
       'Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify(body),
@@ -80,20 +81,6 @@ export default async function handler(req, res) {
       if (basic.ok) {
         try {
           const data = JSON.parse(basic.text)
-          const org = Array.isArray(data) ? data[0] : data
-          return res.status(200).json({ source: 'basic', data: org })
-        } catch {}
-      }
-
-      // Спробуємо ще один формат — Code замість code
-      const basic2 = await vkursiFetch(
-        `${BASE}/organizations/getorganizations`,
-        token, { Code: [code] }
-      )
-
-      if (basic2.ok) {
-        try {
-          const data = JSON.parse(basic2.text)
           const org = Array.isArray(data) ? data[0] : data
           return res.status(200).json({ source: 'basic', data: org })
         } catch {}
