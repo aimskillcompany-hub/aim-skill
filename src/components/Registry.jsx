@@ -60,6 +60,7 @@ export default function Registry({ user }) {
   const [addItemProduct, setAddItemProduct] = useState(null)
   const [addItemQty, setAddItemQty] = useState('')
   const [addItemPrice, setAddItemPrice] = useState('')
+  const [recognizing, setRecognizing] = useState(false)
   const [allProducts, setAllProducts] = useState([])
   const addItemResults = addItemSearch.length >= 2
     ? allProducts.filter(p => p.name.toLowerCase().includes(addItemSearch.toLowerCase())).slice(0, 8)
@@ -1046,13 +1047,67 @@ export default function Registry({ user }) {
                 </div>
               </div>
             )}
-            {/* Додати товар вручну */}
-            <div style={{ marginBottom:12 }}>
+            {/* Додати товар вручну + розпізнати */}
+            <div style={{ marginBottom:12, display:'flex', gap:8, flexWrap:'wrap' }}>
               <button className="btn btn-sm btn-secondary" style={{ display:'flex', alignItems:'center', gap:4 }}
                 onClick={() => setAddItemMode(prev => !prev)}>
                 <i className="ti ti-package-import" style={{ fontSize:13 }} />
-                Додати товар до операції
+                Додати товар
               </button>
+              {selectedDocs.length > 0 && selectedItems.length === 0 && (
+                <button className="btn btn-sm btn-secondary" style={{ display:'flex', alignItems:'center', gap:4 }}
+                  disabled={recognizing}
+                  onClick={async () => {
+                    setRecognizing(true)
+                    try {
+                      const doc = selectedDocs[0]
+                      const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(doc.file_path, 120)
+                      if (!urlData?.signedUrl) { setRecognizing(false); return }
+                      const res = await fetch(urlData.signedUrl)
+                      const blob = await res.blob()
+                      const file = new File([blob], doc.file_name || 'doc', { type: doc.file_type || 'application/pdf' })
+                      const { extractDocumentMulti } = await import('../lib/ai')
+                      const { matchProduct, processDocumentItems } = await import('../lib/stockService')
+                      const arts = await (await import('../lib/articles')).fetchArticles()
+                      const data = await extractDocumentMulti([file], arts)
+                      const items = data.items || []
+                      if (items.length === 0) { alert('Позиції не розпізнані'); setRecognizing(false); return }
+                      // Match products
+                      for (let i = 0; i < items.length; i++) {
+                        if (!items[i].name) continue
+                        const match = await matchProduct(items[i].name)
+                        items[i]._matchedProductId = match.productId || null
+                        items[i]._action = match.matchType !== 'none' ? 'auto' : 'new'
+                      }
+                      // Перевірити дублікати
+                      const validItems = items.filter(it => it.name)
+                      const { data: savedItems } = await supabase.from('transaction_items').insert(
+                        validItems.map(it => ({
+                          bank_transaction_id: selected.id, name: it.name,
+                          quantity: parseFloat(it.quantity) || null, unit: it.unit || null,
+                          unit_price: parseFloat(it.unitPrice) || null,
+                          amount: parseFloat(it.amount) || 0, vat_rate: parseFloat(it.vatRate) || 20,
+                        }))
+                      ).select('id, name, quantity, unit, unit_price, amount')
+                      if (savedItems?.length) {
+                        const enriched = savedItems.map((si, idx) => ({
+                          ...si, _matchedProductId: validItems[idx]?._matchedProductId || null, _action: validItems[idx]?._action || 'auto'
+                        }))
+                        await processDocumentItems(enriched, {
+                          docType: data.docType, docRole: doc.doc_role || 'incoming',
+                          bankTransactionId: selected.id, date: selected.date, userId: user?.id,
+                        })
+                      }
+                      openDetail(selected) // перезавантажити
+                    } catch (e) {
+                      alert('Помилка розпізнавання: ' + e.message)
+                    }
+                    setRecognizing(false)
+                  }}>
+                  <i className={`ti ${recognizing ? 'ti-loader-2' : 'ti-sparkles'}`} style={{ fontSize:13, animation: recognizing ? 'spin 1s linear infinite' : 'none' }} />
+                  {recognizing ? 'Розпізнаємо...' : 'Розпізнати позиції'}
+                </button>
+              )}
               {addItemMode && (
                 <div style={{ marginTop:8, border:'1px solid var(--border)', borderRadius:8, padding:12, background:'var(--bg)' }}>
                   <div style={{ position:'relative', marginBottom:8 }}>
