@@ -1,5 +1,5 @@
 // ── Document Generation Public API ──
-import { COMPANY } from '../companyConfig'
+import { getCompany } from '../companyConfig'
 import { getDocType } from './templates/registry'
 import { downloadPdf } from './pdfBuilder'
 import { downloadXlsx } from './xlsxBuilder'
@@ -17,7 +17,7 @@ function cleanItems(items) {
 export function generatePdf(docTypeKey, contractor, items, options) {
   const dt = getDocType(docTypeKey)
   if (!dt) throw new Error(`Невідомий тип документа: ${docTypeKey}`)
-  const docDef = dt.template.pdf(COMPANY, contractor, cleanItems(items), options)
+  const docDef = dt.template.pdf(getCompany(), contractor, cleanItems(items), options)
   const fileName = `${dt.label}_${options.docNumber}_${options.docDate}.pdf`
   downloadPdf(docDef, fileName)
 }
@@ -26,7 +26,7 @@ export function generatePdf(docTypeKey, contractor, items, options) {
 export function generateXlsx(docTypeKey, contractor, items, options) {
   const dt = getDocType(docTypeKey)
   if (!dt) throw new Error(`Невідомий тип документа: ${docTypeKey}`)
-  const wb = dt.template.xlsx(COMPANY, contractor, cleanItems(items), options)
+  const wb = dt.template.xlsx(getCompany(), contractor, cleanItems(items), options)
   const fileName = `${dt.label}_${options.docNumber}_${options.docDate}.xlsx`
   downloadXlsx(wb, fileName)
 }

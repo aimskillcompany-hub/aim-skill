@@ -184,17 +184,21 @@ function Dashboard({ user, onPage }) {
 }
 
 function Settings({ user }) {
-  const [tab, setTab] = useState('users')
+  const [tab, setTab] = useState('company')
   const [users, setUsers] = useState([])
   const [vkEmail, setVkEmail] = useState('')
   const [vkPass, setVkPass] = useState('')
   const [vkSaved, setVkSaved] = useState(false)
+  const [companyForm, setCompanyForm] = useState({})
+  const [companySaved, setCompanySaved] = useState(false)
 
   useEffect(() => {
     supabase.from('profiles').select('*').then(({ data }) => setUsers(data || []))
     const e = localStorage.getItem('vkursi_email') || ''
     const p = localStorage.getItem('vkursi_password') || ''
     setVkEmail(e); setVkPass(p)
+    // Завантажити реквізити
+    import('./lib/companyConfig').then(m => setCompanyForm(m.getCompany()))
   }, [])
 
   const updateRole = async (id, role) => {
@@ -208,6 +212,7 @@ function Settings({ user }) {
 
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 20 }}>
         {[
+          { id: 'company', label: 'Реквізити', icon: 'ti-building' },
           { id: 'users', label: 'Користувачі', icon: 'ti-users' },
           { id: 'articles', label: 'Статті доходів/витрат', icon: 'ti-tags' },
           { id: 'integrations', label: 'Інтеграції', icon: 'ti-plug' },
@@ -223,6 +228,47 @@ function Settings({ user }) {
           </button>
         ))}
       </div>
+
+      {tab === 'company' && (
+        <div className="card">
+          <div style={{ fontWeight:600, fontSize:15, marginBottom:16, display:'flex', alignItems:'center', gap:8 }}>
+            <i className="ti ti-building" style={{ fontSize:18, color:'var(--blue)' }} />
+            Реквізити компанії (продавця)
+          </div>
+          <p style={{ fontSize:13, color:'var(--text2)', marginBottom:16 }}>
+            Ці дані використовуються при генерації документів (рахунки, накладні, акти).
+          </p>
+          <div className="form-grid">
+            <div className="form-group full"><label>Повна назва</label><input className="form-input" value={companyForm.name||''} onChange={e => setCompanyForm(f => ({...f, name:e.target.value}))} /></div>
+            <div className="form-group"><label>Коротка назва</label><input className="form-input" value={companyForm.shortName||''} onChange={e => setCompanyForm(f => ({...f, shortName:e.target.value}))} /></div>
+            <div className="form-group"><label>ЄДРПОУ</label><input className="form-input" value={companyForm.edrpou||''} onChange={e => setCompanyForm(f => ({...f, edrpou:e.target.value}))} /></div>
+            <div className="form-group"><label>ІПН</label><input className="form-input" value={companyForm.ipn||''} onChange={e => setCompanyForm(f => ({...f, ipn:e.target.value}))} /></div>
+            <div className="form-group full"><label>Адреса</label><input className="form-input" value={companyForm.address||''} onChange={e => setCompanyForm(f => ({...f, address:e.target.value}))} /></div>
+            <div className="form-group full"><label>IBAN</label><input className="form-input" value={companyForm.iban||''} onChange={e => setCompanyForm(f => ({...f, iban:e.target.value}))} /></div>
+            <div className="form-group"><label>Банк</label><input className="form-input" value={companyForm.bankName||''} onChange={e => setCompanyForm(f => ({...f, bankName:e.target.value}))} /></div>
+            <div className="form-group"><label>МФО</label><input className="form-input" value={companyForm.mfo||''} onChange={e => setCompanyForm(f => ({...f, mfo:e.target.value}))} /></div>
+            <div className="form-group"><label>Телефон</label><input className="form-input" value={companyForm.phone||''} onChange={e => setCompanyForm(f => ({...f, phone:e.target.value}))} /></div>
+            <div className="form-group"><label>Email</label><input className="form-input" value={companyForm.email||''} onChange={e => setCompanyForm(f => ({...f, email:e.target.value}))} /></div>
+            <div className="form-group"><label>Директор (ПІБ)</label><input className="form-input" value={companyForm.director||''} onChange={e => setCompanyForm(f => ({...f, director:e.target.value}))} /></div>
+            <div className="form-group"><label>Посада директора</label><input className="form-input" value={companyForm.directorPosition||''} onChange={e => setCompanyForm(f => ({...f, directorPosition:e.target.value}))} /></div>
+            <div className="form-group">
+              <label>Платник ПДВ</label>
+              <div style={{ display:'flex', alignItems:'center', gap:8, height:48 }}>
+                <input type="checkbox" checked={companyForm.isVatPayer||false} onChange={e => setCompanyForm(f => ({...f, isVatPayer:e.target.checked}))} style={{ width:18, height:18 }} />
+                <span style={{ fontSize:14, color:'var(--text2)' }}>{companyForm.isVatPayer ? 'Так' : 'Ні'}</span>
+              </div>
+            </div>
+          </div>
+          <div style={{ display:'flex', gap:8, marginTop:16, alignItems:'center' }}>
+            <button className="btn btn-primary" onClick={async () => {
+              const { saveCompany } = await import('./lib/companyConfig')
+              saveCompany(companyForm)
+              setCompanySaved(true); setTimeout(() => setCompanySaved(false), 3000)
+            }}>Зберегти</button>
+            {companySaved && <span style={{ fontSize:13, color:'var(--green)' }}>Збережено!</span>}
+          </div>
+        </div>
+      )}
 
       {tab === 'users' && (
         <div className="card">
