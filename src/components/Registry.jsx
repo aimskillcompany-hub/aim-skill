@@ -913,14 +913,20 @@ export default function Registry({ user }) {
             </div>
             <div className="modal-detail-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16, fontSize:13 }}>
               {(() => {
-                const itemsNet = selectedItems.reduce((s, it) => s + (parseFloat(it.amount) || 0), 0)
-                const itemsVat = selectedItems.reduce((s, it) => s + (parseFloat(it.amount) || 0) * (parseFloat(it.vat_rate) || 20) / 100, 0)
+                const bankAbs = Math.abs(selected.amount || 0)
                 const hasItems = selectedItems.length > 0
+                // ПДВ рахуємо з банківської суми (вона завжди з ПДВ)
+                // Визначаємо середню ставку з позицій
+                const avgVatRate = hasItems
+                  ? selectedItems.reduce((s, it) => s + (parseFloat(it.vat_rate) || 20), 0) / selectedItems.length
+                  : 20
+                const netFromBank = bankAbs / (1 + avgVatRate / 100)
+                const vatFromBank = bankAbs - netFromBank
                 return [
                   ['Дата', selected.date],
-                  ['Сума (банк)', (selected.direction === 'Доходи' ? '+' : selected.direction === 'Витрати' ? '-' : '') + fmt(Math.abs(selected.amount)) + ' грн'],
-                  hasItems ? ['Без ПДВ', fmt(itemsNet) + ' грн'] : null,
-                  hasItems ? ['ПДВ', fmt(itemsVat) + ' грн'] : null,
+                  ['Сума (банк)', (selected.direction === 'Доходи' ? '+' : selected.direction === 'Витрати' ? '-' : '') + fmt(bankAbs) + ' грн'],
+                  hasItems ? ['Без ПДВ', fmt(netFromBank) + ' грн'] : null,
+                  hasItems ? ['ПДВ', fmt(vatFromBank) + ' грн'] : null,
                   ['Напрям', selected.direction],
                   ['Стаття', selected.article],
                   ['Призначення', selected.description],
