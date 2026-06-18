@@ -4,8 +4,7 @@ import { supabase } from '../lib/supabase'
 
 const NAV = [
   { id: 'dashboard', label: 'Дашборд',      icon: 'ti-layout-dashboard', section: 'Огляд' },
-  { id: 'add',       label: 'Додати',        icon: 'ti-upload',            section: 'Введення' },
-  { id: 'batch',     label: 'Масове завант.', icon: 'ti-files',             section: null },
+  { id: 'upload',    label: 'Документи',     icon: 'ti-upload',            section: 'Введення' },
   { id: 'registry',  label: 'Реєстр',        icon: 'ti-list-details',      section: null },
   { id: 'bank',      label: 'Банк / Звірка', icon: 'ti-building-bank',     section: null },
   { id: 'cash',      label: 'Каса',          icon: 'ti-cash',              section: null },
@@ -19,7 +18,7 @@ const NAV = [
 
 const MOBILE_NAV = [
   { id: 'dashboard', label: 'Дашборд', icon: 'ti-layout-dashboard' },
-  { id: 'add',       label: 'Додати',  icon: 'ti-upload', primary: true },
+  { id: 'upload',    label: 'Додати',  icon: 'ti-upload', primary: true },
   { id: 'registry',  label: 'Реєстр', icon: 'ti-list-details' },
   { id: 'cash',      label: 'Каса',   icon: 'ti-cash' },
   { id: 'bank',      label: 'Банк',   icon: 'ti-building-bank' },

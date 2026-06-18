@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
-import BatchUpload from './components/BatchUpload'
+// import BatchUpload from './components/BatchUpload' // merged into DocumentUpload
 import { supabase } from './lib/supabase'
 import { css, mobileCss } from './lib/styles'
 import Auth from './components/Auth'
 import Layout from './components/Layout'
-import AddDocument from './components/AddDocument'
+import DocumentUpload from './components/DocumentUpload'
 import Registry from './components/Registry'
 import Reports from './components/Reports'
 import Bank from './components/Bank'
@@ -309,7 +309,7 @@ export default function App() {
 
   const pages = {
     dashboard: <Dashboard user={user} onPage={setPage} />,
-    add: <AddDocument user={user} onSaved={showToast} />,
+    upload: <DocumentUpload user={user} onSaved={showToast} />,
     registry: <Registry user={user} />,
     bank: <Bank user={user} />,
     cash: <Cash user={user} />,
@@ -319,7 +319,6 @@ export default function App() {
     reports: <Reports />,
     planning: <Planning user={user} />,
     settings: <Settings user={user} />,
-    batch: <BatchUpload user={user} onSaved={showToast} />,
   }
 
   return (
