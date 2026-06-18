@@ -1,5 +1,5 @@
-// Vercel serverless function — пошук компанії в ЄДР (безкоштовно)
-// Використовує відкритий API ЄДР через ProZorro/data.gov.ua
+// Vercel serverless function — пошук компанії по ЄДРПОУ (безкоштовно)
+// Парсить відкриту сторінку opendatabot.ua
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -14,47 +14,13 @@ export default async function handler(req, res) {
   const edrpou = code.trim()
 
   try {
-    // Спосіб 1: ЄДР через ProZorro (безкоштовно)
-    const proZorroUrl = `https://api.iit.com.ua/edr/legal/${edrpou}`
-    const r1 = await fetch(proZorroUrl, {
-      headers: { 'Accept': 'application/json' },
-    })
+    // Спосіб 1: opendatabot.ua публічна сторінка
+    const odbResult = await tryOpendatabot(edrpou)
+    if (odbResult) return res.status(200).json({ source: 'opendatabot', data: odbResult })
 
-    if (r1.ok) {
-      const data = await r1.json()
-      if (data && (data.name || data.full_name)) {
-        return res.status(200).json({ source: 'iit', data })
-      }
-    }
-
-    // Спосіб 2: data.gov.ua ЄДР dataset
-    const dataGovUrl = `https://data.gov.ua/api/3/action/package_search?q=${edrpou}&rows=1`
-    const r2 = await fetch(dataGovUrl)
-
-    if (r2.ok) {
-      const data = await r2.json()
-      if (data?.result?.results?.length > 0) {
-        return res.status(200).json({ source: 'datagov', data: data.result.results[0] })
-      }
-    }
-
-    // Спосіб 3: Парсинг usr.minjust.gov.ua через їх внутрішній API
-    const usrUrl = `https://usr.minjust.gov.ua/ua/freesearch?search_type=1&search_code=${edrpou}&search_type_code=1`
-    const r3 = await fetch(usrUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; AimSkill/1.0)',
-        'Accept': 'text/html,application/xhtml+xml',
-      },
-    })
-
-    if (r3.ok) {
-      const html = await r3.text()
-      // Парсимо базові дані з HTML
-      const parsed = parseUsrHtml(html, edrpou)
-      if (parsed) {
-        return res.status(200).json({ source: 'usr', data: parsed })
-      }
-    }
+    // Спосіб 2: clarity-project.info публічна сторінка
+    const clarityResult = await tryClarity(edrpou)
+    if (clarityResult) return res.status(200).json({ source: 'clarity', data: clarityResult })
 
     return res.status(200).json({ error: `Компанію з ЄДРПОУ ${edrpou} не знайдено` })
   } catch (e) {
@@ -62,32 +28,103 @@ export default async function handler(req, res) {
   }
 }
 
-function parseUsrHtml(html, edrpou) {
-  // Простий парсинг HTML відповіді ЄДР
-  const getName = (h) => {
-    const m = h.match(/Повне найменування[^<]*<[^>]*>([^<]+)</i)
-      || h.match(/class="uo_name"[^>]*>([^<]+)/i)
-      || h.match(/<h2[^>]*>([^<]+)/i)
-    return m ? m[1].trim() : null
+async function tryOpendatabot(edrpou) {
+  try {
+    const r = await fetch(`https://opendatabot.ua/c/${edrpou}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+        'Accept': 'text/html',
+        'Accept-Language': 'uk-UA,uk;q=0.9',
+      },
+    })
+    if (!r.ok) return null
+    const html = await r.text()
+    return parseOdb(html, edrpou)
+  } catch { return null }
+}
+
+async function tryClarity(edrpou) {
+  try {
+    const r = await fetch(`https://clarity-project.info/edr/${edrpou}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+        'Accept': 'text/html',
+        'Accept-Language': 'uk-UA,uk;q=0.9',
+      },
+    })
+    if (!r.ok) return null
+    const html = await r.text()
+    return parseClarity(html, edrpou)
+  } catch { return null }
+}
+
+function extractBetween(html, before, after) {
+  const i = html.indexOf(before)
+  if (i === -1) return null
+  const start = i + before.length
+  const end = html.indexOf(after, start)
+  if (end === -1) return null
+  return html.substring(start, end).replace(/<[^>]+>/g, '').trim()
+}
+
+function extractMeta(html, prop) {
+  const re = new RegExp(`property="${prop}"[^>]*content="([^"]*)"`, 'i')
+  const m = html.match(re)
+  return m ? m[1].trim() : null
+}
+
+function parseOdb(html, edrpou) {
+  // og:title зазвичай містить назву компанії
+  const title = extractMeta(html, 'og:title')
+  const desc = extractMeta(html, 'og:description')
+
+  // Шукаємо назву в <h1>
+  const h1Match = html.match(/<h1[^>]*>([^<]+)<\/h1>/i)
+  const name = h1Match ? h1Match[1].trim() : title
+
+  if (!name || name.includes('Opendatabot') || name.includes('404')) return null
+
+  // Парсимо з description
+  let director = null, address = null, state = null, kved = null
+  if (desc) {
+    const dirMatch = desc.match(/Керівник[:\s]*([^,.]+)/i)
+    if (dirMatch) director = dirMatch[1].trim()
+    const addrMatch = desc.match(/Адреса[:\s]*([^.]+)/i)
+    if (addrMatch) address = addrMatch[1].trim()
   }
 
-  const getField = (h, label) => {
-    const re = new RegExp(label + '[^<]*<[^>]*>\\s*([^<]+)', 'i')
-    const m = h.match(re)
-    return m ? m[1].trim() : null
-  }
+  // Шукаємо дані в HTML
+  const stateMatch = html.match(/Стан[^<]*<[^>]*>([^<]+)/i)
+  if (stateMatch) state = stateMatch[1].trim()
 
-  const name = getName(html)
-  if (!name) return null
+  const kvedMatch = html.match(/КВЕД[^<]*<[^>]*>[^<]*<[^>]*>([^<]+)/i)
+    || html.match(/Основний вид діяльності[^<]*<[^>]*>([^<]+)/i)
+  if (kvedMatch) kved = kvedMatch[1].trim()
+
+  const addrMatch2 = html.match(/Адреса[^<]*<[^>]*>[^<]*<[^>]*>([^<]+)/i)
+  if (addrMatch2 && !address) address = addrMatch2[1].trim()
+
+  const dirMatch2 = html.match(/Керівник[^<]*<[^>]*>[^<]*<[^>]*>([^<]+)/i)
+  if (dirMatch2 && !director) director = dirMatch2[1].trim()
+
+  const pdvMatch = html.match(/Платник ПДВ/i)
+  const isVatPayer = !!pdvMatch
 
   return {
-    name,
-    edrpou,
-    short_name: getField(html, 'Скорочене найменування'),
-    address: getField(html, 'Місцезнаходження'),
-    director: getField(html, 'Керівник') || getField(html, 'ПІБ'),
-    state: getField(html, 'Стан'),
-    kved: getField(html, 'Основний вид діяльності'),
-    registration_date: getField(html, 'Дата реєстрації'),
+    name, edrpou, director, address, state, kved,
+    is_vat_payer: isVatPayer,
   }
+}
+
+function parseClarity(html, edrpou) {
+  const h1Match = html.match(/<h1[^>]*>([^<]+)<\/h1>/i)
+  const name = h1Match ? h1Match[1].trim() : null
+  if (!name || name.includes('404') || name.includes('Clarity')) return null
+
+  const director = extractBetween(html, 'Керівник', '</') || null
+  const address = extractBetween(html, 'Адреса', '</') || null
+  const state = extractBetween(html, 'Стан', '</') || null
+  const kved = extractBetween(html, 'КВЕД', '</') || null
+
+  return { name, edrpou, director, address, state, kved }
 }
