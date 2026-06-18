@@ -114,6 +114,19 @@ export default function DocCard({
             />
           )}
 
+          {/* Bank link */}
+          {!hasBankMatch && (
+            <button onClick={onLinkBank} style={{
+              width: '100%', padding: '8px 12px', marginTop: 8,
+              background: 'none', border: '1px dashed var(--border)', borderRadius: 8,
+              cursor: 'pointer', fontSize: 12, color: 'var(--blue)', fontFamily: 'inherit',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}>
+              <i className="ti ti-building-bank" style={{ fontSize: 14 }} />
+              Привʼязати до банківської операції
+            </button>
+          )}
+
           {/* Actions */}
           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
             <button className="btn btn-primary" style={{ flex: 1, justifyContent: 'center', display: 'flex', gap: 6, fontSize: 13 }}
@@ -121,12 +134,6 @@ export default function DocCard({
               <i className="ti ti-device-floppy" style={{ fontSize: 14 }} />
               {saving ? 'Збереження...' : 'Зберегти'}
             </button>
-            {!hasBankMatch && (
-              <button className="btn btn-secondary" style={{ justifyContent: 'center', display: 'flex', gap: 4, fontSize: 12 }}
-                onClick={onLinkBank}>
-                <i className="ti ti-link" style={{ fontSize: 13 }} />
-              </button>
-            )}
             <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={onToggleExpand}>
               <i className={`ti ti-chevron-${expanded ? 'up' : 'down'}`} style={{ fontSize: 13 }} />
             </button>
