@@ -911,18 +911,22 @@ export default function Registry({ user }) {
               <button className="modal-close" onClick={() => setSelected(null)}>×</button>
             </div>
             <div className="modal-detail-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16, fontSize:13 }}>
-              {[
-                ['Дата', selected.date],
-                ['Сума', (selected.amount>0?'+':'')+fmt(selected.amount)+' грн'],
-                ['ПДВ', fmt(selected.vat_amount)+' грн'],
-                ['Без ПДВ', fmt(selected.amount_no_vat)+' грн'],
-                ['Напрям', selected.direction],
-                ['Стаття', selected.article],
-                ['Проєкт', '—'],
-                ['Призначення', selected.description],
-              ].filter(([,v]) => v).map(([l,v]) => (
-                <div key={l}><div style={{ fontSize:11, color:'var(--text3)', marginBottom:1 }}>{l}</div><div style={{ fontWeight:500 }}>{v}</div></div>
-              ))}
+              {(() => {
+                const itemsNet = selectedItems.reduce((s, it) => s + (parseFloat(it.amount) || 0), 0)
+                const itemsVat = selectedItems.reduce((s, it) => s + (parseFloat(it.amount) || 0) * (parseFloat(it.vat_rate) || 20) / 100, 0)
+                const hasItems = selectedItems.length > 0
+                return [
+                  ['Дата', selected.date],
+                  ['Сума (банк)', (selected.direction === 'Доходи' ? '+' : selected.direction === 'Витрати' ? '-' : '') + fmt(Math.abs(selected.amount)) + ' грн'],
+                  hasItems ? ['Без ПДВ', fmt(itemsNet) + ' грн'] : null,
+                  hasItems ? ['ПДВ', fmt(itemsVat) + ' грн'] : null,
+                  ['Напрям', selected.direction],
+                  ['Стаття', selected.article],
+                  ['Призначення', selected.description],
+                ].filter(Boolean).filter(([,v]) => v).map(([l,v]) => (
+                  <div key={l}><div style={{ fontSize:11, color:'var(--text3)', marginBottom:1 }}>{l}</div><div style={{ fontWeight:500 }}>{v}</div></div>
+                ))
+              })()}
             </div>
             {selectedItems.length > 0 && (
               <div style={{ marginBottom:16 }}>
@@ -935,8 +939,8 @@ export default function Registry({ user }) {
                   <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
                     <thead>
                       <tr style={{ background:'var(--surface2)' }}>
-                        {['Назва','К-сть','Сума','Склад'].map(h => (
-                          <th key={h} style={{ padding:'6px 8px', textAlign:'left', borderBottom:'1px solid var(--border)', fontWeight:500, color:'var(--text2)' }}>{h}</th>
+                        {['Назва','К-сть','Ціна','ПДВ%','Сума','Склад'].map(h => (
+                          <th key={h} style={{ padding:'6px 8px', textAlign: h==='К-сть'||h==='Ціна'||h==='Сума' ? 'right' : 'left', borderBottom:'1px solid var(--border)', fontWeight:500, color:'var(--text2)' }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -944,8 +948,22 @@ export default function Registry({ user }) {
                       {selectedItems.map(it => (
                         <tr key={it.id} style={{ borderBottom:'1px solid var(--bg)' }}>
                           <td style={{ padding:'6px 8px', maxWidth:200 }}>{it.name}</td>
-                          <td style={{ padding:'6px 8px', whiteSpace:'nowrap' }}>{fmt2(it.quantity)} {it.unit||'шт'}</td>
-                          <td style={{ padding:'6px 8px', fontWeight:500, whiteSpace:'nowrap' }}>{fmt2(it.amount)} грн</td>
+                          <td style={{ padding:'6px 8px', whiteSpace:'nowrap', textAlign:'right' }}>{fmt2(it.quantity)} {it.unit||'шт'}</td>
+                          <td style={{ padding:'6px 8px', whiteSpace:'nowrap', textAlign:'right', color:'var(--text2)' }}>{it.unit_price ? fmt2(it.unit_price) : '—'}</td>
+                          <td style={{ padding:'6px 8px' }}>
+                            <select style={{ border:'1px solid var(--border)', borderRadius:4, padding:'1px 4px', fontSize:11, fontFamily:'inherit', width:55 }}
+                              value={it.vat_rate ?? 20}
+                              onChange={async (e) => {
+                                const rate = parseFloat(e.target.value)
+                                await supabase.from('transaction_items').update({ vat_rate: rate }).eq('id', it.id)
+                                setSelectedItems(prev => prev.map(item => item.id === it.id ? { ...item, vat_rate: rate } : item))
+                              }}>
+                              <option value={20}>20%</option>
+                              <option value={7}>7%</option>
+                              <option value={0}>0%</option>
+                            </select>
+                          </td>
+                          <td style={{ padding:'6px 8px', fontWeight:500, whiteSpace:'nowrap', textAlign:'right' }}>{fmt2(it.amount)} грн</td>
                           <td style={{ padding:'6px 8px' }}>
                             {(() => {
                               const mov = itemMovements[it.id]
