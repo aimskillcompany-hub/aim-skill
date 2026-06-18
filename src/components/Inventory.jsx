@@ -194,7 +194,34 @@ export default function Inventory({ user }) {
     }
     return true
   })
-  const allChecked = filtered.length > 0 && checkedIds.size === filtered.length
+
+  // Сортування
+  const [sortCol, setSortCol] = useState('name')
+  const [sortDir, setSortDir] = useState('asc')
+  const toggleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+  const sorted = [...filtered].sort((a, b) => {
+    let va = a[sortCol], vb = b[sortCol]
+    if (sortCol === 'current_stock' || sortCol === 'buy_price') {
+      va = parseFloat(va) || 0; vb = parseFloat(vb) || 0
+    } else if (sortCol === 'value') {
+      va = (a.current_stock || 0) * (a.buy_price || 0); vb = (b.current_stock || 0) * (b.buy_price || 0)
+    } else {
+      va = (va || '').toString().toLowerCase(); vb = (vb || '').toString().toLowerCase()
+    }
+    if (va < vb) return sortDir === 'asc' ? -1 : 1
+    if (va > vb) return sortDir === 'asc' ? 1 : -1
+    return 0
+  })
+
+  const SortIcon = ({ col }) => {
+    if (sortCol !== col) return <i className="ti ti-selector" style={{ fontSize: 10, opacity: .3, marginLeft: 2 }} />
+    return <i className={`ti ti-sort-${sortDir === 'asc' ? 'ascending' : 'descending'}`} style={{ fontSize: 10, color: 'var(--blue)', marginLeft: 2 }} />
+  }
+
+  const allChecked = sorted.length > 0 && checkedIds.size === sorted.length
   const someChecked = checkedIds.size > 0
 
   const kpi = {
@@ -962,22 +989,22 @@ export default function Inventory({ user }) {
               <th style={{ width:36 }}>
                 <input type="checkbox" checked={allChecked} onChange={() => {
                   if (allChecked) setCheckedIds(new Set())
-                  else setCheckedIds(new Set(filtered.map(p => p.id)))
+                  else setCheckedIds(new Set(sorted.map(p => p.id)))
                 }} />
               </th>
-              <th>Назва</th>
-              <th>Виробник</th>
-              <th>SKU</th>
-              <th>УКТЗЕД</th>
-              <th style={{ textAlign:'right' }}>Залишок</th>
-              <th style={{ textAlign:'right' }}>Ціна закуп.</th>
-              <th style={{ textAlign:'right' }}>Вартість</th>
+              <th style={{ cursor:'pointer' }} onClick={() => toggleSort('name')}>Назва <SortIcon col="name" /></th>
+              <th style={{ cursor:'pointer' }} onClick={() => toggleSort('manufacturer')}>Виробник <SortIcon col="manufacturer" /></th>
+              <th style={{ cursor:'pointer' }} onClick={() => toggleSort('sku')}>SKU <SortIcon col="sku" /></th>
+              <th style={{ cursor:'pointer' }} onClick={() => toggleSort('uktzed')}>УКТЗЕД <SortIcon col="uktzed" /></th>
+              <th style={{ textAlign:'right', cursor:'pointer' }} onClick={() => toggleSort('current_stock')}>Залишок <SortIcon col="current_stock" /></th>
+              <th style={{ textAlign:'right', cursor:'pointer' }} onClick={() => toggleSort('buy_price')}>Ціна закуп. <SortIcon col="buy_price" /></th>
+              <th style={{ textAlign:'right', cursor:'pointer' }} onClick={() => toggleSort('value')}>Вартість <SortIcon col="value" /></th>
               <th style={{ width:80 }}></th>
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 && <tr><td colSpan={9} style={{ textAlign:'center', padding:32, color:'var(--text3)' }}>Немає товарів</td></tr>}
-            {filtered.map(p => {
+            {sorted.length === 0 && <tr><td colSpan={9} style={{ textAlign:'center', padding:32, color:'var(--text3)' }}>Немає товарів</td></tr>}
+            {sorted.map(p => {
               const stockColor = p.current_stock <= 0 ? 'var(--red)' : p.current_stock <= (p.min_stock||0) ? '#D97706' : 'var(--green)'
               return (
                 <tr key={p.id} style={{ cursor:'pointer', background: checkedIds.has(p.id) ? 'var(--blue-bg)' : '' }} onClick={() => openDetail(p)}>
