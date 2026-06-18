@@ -915,18 +915,18 @@ export default function Registry({ user }) {
               {(() => {
                 const bankAbs = Math.abs(selected.amount || 0)
                 const hasItems = selectedItems.length > 0
-                // ПДВ рахуємо з банківської суми (вона завжди з ПДВ)
-                // Визначаємо середню ставку з позицій
-                const avgVatRate = hasItems
-                  ? selectedItems.reduce((s, it) => s + (parseFloat(it.vat_rate) || 20), 0) / selectedItems.length
-                  : 20
-                const netFromBank = bankAbs / (1 + avgVatRate / 100)
-                const vatFromBank = bankAbs - netFromBank
+                // ПДВ рахуємо з позицій — кожна знає свою ставку
+                const itemsNet = selectedItems.reduce((s, it) => s + (parseFloat(it.amount) || 0), 0)
+                const itemsVat = selectedItems.reduce((s, it) => {
+                  const amt = parseFloat(it.amount) || 0
+                  const rate = parseFloat(it.vat_rate) ?? 20
+                  return s + amt * rate / 100
+                }, 0)
                 return [
                   ['Дата', selected.date],
                   ['Сума (банк)', (selected.direction === 'Доходи' ? '+' : selected.direction === 'Витрати' ? '-' : '') + fmt(bankAbs) + ' грн'],
-                  hasItems ? ['Без ПДВ', fmt(netFromBank) + ' грн'] : null,
-                  hasItems ? ['ПДВ', fmt(vatFromBank) + ' грн'] : null,
+                  hasItems ? ['Без ПДВ (з позицій)', fmt(itemsNet) + ' грн'] : null,
+                  hasItems ? ['ПДВ (з позицій)', fmt(itemsVat) + ' грн'] : null,
                   ['Напрям', selected.direction],
                   ['Стаття', selected.article],
                   ['Призначення', selected.description],
