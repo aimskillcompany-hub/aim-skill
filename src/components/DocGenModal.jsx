@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
 import {
   DOCUMENT_TYPES, getNextDocNumber, generatePdf, generateXlsx,
   saveDoc, calcTotals, formatMoney
@@ -12,9 +13,19 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved }) {
   const [docNumber, setDocNumber] = useState('')
   const [docDate, setDocDate] = useState(today())
   const [notes, setNotes] = useState('')
-  const [items, setItems] = useState([{ name: '', quantity: 1, unit: 'шт', unitPrice: '', vatRate: 20, amount: '' }])
+  const [items, setItems] = useState([{ name: '', quantity: 1, unit: 'шт', unitPrice: '', vatRate: 20, amount: '', productId: null }])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  const [products, setProducts] = useState([])
+  const [searchIdx, setSearchIdx] = useState(null) // який рядок зараз шукає
+  const [searchText, setSearchText] = useState('')
+
+  // Завантажити товари зі складу
+  useEffect(() => {
+    supabase.from('product_stock').select('id, name, computed_stock, unit, buy_price, sell_price, product_type')
+      .eq('status', 'active').order('name')
+      .then(({ data }) => setProducts(data || []))
+  }, [])
 
   // Авто-нумерація при виборі типу
   useEffect(() => {
@@ -23,7 +34,36 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved }) {
     }
   }, [docType])
 
-  const addItem = () => setItems(prev => [...prev, { name: '', quantity: 1, unit: 'шт', unitPrice: '', vatRate: 20, amount: '' }])
+  const addItem = () => {
+    setItems(prev => [...prev, { name: '', quantity: 1, unit: 'шт', unitPrice: '', vatRate: 20, amount: '', productId: null }])
+    // Автоматично відкрити пошук для нового рядка
+    setTimeout(() => setSearchIdx(items.length), 50)
+  }
+
+  const addProductItem = (product) => {
+    const price = product.sell_price || product.buy_price || 0
+    const newItem = {
+      name: product.name,
+      quantity: 1,
+      unit: product.unit || 'шт',
+      unitPrice: price,
+      vatRate: 20,
+      amount: price.toFixed(2),
+      productId: product.id,
+    }
+    if (searchIdx !== null && searchIdx < items.length && !items[searchIdx].name) {
+      // Замінити порожній рядок
+      setItems(prev => prev.map((it, i) => i === searchIdx ? newItem : it))
+    } else {
+      setItems(prev => [...prev, newItem])
+    }
+    setSearchIdx(null)
+    setSearchText('')
+  }
+
+  const searchResults = searchText.length >= 1
+    ? products.filter(p => p.name.toLowerCase().includes(searchText.toLowerCase())).slice(0, 8)
+    : products.slice(0, 8)
 
   const updateItem = (idx, field, value) => {
     setItems(prev => prev.map((it, i) => {
@@ -130,11 +170,67 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved }) {
               </div>
             </div>
 
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>Позиції ({items.length})</span>
-              <button className="btn btn-sm btn-secondary" onClick={addItem}>
-                <i className="ti ti-plus" style={{ fontSize: 13 }} /> Додати
-              </button>
+            {/* Пошук товару зі складу */}
+            <div style={{ position: 'relative', marginBottom: 12 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{ flex: 1, position: 'relative' }}>
+                  <input className="form-input" style={{ height: 36, fontSize: 13, paddingLeft: 32 }}
+                    value={searchText}
+                    onChange={e => { setSearchText(e.target.value); if (searchIdx === null) setSearchIdx(items.length) }}
+                    onFocus={() => { if (searchIdx === null) setSearchIdx(items.length) }}
+                    placeholder="Пошук товару зі складу або введіть нову назву..." />
+                  <i className="ti ti-search" style={{ position: 'absolute', left: 10, top: 10, fontSize: 15, color: 'var(--text3)' }} />
+                </div>
+                <button className="btn btn-sm btn-secondary" onClick={() => {
+                  if (searchText.trim()) {
+                    // Додати як новий товар (не зі складу)
+                    const newItem = { name: searchText.trim(), quantity: 1, unit: 'шт', unitPrice: '', vatRate: 20, amount: '', productId: null }
+                    if (searchIdx !== null && searchIdx < items.length && !items[searchIdx].name) {
+                      setItems(prev => prev.map((it, i) => i === searchIdx ? newItem : it))
+                    } else {
+                      setItems(prev => [...prev, newItem])
+                    }
+                    setSearchText(''); setSearchIdx(null)
+                  } else {
+                    addItem()
+                  }
+                }} style={{ height: 36, whiteSpace: 'nowrap' }}>
+                  <i className="ti ti-plus" style={{ fontSize: 13 }} /> Додати
+                </button>
+              </div>
+              {searchIdx !== null && searchText !== undefined && (
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 64, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, zIndex: 50, maxHeight: 240, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,.15)', marginTop: 2 }}>
+                  {searchResults.map(p => (
+                    <div key={p.id} onClick={() => addProductItem(p)}
+                      style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
+                      onMouseLeave={e => e.currentTarget.style.background = ''}>
+                      <div>
+                        <div style={{ fontWeight: 500 }}>{p.name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+                          {p.product_type === 'service' ? 'Послуга' : p.product_type === 'expense' ? 'Витрата' : `${p.computed_stock || 0} ${p.unit || 'шт'} на складі`}
+                          {p.sell_price ? ` · Ціна: ${formatMoney(p.sell_price)}` : p.buy_price ? ` · Закупка: ${formatMoney(p.buy_price)}` : ''}
+                        </div>
+                      </div>
+                      <i className="ti ti-plus" style={{ fontSize: 14, color: 'var(--blue)', flexShrink: 0 }} />
+                    </div>
+                  ))}
+                  {searchResults.length === 0 && searchText.length >= 2 && (
+                    <div style={{ padding: 12, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>
+                      Не знайдено. Натисніть "Додати" щоб створити нову позицію
+                    </div>
+                  )}
+                  <div onClick={() => { setSearchIdx(null); setSearchText('') }}
+                    style={{ padding: '6px 12px', textAlign: 'center', color: 'var(--text3)', fontSize: 11, cursor: 'pointer', borderTop: '1px solid var(--border)' }}>
+                    Закрити
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Таблиця позицій */}
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+              Позиції ({items.filter(it => it.name).length})
             </div>
 
             <div style={{ overflowX: 'auto' }}>
@@ -151,11 +247,21 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((it, i) => (
+                  {items.filter(it => it.name).length === 0 && (
+                    <tr><td colSpan={7} style={{ padding: 16, textAlign: 'center', color: 'var(--text3)' }}>
+                      Знайдіть товар у пошуку вище або натисніть "Додати"
+                    </td></tr>
+                  )}
+                  {items.map((it, i) => {
+                    if (!it.name) return null
+                    return (
                     <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
                       <td style={{ padding: '4px 4px' }}>
-                        <input className="form-input" style={{ height: 32, fontSize: 12 }}
-                          value={it.name} onChange={e => updateItem(i, 'name', e.target.value)} placeholder="Назва товару/послуги" />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          {it.productId && <i className="ti ti-package" style={{ fontSize: 12, color: 'var(--green)', flexShrink: 0 }} title="Зі складу" />}
+                          <input className="form-input" style={{ height: 32, fontSize: 12 }}
+                            value={it.name} onChange={e => updateItem(i, 'name', e.target.value)} />
+                        </div>
                       </td>
                       <td style={{ padding: '4px 2px' }}>
                         <input type="number" className="form-input" style={{ height: 32, fontSize: 12, textAlign: 'center' }}
@@ -181,12 +287,10 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved }) {
                         {formatMoney(parseFloat(it.amount) || 0)}
                       </td>
                       <td style={{ padding: '4px 2px' }}>
-                        {items.length > 1 && (
-                          <button onClick={() => removeItem(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', fontSize: 16 }}>×</button>
-                        )}
+                        <button onClick={() => removeItem(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', fontSize: 16 }}>×</button>
                       </td>
                     </tr>
-                  ))}
+                  )})}
                 </tbody>
               </table>
             </div>
