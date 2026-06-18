@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import { upsertContractor, syncContractorStats, importMissingContractors, mergeDuplicates } from '../lib/contractors'
 import { fetchByEdrpou, isVkursiConfigured, getVkursiCredentials, setVkursiCredentials } from '../lib/vkursi'
+import DocGenModal from './DocGenModal'
+import { loadContractorDocs, getDocLabel, STATUS_LABELS, STATUS_COLORS, formatMoney as fmtDoc, updateDocStatus, generatePdf, generateXlsx, DOCUMENT_TYPES } from '../lib/docgen'
 
 const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
 
@@ -168,6 +170,8 @@ export default function Contractors({ user, onNavigate }) {
   const [vkursiLoading, setVkursiLoading] = useState(false)
   const [vkursiError, setVkursiError] = useState(null)
   const [vkursiInfo, setVkursiInfo] = useState(null)
+  const [showDocGen, setShowDocGen] = useState(false)
+  const [contractorDocs, setContractorDocs] = useState([])
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState(null)
 
@@ -270,6 +274,7 @@ export default function Contractors({ user, onNavigate }) {
   const openDetail = async (c) => {
     setDetail(c); setDetailTab('info'); setView('detail')
     setReconcileFrom(''); setReconcileTo('')
+    loadContractorDocs(c.id).then(docs => setContractorDocs(docs))
 
     // Fetch transactions by ЄДРПОУ (primary) or by name (fallback)
     let txQuery = supabase.from('bank_transactions')
@@ -415,6 +420,9 @@ export default function Contractors({ user, onNavigate }) {
             )}
             {vkursiError && <div style={{ fontSize:12, color:'var(--red)', padding:'6px 12px', background:'var(--red-bg)', borderRadius:8 }}>{vkursiError}</div>}
             {vkursiInfo && !vkursiError && <div style={{ fontSize:12, color:'var(--green)', padding:'6px 12px', background:'var(--green-bg)', borderRadius:8 }}>Дані оновлено з Vkursi</div>}
+            <button onClick={() => setShowDocGen(true)} className="btn btn-primary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}>
+              <i className="ti ti-file-plus" style={{ fontSize:14 }} /> Створити документ
+            </button>
             <button onClick={() => openEdit(detail)} className="btn btn-secondary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}>
               <i className="ti ti-pencil" style={{ fontSize:14 }} /> Редагувати
             </button>
@@ -862,8 +870,78 @@ export default function Contractors({ user, onNavigate }) {
           </div>
         )}
 
+        {/* Документи контрагента */}
+        {contractorDocs.length > 0 && (
+          <div className="card" style={{ marginTop: 16 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <i className="ti ti-file-text" style={{ fontSize: 16, color: 'var(--blue)' }} />
+              Створені документи ({contractorDocs.length})
+            </div>
+            <div className="tbl-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Дата</th>
+                    <th>Тип</th>
+                    <th>Номер</th>
+                    <th style={{ textAlign: 'right' }}>Сума</th>
+                    <th>Статус</th>
+                    <th style={{ width: 120 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {contractorDocs.map(doc => {
+                    const st = STATUS_COLORS[doc.status] || STATUS_COLORS.draft
+                    return (
+                      <tr key={doc.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ fontSize: 13, whiteSpace: 'nowrap' }}>{doc.doc_date}</td>
+                        <td style={{ fontSize: 13 }}>{getDocLabel(doc.doc_type)}</td>
+                        <td style={{ fontSize: 13, fontWeight: 500 }}>{doc.doc_number}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{fmtDoc(doc.total)} грн</td>
+                        <td>
+                          <select style={{ fontSize: 11, border: '1px solid var(--border)', borderRadius: 6, padding: '2px 6px', background: st.bg, color: st.color, fontFamily: 'inherit', cursor: 'pointer' }}
+                            value={doc.status} onChange={async e => {
+                              await updateDocStatus(doc.id, e.target.value)
+                              loadContractorDocs(detail.id).then(docs => setContractorDocs(docs))
+                            }}>
+                            {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                          </select>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            <button className="btn btn-sm btn-secondary" style={{ padding: '2px 8px', fontSize: 11 }}
+                              onClick={() => {
+                                const items = typeof doc.items === 'string' ? JSON.parse(doc.items) : doc.items
+                                generatePdf(doc.doc_type, detail, items, { docNumber: doc.doc_number, docDate: doc.doc_date, notes: doc.notes })
+                              }}>PDF</button>
+                            <button className="btn btn-sm btn-secondary" style={{ padding: '2px 8px', fontSize: 11 }}
+                              onClick={() => {
+                                const items = typeof doc.items === 'string' ? JSON.parse(doc.items) : doc.items
+                                generateXlsx(doc.doc_type, detail, items, { docNumber: doc.doc_number, docDate: doc.doc_date, notes: doc.notes })
+                              }}>XLS</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* Form modal (reused) */}
         {showForm && renderForm()}
+
+        {/* DocGen modal */}
+        {showDocGen && (
+          <DocGenModal
+            contractor={detail}
+            userId={user.id}
+            onClose={() => setShowDocGen(false)}
+            onSaved={() => loadContractorDocs(detail.id).then(docs => setContractorDocs(docs))}
+          />
+        )}
       </div>
     )
   }
