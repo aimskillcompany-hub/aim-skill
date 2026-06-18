@@ -386,16 +386,20 @@ export default function Contractors({ user, onNavigate }) {
                   setVkursiLoading(true); setVkursiError(null)
                   try {
                     const info = await fetchByEdrpou(detail.edrpou)
+                    const noOverwrite = ['name','short_name','phone','phone2','email','website','legal_address','contact_person','contact_position']
+                    const allFields = ['name','short_name','ipn','legal_form','state','registration_date',
+                      'phone','phone2','email','website','legal_address','city','region','postal_code',
+                      'contact_person','contact_position','director','director_position','founders',
+                      'primary_kved','capital','court_cases_count','enforcement_count',
+                      'express_score','vkursi_data','vkursi_updated_at']
                     const updates = {}
-                    if (info.name && !detail.name) updates.name = info.name
-                    if (info.short_name && !detail.short_name) updates.short_name = info.short_name
-                    if (info.legal_form && !detail.legal_form) updates.legal_form = info.legal_form
+                    for (const f of allFields) {
+                      if (info[f] != null && info[f] !== '') {
+                        if (noOverwrite.includes(f) && detail[f]) continue
+                        updates[f] = info[f]
+                      }
+                    }
                     if (info.is_vat_payer) updates.is_vat_payer = true
-                    if (info.phone && !detail.phone) updates.phone = info.phone
-                    if (info.email && !detail.email) updates.email = info.email
-                    if (info.website && !detail.website) updates.website = info.website
-                    if (info.legal_address && !detail.legal_address) updates.legal_address = info.legal_address
-                    if (info._director && !detail.contact_person) { updates.contact_person = info._director; updates.contact_position = info._directorRole || '' }
                     if (Object.keys(updates).length > 0) {
                       await supabase.from('contractors').update(updates).eq('id', detail.id)
                       setDetail(d => ({ ...d, ...updates }))
@@ -458,14 +462,44 @@ export default function Contractors({ user, onNavigate }) {
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
                 <Field label="Повна назва" value={detail.name} />
                 <Field label="Коротка назва" value={detail.short_name} />
-                <Field label="ЄДРПОУ / ІПН" value={detail.edrpou} />
+                <Field label="ЄДРПОУ" value={detail.edrpou} />
+                <Field label="ІПН" value={detail.ipn} />
                 <Field label="Форма" value={detail.legal_form} />
+                <Field label="Стан" value={detail.state} />
+                <Field label="Дата реєстрації" value={detail.registration_date} />
+                <Field label="Основний КВЕД" value={detail.primary_kved} />
                 <Field label="Система оподаткування" value={detail.tax_system} />
                 <Field label="Платник ПДВ" value={detail.is_vat_payer ? 'Так' : 'Ні'} />
                 <Field label="№ свідоцтва ПДВ" value={detail.vat_certificate} />
+                <Field label="Статутний капітал" value={detail.capital ? `${detail.capital} грн` : null} />
                 <Field label="Тип" value={typeLabel(detail.type)} />
               </div>
             </Section>
+
+            <Section title="Керівництво" icon="ti-users">
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                <Field label="Директор" value={detail.director} />
+                <Field label="Посада" value={detail.director_position} />
+                <Field label="Засновники" value={detail.founders} />
+              </div>
+              {detail.vkursi_data?.heads?.length > 1 && (
+                <div style={{ marginTop:8, fontSize:12, color:'var(--text2)' }}>
+                  <div style={{ fontWeight:500, marginBottom:4 }}>Всі керівники:</div>
+                  {detail.vkursi_data.heads.map((h, i) => (
+                    <div key={i}>{h.name} — {h.role || '—'}</div>
+                  ))}
+                </div>
+              )}
+            </Section>
+
+            {(detail.court_cases_count > 0 || detail.enforcement_count > 0) && (
+              <Section title="Ризики" icon="ti-alert-triangle">
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                  <Field label="Судових справ" value={detail.court_cases_count} />
+                  <Field label="Виконавчих проваджень" value={detail.enforcement_count} />
+                </div>
+              </Section>
+            )}
 
             <Section title="Контакти" icon="ti-address-book">
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
@@ -501,6 +535,9 @@ export default function Contractors({ user, onNavigate }) {
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
                 <Field label="Стаття за замовч." value={detail.default_article} />
                 <Field label="Напрям за замовч." value={detail.default_direction} />
+                {detail.vkursi_updated_at && (
+                  <Field label="Vkursi оновлено" value={new Date(detail.vkursi_updated_at).toLocaleDateString('uk-UA')} />
+                )}
               </div>
             </Section>
           </div>
@@ -865,8 +902,11 @@ export default function Contractors({ user, onNavigate }) {
                           website: info.website || f.website,
                           legal_address: info.legal_address || f.legal_address,
                           address: info.address || f.address,
-                          contact_person: info._director || f.contact_person,
-                          contact_position: info._directorRole || f.contact_position,
+                          city: info.city || f.city,
+                          region: info.region || f.region,
+                          postal_code: info.postal_code || f.postal_code,
+                          contact_person: info.contact_person || f.contact_person,
+                          contact_position: info.contact_position || f.contact_position,
                         }))
                         setVkursiInfo(info)
                       } catch (e) {

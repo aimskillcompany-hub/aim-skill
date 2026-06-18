@@ -96,12 +96,47 @@ function parseResponse(raw) {
   // Статутний капітал
   const capital = d.authorised_capital || {}
 
+  // Судова аналітика
+  const court = d.courtAnalytic || {}
+  const courtCount = court.count || court.totalCount || court.total || 0
+
+  // Виконавчі провадження
+  const enforcements = d.open_enforcements || []
+
+  // Express Score
+  const score = d.expressScore || null
+
+  // Поштовий індекс, місто, область з адреси
+  const parts = d.parts || {}
+  const postalCode = parts.zip || parts.postal_code || null
+  const city = parts.city || parts.settlement || null
+  const region = parts.region || parts.area || null
+
+  // Засновники як рядок
+  const foundersStr = founders
+    .map(f => {
+      const name = f.name || f.full_name || ''
+      const role = f.role || ''
+      const capital_part = f.capital ? ` (${f.capital})` : ''
+      return `${name}${role ? ' — ' + role : ''}${capital_part}`
+    })
+    .filter(Boolean)
+    .join('; ')
+
+  // КВЕДи
+  const allKveds = activities
+    .map(a => `${a.code || ''} ${a.name || ''}`.trim())
+    .filter(Boolean)
+
   return {
-    // Основні
+    // Основні — зберігаються в contractors
     name: d.name || null,
     short_name: d.short || d.short_name || null,
     edrpou: d.code || d.edrpou || null,
+    ipn: d.inn || d.ipn || null,
     legal_form: d.olf_name || null,
+    state: d.state_text || (d.state === 1 ? 'Зареєстровано' : d.state_text) || null,
+    registration_date: d.registration?.date || null,
 
     // Контакти
     phone: phone || null,
@@ -112,19 +147,44 @@ function parseResponse(raw) {
     // Адреси
     address: address || null,
     legal_address: address || null,
+    city: city || null,
+    region: region || null,
+    postal_code: postalCode || null,
 
     // ПДВ
     is_vat_payer: isVatPayer,
-    ipn: d.inn || d.ipn || null,
 
-    // Додатково (для відображення)
-    _director: director ? (director.name || director.full_name) : null,
-    _directorRole: director ? (director.role || director.position) : null,
-    _founders: founders.map(f => f.name || f.full_name).filter(Boolean),
-    _primaryActivity: primaryActivity ? `${primaryActivity.code || ''} ${primaryActivity.name || ''}`.trim() : null,
-    _capital: capital.value || capital.amount || null,
-    _registrationDate: d.registration?.date || null,
-    _state: d.state_text || d.state || null,
+    // Керівництво
+    director: director ? (director.name || director.full_name) : null,
+    director_position: director ? (director.role || director.position) : null,
+    contact_person: director ? (director.name || director.full_name) : null,
+    contact_position: director ? (director.role || director.position) : null,
+
+    // Засновники
+    founders: foundersStr || null,
+
+    // КВЕД
+    primary_kved: primaryActivity ? `${primaryActivity.code || ''} ${primaryActivity.name || ''}`.trim() : null,
+
+    // Фінанси
+    capital: capital.value || capital.amount || null,
+
+    // Ризики
+    court_cases_count: courtCount || null,
+    enforcement_count: enforcements.length || null,
+    express_score: score,
+
+    // Сирі дані для майбутнього використання
+    vkursi_data: {
+      heads: heads.map(h => ({ name: h.name || h.full_name, role: h.role || h.position, date: h.date })),
+      founders: founders.map(f => ({ name: f.name || f.full_name, role: f.role, capital: f.capital })),
+      kveds: allKveds,
+      branches: (d.branches || []).map(b => b.name || b.address).filter(Boolean),
+      registrations: registrations.map(r => ({ name: r.name, date: r.date })),
+      bankruptcy: d.bankruptcy || null,
+      termination: d.termination || null,
+    },
+    vkursi_updated_at: new Date().toISOString(),
   }
 }
 
