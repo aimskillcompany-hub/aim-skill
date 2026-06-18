@@ -150,20 +150,20 @@ export default function AddDocument({ user, onSaved }) {
         if (searchAmt > 0) {
           const tolerance = Math.max(10, searchAmt * 0.01)
           const { data } = await supabase.from('bank_transactions')
-            .select('id, date, counterparty, amount, edrpou, iban')
+            .select('id, date, counterparty, amount, edrpou')
             .eq('is_ignored', false)
             .order('date', { ascending: false }).limit(500)
           results = (data || []).filter(b => Math.abs(Math.abs(b.amount) - searchAmt) <= tolerance)
         }
       } else {
         const { data: byCp } = await supabase.from('bank_transactions')
-          .select('id, date, counterparty, amount, edrpou, iban')
+          .select('id, date, counterparty, amount, edrpou')
           .ilike('counterparty', `%${query.trim()}%`)
           .eq('is_ignored', false)
           .order('date', { ascending: false }).limit(50)
 
         const { data: byCode } = await supabase.from('bank_transactions')
-          .select('id, date, counterparty, amount, edrpou, iban')
+          .select('id, date, counterparty, amount, edrpou')
           .ilike('edrpou', `%${query.trim()}%`)
           .eq('is_ignored', false)
           .order('date', { ascending: false }).limit(50)
