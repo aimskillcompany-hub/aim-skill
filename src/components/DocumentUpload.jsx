@@ -188,9 +188,12 @@ export default function DocumentUpload({ user, onSaved }) {
       if (validItems.length > 0 && bankTxId) {
         // Перевірити дублікати
         const { data: existing } = await supabase.from('transaction_items')
-          .select('name').eq('bank_transaction_id', bankTxId)
-        const existingNames = new Set((existing || []).map(e => e.name?.toLowerCase()))
-        const newItems = validItems.filter(it => !existingNames.has(it.name?.toLowerCase()))
+          .select('name, quantity, unit_price').eq('bank_transaction_id', bankTxId)
+        const existingKeys = new Set((existing || []).map(e => `${(e.name||'').toLowerCase()}|${e.quantity}|${e.unit_price}`))
+        const newItems = validItems.filter(it => {
+          const key = `${(it.name||'').toLowerCase()}|${parseFloat(it.quantity)||0}|${parseFloat(it.unitPrice)||0}`
+          return !existingKeys.has(key)
+        })
 
         if (newItems.length > 0) {
           const { data: savedItems } = await supabase.from('transaction_items').insert(

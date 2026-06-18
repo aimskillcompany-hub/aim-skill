@@ -1111,8 +1111,9 @@ export default function Registry({ user }) {
                       const arts = await (await import('../lib/articles')).fetchArticles()
                       // Існуючі назви позицій для перевірки дублікатів
                       const { data: existingItems } = await supabase.from('transaction_items')
-                        .select('name').eq('bank_transaction_id', selected.id)
-                      const existingNames = new Set((existingItems || []).map(e => e.name?.toLowerCase()))
+                        .select('name, quantity, unit_price').eq('bank_transaction_id', selected.id)
+                      // Дублікат = назва + кількість + ціна
+                      const existingKeys = new Set((existingItems || []).map(e => `${(e.name||'').toLowerCase()}|${e.quantity}|${e.unit_price}`))
                       let totalAdded = 0
 
                       // Обробити ВСІ документи
@@ -1134,7 +1135,10 @@ export default function Registry({ user }) {
                         }
 
                         // Фільтрувати дублікати
-                        const newItems = items.filter(it => !existingNames.has(it.name?.toLowerCase()))
+                        const newItems = items.filter(it => {
+                          const key = `${(it.name||'').toLowerCase()}|${parseFloat(it.quantity)||0}|${parseFloat(it.unitPrice)||0}`
+                          return !existingKeys.has(key)
+                        })
                         if (newItems.length === 0) continue
 
                         const { data: savedItems } = await supabase.from('transaction_items').insert(
@@ -1154,7 +1158,7 @@ export default function Registry({ user }) {
                             docType: data.docType, docRole: doc.doc_role || 'incoming',
                             bankTransactionId: selected.id, date: selected.date, userId: user?.id,
                           })
-                          newItems.forEach(it => existingNames.add(it.name?.toLowerCase()))
+                          newItems.forEach(it => existingKeys.add(`${(it.name||'').toLowerCase()}|${parseFloat(it.quantity)||0}|${parseFloat(it.unitPrice)||0}`))
                           totalAdded += savedItems.length
                         }
                       }
