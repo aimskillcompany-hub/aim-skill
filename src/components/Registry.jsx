@@ -979,7 +979,46 @@ export default function Registry({ user }) {
                                   </button>
                                 )
                               }
-                              return <span style={{ fontSize:11, color:'var(--text3)' }}>Не привʼязано</span>
+                              // Не привʼязано — дати вибрати товар і списати
+                              return (
+                                <div>
+                                  <input style={{ width:'100%', border:'1px solid var(--border)', borderRadius:4, padding:'3px 6px', fontSize:11, fontFamily:'inherit' }}
+                                    placeholder="Пошук товару..."
+                                    onChange={e => {
+                                      const q = e.target.value.toLowerCase()
+                                      if (q.length < 2) { e.target.dataset.results = ''; return }
+                                      const found = allProducts.filter(p => p.name.toLowerCase().includes(q)).slice(0, 5)
+                                      // Зберігаємо в data attribute для простоти
+                                      e.target.dataset.results = JSON.stringify(found)
+                                      e.target.dispatchEvent(new Event('input', { bubbles: true }))
+                                    }}
+                                  />
+                                  <div style={{ display:'flex', flexDirection:'column', gap:2, marginTop:4 }}>
+                                    {allProducts.filter(p => p.name.toLowerCase().includes((it.name || '').toLowerCase().substring(0, 15))).slice(0, 3).map(p => (
+                                      <button key={p.id} onClick={async (e) => {
+                                        e.stopPropagation()
+                                        // Привʼязати item до product
+                                        await supabase.from('transaction_items').update({ product_id: p.id }).eq('id', it.id)
+                                        // Створити stock_movement
+                                        const movType = selected.direction === 'Доходи' ? 'out' : 'in'
+                                        const { getFifoCost } = await import('../lib/stockService')
+                                        const costPrice = movType === 'out' ? await getFifoCost(p.id, it.quantity) : null
+                                        await supabase.from('stock_movements').insert({
+                                          product_id: p.id, type: movType,
+                                          quantity: it.quantity, price: it.unit_price, total: it.amount,
+                                          cost_price: costPrice, bank_transaction_id: selected.id,
+                                          transaction_item_id: it.id, date: selected.date, description: it.name,
+                                        })
+                                        setSelectedItems(prev => prev.map(item => item.id === it.id ? { ...item, product_id: p.id } : item))
+                                        setItemMovements(prev => ({ ...prev, [it.id]: { type: movType, date: selected.date } }))
+                                      }} style={{ fontSize:10, background:'var(--bg)', border:'1px solid var(--border)', borderRadius:4, padding:'3px 6px', cursor:'pointer', textAlign:'left', fontFamily:'inherit', display:'flex', justifyContent:'space-between' }}>
+                                        <span>{p.name.substring(0, 30)}</span>
+                                        <span style={{ color:'var(--text3)', flexShrink:0, marginLeft:4 }}>{p.computed_stock} {p.unit}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )
                             })()}
                           </td>
                         </tr>
