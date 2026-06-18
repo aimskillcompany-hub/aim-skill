@@ -968,7 +968,7 @@ export default function Registry({ user }) {
                   <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
                     <thead>
                       <tr style={{ background:'var(--surface2)' }}>
-                        {['Назва','К-сть','Ціна','ПДВ%','Сума','Склад'].map(h => (
+                        {['Назва','К-сть','Ціна','ПДВ%','Сума','Склад',''].map(h => (
                           <th key={h} style={{ padding:'6px 8px', textAlign: h==='К-сть'||h==='Ціна'||h==='Сума' ? 'right' : 'left', borderBottom:'1px solid var(--border)', fontWeight:500, color:'var(--text2)' }}>{h}</th>
                         ))}
                       </tr>
@@ -1085,6 +1085,20 @@ export default function Registry({ user }) {
                                 </div>
                               )
                             })()}
+                          </td>
+                          <td style={{ padding:'4px 4px', textAlign:'center' }}>
+                            <button onClick={async (e) => {
+                              e.stopPropagation()
+                              if (!confirm('Видалити позицію "' + (it.name || '').substring(0, 30) + '"?')) return
+                              // Видалити stock_movement якщо є
+                              await supabase.from('stock_movements').delete().eq('transaction_item_id', it.id)
+                              // Видалити позицію
+                              await supabase.from('transaction_items').delete().eq('id', it.id)
+                              setSelectedItems(prev => prev.filter(item => item.id !== it.id))
+                              setItemMovements(prev => { const n = { ...prev }; delete n[it.id]; return n })
+                            }} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--red)', fontSize:14, padding:2 }} title="Видалити позицію">
+                              <i className="ti ti-trash" />
+                            </button>
                           </td>
                         </tr>
                       ))}
