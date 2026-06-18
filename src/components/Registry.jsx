@@ -61,6 +61,7 @@ export default function Registry({ user }) {
   const [addItemQty, setAddItemQty] = useState('')
   const [addItemPrice, setAddItemPrice] = useState('')
   const [recognizing, setRecognizing] = useState(false)
+  const [pricesIncludeVat, setPricesIncludeVat] = useState(false)
   const [allProducts, setAllProducts] = useState([])
   const addItemResults = addItemSearch.length >= 2
     ? allProducts.filter(p => p.name.toLowerCase().includes(addItemSearch.toLowerCase())).slice(0, 8)
@@ -941,6 +942,27 @@ export default function Registry({ user }) {
                   <i className="ti ti-package" style={{ fontSize:15, color:'var(--blue)' }} />
                   Позиції ({selectedItems.length})
                   <span style={{ fontSize:11, fontWeight:400, color:'var(--text3)', marginLeft:8 }}>Складський статус</span>
+                  <button style={{
+                    marginLeft:'auto', fontSize:11, padding:'3px 10px', borderRadius:6, cursor:'pointer', fontFamily:'inherit',
+                    background: pricesIncludeVat ? 'var(--amber-bg)' : 'var(--surface2)',
+                    color: pricesIncludeVat ? 'var(--amber)' : 'var(--text3)',
+                    border: '1px solid var(--border)',
+                  }} onClick={async () => {
+                    const newVal = !pricesIncludeVat
+                    setPricesIncludeVat(newVal)
+                    if (newVal) {
+                      // Перерахувати: ціни з ПДВ → без ПДВ
+                      for (const it of selectedItems) {
+                        const rate = parseFloat(it.vat_rate) || 20
+                        const netPrice = (parseFloat(it.unit_price) || 0) / (1 + rate / 100)
+                        const netAmount = netPrice * (parseFloat(it.quantity) || 1)
+                        await supabase.from('transaction_items').update({ unit_price: Math.round(netPrice * 100) / 100, amount: Math.round(netAmount * 100) / 100 }).eq('id', it.id)
+                      }
+                      openDetail(selected)
+                    }
+                  }}>
+                    {pricesIncludeVat ? '✓ Ціни з ПДВ → перераховано' : 'Ціни включають ПДВ?'}
+                  </button>
                 </div>
                 <div style={{ overflowX:'auto' }}>
                   <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
