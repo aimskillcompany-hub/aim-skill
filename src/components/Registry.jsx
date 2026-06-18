@@ -367,6 +367,8 @@ export default function Registry({ user }) {
   const [projectInfo, setProjectInfo] = useState({}) // projectId → { count, total, lastItems[] }
   const [itemProjectHints, setItemProjectHints] = useState({}) // itemName → projectId (де цей товар вже був)
 
+  const [itemMovements, setItemMovements] = useState({}) // item.id → stock_movement
+
   const openDetail = async (tx) => {
     setSelected(tx)
     const [{ data: docs }, { data: items }, { data: allItems }] = await Promise.all([
@@ -376,6 +378,19 @@ export default function Registry({ user }) {
     ])
     setSelectedDocs(docs || [])
     setSelectedItems(items || [])
+
+    // Завантажити stock_movements для кожного item
+    const itemIds = (items || []).map(i => i.id).filter(Boolean)
+    if (itemIds.length > 0) {
+      const { data: movs } = await supabase.from('stock_movements')
+        .select('id, transaction_item_id, type, quantity, price, date, product_id')
+        .in('transaction_item_id', itemIds)
+      const movMap = {}
+      ;(movs || []).forEach(m => { if (m.transaction_item_id) movMap[m.transaction_item_id] = m })
+      setItemMovements(movMap)
+    } else {
+      setItemMovements({})
+    }
 
     // Build project info: count, total, last items
     const pInfo = {}
@@ -914,13 +929,13 @@ export default function Registry({ user }) {
                 <div style={{ fontSize:13, fontWeight:600, marginBottom:8, display:'flex', alignItems:'center', gap:6 }}>
                   <i className="ti ti-package" style={{ fontSize:15, color:'var(--blue)' }} />
                   Позиції ({selectedItems.length})
-                  <span style={{ fontSize:11, fontWeight:400, color:'var(--text3)', marginLeft:8 }}>Оберіть проєкт для кожної позиції</span>
+                  <span style={{ fontSize:11, fontWeight:400, color:'var(--text3)', marginLeft:8 }}>Складський статус</span>
                 </div>
                 <div style={{ overflowX:'auto' }}>
                   <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
                     <thead>
                       <tr style={{ background:'var(--surface2)' }}>
-                        {['Назва','К-сть','Сума','Проєкт'].map(h => (
+                        {['Назва','К-сть','Сума','Склад'].map(h => (
                           <th key={h} style={{ padding:'6px 8px', textAlign:'left', borderBottom:'1px solid var(--border)', fontWeight:500, color:'var(--text2)' }}>{h}</th>
                         ))}
                       </tr>
@@ -933,50 +948,38 @@ export default function Registry({ user }) {
                           <td style={{ padding:'6px 8px', fontWeight:500, whiteSpace:'nowrap' }}>{fmt2(it.amount)} грн</td>
                           <td style={{ padding:'6px 8px' }}>
                             {(() => {
-                              const hint = itemProjectHints[it.id]
-                              const hintProject = hint ? projects.find(p => p.id === hint) : null
-                              // Sort: hint first, then by item count
-                              const sorted = [...projects].sort((a, b) => {
-                                if (a.id === hint) return -1
-                                if (b.id === hint) return 1
-                                return (projectInfo[b.id]?.count || 0) - (projectInfo[a.id]?.count || 0)
-                              })
-                              return (
-                                <div>
-                                  {hintProject && !it.project_id && (
-                                    <button onClick={async () => {
-                                      await supabase.from('transaction_items').update({ project_id: hint }).eq('id', it.id)
-                                      setSelectedItems(prev => prev.map(item => item.id === it.id ? { ...item, project_id: hint } : item))
-                                    }} style={{
-                                      background:'var(--green-bg)', border:'1px solid var(--border)', borderRadius:6,
-                                      padding:'3px 8px', cursor:'pointer', fontSize:11, color:'var(--green)',
-                                      marginBottom:4, display:'flex', alignItems:'center', gap:4, fontFamily:'inherit', width:'100%',
-                                    }}>
-                                      <i className="ti ti-sparkles" style={{ fontSize:12 }} />
-                                      {hintProject.name?.substring(0, 25)}
-                                    </button>
-                                  )}
-                                  <select
-                                    className="form-input"
-                                    style={{ height:32, fontSize:11, padding:'4px 6px', minWidth:160 }}
-                                    value={it.project_id || ''}
-                                    onChange={async (e) => {
-                                      const projectId = e.target.value || null
-                                      await supabase.from('transaction_items').update({ project_id: projectId }).eq('id', it.id)
-                                      setSelectedItems(prev => prev.map(item => item.id === it.id ? { ...item, project_id: projectId } : item))
-                                    }}
-                                  >
-                                    <option value="">— без проєкту —</option>
-                                    {sorted.map(p => {
-                                      const info = projectInfo[p.id]
-                                      const label = info
-                                        ? `${p.name} (${info.count} поз., ${new Intl.NumberFormat('uk-UA',{maximumFractionDigits:0}).format(info.total)} грн)`
-                                        : p.name
-                                      return <option key={p.id} value={p.id}>{p.id === hint ? '⭐ ' : ''}{label}</option>
-                                    })}
-                                  </select>
-                                </div>
-                              )
+                              const mov = itemMovements[it.id]
+                              if (mov) {
+                                return (
+                                  <span style={{ fontSize:11, background: mov.type === 'out' ? 'var(--red-bg)' : 'var(--green-bg)', color: mov.type === 'out' ? 'var(--red)' : 'var(--green)', padding:'2px 8px', borderRadius:4, display:'inline-flex', alignItems:'center', gap:3 }}>
+                                    <i className={`ti ${mov.type === 'out' ? 'ti-arrow-up' : 'ti-arrow-down'}`} style={{ fontSize:11 }} />
+                                    {mov.type === 'out' ? 'Списано' : 'Оприбутковано'} · {mov.date}
+                                  </span>
+                                )
+                              }
+                              // Не списано — можна списати
+                              if (it.product_id) {
+                                return (
+                                  <button onClick={async (e) => {
+                                    e.stopPropagation()
+                                    const movType = selected.direction === 'Доходи' ? 'out' : 'in'
+                                    const { getFifoCost } = await import('../lib/stockService')
+                                    const costPrice = movType === 'out' ? await getFifoCost(it.product_id, it.quantity) : null
+                                    await supabase.from('stock_movements').insert({
+                                      product_id: it.product_id, type: movType,
+                                      quantity: it.quantity, price: it.unit_price, total: it.amount,
+                                      cost_price: costPrice, bank_transaction_id: selected.id,
+                                      transaction_item_id: it.id, date: selected.date,
+                                      description: it.name,
+                                    })
+                                    setItemMovements(prev => ({ ...prev, [it.id]: { type: movType, date: selected.date } }))
+                                  }} style={{ fontSize:11, background:'none', border:'1px dashed var(--border)', borderRadius:4, padding:'2px 8px', cursor:'pointer', color:'var(--blue)', fontFamily:'inherit', display:'flex', alignItems:'center', gap:3 }}>
+                                    <i className="ti ti-package-import" style={{ fontSize:11 }} />
+                                    {selected.direction === 'Доходи' ? 'Списати' : 'Оприбуткувати'}
+                                  </button>
+                                )
+                              }
+                              return <span style={{ fontSize:11, color:'var(--text3)' }}>Не привʼязано</span>
                             })()}
                           </td>
                         </tr>
