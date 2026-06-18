@@ -85,8 +85,22 @@ export default async function handler(req, res) {
         } catch {}
       }
 
+      // Спробуємо ще один формат — Code замість code
+      const basic2 = await vkursiFetch(
+        `${BASE}/organizations/getorganizations`,
+        token, { Code: [code] }
+      )
+
+      if (basic2.ok) {
+        try {
+          const data = JSON.parse(basic2.text)
+          const org = Array.isArray(data) ? data[0] : data
+          return res.status(200).json({ source: 'basic', data: org })
+        } catch {}
+      }
+
       return res.status(200).json({
-        error: `Vkursi: не вдалось отримати дані (advanced: ${adv.status}, basic: ${basic.status})`
+        error: `Vkursi: не вдалось отримати дані. Advanced: ${adv.status} — ${adv.text.substring(0, 100)}. Basic: ${basic.status} — ${basic.text.substring(0, 100)}`
       })
     }
 
