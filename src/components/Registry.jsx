@@ -944,27 +944,36 @@ export default function Registry({ user }) {
                   <i className="ti ti-package" style={{ fontSize:15, color:'var(--blue)' }} />
                   Позиції ({selectedItems.length})
                   <span style={{ fontSize:11, fontWeight:400, color:'var(--text3)', marginLeft:8 }}>Складський статус</span>
-                  <button style={{
-                    marginLeft:'auto', fontSize:11, padding:'3px 10px', borderRadius:6, cursor:'pointer', fontFamily:'inherit',
-                    background: pricesIncludeVat ? 'var(--amber-bg)' : 'var(--surface2)',
-                    color: pricesIncludeVat ? 'var(--amber)' : 'var(--text3)',
-                    border: '1px solid var(--border)',
-                  }} onClick={async () => {
-                    const newVal = !pricesIncludeVat
-                    setPricesIncludeVat(newVal)
-                    if (newVal) {
-                      // Перерахувати: ціни з ПДВ → без ПДВ
-                      for (const it of selectedItems) {
-                        const rate = parseFloat(it.vat_rate) || 20
-                        const netPrice = (parseFloat(it.unit_price) || 0) / (1 + rate / 100)
-                        const netAmount = netPrice * (parseFloat(it.quantity) || 1)
-                        await supabase.from('transaction_items').update({ unit_price: Math.round(netPrice * 100) / 100, amount: Math.round(netAmount * 100) / 100 }).eq('id', it.id)
-                      }
-                      openDetail(selected)
-                    }
-                  }}>
-                    {pricesIncludeVat ? '✓ Ціни з ПДВ → перераховано' : 'Ціни включають ПДВ?'}
-                  </button>
+                  {(() => {
+                    const itemsTotal = selectedItems.reduce((s, it) => s + (parseFloat(it.amount) || 0), 0)
+                    const bankAbs = Math.abs(selected.amount || 0)
+                    // Якщо SUM позицій ≈ банк — ціни вже з ПДВ
+                    const looksLikeWithVat = bankAbs > 0 && Math.abs(itemsTotal - bankAbs) / bankAbs < 0.05
+                    // Якщо SUM позицій ≈ банк/1.2 — ціни вже без ПДВ
+                    const looksLikeWithoutVat = bankAbs > 0 && Math.abs(itemsTotal - bankAbs / 1.2) / (bankAbs / 1.2) < 0.05
+                    return (
+                      <button style={{
+                        marginLeft:'auto', fontSize:11, padding:'3px 10px', borderRadius:6, cursor:'pointer', fontFamily:'inherit',
+                        background: looksLikeWithVat ? 'var(--amber-bg)' : 'var(--surface2)',
+                        color: looksLikeWithVat ? 'var(--amber)' : 'var(--text3)',
+                        border: '1px solid var(--border)',
+                      }} onClick={async () => {
+                        if (looksLikeWithoutVat) { alert('Ціни вже без ПДВ — перерахунок не потрібний'); return }
+                        if (!looksLikeWithVat) {
+                          if (!confirm('Суми позицій не збігаються з банківською сумою. Все одно перерахувати?')) return
+                        }
+                        for (const it of selectedItems) {
+                          const rate = parseFloat(it.vat_rate) || 20
+                          const netPrice = (parseFloat(it.unit_price) || 0) / (1 + rate / 100)
+                          const netAmount = netPrice * (parseFloat(it.quantity) || 1)
+                          await supabase.from('transaction_items').update({ unit_price: Math.round(netPrice * 100) / 100, amount: Math.round(netAmount * 100) / 100 }).eq('id', it.id)
+                        }
+                        openDetail(selected)
+                      }}>
+                        {looksLikeWithVat ? '⚠ Ціни з ПДВ — натисніть для перерахунку' : looksLikeWithoutVat ? '✓ Ціни без ПДВ' : 'Перерахувати ПДВ'}
+                      </button>
+                    )
+                  })()}
                 </div>
                 <div style={{ overflowX:'auto' }}>
                   <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
