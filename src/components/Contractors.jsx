@@ -919,6 +919,15 @@ export default function Contractors({ user, onNavigate }) {
                                 const items = typeof doc.items === 'string' ? JSON.parse(doc.items) : doc.items
                                 generateXlsx(doc.doc_type, detail, items, { docNumber: doc.doc_number, docDate: doc.doc_date, notes: doc.notes })
                               }}>XLS</button>
+                            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 15, padding: '0 4px' }}
+                              title="Видалити"
+                              onClick={async () => {
+                                if (!confirm(`Видалити ${getDocLabel(doc.doc_type)} №${doc.doc_number}?`)) return
+                                await supabase.from('generated_docs').delete().eq('id', doc.id)
+                                loadContractorDocs(detail.id).then(docs => setContractorDocs(docs))
+                              }}>
+                              <i className="ti ti-trash" style={{ fontSize: 14 }} />
+                            </button>
                           </div>
                         </td>
                       </tr>
