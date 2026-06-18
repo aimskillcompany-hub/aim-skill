@@ -956,7 +956,15 @@ export default function Registry({ user }) {
                         <tr key={it.id} style={{ borderBottom:'1px solid var(--bg)' }}>
                           <td style={{ padding:'6px 8px', maxWidth:200 }}>{it.name}</td>
                           <td style={{ padding:'6px 8px', whiteSpace:'nowrap', textAlign:'right' }}>{fmt2(it.quantity)} {it.unit||'шт'}</td>
-                          <td style={{ padding:'6px 8px', whiteSpace:'nowrap', textAlign:'right', color:'var(--text2)' }}>{it.unit_price ? fmt2(it.unit_price) : '—'}</td>
+                          <td style={{ padding:'4px 6px', textAlign:'right' }}>
+                            <input type="number" style={{ width:80, border:'1px solid var(--border)', borderRadius:4, padding:'2px 6px', fontSize:12, textAlign:'right', fontFamily:'inherit' }}
+                              value={it.unit_price ?? ''} onChange={async (e) => {
+                                const val = parseFloat(e.target.value) || 0
+                                const newAmount = val * (parseFloat(it.quantity) || 1)
+                                await supabase.from('transaction_items').update({ unit_price: val, amount: newAmount }).eq('id', it.id)
+                                setSelectedItems(prev => prev.map(item => item.id === it.id ? { ...item, unit_price: val, amount: newAmount } : item))
+                              }} />
+                          </td>
                           <td style={{ padding:'6px 8px' }}>
                             <select style={{ border:'1px solid var(--border)', borderRadius:4, padding:'1px 4px', fontSize:11, fontFamily:'inherit', width:55 }}
                               value={it.vat_rate ?? 20}
@@ -970,7 +978,14 @@ export default function Registry({ user }) {
                               <option value={0}>0%</option>
                             </select>
                           </td>
-                          <td style={{ padding:'6px 8px', fontWeight:500, whiteSpace:'nowrap', textAlign:'right' }}>{fmt2(it.amount)} грн</td>
+                          <td style={{ padding:'4px 6px', textAlign:'right' }}>
+                            <input type="number" style={{ width:90, border:'1px solid var(--border)', borderRadius:4, padding:'2px 6px', fontSize:12, textAlign:'right', fontFamily:'inherit', fontWeight:500 }}
+                              value={it.amount ?? ''} onChange={async (e) => {
+                                const val = parseFloat(e.target.value) || 0
+                                await supabase.from('transaction_items').update({ amount: val }).eq('id', it.id)
+                                setSelectedItems(prev => prev.map(item => item.id === it.id ? { ...item, amount: val } : item))
+                              }} />
+                          </td>
                           <td style={{ padding:'6px 8px' }}>
                             {(() => {
                               const mov = itemMovements[it.id]
