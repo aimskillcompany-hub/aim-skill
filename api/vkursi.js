@@ -73,10 +73,18 @@ export default async function handler(req, res) {
       }
 
       // Fallback на getorganizations (дешевший)
-      const basic = await vkursiFetch(
-        `${BASE}/organizations/getorganizations`,
-        token, { code: [code] }
-      )
+      // Тіло запиту — точний рядок як в документації
+      const basicBody = JSON.stringify({ code: [code] })
+      const basicR = await fetch(`${BASE}/organizations/getorganizations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'ContentType': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: basicBody,
+      })
+      const basic = { ok: basicR.ok, status: basicR.status, text: await basicR.text() }
 
       if (basic.ok) {
         try {
@@ -87,7 +95,7 @@ export default async function handler(req, res) {
       }
 
       return res.status(200).json({
-        error: `Vkursi: не вдалось отримати дані. Advanced: ${adv.status} — ${adv.text.substring(0, 100)}. Basic: ${basic.status} — ${basic.text.substring(0, 100)}`
+        error: `Vkursi: не вдалось отримати дані. Advanced: ${adv.status} — ${adv.text.substring(0, 100)}. Basic: ${basic.status} — ${basic.text.substring(0, 200)}. Sent: ${basicBody}`
       })
     }
 
