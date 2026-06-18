@@ -727,13 +727,22 @@ export default function Registry({ user }) {
                     <td style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color:'var(--text2)', maxWidth:100 }}>{tx.project_id ? (projects.find(p=>p.id===tx.project_id)?.name || '—') : '—'}</td>
                     <td style={{ textAlign:'center' }}>
                       <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:13 }}>
+                        {tx.is_verified && <i className="ti ti-circle-check-filled" style={{ fontSize:14, color:'var(--green)' }} title="Верифіковано" />}
                         {tx.documents?.length > 0 && <span>📄{tx.documents.length > 1 ? tx.documents.length : ''}</span>}
                         {tx.transaction_items?.length > 0 && <span>📦</span>}
-                        {!tx.documents?.length && !tx.transaction_items?.length && <span style={{ color:'var(--text3)' }}>—</span>}
+                        {!tx.documents?.length && !tx.transaction_items?.length && !tx.is_verified && <span style={{ color:'var(--text3)' }}>—</span>}
                       </span>
                     </td>
                     <td onClick={e => e.stopPropagation()}>
                       <div style={{ display:'flex', gap:4 }}>
+                        <button style={{ background:'none', border: tx.is_verified ? '1px solid var(--green)' : '1px solid var(--border)', borderRadius:8, width:32, height:32, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color: tx.is_verified ? 'var(--green)' : 'var(--text3)' }}
+                          onClick={async () => {
+                            const newVal = !tx.is_verified
+                            await supabase.from('bank_transactions').update({ is_verified: newVal }).eq('id', tx.id)
+                            setTransactions(prev => prev.map(t => t.id === tx.id ? { ...t, is_verified: newVal } : t))
+                          }} title={tx.is_verified ? 'Зняти верифікацію' : 'Верифікувати'}>
+                          <i className={`ti ${tx.is_verified ? 'ti-circle-check-filled' : 'ti-circle-check'}`} style={{ fontSize:14 }} />
+                        </button>
                         <button style={{ background:'none', border:'1px solid var(--border)', borderRadius:8, width:32, height:32, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text2)' }}
                           onClick={() => openEdit(tx)} title="Редагувати"><i className="ti ti-pencil" style={{ fontSize:14 }} /></button>
                         <button style={{ background:'none', border:'1px solid #FCA5A5', borderRadius:8, width:32, height:32, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--red)' }}
@@ -859,6 +868,18 @@ export default function Registry({ user }) {
                 disabled={bulkSaving || (!bulkForm.article && !bulkForm.project_id && !bulkForm.direction && !bulkForm.contractor)}
               >
                 {bulkSaving ? 'Збереження...' : `Зберегти для ${checkedIds.size} операцій`}
+              </button>
+              <button className="btn btn-secondary" style={{ display:'flex', alignItems:'center', gap:4 }}
+                onClick={async () => {
+                  setBulkSaving(true)
+                  const ids = [...checkedIds]
+                  for (let i = 0; i < ids.length; i += 50) {
+                    await supabase.from('bank_transactions').update({ is_verified: true }).in('id', ids.slice(i, i + 50))
+                  }
+                  setTransactions(prev => prev.map(t => checkedIds.has(t.id) ? { ...t, is_verified: true } : t))
+                  setBulkSaving(false); setCheckedIds(new Set()); setShowBulkEdit(false)
+                }} disabled={bulkSaving}>
+                <i className="ti ti-circle-check" style={{ fontSize:14 }} /> Верифікувати всі
               </button>
               <button className="btn btn-secondary" onClick={() => setShowBulkEdit(false)}>Скасувати</button>
             </div>
