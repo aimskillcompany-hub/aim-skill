@@ -42,6 +42,7 @@ export default function Registry({ user }) {
   const [transactions, setTransactions] = useState([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [allTxsData, setAllTxsData] = useState([])
   const [page, setPage] = useState(1)
   const [projects, setProjects] = useState([])
   const [selected, setSelected] = useState(null)
@@ -163,7 +164,21 @@ export default function Registry({ user }) {
     if (filters.amountMax) q = q.lte('amount', parseFloat(filters.amountMax))
     if (filters.search) q = q.or(`counterparty.ilike.%${filters.search}%,description.ilike.%${filters.search}%`)
 
-    const { data, count } = await q
+    // Паралельно: дані сторінки + загальні суми (без пагінації)
+    let qTotals = supabase.from('bank_transactions')
+      .select('amount, direction').eq('is_ignored', false)
+    if (filters.dateFrom) qTotals = qTotals.gte('date', filters.dateFrom)
+    if (filters.dateTo) qTotals = qTotals.lte('date', filters.dateTo)
+    if (filters.direction) qTotals = qTotals.eq('direction', filters.direction)
+    if (filters.article) qTotals = qTotals.eq('article', filters.article)
+    if (filters.noArticle) qTotals = qTotals.is('article', null)
+    if (filters.amountMin) qTotals = qTotals.gte('amount', parseFloat(filters.amountMin))
+    if (filters.amountMax) qTotals = qTotals.lte('amount', parseFloat(filters.amountMax))
+    if (filters.search) qTotals = qTotals.or(`counterparty.ilike.%${filters.search}%,description.ilike.%${filters.search}%`)
+
+    const [{ data, count }, { data: allTxsResult }] = await Promise.all([q, qTotals])
+    setAllTxsData(allTxsResult || [])
+
     // Client-side filter by doc status
     let filtered = data || []
     if (filters.docStatus === 'has_doc') filtered = filtered.filter(t => t.documents?.length > 0)
@@ -454,8 +469,8 @@ export default function Registry({ user }) {
   }
   // ─────────────────────────────────────────────────────────────────────────────
 
-  const inc = transactions.filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
-  const exp = transactions.filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+  const inc = (allTxsData || []).filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+  const exp = (allTxsData || []).filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
   const totalPages = Math.ceil(total / PER_PAGE)
   const allChecked = transactions.length > 0 && checkedIds.size === transactions.length
   const someChecked = checkedIds.size > 0
