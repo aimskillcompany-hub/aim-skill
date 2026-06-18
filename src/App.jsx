@@ -6,7 +6,6 @@ import Auth from './components/Auth'
 import Layout from './components/Layout'
 import AddDocument from './components/AddDocument'
 import Registry from './components/Registry'
-// import Projects from './components/Projects' // Прибрано — маржа в картці контрагента
 import Reports from './components/Reports'
 import Bank from './components/Bank'
 import Cash from './components/Cash'
