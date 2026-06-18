@@ -381,10 +381,11 @@ export async function assembleProduct({ name, resultProductId, quantity, compone
   let totalCost = 0
   const enrichedComponents = []
   for (const comp of components) {
-    const costPrice = await getFifoCost(comp.productId, comp.quantity * quantity) || comp.costPrice || 0
-    const total = comp.quantity * quantity * costPrice
+    const compQty = comp.qty || comp.quantity || 0
+    const costPrice = await getFifoCost(comp.productId, compQty * quantity) || comp.costPrice || 0
+    const total = compQty * quantity * costPrice
     totalCost += total
-    enrichedComponents.push({ ...comp, costPrice, total })
+    enrichedComponents.push({ ...comp, qty: compQty, costPrice, total })
   }
 
   // 3. Зберегти assembly
@@ -401,7 +402,7 @@ export async function assembleProduct({ name, resultProductId, quantity, compone
   await supabase.from('assembly_items').insert(
     enrichedComponents.map(c => ({
       assembly_id: assembly.id, product_id: c.productId,
-      quantity: c.quantity * quantity, cost_price: c.costPrice, total: c.total,
+      quantity: (c.qty || c.quantity) * quantity, cost_price: c.costPrice, total: c.total,
     }))
   )
 
@@ -409,7 +410,7 @@ export async function assembleProduct({ name, resultProductId, quantity, compone
   for (const c of enrichedComponents) {
     await supabase.from('stock_movements').insert({
       product_id: c.productId, type: 'out',
-      quantity: c.quantity * quantity, price: c.costPrice, total: c.total,
+      quantity: (c.qty || c.quantity) * quantity, price: c.costPrice, total: c.total,
       date: date || new Date().toISOString().split('T')[0],
       description: `Збірка: ${name}`, created_by: userId,
     })
