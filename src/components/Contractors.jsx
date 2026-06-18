@@ -379,11 +379,12 @@ export default function Contractors({ user, onNavigate }) {
             {detail.edrpou && <div style={{ fontSize:13, color:'var(--text2)', marginTop:4 }}>ЄДРПОУ: {detail.edrpou}</div>}
           </div>
           <div style={{ display:'flex', gap:8 }}>
-            {detail.edrpou?.trim().length >= 6 && isVkursiConfigured() && (
+            {detail.edrpou?.trim().length >= 6 && (
               <button className="btn btn-secondary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}
                 disabled={vkursiLoading}
                 onClick={async () => {
-                  setVkursiLoading(true); setVkursiError(null)
+                  if (!isVkursiConfigured()) { setVkursiError('Спочатку налаштуйте Vkursi в Налаштування → Інтеграції'); return }
+                  setVkursiLoading(true); setVkursiError(null); setVkursiInfo(null)
                   try {
                     const info = await fetchByEdrpou(detail.edrpou)
                     const noOverwrite = ['name','short_name','phone','phone2','email','website','legal_address','contact_person','contact_position']
@@ -412,6 +413,8 @@ export default function Contractors({ user, onNavigate }) {
                 <i className="ti ti-download" style={{ fontSize:14 }} /> {vkursiLoading ? '...' : 'Вкурсі'}
               </button>
             )}
+            {vkursiError && <div style={{ fontSize:12, color:'var(--red)', padding:'6px 12px', background:'var(--red-bg)', borderRadius:8 }}>{vkursiError}</div>}
+            {vkursiInfo && !vkursiError && <div style={{ fontSize:12, color:'var(--green)', padding:'6px 12px', background:'var(--green-bg)', borderRadius:8 }}>Дані оновлено з Vkursi</div>}
             <button onClick={() => openEdit(detail)} className="btn btn-secondary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}>
               <i className="ti ti-pencil" style={{ fontSize:14 }} /> Редагувати
             </button>
