@@ -1,4 +1,4 @@
-// ── Шаблон: Акт наданих послуг — Perfected ──
+// ── Шаблон: Акт наданих послуг ──
 import { formatMoney, formatDate, formatDateLong, amountInWords, calcTotals } from '../formatUtils'
 import { createWorkbook, addSheet } from '../xlsxBuilder'
 import { LOGO_BASE64 } from '../logo'
@@ -10,6 +10,7 @@ const G2 = '#8E8E93'
 const G3 = '#C7C7CC'
 const G4 = '#E5E5EA'
 const G5 = '#F2F2F7'
+const GREEN = '#00C853'
 
 function itm(it, i) {
   const q = parseFloat(it.quantity) || 0, p = parseFloat(it.unitPrice) || 0
@@ -18,30 +19,37 @@ function itm(it, i) {
   return { n: i + 1, name: it.name || '', q, u: it.unit || 'послуга', p, vr, v, t: a + v, a }
 }
 
-// ── Лінія ──
-const line = (w, c, m) => ({ canvas: [{ type: 'line', x1: 0, y1: 0, x2: w || 515, y2: 0, lineWidth: 0.5, lineColor: c || G4 }], margin: m || [0, 0, 0, 0] })
-
-// ── Рядок реквізитів ──
 const rv = (label, value) => value ? {
   columns: [
     { text: label, width: 52, fontSize: 7.5, color: G2, alignment: 'right', margin: [0, 0, 4, 0] },
     { text: value, width: '*', fontSize: 8, color: G1 },
-  ], margin: [0, 1, 0, 1],
+  ], margin: [0, 1.5, 0, 1.5],
 } : null
 
+const aimLogo = (size) => ({
+  text: [
+    { text: 'A', color: BLACK, bold: true },
+    { text: 'i', color: GREEN, bold: true },
+    { text: 'M ', color: BLACK, bold: true },
+    { text: 'Sk', color: BLACK, bold: true },
+    { text: 'i', color: GREEN, bold: true },
+    { text: 'll.', color: BLACK, bold: true },
+  ], fontSize: size || 8,
+})
+
 export function pdf(company, contractor, items, options) {
-  const { docNumber, docDate, notes, contractNum, contractDate, city } = options
+  const { docNumber, docDate, notes, contractNum, contractDate, city, invoiceRef, invoiceRefDate } = options
   const { subtotal, vatAmount, total, vatByRate } = calcTotals(items)
-  const qrData = `AIM|ACT|${docNumber}|${docDate}|${total}|${company.edrpou}`
+  const qrData = `AIM|ACT|${docNumber}|${docDate}|${total}|${company.edrpou}|${contractor.edrpou || ''}`
   const rows = items.map((it, i) => itm(it, i))
-  const contract = contractNum ? `№${contractNum}${contractDate ? ` від ${formatDate(contractDate)}` : ''}` : null
+  const contractStr = contractNum ? `№${contractNum}${contractDate ? ` від ${formatDate(contractDate)}` : ''}` : null
+  const invoiceStr = invoiceRef ? `№${invoiceRef}${invoiceRefDate ? ` від ${formatDate(invoiceRefDate)}` : ''}` : null
 
   return {
     pageSize: 'A4',
-    pageMargins: [44, 40, 44, 50],
+    pageMargins: [44, 40, 44, 46],
     defaultStyle: { fontSize: 9.5, color: G1 },
 
-    // ═══ HEADER як повторюваний елемент ═══
     header: {
       columns: [
         { image: LOGO_BASE64, width: 64, margin: [44, 16, 0, 0] },
@@ -55,58 +63,45 @@ export function pdf(company, contractor, items, options) {
       ],
     },
 
-    // ═══ FOOTER ═══
     footer: (currentPage, pageCount) => ({
-      margin: [44, 0, 44, 12],
+      margin: [44, 0, 44, 10],
       columns: [
-        { qr: qrData, fit: 32, foreground: G2 },
+        { qr: qrData, fit: 30, foreground: G2 },
         {
           stack: [
-            { text: `${docNumber}  ·  ${formatDate(docDate)}  ·  ${formatMoney(total)} грн`, fontSize: 6.5, color: G2, margin: [8, 4, 0, 0] },
-            { text: `QR: тип, номер, дата, сума, ЄДРПОУ сторін`, fontSize: 5.5, color: G3, margin: [8, 1, 0, 0] },
-            { text: `Стор. ${currentPage} з ${pageCount}`, fontSize: 5.5, color: G3, margin: [8, 1, 0, 0] },
+            { text: `${docNumber}  ·  ${formatDate(docDate)}  ·  ${formatMoney(total)} грн`, fontSize: 6.5, color: G2, margin: [6, 5, 0, 0] },
+            { text: 'QR: тип, номер, дата, сума, ЄДРПОУ сторін', fontSize: 5, color: G3, margin: [6, 1, 0, 0] },
           ],
           width: '*',
         },
         {
-          width: 'auto', alignment: 'right', margin: [0, 2, 0, 0],
+          width: 'auto', alignment: 'right', margin: [0, 4, 0, 0],
           stack: [
-            { text: [
-              { text: 'A', color: BLACK, bold: true },
-              { text: 'i', color: '#00C853', bold: true },
-              { text: 'M ', color: BLACK, bold: true },
-              { text: 'Sk', color: BLACK, bold: true },
-              { text: 'i', color: '#00C853', bold: true },
-              { text: 'll.', color: BLACK, bold: true },
-            ], fontSize: 8 },
-            { text: 'ITSOLUTIONS', fontSize: 4.5, letterSpacing: 0.8, color: G3, margin: [0, 1, 0, 0] },
+            aimLogo(8),
+            { text: `${currentPage}/${pageCount}`, fontSize: 5.5, color: G3, alignment: 'right', margin: [0, 1, 0, 0] },
           ],
         },
       ],
     }),
 
     content: [
-      // Відступ від header
       { text: '', margin: [0, 10, 0, 0] },
-
-      // ═══ ЛІНІЯ ═══
       { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 427, y2: 0, lineWidth: 2, lineColor: BLACK }], margin: [0, 0, 0, 20] },
 
-      // ═══ ДОКУМЕНТ ═══
+      // ═══ НАЗВА + НОМЕР ═══
       { text: 'АКТ НАДАНИХ ПОСЛУГ', fontSize: 7.5, letterSpacing: 4, color: G2 },
-      { text: `№ ${docNumber}`, fontSize: 26, bold: true, color: BLACK, margin: [0, 2, 0, 0] },
+      { text: `№ ${docNumber}`, fontSize: 26, bold: true, color: BLACK, margin: [0, 2, 0, 4] },
+
+      // Дата і місто — під номером
       {
         columns: [
           { text: formatDateLong(docDate), fontSize: 10, color: G2, width: 'auto' },
           city ? { text: `  ·  ${city}`, fontSize: 10, color: G2, width: 'auto' } : {},
         ],
-        margin: [0, 2, 0, 0],
+        margin: [0, 0, 0, 14],
       },
-      contract ? { text: `Договір ${contract}`, fontSize: 9, color: G1, margin: [0, 4, 0, 0] } : {},
 
-      { text: '', margin: [0, 14, 0, 0] },
-
-      // ═══ ПРЕАМБУЛА — структурований текст ═══
+      // ═══ ПРЕАМБУЛА ═══
       {
         text: [
           { text: company.name || company.shortName, bold: true, color: BLACK },
@@ -116,14 +111,12 @@ export function pdf(company, contractor, items, options) {
           { text: contractor.name || contractor.short_name || '________', bold: true, color: BLACK },
           { text: ' (Замовник)' },
           contractor.contact_person ? { text: `, в особі ${(contractor.contact_position || '').trim()} ${contractor.contact_person}`.trim() } : {},
-          { text: ', з іншої сторони,' },
-          contract ? { text: `\nна підставі Договору ${contract},` } : {},
-          { text: '\nсклали цей Акт про наступне:' },
+          { text: ', з іншої сторони,\nсклали цей Акт про наступне:' },
         ],
-        fontSize: 9, lineHeight: 1.6, color: G1, margin: [0, 0, 0, 16],
+        fontSize: 9, lineHeight: 1.6, color: G1, margin: [0, 0, 0, 14],
       },
 
-      // ═══ СТОРОНИ — структуровані рядки ═══
+      // ═══ СТОРОНИ ═══
       {
         columns: [
           {
@@ -151,20 +144,37 @@ export function pdf(company, contractor, items, options) {
             ].filter(Boolean),
           },
         ],
-        margin: [0, 0, 0, 18],
+        margin: [0, 0, 0, 12],
       },
+
+      // ═══ ДОДАТКОВА ІНФОРМАЦІЯ ═══
+      (contractStr || invoiceStr) ? {
+        table: {
+          widths: ['*'],
+          body: [[{
+            stack: [
+              { text: 'ДОДАТКОВА ІНФОРМАЦІЯ', fontSize: 6.5, letterSpacing: 2, color: G2, margin: [0, 0, 0, 4] },
+              contractStr ? { text: `Договір ${contractStr}`, fontSize: 8.5, color: G1, margin: [0, 0, 0, 2] } : {},
+              invoiceStr ? { text: `Рахунок ${invoiceStr}`, fontSize: 8.5, color: G1 } : {},
+            ].filter(Boolean),
+            margin: [10, 8, 10, 8],
+          }]],
+        },
+        layout: { hLineWidth: () => 0.5, vLineWidth: () => 0, hLineColor: () => G4 },
+        margin: [0, 0, 0, 16],
+      } : { text: '', margin: [0, 0, 0, 4] },
 
       // ═══ ТАБЛИЦЯ ═══
       {
         table: {
           headerRows: 1,
-          widths: [20, '*', 30, 36, 58, 24, 46, 62],
+          widths: [20, '*', 30, 36, 62, 24, 48, 62],
           body: [
-            ['№', 'Найменування послуги', 'К-сть', 'Од.', 'Ціна', 'ПДВ', 'ПДВ ₴', 'Сума'].map(t => ({
-              text: t, fontSize: 7, bold: true, color: '#FFF', fillColor: DARK,
+            ['№', 'Найменування послуги', 'К-сть', 'Од.', 'Вартість без ПДВ', 'ПДВ', 'Сума ПДВ', 'Сума'].map(t => ({
+              text: t, fontSize: 6.5, bold: true, color: '#FFF', fillColor: DARK,
               alignment: 'center', margin: [0, 7, 0, 7],
             })),
-            ...rows.map((r, i) => [
+            ...rows.map(r => [
               { text: r.n, alignment: 'center', fontSize: 9, color: G2 },
               { text: r.name, fontSize: 9, color: BLACK },
               { text: r.q, alignment: 'center', fontSize: 9 },
@@ -180,23 +190,40 @@ export function pdf(company, contractor, items, options) {
           hLineWidth: (i) => i === 0 ? 0 : i === 1 ? 1.5 : 0.5,
           vLineWidth: () => 0,
           hLineColor: (i) => i === 1 ? DARK : G4,
-          paddingLeft: () => 6, paddingRight: () => 6,
+          paddingLeft: () => 5, paddingRight: () => 5,
           paddingTop: () => 7, paddingBottom: () => 7,
           fillColor: (i) => i > 0 && i % 2 === 0 ? '#FAFAFA' : null,
         },
       },
 
-      // ═══ ПІДСУМКИ — виражені ═══
+      // ═══ ПІДСУМКИ ═══
       { text: '', margin: [0, 10] },
-      ...sumBlock(subtotal, vatByRate, total),
-
-      // Сума прописом
+      {
+        columns: [
+          { width: '*', text: '' },
+          {
+            width: 230,
+            stack: [
+              sr('Разом без ПДВ', subtotal),
+              ...Object.entries(vatByRate).map(([rate, amt]) => sr(`ПДВ ${rate}%`, amt)),
+              { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 230, y2: 0, lineWidth: 1, lineColor: DARK }], margin: [0, 6, 0, 6] },
+              {
+                columns: [
+                  { text: 'Всього', alignment: 'right', fontSize: 13, bold: true, color: BLACK, width: '*' },
+                  { text: formatMoney(total), alignment: 'right', fontSize: 16, bold: true, color: BLACK, width: 120 },
+                  { text: 'грн', fontSize: 10, color: G2, width: 26, margin: [4, 5, 0, 0] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
       { text: '', margin: [0, 4] },
-      line(427, G4, [0, 0, 0, 4]),
+      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 427, y2: 0, lineWidth: 0.5, lineColor: G4 }], margin: [0, 0, 0, 4] },
       { text: amountInWords(total), fontSize: 8, italics: true, color: G2 },
 
       // ═══ ТЕКСТ ПРИЙОМУ ═══
-      { text: '', margin: [0, 12] },
+      { text: '', margin: [0, 10] },
       {
         text: [
           'Виконавець виконав, а Замовник прийняв послуги у повному обсязі. ',
@@ -212,10 +239,9 @@ export function pdf(company, contractor, items, options) {
 
       notes ? { text: notes, fontSize: 8, color: G2, italics: true, margin: [0, 8, 0, 0] } : {},
 
-      // ═══ ПІДПИСИ — табличні, вирівняні ═══
-      { text: '', margin: [0, 20] },
-      line(427, G4, [0, 0, 0, 0]),
-      { text: '', margin: [0, 8] },
+      // ═══ ПІДПИСИ ═══
+      { text: '', margin: [0, 18] },
+      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 427, y2: 0, lineWidth: 0.5, lineColor: G4 }], margin: [0, 0, 0, 8] },
       {
         columns: [
           sigBlock('ВИКОНАВЕЦЬ', company.directorPosition || 'Директор', company.director || ''),
@@ -227,41 +253,12 @@ export function pdf(company, contractor, items, options) {
   }
 }
 
-// ═══ Підсумковий блок ═══
-function sumBlock(subtotal, vatByRate, total) {
-  const rows = [
-    sr('Разом без ПДВ', subtotal),
-    ...Object.entries(vatByRate).map(([rate, amt]) => sr(`ПДВ ${rate}%`, amt)),
-  ]
-  return [
-    {
-      columns: [
-        { width: '*', text: '' },
-        {
-          width: 220,
-          stack: [
-            ...rows,
-            { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 220, y2: 0, lineWidth: 1, lineColor: DARK }], margin: [0, 6, 0, 6] },
-            {
-              columns: [
-                { text: 'Всього', alignment: 'right', fontSize: 13, bold: true, color: BLACK, width: '*' },
-                { text: formatMoney(total), alignment: 'right', fontSize: 16, bold: true, color: BLACK, width: 110 },
-                { text: 'грн', fontSize: 10, color: G2, width: 24, margin: [4, 5, 0, 0] },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-  ]
-}
-
 function sr(label, amount) {
   return {
     columns: [
       { text: label, alignment: 'right', fontSize: 9, color: G2, width: '*' },
-      { text: formatMoney(amount), alignment: 'right', fontSize: 9, color: G1, width: 110 },
-      { text: 'грн', fontSize: 8, color: G3, width: 24, margin: [4, 1, 0, 0] },
+      { text: formatMoney(amount), alignment: 'right', fontSize: 9, color: G1, width: 120 },
+      { text: 'грн', fontSize: 8, color: G3, width: 26, margin: [4, 1, 0, 0] },
     ],
     margin: [0, 2, 0, 2],
   }
@@ -270,42 +267,26 @@ function sr(label, amount) {
 function sigBlock(title, position, name) {
   return {
     width: '*',
-    table: {
-      widths: ['*'],
-      body: [[{
-        stack: [
-          { text: title, fontSize: 6.5, letterSpacing: 2, color: G2, margin: [0, 0, 0, 20] },
-          { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 190, y2: 0, lineWidth: 0.5, lineColor: G3 }] },
-          (position || name) ? { text: `${position} ${name}`.trim(), fontSize: 9, color: G1, margin: [0, 4, 0, 0] } : {},
-          { text: 'М.П.', fontSize: 6.5, color: G3, margin: [0, 6, 0, 0] },
-        ],
-        margin: [0, 0, 0, 0],
-      }]],
-    },
-    layout: 'noBorders',
+    stack: [
+      { text: title, fontSize: 6.5, letterSpacing: 2, color: G2, margin: [0, 0, 0, 16] },
+      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 190, y2: 0, lineWidth: 0.5, lineColor: G3 }] },
+      (position || name) ? { text: `${position} ${name}`.trim(), fontSize: 9, color: G1, margin: [0, 3, 0, 0] } : {},
+      { text: 'М.П.', fontSize: 6.5, color: G3, margin: [0, 5, 0, 0] },
+    ],
   }
 }
 
-function rv2(label, value) {
-  return value ? {
-    columns: [
-      { text: label, width: 52, fontSize: 7.5, color: G2, alignment: 'right', margin: [0, 0, 4, 0] },
-      { text: value, width: '*', fontSize: 8, color: G1 },
-    ], margin: [0, 1, 0, 1],
-  } : null
-}
-
-// ── EXCEL ──
 export function xlsx(company, contractor, items, options) {
-  const { docNumber, docDate, contractNum, contractDate } = options
+  const { docNumber, docDate, contractNum, contractDate, invoiceRef, invoiceRefDate } = options
   const { subtotal, vatAmount, total } = calcTotals(items)
   const contract = contractNum ? `Договір №${contractNum}${contractDate ? ` від ${formatDate(contractDate)}` : ''}` : ''
+  const invoice = invoiceRef ? `Рахунок №${invoiceRef}${invoiceRefDate ? ` від ${formatDate(invoiceRefDate)}` : ''}` : ''
   const data = [
     [`Акт наданих послуг №${docNumber} від ${formatDate(docDate)}`],
-    contract ? [`Підстава: ${contract}`] : [],
+    contract ? [contract] : [], invoice ? [invoice] : [],
     [], ['Виконавець:', company.shortName || company.name, '', 'ЄДРПОУ:', company.edrpou],
     ['Замовник:', contractor.short_name || contractor.name, '', 'ЄДРПОУ:', contractor.edrpou],
-    [], ['№', 'Найменування', 'К-сть', 'Од.', 'Ціна', 'ПДВ%', 'ПДВ', 'Сума'],
+    [], ['№', 'Найменування', 'К-сть', 'Од.', 'Вартість без ПДВ', 'ПДВ%', 'Сума ПДВ', 'Сума'],
     ...items.map((it, i) => { const r = itm(it, i); return [r.n, r.name, r.q, r.u, r.p, r.vr > 0 ? `${r.vr}%` : '', r.v, r.t] }),
     [], ['','','','','','','Без ПДВ:', subtotal], ['','','','','','','ПДВ:', vatAmount], ['','','','','','','Всього:', total],
     [], [amountInWords(total)],

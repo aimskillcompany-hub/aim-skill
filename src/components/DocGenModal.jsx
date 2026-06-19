@@ -19,6 +19,10 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
   const [contractDate, setContractDate] = useState(editDoc?.contract_date || '')
   const [paymentDue, setPaymentDue] = useState(editDoc?.payment_due || '')
   const [city, setCity] = useState(editDoc?.city || 'м. Київ')
+  const [invoiceRef, setInvoiceRef] = useState(editDoc?.invoice_ref || editDoc?._fromInvoice || '')
+  const [invoiceRefDate, setInvoiceRefDate] = useState(editDoc?.invoice_ref_date || '')
+  const [deliveryBasis, setDeliveryBasis] = useState(editDoc?.delivery_basis || '')
+  const [deliveryAddress, setDeliveryAddress] = useState(editDoc?.delivery_address || '')
   const [editId] = useState(editDoc?.id || null)
   const [items, setItems] = useState(() => {
     if (editDoc?.items) {
@@ -116,8 +120,8 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
           notes, contractNum, contractDate, paymentDue, city, userId,
         })
       }
-      if (andDownload === 'pdf') generatePdf(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city })
-      if (andDownload === 'xlsx') generateXlsx(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city })
+      if (andDownload === 'pdf') generatePdf(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress })
+      if (andDownload === 'xlsx') generateXlsx(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress })
       onSaved?.()
       if (!andDownload) onClose()
     } catch (e) { setError(e.message) }
@@ -126,8 +130,8 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
 
   const handleDownloadOnly = (format) => {
     try {
-      if (format === 'pdf') generatePdf(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city })
-      else generateXlsx(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city })
+      if (format === 'pdf') generatePdf(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress })
+      else generateXlsx(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress })
     } catch (e) { setError(e.message) }
   }
 
@@ -193,23 +197,47 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
                 <input type="date" className="form-input" value={docDate} onChange={e => setDocDate(e.target.value)} />
               </div>
               <div className="form-group">
+                <label>Місто</label>
+                <input className="form-input" value={city} onChange={e => setCity(e.target.value)} />
+              </div>
+              <div className="form-group">
                 <label>Договір №</label>
-                <input className="form-input" value={contractNum} onChange={e => setContractNum(e.target.value)} placeholder="Номер договору" />
+                <input className="form-input" value={contractNum} onChange={e => setContractNum(e.target.value)} placeholder="Номер" />
               </div>
               <div className="form-group">
                 <label>Дата договору</label>
                 <input type="date" className="form-input" value={contractDate} onChange={e => setContractDate(e.target.value)} />
               </div>
+              {(docType === 'serviceAct' || docType === 'waybill') && (
+                <>
+                  <div className="form-group">
+                    <label>Рахунок №</label>
+                    <input className="form-input" value={invoiceRef} onChange={e => setInvoiceRef(e.target.value)} placeholder="Номер рахунку" />
+                  </div>
+                  <div className="form-group">
+                    <label>Дата рахунку</label>
+                    <input type="date" className="form-input" value={invoiceRefDate} onChange={e => setInvoiceRefDate(e.target.value)} />
+                  </div>
+                </>
+              )}
               {docType === 'invoice' && (
                 <div className="form-group">
                   <label>Термін оплати</label>
                   <input className="form-input" value={paymentDue} onChange={e => setPaymentDue(e.target.value)} placeholder="5 банківських днів" />
                 </div>
               )}
-              <div className="form-group">
-                <label>Місто</label>
-                <input className="form-input" value={city} onChange={e => setCity(e.target.value)} />
-              </div>
+              {docType === 'waybill' && (
+                <>
+                  <div className="form-group">
+                    <label>Базис поставки (Інкотермс)</label>
+                    <input className="form-input" value={deliveryBasis} onChange={e => setDeliveryBasis(e.target.value)} placeholder="EXW, FCA, DAP..." />
+                  </div>
+                  <div className="form-group full">
+                    <label>Адреса поставки</label>
+                    <input className="form-input" value={deliveryAddress} onChange={e => setDeliveryAddress(e.target.value)} placeholder="Адреса доставки товару" />
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Пошук товару зі складу */}
