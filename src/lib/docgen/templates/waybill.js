@@ -64,23 +64,16 @@ export function pdf(company, contractor, items, options) {
         { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.3, lineColor: G4 }], margin: [0, 0, 0, 5] },
         {
           columns: [
-            // QR-код з номером документа
-            {
-              width: 60,
-              stack: [
-                { qr: `${docNumber}|${formatDate(docDate)}|${formatMoney(total)}`, fit: 40 },
-                { text: docNumber, fontSize: 5.5, color: G2, alignment: 'center', margin: [0, 2, 0, 0] },
-              ],
-            },
-            // Інфо
+            { qr: `${docNumber}|${formatDate(docDate)}|${formatMoney(total)}`, fit: 36 },
             {
               stack: [
-                { text: 'Сформовано в корпоративній системі AiM Skill', fontSize: 5.5, color: G3, margin: [0, 2, 0, 0] },
-                { text: '073 700 77 58  ·  office@aim-skill.com.ua  ·  www.aim-skill.com.ua', fontSize: 5.5, color: G3, margin: [0, 1, 0, 0] },
+                { text: docNumber, fontSize: 6, bold: true, color: G2, margin: [6, 3, 0, 0] },
+                { text: 'Сформовано в корпоративній системі AiM Skill', fontSize: 5.5, color: G3, margin: [6, 1, 0, 0] },
+                { text: '073 700 77 58  ·  office@aim-skill.com.ua  ·  www.aim-skill.com.ua', fontSize: 5.5, color: G3, margin: [6, 1, 0, 0] },
               ],
               width: '*',
             },
-            { image: LOGO_BASE64, width: 42, alignment: 'right' },
+            { image: LOGO_BASE64, width: 52, alignment: 'right' },
           ],
         },
       ],
@@ -116,9 +109,12 @@ export function pdf(company, contractor, items, options) {
               sectionTitle('ПОКУПЕЦЬ'),
               { text: contractor.short_name || contractor.name || '—', fontSize: 9.5, bold: true, color: BLACK, margin: [0, 0, 0, 4] },
               rvLine('ЄДРПОУ', contractor.edrpou),
+              rvLine('ІПН', contractor.ipn),
               rvLine('Адреса', contractor.legal_address || contractor.address),
               rvLine('IBAN', contractor.iban),
+              rvLine('Банк', contractor.bank_name ? `${contractor.bank_name}${contractor.mfo ? ', МФО ' + contractor.mfo : ''}` : null),
               rvLine('Тел.', contractor.phone),
+              rvLine('Email', contractor.email),
             ].filter(Boolean),
           },
         ],
