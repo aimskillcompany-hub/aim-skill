@@ -77,9 +77,10 @@ export async function saveDoc({ docType, docNumber, docDate, contractorId, contr
 
   if (error) throw new Error(error.message)
 
-  // Автоматичні складські рухи для документів з stockEffect
+  // Автоматичні складські рухи тільки для прихідних (IN)
+  // Для видаткових (OUT) — потрібне підтвердження користувача
   const dt = getDocType(docType)
-  if (dt?.stockEffect && data?.id) {
+  if (dt?.stockEffect === 'in' && data?.id) {
     await createStockFromDoc(data.id, docType, cleanItems(items), docDate, userId)
   }
 
@@ -87,7 +88,7 @@ export async function saveDoc({ docType, docNumber, docDate, contractorId, contr
 }
 
 // ── Створити складські рухи з документа ──
-async function createStockFromDoc(docId, docType, items, date, userId) {
+export async function createStockFromDoc(docId, docType, items, date, userId) {
   const dt = getDocType(docType)
   if (!dt?.stockEffect) return
 

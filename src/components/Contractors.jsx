@@ -4,7 +4,7 @@ import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import { upsertContractor, syncContractorStats, importMissingContractors, mergeDuplicates } from '../lib/contractors'
 import { fetchByEdrpou, isVkursiConfigured, getVkursiCredentials, setVkursiCredentials } from '../lib/vkursi'
 import DocGenModal from './DocGenModal'
-import { loadContractorDocs, getDocLabel, STATUS_LABELS, STATUS_COLORS, formatMoney as fmtDoc, updateDocStatus, generatePdf, generateXlsx, DOCUMENT_TYPES } from '../lib/docgen'
+import { loadContractorDocs, getDocLabel, getDocType, STATUS_LABELS, STATUS_COLORS, formatMoney as fmtDoc, updateDocStatus, generatePdf, generateXlsx, DOCUMENT_TYPES, createStockFromDoc } from '../lib/docgen'
 
 const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
 
@@ -733,6 +733,20 @@ export default function Contractors({ user, onNavigate }) {
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: 4 }}>
+                            {/* Списати зі складу — для видаткових */}
+                            {getDocType(doc.doc_type)?.stockEffect === 'out' && doc.status !== 'cancelled' && (
+                              <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--amber)', fontSize: 15, padding: '0 4px' }}
+                                title="Списати зі складу"
+                                onClick={async () => {
+                                  const docItems = typeof doc.items === 'string' ? JSON.parse(doc.items) : doc.items
+                                  const names = docItems.map(i => `${i.name} × ${i.quantity}`).join('\n')
+                                  if (!confirm(`Списати зі складу:\n\n${names}\n\nПідтвердити?`)) return
+                                  await createStockFromDoc(doc.id, doc.doc_type, docItems, doc.doc_date, user.id)
+                                  alert('Товари списано зі складу')
+                                }}>
+                                <i className="ti ti-package-export" style={{ fontSize: 14 }} />
+                              </button>
+                            )}
                             {doc.doc_type === 'invoice' && (
                               <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', fontSize: 15, padding: '0 4px' }}
                                 title="Створити акт/накладну на підставі"
