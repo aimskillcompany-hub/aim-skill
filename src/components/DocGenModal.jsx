@@ -22,7 +22,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
   const [invoiceRef, setInvoiceRef] = useState(editDoc?.invoice_ref || editDoc?._fromInvoice || '')
   const [invoiceRefDate, setInvoiceRefDate] = useState(editDoc?.invoice_ref_date || '')
   const [deliveryBasis, setDeliveryBasis] = useState(editDoc?.delivery_basis || '')
-  const [deliveryAddress, setDeliveryAddress] = useState(editDoc?.delivery_address || '')
+  const [deliveryAddress, setDeliveryAddress] = useState(editDoc?.delivery_address || contractor?.delivery_address || '')
   const [contractsList, setContractsList] = useState([])
   const [selectedContract, setSelectedContract] = useState('')
 

@@ -120,7 +120,7 @@ const EMPTY = {
   name:'', short_name:'', edrpou:'', type:'other',
   legal_form:'', tax_system:'', is_vat_payer:false, vat_certificate:'',
   email:'', phone:'', phone2:'', contact_person:'', contact_position:'', website:'',
-  address:'', legal_address:'', actual_address:'', city:'', region:'', postal_code:'',
+  address:'', legal_address:'', actual_address:'', delivery_address:'', city:'', region:'', postal_code:'',
   iban:'', bank_name:'', mfo:'', currency:'UAH',
   default_article:'', default_direction:'', notes:'', status:'active',
 }
@@ -307,8 +307,22 @@ export default function Contractors({ user, onNavigate }) {
     if (!form.name) return
     setSaving(true)
     const payload = { ...form, created_by:user?.id }
-    if (editId) await supabase.from('contractors').update(payload).eq('id', editId)
-    else await supabase.from('contractors').insert(payload)
+    if (editId) {
+      await supabase.from('contractors').update(payload).eq('id', editId)
+    } else {
+      const { data: newC } = await supabase.from('contractors').insert(payload).select('id').single()
+      // Якщо є контактна особа — додати в contractor_contacts як підписанта
+      if (newC?.id && form.contact_person) {
+        await supabase.from('contractor_contacts').insert({
+          contractor_id: newC.id,
+          name: form.contact_person,
+          position: form.contact_position || null,
+          phone: form.phone || null,
+          email: form.email || null,
+          is_signer: true,
+        })
+      }
+    }
     setSaving(false); setShowForm(false); await loadAll()
     if (editId && detail) {
       const { data } = await supabase.from('contractors').select('*').eq('id', editId).single()
@@ -648,6 +662,7 @@ export default function Contractors({ user, onNavigate }) {
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
                 <Field label="Юридична адреса" value={detail.legal_address} />
                 <Field label="Фактична адреса" value={detail.actual_address} />
+                <Field label="Адреса доставки" value={detail.delivery_address} />
                 <Field label="Місто" value={detail.city} />
                 <Field label="Область" value={detail.region} />
                 <Field label="Індекс" value={detail.postal_code} />
@@ -1222,6 +1237,7 @@ export default function Contractors({ user, onNavigate }) {
 
             <div className="form-group full"><label>Юридична адреса</label><input className="form-input" value={form.legal_address} onChange={setF('legal_address')} /></div>
             <div className="form-group full"><label>Фактична адреса</label><input className="form-input" value={form.actual_address} onChange={setF('actual_address')} /></div>
+            <div className="form-group full"><label>Адреса доставки</label><input className="form-input" value={form.delivery_address} onChange={setF('delivery_address')} placeholder="Адреса для відвантаження товару" /></div>
             <div className="form-group"><label>Місто</label><input className="form-input" value={form.city} onChange={setF('city')} /></div>
             <div className="form-group"><label>Область</label><input className="form-input" value={form.region} onChange={setF('region')} /></div>
             <div className="form-group"><label>Індекс</label><input className="form-input" value={form.postal_code} onChange={setF('postal_code')} /></div>
