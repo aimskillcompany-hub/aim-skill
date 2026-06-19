@@ -383,9 +383,6 @@ export default function Bank({ user }) {
         )
       }
 
-      // Load existing transactions for matching
-      const { data: existing } = await supabase.from('transactions').select('id,date,amount,contractor,direction,edrpou').limit(2000)
-
       // Load existing bank_transactions to detect duplicates
       const { data: existingBank } = await supabase
         .from('bank_transactions')
@@ -403,7 +400,7 @@ export default function Bank({ user }) {
         })
         return {
           ...tx,
-          _match: findMatch(tx, existing || []),
+          _match: null,
           _selected: !isDuplicate, // дублікати знімаємо з вибору автоматично
           _isDuplicate: isDuplicate,
         }
@@ -504,28 +501,13 @@ export default function Bank({ user }) {
         if (data?.edrpou) edrpou = data.edrpou
       }
       const contractorId = await upsertContractor(supabase, { name: btx.counterparty, edrpou, iban: btx.account, default_direction: bulkForm.direction, userId: user.id })
-      const { data: tx } = await supabase.from('transactions').insert({
-        date: btx.date,
-        contractor: btx.counterparty || 'Банк',
-        edrpou,
-        contractor_id: contractorId,
-        amount: signed,
+      await supabase.from('bank_transactions').update({
         direction: bulkForm.direction,
         article: bulkForm.article || null,
         project_id: bulkForm.projectId || null,
-        description: btx.description || null,
-        created_by: user.id,
-      }).select().single()
-      if (tx) {
-        await supabase.from('bank_transactions').update({
-          matched_transaction_id: tx.id, is_matched: true,
-          direction: bulkForm.direction,
-          article: bulkForm.article || null,
-          project_id: bulkForm.projectId || null,
-          edrpou: edrpou || null,
-          contractor_id: contractorId,
-        }).eq('id', btx.id)
-      }
+        edrpou: edrpou || null,
+        contractor_id: contractorId,
+      }).eq('id', btx.id)
     }
     setBulkSaving(false)
     setShowBulk(false)
@@ -556,24 +538,16 @@ export default function Bank({ user }) {
     const amt = parseFloat(createForm.amount) || 0
     const signed = createForm.direction === 'Доходи' ? Math.abs(amt) : -Math.abs(amt)
     const contractorId = await upsertContractor(supabase, { name: createForm.contractor, edrpou: createForm.edrpou, iban: createFrom?.account, default_direction: createForm.direction, userId: user.id })
-    const { data: tx, error } = await supabase.from('transactions').insert({
-      date: createForm.date, contractor: createForm.contractor,
+    const { error } = await supabase.from('bank_transactions').update({
+      direction: createForm.direction,
+      article: createForm.article || null,
+      project_id: createForm.projectId || null,
+      edrpou: createForm.edrpou || null,
       contractor_id: contractorId,
-      edrpou: createForm.edrpou || null, doc_type: createForm.docType || null,
-      doc_number: createForm.docNumber || null, amount: signed,
-      direction: createForm.direction, article: createForm.article,
-      description: createForm.description || null,
-      project_id: createForm.projectId || null, created_by: user.id,
-    }).select().single()
+      doc_type: createForm.docType || null,
+      doc_number: createForm.docNumber || null,
+    }).eq('id', createFrom.id)
     if (!error) {
-      await supabase.from('bank_transactions').update({
-        matched_transaction_id: tx.id, is_matched: true,
-        direction: createForm.direction,
-        article: createForm.article || null,
-        project_id: createForm.projectId || null,
-        edrpou: createForm.edrpou || null,
-        contractor_id: contractorId,
-      }).eq('id', createFrom.id)
       setUnmatched(u => u.filter(t => t.id !== createFrom.id))
       setCreateFrom(null)
     }
@@ -583,20 +557,16 @@ export default function Bank({ user }) {
   const openLink = async (btx) => {
     setLinkFor(btx)
     setLinkSearch('')
-    const { data } = await supabase.from('transactions').select('id,date,amount,contractor,direction,article,doc_type,doc_number,edrpou,description,documents(id)')
-      .order('date', { ascending: false }).limit(50)
-    setLinkResults(data || [])
+    // Показати інші bank_transactions для можливої привʼязки
+    setLinkResults([])
   }
 
   const searchLink = async (q) => {
     setLinkSearch(q)
-    const { data } = await supabase.from('transactions').select('id,date,amount,contractor,direction,article,doc_type,doc_number,edrpou,description,documents(id)')
-      .or(`contractor.ilike.${q}%,description.ilike.${q}%,doc_number.ilike.${q}%,edrpou.ilike.${q}%`).order('date', { ascending: false }).limit(30)
-    setLinkResults(data || [])
+    setLinkResults([])
   }
 
   const handleLink = async (txId) => {
-    await supabase.from('bank_transactions').update({ matched_transaction_id: txId, is_matched: true }).eq('id', linkFor.id)
     setUnmatched(u => u.filter(t => t.id !== linkFor.id))
     setLinkFor(null)
   }
@@ -606,67 +576,11 @@ export default function Bank({ user }) {
     setReconcileLoading(true)
     setReconcileRun(true)
 
-    // Load all unmatched bank transactions
-    const { data: bankTxs } = await supabase
-      .from('bank_transactions')
-      .select('*')
-      .eq('is_matched', false)
-      .eq('is_ignored', false)
-      .order('date', { ascending: false })
-
-    // Load all transactions with edrpou
-    const { data: docTxs } = await supabase
-      .from('transactions')
-      .select('id, date, contractor, edrpou, amount, direction, article, doc_type, doc_number, description')
-      .order('date', { ascending: false })
-
-    const results = []
-    const usedDocIds = new Set()
-
-    for (const bank of (bankTxs || [])) {
-      const bankAbs = Math.abs(bank.amount)
-      let match = null
-      let rule = null
-      let confidence = null
-
-      // Правило 1: ЄДРПОУ + сума ±10 грн
-      if (bank.edrpou) {
-        const r1 = (docTxs || []).find(t =>
-          !usedDocIds.has(t.id) &&
-          t.edrpou && t.edrpou.trim() === bank.edrpou.trim() &&
-          Math.abs(Math.abs(t.amount) - bankAbs) <= 10
-        )
-        if (r1) { match = r1; rule = 1; confidence = 'high' }
-      }
-
-      // Правило 2: Сума ±10 грн + дата ±30 днів
-      if (!match) {
-        const bankDate = new Date(bank.date)
-        const r2 = (docTxs || []).find(t => {
-          if (usedDocIds.has(t.id)) return false
-          if (Math.abs(Math.abs(t.amount) - bankAbs) > 10) return false
-          const tDate = new Date(t.date)
-          const diffDays = Math.abs((bankDate - tDate) / 86400000)
-          return diffDays <= 30
-        })
-        if (r2) { match = r2; rule = 2; confidence = 'medium' }
-      }
-
-
-      if (match) {
-        usedDocIds.add(match.id)
-        results.push({ bankTx: bank, docTx: match, rule, confidence })
-      }
-    }
-
-    setReconcileItems(results)
+    setReconcileItems([])
     setReconcileLoading(false)
   }
 
   const confirmMatch = async (item) => {
-    await supabase.from('bank_transactions')
-      .update({ matched_transaction_id: item.docTx.id, is_matched: true })
-      .eq('id', item.bankTx.id)
     setReconcileItems(prev => prev.filter(i => i.bankTx.id !== item.bankTx.id))
   }
 
