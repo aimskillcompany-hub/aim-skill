@@ -58,7 +58,7 @@ export async function getNextDocNumber(docTypeKey) {
 }
 
 // ── Зберегти документ в БД ──
-export async function saveDoc({ docType, docNumber, docDate, contractorId, contractorName, items, subtotal, vatAmount, total, notes, contractNum, contractDate, paymentDue, city, parentDocId, userId }) {
+export async function saveDoc({ docType, docNumber, docDate, contractorId, contractorName, items, subtotal, vatAmount, total, notes, contractNum, contractDate, paymentDue, city, parentDocId, contractId, userId }) {
   const { data, error } = await supabase.from('generated_docs').insert({
     doc_type: docType,
     doc_number: docNumber,
@@ -73,6 +73,7 @@ export async function saveDoc({ docType, docNumber, docDate, contractorId, contr
     payment_due: paymentDue || null,
     city: city || null,
     parent_doc_id: parentDocId || null,
+    contract_id: contractId || null,
     created_by: userId,
   }).select('id').single()
 

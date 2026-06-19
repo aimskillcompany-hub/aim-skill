@@ -126,7 +126,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
           contractorId: contractor.id,
           contractorName: contractor.short_name || contractor.name,
           items, subtotal: totals.subtotal, vatAmount: totals.vatAmount, total: totals.total,
-          notes, contractNum, contractDate, paymentDue, city, parentDocId, userId,
+          notes, contractNum, contractDate, paymentDue, city, parentDocId, contractId: selectedContract || null, userId,
         })
       }
       if (andDownload === 'pdf') generatePdf(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress })
