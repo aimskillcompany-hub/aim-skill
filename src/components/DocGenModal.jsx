@@ -23,6 +23,10 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
   const [invoiceRefDate, setInvoiceRefDate] = useState(editDoc?.invoice_ref_date || '')
   const [deliveryBasis, setDeliveryBasis] = useState(editDoc?.delivery_basis || '')
   const [deliveryAddress, setDeliveryAddress] = useState(editDoc?.delivery_address || '')
+  const [contractsList, setContractsList] = useState([])
+  const [selectedContract, setSelectedContract] = useState('')
+
+  const INCOTERMS = ['EXW', 'FCA', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP', 'FAS', 'FOB', 'CFR', 'CIF']
   const [editId] = useState(editDoc?.id || null)
   const [items, setItems] = useState(() => {
     if (editDoc?.items) {
@@ -37,11 +41,15 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
   const [searchIdx, setSearchIdx] = useState(null)
   const [searchText, setSearchText] = useState('')
 
-  // Завантажити товари зі складу
+  // Завантажити товари зі складу + договори контрагента
   useEffect(() => {
     supabase.from('product_stock').select('id, name, computed_stock, unit, buy_price, sell_price, product_type')
       .eq('status', 'active').order('name')
       .then(({ data }) => setProducts(data || []))
+    if (contractor?.id) {
+      supabase.from('contractor_contracts').select('*').eq('contractor_id', contractor.id).eq('status', 'active').order('date', { ascending: false })
+        .then(({ data }) => setContractsList(data || []))
+    }
   }, [])
 
   // Авто-нумерація при виборі типу (тільки для нових)
@@ -200,13 +208,26 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
                 <label>Місто</label>
                 <input className="form-input" value={city} onChange={e => setCity(e.target.value)} />
               </div>
-              <div className="form-group">
-                <label>Договір №</label>
-                <input className="form-input" value={contractNum} onChange={e => setContractNum(e.target.value)} placeholder="Номер" />
-              </div>
-              <div className="form-group">
-                <label>Дата договору</label>
-                <input type="date" className="form-input" value={contractDate} onChange={e => setContractDate(e.target.value)} />
+              <div className="form-group" style={{ gridColumn: contractsList.length > 0 ? 'span 2' : undefined }}>
+                <label>Договір</label>
+                {contractsList.length > 0 ? (
+                  <select className="form-input" value={selectedContract} onChange={e => {
+                    setSelectedContract(e.target.value)
+                    const ct = contractsList.find(c => c.id === e.target.value)
+                    if (ct) { setContractNum(ct.number); setContractDate(ct.date || '') }
+                    else { setContractNum(''); setContractDate('') }
+                  }}>
+                    <option value="">— Без договору —</option>
+                    {contractsList.map(ct => (
+                      <option key={ct.id} value={ct.id}>№{ct.number}{ct.date ? ` від ${ct.date}` : ''}{ct.subject ? ` — ${ct.subject}` : ''}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input className="form-input" value={contractNum} onChange={e => setContractNum(e.target.value)} placeholder="Номер" style={{ flex: 1 }} />
+                    <input type="date" className="form-input" value={contractDate} onChange={e => setContractDate(e.target.value)} style={{ flex: 1 }} />
+                  </div>
+                )}
               </div>
               {(docType === 'serviceAct' || docType === 'waybill') && (
                 <>
@@ -230,7 +251,10 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
                 <>
                   <div className="form-group">
                     <label>Базис поставки (Інкотермс)</label>
-                    <input className="form-input" value={deliveryBasis} onChange={e => setDeliveryBasis(e.target.value)} placeholder="EXW, FCA, DAP..." />
+                    <select className="form-input" value={deliveryBasis} onChange={e => setDeliveryBasis(e.target.value)}>
+                      <option value="">— Не вказано —</option>
+                      {INCOTERMS.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
                   </div>
                   <div className="form-group full">
                     <label>Адреса поставки</label>

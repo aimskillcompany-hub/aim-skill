@@ -125,6 +125,61 @@ const EMPTY = {
   default_article:'', default_direction:'', notes:'', status:'active',
 }
 
+// ── Inline add forms ──
+function ContactAddForm({ contractorId, onAdded }) {
+  const [open, setOpen] = useState(false)
+  const [f, setF] = useState({ name: '', position: '', phone: '', email: '', is_signer: false })
+  if (!open) return <button onClick={() => setOpen(true)} style={{ marginTop:8, background:'none', border:'1px dashed var(--border)', borderRadius:8, padding:'6px 12px', cursor:'pointer', fontSize:12, color:'var(--blue)', fontFamily:'inherit', width:'100%' }}>
+    <i className="ti ti-plus" style={{ fontSize:12 }} /> Додати контактну особу
+  </button>
+  return (
+    <div style={{ marginTop:8, border:'1px solid var(--border)', borderRadius:8, padding:10, background:'var(--bg)' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+        <input className="form-input" style={{ height:32, fontSize:12 }} placeholder="ПІБ *" value={f.name} onChange={e => setF(p => ({...p, name:e.target.value}))} />
+        <input className="form-input" style={{ height:32, fontSize:12 }} placeholder="Посада" value={f.position} onChange={e => setF(p => ({...p, position:e.target.value}))} />
+        <input className="form-input" style={{ height:32, fontSize:12 }} placeholder="Телефон" value={f.phone} onChange={e => setF(p => ({...p, phone:e.target.value}))} />
+        <input className="form-input" style={{ height:32, fontSize:12 }} placeholder="Email" value={f.email} onChange={e => setF(p => ({...p, email:e.target.value}))} />
+      </div>
+      <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:6 }}>
+        <label style={{ fontSize:12, display:'flex', alignItems:'center', gap:4, cursor:'pointer' }}>
+          <input type="checkbox" checked={f.is_signer} onChange={e => setF(p => ({...p, is_signer:e.target.checked}))} /> Підписант документів
+        </label>
+        <div style={{ marginLeft:'auto', display:'flex', gap:6 }}>
+          <button className="btn btn-sm btn-primary" disabled={!f.name.trim()} onClick={async () => {
+            await supabase.from('contractor_contacts').insert({ contractor_id: contractorId, ...f })
+            setF({ name:'', position:'', phone:'', email:'', is_signer:false }); setOpen(false); onAdded()
+          }}>Додати</button>
+          <button className="btn btn-sm btn-secondary" onClick={() => setOpen(false)}>Скасувати</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ContractAddForm({ contractorId, onAdded }) {
+  const [open, setOpen] = useState(false)
+  const [f, setF] = useState({ number: '', date: '', subject: '' })
+  if (!open) return <button onClick={() => setOpen(true)} style={{ marginTop:8, background:'none', border:'1px dashed var(--border)', borderRadius:8, padding:'6px 12px', cursor:'pointer', fontSize:12, color:'var(--blue)', fontFamily:'inherit', width:'100%' }}>
+    <i className="ti ti-plus" style={{ fontSize:12 }} /> Додати договір
+  </button>
+  return (
+    <div style={{ marginTop:8, border:'1px solid var(--border)', borderRadius:8, padding:10, background:'var(--bg)' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 2fr', gap:6 }}>
+        <input className="form-input" style={{ height:32, fontSize:12 }} placeholder="Номер *" value={f.number} onChange={e => setF(p => ({...p, number:e.target.value}))} />
+        <input type="date" className="form-input" style={{ height:32, fontSize:12 }} value={f.date} onChange={e => setF(p => ({...p, date:e.target.value}))} />
+        <input className="form-input" style={{ height:32, fontSize:12 }} placeholder="Предмет договору" value={f.subject} onChange={e => setF(p => ({...p, subject:e.target.value}))} />
+      </div>
+      <div style={{ display:'flex', gap:6, marginTop:6, justifyContent:'flex-end' }}>
+        <button className="btn btn-sm btn-primary" disabled={!f.number.trim()} onClick={async () => {
+          await supabase.from('contractor_contracts').insert({ contractor_id: contractorId, ...f, date: f.date || null })
+          setF({ number:'', date:'', subject:'' }); setOpen(false); onAdded()
+        }}>Додати</button>
+        <button className="btn btn-sm btn-secondary" onClick={() => setOpen(false)}>Скасувати</button>
+      </div>
+    </div>
+  )
+}
+
 // ── Section card component ──
 function Section({ title, icon, children }) {
   return (
@@ -173,6 +228,8 @@ export default function Contractors({ user, onNavigate }) {
   const [showDocGen, setShowDocGen] = useState(false)
   const [editingDoc, setEditingDoc] = useState(null)
   const [contractorDocs, setContractorDocs] = useState([])
+  const [contacts, setContacts] = useState([])
+  const [contracts, setContracts] = useState([])
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState(null)
 
@@ -276,6 +333,8 @@ export default function Contractors({ user, onNavigate }) {
     setDetail(c); setDetailTab('info'); setView('detail')
     setReconcileFrom(''); setReconcileTo('')
     loadContractorDocs(c.id).then(docs => setContractorDocs(docs))
+    supabase.from('contractor_contacts').select('*').eq('contractor_id', c.id).order('is_signer', { ascending: false }).order('name').then(({ data }) => setContacts(data || []))
+    supabase.from('contractor_contracts').select('*').eq('contractor_id', c.id).order('date', { ascending: false }).then(({ data }) => setContracts(data || []))
 
     // Fetch transactions by ЄДРПОУ (primary) or by name (fallback)
     let txQuery = supabase.from('bank_transactions')
@@ -453,6 +512,7 @@ export default function Contractors({ user, onNavigate }) {
         <div style={{ display:'flex', borderBottom:'1px solid var(--border)', marginBottom:20, gap:0 }}>
           {[
             { id:'info', label:'Реквізити', icon:'ti-file-info' },
+            { id:'docs', label:`Документи (${contractorDocs.length})`, icon:'ti-file-text' },
             { id:'balance', label:'Баланс', icon:'ti-scale' },
             { id:'txs', label:`Операції (${detailTxs.length})`, icon:'ti-list-details' },
             { id:'notes', label:'Нотатки', icon:'ti-notes' },
@@ -488,20 +548,44 @@ export default function Contractors({ user, onNavigate }) {
               </div>
             </Section>
 
-            <Section title="Керівництво" icon="ti-users">
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-                <Field label="Директор" value={detail.director} />
-                <Field label="Посада" value={detail.director_position} />
-                <Field label="Засновники" value={detail.founders} />
-              </div>
-              {detail.vkursi_data?.heads?.length > 1 && (
-                <div style={{ marginTop:8, fontSize:12, color:'var(--text2)' }}>
-                  <div style={{ fontWeight:500, marginBottom:4 }}>Всі керівники:</div>
-                  {detail.vkursi_data.heads.map((h, i) => (
-                    <div key={i}>{h.name} — {h.role || '—'}</div>
+            <Section title="Контактні особи" icon="ti-users">
+              {contacts.length > 0 ? (
+                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                  {contacts.map(c => (
+                    <div key={c.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontWeight:500, fontSize:13, display:'flex', alignItems:'center', gap:6 }}>
+                          {c.name}
+                          {c.is_signer && <span style={{ fontSize:10, background:'var(--green-bg)', color:'var(--green)', padding:'1px 6px', borderRadius:4 }}>Підписант</span>}
+                        </div>
+                        <div style={{ fontSize:12, color:'var(--text2)' }}>
+                          {[c.position, c.phone, c.email].filter(Boolean).join('  ·  ')}
+                        </div>
+                      </div>
+                      <button style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', fontSize:14 }}
+                        onClick={async () => {
+                          await supabase.from('contractor_contacts').update({ is_signer: !c.is_signer }).eq('id', c.id)
+                          supabase.from('contractor_contacts').select('*').eq('contractor_id', detail.id).order('is_signer', { ascending: false }).order('name').then(({ data }) => setContacts(data || []))
+                        }} title={c.is_signer ? 'Зняти підписанта' : 'Зробити підписантом'}>
+                        <i className={`ti ${c.is_signer ? 'ti-signature' : 'ti-signature-off'}`} />
+                      </button>
+                      <button style={{ background:'none', border:'none', cursor:'pointer', color:'var(--red)', fontSize:14 }}
+                        onClick={async () => {
+                          if (!confirm(`Видалити ${c.name}?`)) return
+                          await supabase.from('contractor_contacts').delete().eq('id', c.id)
+                          supabase.from('contractor_contacts').select('*').eq('contractor_id', detail.id).order('is_signer', { ascending: false }).order('name').then(({ data }) => setContacts(data || []))
+                        }}>
+                        <i className="ti ti-trash" />
+                      </button>
+                    </div>
                   ))}
                 </div>
+              ) : (
+                <div style={{ fontSize:12, color:'var(--text3)', padding:'8px 0' }}>Немає контактних осіб</div>
               )}
+              <ContactAddForm contractorId={detail.id} onAdded={() => {
+                supabase.from('contractor_contacts').select('*').eq('contractor_id', detail.id).order('is_signer', { ascending: false }).order('name').then(({ data }) => setContacts(data || []))
+              }} />
             </Section>
 
             {(detail.court_cases_count > 0 || detail.enforcement_count > 0) && (
@@ -513,15 +597,38 @@ export default function Contractors({ user, onNavigate }) {
               </Section>
             )}
 
-            <Section title="Контакти" icon="ti-address-book">
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-                <Field label="Контактна особа" value={detail.contact_person} />
-                <Field label="Посада" value={detail.contact_position} />
-                <Field label="Телефон" value={detail.phone} />
-                <Field label="Доп. телефон" value={detail.phone2} />
-                <Field label="Email" value={detail.email} />
-                <Field label="Сайт" value={detail.website} />
-              </div>
+            <Section title="Договори" icon="ti-file-text">
+              {contracts.length > 0 ? (
+                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                  {contracts.map(ct => (
+                    <div key={ct.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'6px 0', borderBottom:'1px solid var(--border)' }}>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontWeight:500, fontSize:13 }}>
+                          №{ct.number}{ct.date ? ` від ${ct.date}` : ''}
+                          <span style={{ fontSize:10, marginLeft:8, padding:'1px 6px', borderRadius:4,
+                            background: ct.status === 'active' ? 'var(--green-bg)' : ct.status === 'completed' ? 'var(--surface2)' : 'var(--red-bg)',
+                            color: ct.status === 'active' ? 'var(--green)' : ct.status === 'completed' ? 'var(--text3)' : 'var(--red)',
+                          }}>{ct.status === 'active' ? 'Діючий' : ct.status === 'completed' ? 'Завершений' : 'Скасований'}</span>
+                        </div>
+                        {ct.subject && <div style={{ fontSize:12, color:'var(--text2)' }}>{ct.subject}</div>}
+                      </div>
+                      <button style={{ background:'none', border:'none', cursor:'pointer', color:'var(--red)', fontSize:14 }}
+                        onClick={async () => {
+                          if (!confirm(`Видалити договір №${ct.number}?`)) return
+                          await supabase.from('contractor_contracts').delete().eq('id', ct.id)
+                          supabase.from('contractor_contracts').select('*').eq('contractor_id', detail.id).order('date', { ascending: false }).then(({ data }) => setContracts(data || []))
+                        }}>
+                        <i className="ti ti-trash" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize:12, color:'var(--text3)', padding:'8px 0' }}>Немає договорів</div>
+              )}
+              <ContractAddForm contractorId={detail.id} onAdded={() => {
+                supabase.from('contractor_contracts').select('*').eq('contractor_id', detail.id).order('date', { ascending: false }).then(({ data }) => setContracts(data || []))
+              }} />
             </Section>
 
             <Section title="Банківські реквізити" icon="ti-building-bank">
@@ -552,6 +659,102 @@ export default function Contractors({ user, onNavigate }) {
                 )}
               </div>
             </Section>
+          </div>
+        )}
+
+        {/* ── Tab: Документи ── */}
+        {detailTab === 'docs' && (
+          <div>
+            <div className="tbl-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Дата</th>
+                    <th>Тип</th>
+                    <th>Номер</th>
+                    <th style={{ textAlign: 'right' }}>Сума</th>
+                    <th>Статус</th>
+                    <th>Транзакція</th>
+                    <th style={{ width: 130 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {contractorDocs.length === 0 && (
+                    <tr><td colSpan={7} style={{ textAlign:'center', padding:20, color:'var(--text3)' }}>Немає документів</td></tr>
+                  )}
+                  {contractorDocs.map(doc => {
+                    const st = STATUS_COLORS[doc.status] || STATUS_COLORS.draft
+                    return (
+                      <tr key={doc.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ fontSize: 13, whiteSpace: 'nowrap' }}>{doc.doc_date}</td>
+                        <td style={{ fontSize: 13 }}>{getDocLabel(doc.doc_type)}</td>
+                        <td style={{ fontSize: 13, fontWeight: 500 }}>{doc.doc_number}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{fmtDoc(doc.total)} грн</td>
+                        <td>
+                          <select style={{ fontSize: 11, border: '1px solid var(--border)', borderRadius: 6, padding: '2px 6px', background: st.bg, color: st.color, fontFamily: 'inherit', cursor: 'pointer' }}
+                            value={doc.status} onChange={async e => {
+                              await updateDocStatus(doc.id, e.target.value)
+                              loadContractorDocs(detail.id).then(docs => setContractorDocs(docs))
+                            }}>
+                            {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                          </select>
+                        </td>
+                        <td style={{ fontSize: 11 }}>
+                          {doc.bank_transaction_id ? (
+                            <span style={{ color: 'var(--green)', fontSize: 11 }}><i className="ti ti-link" style={{ fontSize: 12 }} /> Привʼязано</span>
+                          ) : (
+                            <button className="btn btn-sm btn-secondary" style={{ padding: '1px 6px', fontSize: 10 }}
+                              onClick={async () => {
+                                const txId = prompt('ID банківської транзакції:')
+                                if (!txId) return
+                                await updateDocStatus(doc.id, doc.status, txId)
+                                loadContractorDocs(detail.id).then(docs => setContractorDocs(docs))
+                              }}>Привʼязати</button>
+                          )}
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            {doc.doc_type === 'invoice' && (
+                              <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', fontSize: 15, padding: '0 4px' }}
+                                title="Створити акт/накладну на підставі"
+                                onClick={() => {
+                                  const docItems = typeof doc.items === 'string' ? JSON.parse(doc.items) : doc.items
+                                  setEditingDoc({ ...doc, id: null, doc_type: null, doc_number: '', items: docItems, _fromInvoice: doc.doc_number })
+                                  setShowDocGen(true)
+                                }}>
+                                <i className="ti ti-copy" style={{ fontSize: 14 }} />
+                              </button>
+                            )}
+                            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--blue)', fontSize: 15, padding: '0 4px' }}
+                              title="Редагувати" onClick={() => { setEditingDoc(doc); setShowDocGen(true) }}>
+                              <i className="ti ti-pencil" style={{ fontSize: 14 }} />
+                            </button>
+                            <button className="btn btn-sm btn-secondary" style={{ padding: '2px 8px', fontSize: 11 }}
+                              onClick={() => {
+                                const items = typeof doc.items === 'string' ? JSON.parse(doc.items) : doc.items
+                                generatePdf(doc.doc_type, detail, items, { docNumber: doc.doc_number, docDate: doc.doc_date, notes: doc.notes })
+                              }}>PDF</button>
+                            <button className="btn btn-sm btn-secondary" style={{ padding: '2px 8px', fontSize: 11 }}
+                              onClick={() => {
+                                const items = typeof doc.items === 'string' ? JSON.parse(doc.items) : doc.items
+                                generateXlsx(doc.doc_type, detail, items, { docNumber: doc.doc_number, docDate: doc.doc_date, notes: doc.notes })
+                              }}>XLS</button>
+                            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 15, padding: '0 4px' }}
+                              title="Видалити" onClick={async () => {
+                                if (!confirm(`Видалити ${getDocLabel(doc.doc_type)} №${doc.doc_number}?`)) return
+                                await supabase.from('generated_docs').delete().eq('id', doc.id)
+                                loadContractorDocs(detail.id).then(docs => setContractorDocs(docs))
+                              }}>
+                              <i className="ti ti-trash" style={{ fontSize: 14 }} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
@@ -868,95 +1071,6 @@ export default function Contractors({ user, onNavigate }) {
             ) : (
               <div className="empty"><p>Немає нотаток. Натисніть "Редагувати" щоб додати.</p></div>
             )}
-          </div>
-        )}
-
-        {/* Документи контрагента */}
-        {contractorDocs.length > 0 && (
-          <div className="card" style={{ marginTop: 16 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <i className="ti ti-file-text" style={{ fontSize: 16, color: 'var(--blue)' }} />
-              Створені документи ({contractorDocs.length})
-            </div>
-            <div className="tbl-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Дата</th>
-                    <th>Тип</th>
-                    <th>Номер</th>
-                    <th style={{ textAlign: 'right' }}>Сума</th>
-                    <th>Статус</th>
-                    <th style={{ width: 120 }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {contractorDocs.map(doc => {
-                    const st = STATUS_COLORS[doc.status] || STATUS_COLORS.draft
-                    return (
-                      <tr key={doc.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td style={{ fontSize: 13, whiteSpace: 'nowrap' }}>{doc.doc_date}</td>
-                        <td style={{ fontSize: 13 }}>{getDocLabel(doc.doc_type)}</td>
-                        <td style={{ fontSize: 13, fontWeight: 500 }}>{doc.doc_number}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{fmtDoc(doc.total)} грн</td>
-                        <td>
-                          <select style={{ fontSize: 11, border: '1px solid var(--border)', borderRadius: 6, padding: '2px 6px', background: st.bg, color: st.color, fontFamily: 'inherit', cursor: 'pointer' }}
-                            value={doc.status} onChange={async e => {
-                              await updateDocStatus(doc.id, e.target.value)
-                              loadContractorDocs(detail.id).then(docs => setContractorDocs(docs))
-                            }}>
-                            {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                          </select>
-                        </td>
-                        <td>
-                          <div style={{ display: 'flex', gap: 4 }}>
-                            {doc.doc_type === 'invoice' && (
-                              <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', fontSize: 15, padding: '0 4px' }}
-                                title="Створити акт/накладну на підставі"
-                                onClick={() => {
-                                  const docItems = typeof doc.items === 'string' ? JSON.parse(doc.items) : doc.items
-                                  setEditingDoc({
-                                    ...doc, id: null, doc_type: null, doc_number: '',
-                                    items: docItems,
-                                    _fromInvoice: doc.doc_number,
-                                  })
-                                  setShowDocGen(true)
-                                }}>
-                                <i className="ti ti-copy" style={{ fontSize: 14 }} />
-                              </button>
-                            )}
-                            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--blue)', fontSize: 15, padding: '0 4px' }}
-                              title="Редагувати"
-                              onClick={() => { setEditingDoc(doc); setShowDocGen(true) }}>
-                              <i className="ti ti-pencil" style={{ fontSize: 14 }} />
-                            </button>
-                            <button className="btn btn-sm btn-secondary" style={{ padding: '2px 8px', fontSize: 11 }}
-                              onClick={() => {
-                                const items = typeof doc.items === 'string' ? JSON.parse(doc.items) : doc.items
-                                generatePdf(doc.doc_type, detail, items, { docNumber: doc.doc_number, docDate: doc.doc_date, notes: doc.notes })
-                              }}>PDF</button>
-                            <button className="btn btn-sm btn-secondary" style={{ padding: '2px 8px', fontSize: 11 }}
-                              onClick={() => {
-                                const items = typeof doc.items === 'string' ? JSON.parse(doc.items) : doc.items
-                                generateXlsx(doc.doc_type, detail, items, { docNumber: doc.doc_number, docDate: doc.doc_date, notes: doc.notes })
-                              }}>XLS</button>
-                            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 15, padding: '0 4px' }}
-                              title="Видалити"
-                              onClick={async () => {
-                                if (!confirm(`Видалити ${getDocLabel(doc.doc_type)} №${doc.doc_number}?`)) return
-                                await supabase.from('generated_docs').delete().eq('id', doc.id)
-                                loadContractorDocs(detail.id).then(docs => setContractorDocs(docs))
-                              }}>
-                              <i className="ti ti-trash" style={{ fontSize: 14 }} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
           </div>
         )}
 
