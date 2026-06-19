@@ -1,8 +1,8 @@
-// ── Шаблон: Акт наданих послуг — Premium Tech Style ──
+// ── Шаблон: Акт наданих послуг ──
 import { formatMoney, formatDate, formatDateLong, amountInWords, calcTotals } from '../formatUtils'
 import { createWorkbook, addSheet } from '../xlsxBuilder'
+import { LOGO_BASE64 } from '../logo'
 
-// Палітра — темна, мінімалістична, tech
 const BLACK = '#0A0A0A'
 const DARK = '#1C1C1E'
 const GRAY1 = '#3A3A3C'
@@ -10,8 +10,7 @@ const GRAY2 = '#8E8E93'
 const GRAY3 = '#C7C7CC'
 const GRAY4 = '#E5E5EA'
 const GRAY5 = '#F2F2F7'
-const GREEN = '#34C759'  // AiM brand green (iOS-style)
-const WHITE = '#FFFFFF'
+const GREEN = '#00C853'
 
 function itemData(it, i) {
   const qty = parseFloat(it.quantity) || 0
@@ -31,88 +30,41 @@ export function pdf(company, contractor, items, options) {
 
   return {
     pageSize: 'A4',
-    pageMargins: [48, 48, 48, 60],
+    pageMargins: [40, 36, 40, 40],
     defaultStyle: { fontSize: 9.5, color: GRAY1 },
     content: [
 
-      // ═══════════════════════════════════════════
-      // HEADER — лого + реквізити компанії
-      // ═══════════════════════════════════════════
+      // ═══ HEADER ═══
       {
         columns: [
-          // Логотип — стилізований як у сайдбарі
+          { image: LOGO_BASE64, width: 80, margin: [0, 0, 0, 0] },
           {
-            width: 80,
+            width: '*', alignment: 'right',
             stack: [
-              {
-                canvas: [
-                  { type: 'rect', x: 0, y: 0, w: 64, h: 56, r: 8, color: BLACK },
-                ],
-              },
-              // Текст поверх canvas
-              {
-                text: [
-                  { text: 'A', color: WHITE, bold: true },
-                  { text: 'i', color: GREEN, bold: true },
-                  { text: 'M', color: WHITE, bold: true },
-                ],
-                fontSize: 18, absolutePosition: { x: 60, y: 52 },
-              },
-              {
-                text: [
-                  { text: 'Sk', color: WHITE, bold: true },
-                  { text: 'i', color: GREEN, bold: true },
-                  { text: 'll.', color: WHITE, bold: true },
-                ],
-                fontSize: 18, absolutePosition: { x: 60, y: 72 },
-              },
-            ],
-          },
-          // Реквізити справа
-          {
-            width: '*',
-            alignment: 'right',
-            stack: [
-              { text: company.shortName || company.name, fontSize: 11, bold: true, color: BLACK },
-              { text: company.address || '', fontSize: 8, color: GRAY2, margin: [0, 3, 0, 0] },
-              { text: `ЄДРПОУ ${company.edrpou || ''}  ·  ІПН ${company.ipn || ''}`, fontSize: 8, color: GRAY2, margin: [0, 2, 0, 0] },
-              { text: `${company.phone || ''}  ·  ${company.email || ''}`, fontSize: 8, color: GRAY2, margin: [0, 2, 0, 0] },
+              { text: company.shortName || company.name, fontSize: 10, bold: true, color: BLACK },
+              { text: company.address || '', fontSize: 8, color: GRAY2, margin: [0, 2, 0, 0] },
+              { text: `ЄДРПОУ ${company.edrpou || ''}  ·  ІПН ${company.ipn || ''}`, fontSize: 8, color: GRAY2, margin: [0, 1, 0, 0] },
+              { text: `${company.phone || ''}  ·  ${company.email || ''}`, fontSize: 8, color: GRAY2, margin: [0, 1, 0, 0] },
             ],
           },
         ],
-        margin: [0, 0, 0, 24],
+        margin: [0, 0, 0, 12],
       },
 
-      // ═══════════════════════════════════════════
-      // DOCUMENT TITLE
-      // ═══════════════════════════════════════════
+      // Лінія
+      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 2, lineColor: BLACK }], margin: [0, 0, 0, 16] },
+
+      // ═══ НАЗВА ДОКУМЕНТА ═══
+      { text: 'АКТ НАДАНИХ ПОСЛУГ', fontSize: 8, letterSpacing: 3, color: GRAY2, margin: [0, 0, 0, 3] },
       {
-        table: {
-          widths: ['*'],
-          body: [[{
-            stack: [
-              { text: 'АКТ НАДАНИХ ПОСЛУГ', fontSize: 8, letterSpacing: 3, color: GRAY2, margin: [0, 0, 0, 4] },
-              {
-                columns: [
-                  { text: `№ ${docNumber}`, fontSize: 24, bold: true, color: BLACK, width: 'auto' },
-                  { text: '', width: 12 },
-                  { text: formatDateLong(docDate), fontSize: 11, color: GRAY2, margin: [0, 13, 0, 0] },
-                ],
-              },
-            ],
-            margin: [20, 16, 20, 16],
-          }]],
-        },
-        layout: {
-          hLineWidth: () => 0, vLineWidth: () => 0,
-          fillColor: () => GRAY5,
-        },
-        margin: [0, 0, 0, 24],
+        columns: [
+          { text: `№ ${docNumber}`, fontSize: 22, bold: true, color: BLACK, width: 'auto' },
+          { text: formatDateLong(docDate), fontSize: 11, color: GRAY2, margin: [10, 11, 0, 0] },
+        ],
+        margin: [0, 0, 0, 14],
       },
 
-      // ═══════════════════════════════════════════
-      // ПРЕАМБУЛА
-      // ═══════════════════════════════════════════
+      // ═══ ПРЕАМБУЛА ═══
       {
         text: [
           { text: company.shortName || company.name, bold: true, color: BLACK },
@@ -124,36 +76,28 @@ export function pdf(company, contractor, items, options) {
           contractor.contact_person ? { text: ` в особі ${contractor.contact_position || ''} ${contractor.contact_person}`, color: BLACK } : { text: '' },
           { text: ', з іншої сторони, склали цей Акт про наступне:' },
         ],
-        fontSize: 9, lineHeight: 1.6, margin: [0, 0, 0, 20], color: GRAY1,
+        fontSize: 9, lineHeight: 1.5, margin: [0, 0, 0, 14], color: GRAY1,
       },
 
-      // ═══════════════════════════════════════════
-      // СТОРОНИ — дві картки
-      // ═══════════════════════════════════════════
+      // ═══ СТОРОНИ ═══
       {
         columns: [
           partyCard('Виконавець', company, true),
-          { width: 16, text: '' },
+          { width: 14, text: '' },
           partyCard('Замовник', contractor, false),
         ],
-        margin: [0, 0, 0, 20],
+        margin: [0, 0, 0, 16],
       },
 
-      // ═══════════════════════════════════════════
-      // ТАБЛИЦЯ
-      // ═══════════════════════════════════════════
+      // ═══ ТАБЛИЦЯ ═══
       {
         table: {
           headerRows: 1,
-          widths: [22, '*', 36, 42, 60, 28, 48, 64],
+          widths: [20, '*', 32, 38, 56, 26, 46, 60],
           body: [
-            // Header
             ['№', 'Послуга', 'К-сть', 'Од.', 'Ціна', 'ПДВ', 'ПДВ ₴', 'Сума'].map(t => ({
-              text: t, fontSize: 7, bold: true, color: GRAY2,
-              alignment: 'center', margin: [0, 6, 0, 6],
-              borderColor: [WHITE, WHITE, WHITE, GRAY4],
+              text: t, fontSize: 7, bold: true, color: GRAY2, alignment: 'center', margin: [0, 5, 0, 5],
             })),
-            // Rows
             ...rows.map(r => [
               { text: r.i, alignment: 'center', fontSize: 9, color: GRAY2 },
               { text: r.name, fontSize: 9, color: BLACK },
@@ -170,103 +114,92 @@ export function pdf(company, contractor, items, options) {
           hLineWidth: (i) => i === 1 ? 1 : 0.5,
           vLineWidth: () => 0,
           hLineColor: (i) => i === 1 ? GRAY3 : GRAY4,
-          paddingLeft: () => 6, paddingRight: () => 6,
-          paddingTop: () => 7, paddingBottom: () => 7,
-          fillColor: (i) => i > 0 && i % 2 === 0 ? '#FAFAFA' : null,
+          paddingLeft: () => 5, paddingRight: () => 5,
+          paddingTop: () => 6, paddingBottom: () => 6,
+          fillColor: (i) => i > 0 && i % 2 === 0 ? GRAY5 : null,
         },
       },
 
-      // ═══════════════════════════════════════════
-      // ПІДСУМКИ
-      // ═══════════════════════════════════════════
-      { text: '', margin: [0, 12] },
+      // ═══ ПІДСУМКИ ═══
+      { text: '', margin: [0, 8] },
       {
         columns: [
           { width: '*', text: '' },
           {
-            width: 200,
+            width: 190,
             stack: [
-              sumLine('Без ПДВ', subtotal, false),
-              ...(hasVat ? [sumLine('ПДВ', vatAmount, false)] : []),
-              { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 0.5, lineColor: GRAY4 }], margin: [0, 4, 0, 4] },
-              sumLine('Всього', total, true),
+              sumRow('Без ПДВ', subtotal, false),
+              ...(hasVat ? [sumRow('ПДВ', vatAmount, false)] : []),
+              { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 190, y2: 0, lineWidth: 0.5, lineColor: GRAY4 }], margin: [0, 3, 0, 3] },
+              sumRow('Всього', total, true),
             ],
           },
         ],
       },
-      { text: amountInWords(total), fontSize: 8, italics: true, color: GRAY2, margin: [0, 8, 0, 0] },
+      { text: amountInWords(total), fontSize: 8, italics: true, color: GRAY2, margin: [0, 6, 0, 0] },
 
-      // ═══════════════════════════════════════════
-      // ПРИЙОМ РОБІТ
-      // ═══════════════════════════════════════════
-      { text: '', margin: [0, 14] },
+      // ═══ ПРИЙОМ ═══
+      { text: '', margin: [0, 10] },
       {
         table: {
           widths: [3, '*'],
           body: [[
-            { text: '', fillColor: GREEN, border: [false, false, false, false] },
-            {
-              text: 'Вищевказані послуги виконані повністю та в строк. Замовник претензій щодо обсягу, якості та строків надання послуг не має.',
-              fontSize: 9, lineHeight: 1.5, color: GRAY1, margin: [12, 10, 12, 10],
-              border: [false, false, false, false],
-            },
+            { text: '', border: [false, false, false, false] },
+            { text: 'Вищевказані послуги виконані повністю та в строк. Замовник претензій щодо обсягу, якості та строків надання послуг не має.',
+              fontSize: 9, lineHeight: 1.4, color: GRAY1, margin: [10, 8, 10, 8], border: [false, false, false, false] },
           ]],
         },
         layout: { hLineWidth: () => 0, vLineWidth: () => 0, fillColor: (r, n, c) => c === 0 ? GREEN : GRAY5 },
       },
 
-      notes ? { text: notes, fontSize: 8, color: GRAY2, italics: true, margin: [0, 12, 0, 0] } : {},
+      notes ? { text: notes, fontSize: 8, color: GRAY2, italics: true, margin: [0, 8, 0, 0] } : {},
 
-      // ═══════════════════════════════════════════
-      // ПІДПИСИ
-      // ═══════════════════════════════════════════
-      { text: '', margin: [0, 28] },
+      // ═══ ПІДПИСИ — компактні ═══
+      { text: '', margin: [0, 16] },
       {
         columns: [
-          signatureBlock('Виконавець', company.directorPosition || 'Директор', company.director || ''),
-          { width: 40, text: '' },
-          signatureBlock('Замовник', contractor.contact_position || '', contractor.contact_person || ''),
+          {
+            width: '48%',
+            stack: [
+              { text: 'ВИКОНАВЕЦЬ', fontSize: 7, letterSpacing: 1, color: GRAY2, margin: [0, 0, 0, 12] },
+              { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 0.5, lineColor: GRAY3 }] },
+              { text: `${company.directorPosition || 'Директор'} ${company.director || ''}`, fontSize: 9, color: GRAY1, margin: [0, 3, 0, 0] },
+              { text: 'М.П.', fontSize: 7, color: GRAY3, margin: [0, 4, 0, 0] },
+            ],
+          },
+          {
+            width: '48%',
+            stack: [
+              { text: 'ЗАМОВНИК', fontSize: 7, letterSpacing: 1, color: GRAY2, margin: [0, 0, 0, 12] },
+              { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 0.5, lineColor: GRAY3 }] },
+              { text: contractor.contact_person || '', fontSize: 9, color: GRAY1, margin: [0, 3, 0, 0] },
+              { text: 'М.П.', fontSize: 7, color: GRAY3, margin: [0, 4, 0, 0] },
+            ],
+          },
         ],
       },
 
-      // ═══════════════════════════════════════════
-      // FOOTER
-      // ═══════════════════════════════════════════
-      { text: '', margin: [0, 20] },
-      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 499, y2: 0, lineWidth: 0.5, lineColor: GRAY4 }] },
+      // ═══ FOOTER ═══
+      { text: '', margin: [0, 14] },
+      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.3, lineColor: GRAY4 }] },
       {
         columns: [
-          { qr: qrData, fit: 40, margin: [0, 8, 0, 0], foreground: GRAY1 },
+          { qr: qrData, fit: 36, margin: [0, 6, 0, 0], foreground: GRAY1 },
           {
             stack: [
-              { text: `${docNumber}  ·  ${formatDate(docDate)}  ·  ${formatMoney(total)} грн`, fontSize: 7, color: GRAY3, margin: [10, 10, 0, 0] },
-              { text: 'Документ згенеровано в системі AiM Skill', fontSize: 6, color: GRAY3, margin: [10, 3, 0, 0] },
+              { text: `${docNumber}  ·  ${formatDate(docDate)}  ·  ${formatMoney(total)} грн`, fontSize: 7, color: GRAY3, margin: [8, 8, 0, 0] },
+              { text: 'Документ згенеровано в AiM Skill', fontSize: 6, color: GRAY3, margin: [8, 2, 0, 0] },
             ],
             width: '*',
           },
-          {
-            width: 50, alignment: 'right',
-            stack: [
-              { text: [
-                { text: 'A', color: BLACK, bold: true },
-                { text: 'i', color: GREEN, bold: true },
-                { text: 'M', color: BLACK, bold: true },
-              ], fontSize: 11, margin: [0, 8, 0, 0] },
-              { text: [
-                { text: 'Sk', color: BLACK, bold: true },
-                { text: 'i', color: GREEN, bold: true },
-                { text: 'll.', color: BLACK, bold: true },
-              ], fontSize: 11 },
-            ],
-          },
+          { image: LOGO_BASE64, width: 50, alignment: 'right', margin: [0, 4, 0, 0] },
         ],
       },
     ],
   }
 }
 
-// ── Допоміжні функції ──
-
+// ── Допоміжні ──
 function partyCard(label, entity, isCompany) {
   const name = isCompany ? (entity.shortName || entity.name) : (entity.short_name || entity.name || '—')
   const edrpou = entity.edrpou
@@ -279,13 +212,13 @@ function partyCard(label, entity, isCompany) {
       widths: ['*'],
       body: [[{
         stack: [
-          { text: label.toUpperCase(), fontSize: 7, letterSpacing: 1.5, color: GRAY2, margin: [0, 0, 0, 6] },
-          { text: name, fontSize: 11, bold: true, color: BLACK, margin: [0, 0, 0, 4] },
-          edrpou ? { text: `ЄДРПОУ ${edrpou}`, fontSize: 8, color: GRAY1, margin: [0, 0, 0, 2] } : {},
-          address ? { text: address, fontSize: 8, color: GRAY2, margin: [0, 0, 0, 2] } : {},
-          iban ? { text: `IBAN ${iban}`, fontSize: 7.5, color: GRAY2 } : {},
+          { text: label.toUpperCase(), fontSize: 7, letterSpacing: 1.5, color: GRAY2, margin: [0, 0, 0, 4] },
+          { text: name, fontSize: 10, bold: true, color: BLACK, margin: [0, 0, 0, 3] },
+          edrpou ? { text: `ЄДРПОУ ${edrpou}`, fontSize: 8, color: GRAY1 } : {},
+          address ? { text: address, fontSize: 8, color: GRAY2, margin: [0, 1, 0, 0] } : {},
+          iban ? { text: `IBAN ${iban}`, fontSize: 7.5, color: GRAY2, margin: [0, 1, 0, 0] } : {},
         ],
-        margin: [14, 12, 14, 12],
+        margin: [10, 8, 10, 8],
       }]],
     },
     layout: {
@@ -295,25 +228,13 @@ function partyCard(label, entity, isCompany) {
   }
 }
 
-function sumLine(label, amount, isBold) {
+function sumRow(label, amount, isBold) {
   return {
     columns: [
-      { text: label, alignment: 'right', fontSize: isBold ? 12 : 9, bold: isBold, color: isBold ? BLACK : GRAY2, width: '*' },
-      { text: `${formatMoney(amount)} грн`, alignment: 'right', fontSize: isBold ? 13 : 9, bold: isBold, color: isBold ? BLACK : GRAY1, width: 100 },
+      { text: label, alignment: 'right', fontSize: isBold ? 11 : 9, bold: isBold, color: isBold ? BLACK : GRAY2, width: '*' },
+      { text: `${formatMoney(amount)} грн`, alignment: 'right', fontSize: isBold ? 12 : 9, bold: isBold, color: isBold ? BLACK : GRAY1, width: 95 },
     ],
-    margin: [0, 2, 0, 2],
-  }
-}
-
-function signatureBlock(title, position, name) {
-  return {
-    width: '*',
-    stack: [
-      { text: title.toUpperCase(), fontSize: 7, letterSpacing: 1.5, color: GRAY2, margin: [0, 0, 0, 20] },
-      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 210, y2: 0, lineWidth: 0.5, lineColor: GRAY3 }] },
-      position || name ? { text: `${position} ${name}`.trim(), fontSize: 9, color: GRAY1, margin: [0, 4, 0, 0] } : {},
-      { text: 'М.П.', fontSize: 7, color: GRAY3, margin: [0, 8, 0, 0] },
-    ],
+    margin: [0, 1, 0, 1],
   }
 }
 
