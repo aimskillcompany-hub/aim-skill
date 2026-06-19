@@ -253,11 +253,12 @@ export async function createStockMovement({
   bankTransactionId, transactionItemId, date, description, userId
 }) {
   if (!productId || !quantity || quantity <= 0) return null
-  // Не створювати сироти без bank_transaction (крім ручних рухів)
+  // Не створювати сироти без bank_transaction (крім ручних рухів та документів)
   if (!bankTransactionId && transactionItemId) {
     console.warn('Пропущено stock_movement без bank_transaction_id для item:', transactionItemId)
     return null
   }
+  // Дозволити рухи з source='document' або 'manual' без bank_transaction
 
   // Перевірити дублікат по transaction_item_id
   if (transactionItemId) {

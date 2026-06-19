@@ -5,9 +5,10 @@ import * as waybill from './waybill'
 import * as serviceAct from './serviceAct'
 
 export const DOCUMENT_TYPES = [
-  { key: 'invoice', label: 'Рахунок на оплату', prefix: 'РФ', icon: 'ti-file-invoice', template: invoice },
-  { key: 'waybill', label: 'Видаткова накладна', prefix: 'ВН', icon: 'ti-truck-delivery', template: waybill },
-  { key: 'serviceAct', label: 'Акт наданих послуг', prefix: 'АКТ', icon: 'ti-file-check', template: serviceAct },
+  { key: 'invoice', label: 'Рахунок на оплату', prefix: 'РФ', icon: 'ti-file-invoice', template: invoice, direction: 'outgoing' },
+  { key: 'waybill', label: 'Видаткова накладна', prefix: 'ВН', icon: 'ti-truck-delivery', template: waybill, direction: 'outgoing', stockEffect: 'out' },
+  { key: 'serviceAct', label: 'Акт наданих послуг', prefix: 'АКТ', icon: 'ti-file-check', template: serviceAct, direction: 'outgoing' },
+  { key: 'incomingWaybill', label: 'Прихідна накладна', prefix: 'ПН', icon: 'ti-package-import', template: waybill, direction: 'incoming', stockEffect: 'in' },
 ]
 
 export function getDocType(key) {

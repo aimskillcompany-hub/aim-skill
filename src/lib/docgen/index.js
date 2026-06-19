@@ -17,7 +17,10 @@ function cleanItems(items) {
 export function generatePdf(docTypeKey, contractor, items, options) {
   const dt = getDocType(docTypeKey)
   if (!dt) throw new Error(`Невідомий тип документа: ${docTypeKey}`)
-  const docDef = dt.template.pdf(getCompany(), contractor, cleanItems(items), options)
+  // Для прихідних — сторони міняються (контрагент = постачальник, ми = покупець)
+  const seller = dt.direction === 'incoming' ? contractor : getCompany()
+  const buyer = dt.direction === 'incoming' ? getCompany() : contractor
+  const docDef = dt.template.pdf(seller, buyer, cleanItems(items), options)
   const fileName = `${dt.label}_${options.docNumber}_${options.docDate}.pdf`
   downloadPdf(docDef, fileName)
 }
@@ -26,7 +29,9 @@ export function generatePdf(docTypeKey, contractor, items, options) {
 export function generateXlsx(docTypeKey, contractor, items, options) {
   const dt = getDocType(docTypeKey)
   if (!dt) throw new Error(`Невідомий тип документа: ${docTypeKey}`)
-  const wb = dt.template.xlsx(getCompany(), contractor, cleanItems(items), options)
+  const seller = dt.direction === 'incoming' ? contractor : getCompany()
+  const buyer = dt.direction === 'incoming' ? getCompany() : contractor
+  const wb = dt.template.xlsx(seller, buyer, cleanItems(items), options)
   const fileName = `${dt.label}_${options.docNumber}_${options.docDate}.xlsx`
   downloadXlsx(wb, fileName)
 }
@@ -71,7 +76,53 @@ export async function saveDoc({ docType, docNumber, docDate, contractorId, contr
   }).select('id').single()
 
   if (error) throw new Error(error.message)
+
+  // Автоматичні складські рухи для документів з stockEffect
+  const dt = getDocType(docType)
+  if (dt?.stockEffect && data?.id) {
+    await createStockFromDoc(data.id, docType, cleanItems(items), docDate, userId)
+  }
+
   return data
+}
+
+// ── Створити складські рухи з документа ──
+async function createStockFromDoc(docId, docType, items, date, userId) {
+  const dt = getDocType(docType)
+  if (!dt?.stockEffect) return
+
+  const { resolveProduct } = await import('../stockService')
+
+  for (const item of items) {
+    if (!item.name?.trim()) continue
+    const qty = parseFloat(item.quantity) || 0
+    if (qty <= 0) continue
+
+    // Знайти або створити продукт
+    const resolved = item.productId
+      ? { productId: item.productId, isNew: false }
+      : await resolveProduct(item.name, item.unit || 'шт', parseFloat(item.unitPrice) || null, userId)
+
+    if (!resolved?.productId) continue
+
+    // Перевірити product_type — послуги не потребують складського руху
+    const { data: prodInfo } = await supabase.from('products')
+      .select('product_type').eq('id', resolved.productId).maybeSingle()
+    if (prodInfo?.product_type === 'service' || prodInfo?.product_type === 'expense') continue
+
+    // Створити рух
+    await supabase.from('stock_movements').insert({
+      product_id: resolved.productId,
+      type: dt.stockEffect, // 'in' або 'out'
+      quantity: qty,
+      price: parseFloat(item.unitPrice) || null,
+      total: parseFloat(item.amount) || qty * (parseFloat(item.unitPrice) || 0),
+      date: date || new Date().toISOString().split('T')[0],
+      description: `${dt.label}: ${item.name}`,
+      source: 'document',
+      created_by: userId,
+    })
+  }
 }
 
 // ── Оновити документ ──
