@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import Reports from './Reports'
+import {
+  ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  CartesianGrid, Legend,
+} from 'recharts'
 
 const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
 const CASH_DIR = { income: 1, expense: -1, advance_out: -1, advance_return: 1 }
@@ -215,26 +219,19 @@ export default function Analytics({ user, onPage }) {
           {chartData.length > 1 && (
             <div className="card" style={{ marginBottom: 16 }}>
               <div className="card-title">Виручка та витрати</div>
-              <div style={{ width: '100%', height: 280 }}>
-                {(() => {
-                  try {
-                    const { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } = require('recharts')
-                    return (
-                      <ResponsiveContainer>
-                        <ComposedChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                          <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                          <YAxis tick={{ fontSize: 11 }} tickFormatter={v => v >= 1000000 ? (v/1000000).toFixed(1)+'M' : v >= 1000 ? (v/1000).toFixed(0)+'k' : v} />
-                          <Tooltip formatter={v => fmt(v) + ' грн'} />
-                          <Bar dataKey="revenue" name="Доходи" fill="var(--green)" radius={[4,4,0,0]} />
-                          <Bar dataKey="expenses" name="Витрати" fill="var(--red)" radius={[4,4,0,0]} />
-                          <Line dataKey="net" name="Результат" stroke="var(--amber)" strokeWidth={2} dot={false} />
-                        </ComposedChart>
-                      </ResponsiveContainer>
-                    )
-                  } catch { return <div style={{ color: 'var(--text3)', textAlign: 'center', paddingTop: 80 }}>Графік недоступний</div> }
-                })()}
-              </div>
+              <ResponsiveContainer width="100%" height={280}>
+                <ComposedChart data={chartData} barGap={4}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--text2)' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: 'var(--text3)' }} axisLine={false} tickLine={false} width={52}
+                    tickFormatter={v => v >= 1000000 ? (v/1000000).toFixed(1)+'M' : v >= 1000 ? (v/1000).toFixed(0)+'k' : v} />
+                  <Tooltip formatter={v => fmt(v) + ' грн'} />
+                  <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="revenue" name="Доходи" fill="#4A7C59" radius={[4,4,0,0]} maxBarSize={48} />
+                  <Bar dataKey="expenses" name="Витрати" fill="#9B3A3A" radius={[4,4,0,0]} maxBarSize={48} />
+                  <Line dataKey="net" name="Результат" stroke="#f59e0b" strokeWidth={2} dot={false} />
+                </ComposedChart>
+              </ResponsiveContainer>
             </div>
           )}
         </div>
