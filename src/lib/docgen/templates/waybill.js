@@ -64,12 +64,12 @@ export function pdf(company, contractor, items, options) {
         { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.3, lineColor: G4 }], margin: [0, 0, 0, 5] },
         {
           columns: [
-            // EAN-8 штрихкод
+            // Штрихкод з номером документа
             {
-              width: 70,
+              width: 90,
               stack: [
-                { qr: ean8, fit: 24, foreground: G1 },
-                { text: ean8, fontSize: 5.5, color: G2, margin: [0, 1, 0, 0] },
+                { qr: `${docNumber}|${formatDate(docDate)}`, fit: 24, foreground: G1 },
+                { text: docNumber, fontSize: 5.5, color: G2, margin: [0, 1, 0, 0] },
               ],
             },
             // Інфо
@@ -88,8 +88,8 @@ export function pdf(company, contractor, items, options) {
 
     content: [
       // ═══ НАЗВА ═══
-      { text: 'ВИДАТКОВА НАКЛАДНА', fontSize: 7.5, letterSpacing: 4, color: G2, margin: [0, 6, 0, 2] },
-      { text: `від ${formatDateLong(docDate)}${city ? '  ·  ' + city : ''}`, fontSize: 10, color: G2, margin: [0, 0, 0, 2] },
+      sectionTitle('ВИДАТКОВА НАКЛАДНА'),
+      { text: `від ${formatDateLong(docDate)}${city ? '  ·  ' + city : ''}`, fontSize: 9, color: G1, margin: [0, 0, 0, 2] },
       { text: `№ ${docNumber}`, fontSize: 24, bold: true, color: BLACK, margin: [0, 0, 0, 12] },
 
       // ═══ РЕКВІЗИТИ ═══
@@ -98,8 +98,8 @@ export function pdf(company, contractor, items, options) {
           {
             width: '49%',
             stack: [
-              { text: 'Постачальник:', fontSize: 8, color: G2, margin: [0, 0, 0, 2] },
-              { text: company.shortName || company.name, fontSize: 9.5, bold: true, color: BLACK, margin: [0, 0, 0, 3] },
+              sectionTitle('ПОСТАЧАЛЬНИК'),
+              { text: company.shortName || company.name, fontSize: 9.5, bold: true, color: BLACK, margin: [0, 0, 0, 4] },
               rvLine('ЄДРПОУ', company.edrpou),
               rvLine('ІПН', company.ipn),
               rvLine('Адреса', company.address),
@@ -113,8 +113,8 @@ export function pdf(company, contractor, items, options) {
           {
             width: '49%',
             stack: [
-              { text: 'Покупець:', fontSize: 8, color: G2, margin: [0, 0, 0, 2] },
-              { text: contractor.short_name || contractor.name || '—', fontSize: 9.5, bold: true, color: BLACK, margin: [0, 0, 0, 3] },
+              sectionTitle('ПОКУПЕЦЬ'),
+              { text: contractor.short_name || contractor.name || '—', fontSize: 9.5, bold: true, color: BLACK, margin: [0, 0, 0, 4] },
               rvLine('ЄДРПОУ', contractor.edrpou),
               rvLine('Адреса', contractor.legal_address || contractor.address),
               rvLine('IBAN', contractor.iban),
@@ -127,9 +127,9 @@ export function pdf(company, contractor, items, options) {
 
       // ═══ ДОДАТКОВА ІНФОРМАЦІЯ ═══
       ...(addInfo.length > 0 ? [
-        { text: 'ДОДАТКОВА ІНФОРМАЦІЯ', fontSize: 6, letterSpacing: 2, color: G2, margin: [0, 0, 0, 3] },
+        sectionTitle('ДОДАТКОВА ІНФОРМАЦІЯ'),
         ...addInfo.map(line => ({ text: line, fontSize: 8.5, margin: [0, 0, 0, 1] })),
-        { text: '', margin: [0, 0, 0, 6] },
+        { text: '', margin: [0, 0, 0, 4] },
       ] : [{ text: '', margin: [0, 0, 0, 2] }]),
 
       // ═══ ТАБЛИЦЯ ═══
@@ -238,7 +238,23 @@ export function pdf(company, contractor, items, options) {
 
 function rvLine(label, value) {
   if (!value) return null
-  return { text: [{ text: `${label}: `, fontSize: 8, color: G2 }, { text: value, fontSize: 8, color: G1 }], margin: [0, 0, 0, 1] }
+  return {
+    columns: [
+      { text: label, width: 48, fontSize: 8, color: G2, alignment: 'right', margin: [0, 0, 4, 0] },
+      { text: value, width: '*', fontSize: 8, color: G1 },
+    ],
+    margin: [0, 1, 0, 1],
+  }
+}
+
+// Заголовок блоку — uppercase, letterSpacing, лінія знизу
+function sectionTitle(text) {
+  return {
+    stack: [
+      { text: text, fontSize: 7, letterSpacing: 3, color: G2, bold: true, margin: [0, 0, 0, 4] },
+      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 100, y2: 0, lineWidth: 1.5, lineColor: DARK }], margin: [0, 0, 0, 6] },
+    ],
+  }
 }
 
 // ── EXCEL ──
