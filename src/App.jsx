@@ -7,6 +7,7 @@ import Layout from './components/Layout'
 import DocumentUpload from './components/DocumentUpload'
 import Registry from './components/Registry'
 import Reports from './components/Reports'
+import Analytics from './components/Analytics'
 import Bank from './components/Bank'
 import Cash from './components/Cash'
 import TransactionModal from './components/TransactionModal'
@@ -372,7 +373,7 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(() => {
     const saved = sessionStorage.getItem('aim-page')
-    return saved || 'dashboard'
+    return saved || 'analytics'
   })
   const [toast, setToast] = useState(null)
 
@@ -419,7 +420,7 @@ export default function App() {
   )
 
   const pages = {
-    dashboard: <Dashboard user={user} onPage={setPage} />,
+    analytics: <Analytics user={user} onPage={setPage} />,
     upload: <DocumentUpload user={user} onSaved={showToast} />,
     registry: <Registry user={user} />,
     bank: <Bank user={user} />,
@@ -427,7 +428,6 @@ export default function App() {
     contractors: <Contractors user={user} onNavigate={setPage} />,
     inventory: <Inventory user={user} />,
     assembly: <Assembly user={user} />,
-    reports: <Reports />,
     planning: <Planning user={user} />,
     settings: <Settings user={user} />,
   }

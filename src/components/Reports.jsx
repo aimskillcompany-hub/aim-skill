@@ -96,7 +96,7 @@ function CustomTooltip({ active, payload, label }) {
   )
 }
 
-export default function Reports() {
+export default function Reports({ initialTab }) {
   const [loading, setLoading]       = useState(true)
   const [articles, setArticles]     = useState([])
   const [months, setMonths]         = useState([])
@@ -349,7 +349,7 @@ export default function Reports() {
 
   if (!months.length) return (
     <div>
-      <div className="page-header"><h1>Звіти P&L</h1></div>
+      {!initialTab && <div className="page-header"><h1>Звіти P&L</h1></div>}
       <div className="card"><div className="empty">
         <i className="ti ti-chart-bar" style={{ fontSize:48, color:'var(--text3)', display:'block', margin:'0 auto 12px' }} />
         <p>Немає даних. Додайте операції.</p>
@@ -469,10 +469,10 @@ export default function Reports() {
 
   return (
     <div>
-      <div className="page-header">
+      {!initialTab && <div className="page-header">
         <h1>Звіти P&L</h1>
         <p>Фінансовий результат — натисніть на суму для деталізації</p>
-      </div>
+      </div>}
 
       {/* Period controls */}
       <div style={{ display:'flex', gap:8, marginBottom:20, flexWrap:'wrap', alignItems:'center' }}>

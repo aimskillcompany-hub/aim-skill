@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 
 
 const NAV = [
-  { id: 'dashboard', label: 'Дашборд',      icon: 'ti-layout-dashboard', section: 'Огляд' },
+  { id: 'analytics', label: 'Звітність',     icon: 'ti-chart-dots-3',      section: 'Огляд' },
   { id: 'upload',    label: 'Документи',     icon: 'ti-upload',            section: 'Введення' },
   { id: 'registry',  label: 'Реєстр',        icon: 'ti-list-details',      section: null },
   { id: 'bank',      label: 'Банк / Звірка', icon: 'ti-building-bank',     section: null },
@@ -11,13 +11,12 @@ const NAV = [
   { id: 'contractors', label: 'Контрагенти', icon: 'ti-users',             section: 'Облік' },
   { id: 'inventory', label: 'Склад',         icon: 'ti-package',           section: null },
   { id: 'assembly',  label: 'Збірки',        icon: 'ti-assembly',          section: null },
-  { id: 'reports',   label: 'Звіти P&L',     icon: 'ti-chart-bar',         section: null },
   { id: 'planning',  label: 'Планування',    icon: 'ti-calendar-stats',    section: null },
   { id: 'settings',  label: 'Налаштування',  icon: 'ti-settings',          section: 'Адмін' },
 ]
 
 const MOBILE_NAV = [
-  { id: 'dashboard', label: 'Дашборд', icon: 'ti-layout-dashboard' },
+  { id: 'analytics', label: 'Звітність', icon: 'ti-chart-dots-3' },
   { id: 'upload',    label: 'Додати',  icon: 'ti-upload', primary: true },
   { id: 'registry',  label: 'Реєстр', icon: 'ti-list-details' },
   { id: 'cash',      label: 'Каса',   icon: 'ti-cash' },
