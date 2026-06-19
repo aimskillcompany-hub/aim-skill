@@ -18,12 +18,7 @@ function itm(it, i) {
   return { n: i + 1, name: it.name || '', q, u: it.unit || 'шт', p, vr, v, t: a + v, a }
 }
 
-const rv = (label, value) => value ? {
-  columns: [
-    { text: label, width: 52, fontSize: 7.5, color: G2, alignment: 'right', margin: [0, 0, 4, 0] },
-    { text: value, width: '*', fontSize: 8, color: G1 },
-  ], margin: [0, 1.5, 0, 1.5],
-} : null
+const line8 = (value) => value ? { text: value, fontSize: 8, color: G1, margin: [0, 1, 0, 1] } : null
 
 const aimLogo = (size) => ({
   text: [
@@ -50,11 +45,8 @@ export function pdf(company, contractor, items, options) {
       columns: [
         { image: LOGO_BASE64, width: 64, margin: [44, 16, 0, 0] },
         {
-          width: '*', alignment: 'right', margin: [0, 18, 44, 0],
-          stack: [
-            { text: company.shortName || company.name, fontSize: 9, bold: true, color: BLACK },
-            { text: `ЄДРПОУ ${company.edrpou}  ·  ІПН ${company.ipn || ''}`, fontSize: 7, color: G2, margin: [0, 2, 0, 0] },
-          ],
+          width: '*', alignment: 'right', margin: [0, 20, 44, 0],
+          text: company.shortName || company.name, fontSize: 9, bold: true, color: BLACK,
         },
       ],
     },
@@ -99,12 +91,12 @@ export function pdf(company, contractor, items, options) {
             width: '49%',
             stack: [
               { text: 'ПОСТАЧАЛЬНИК', fontSize: 7, letterSpacing: 2, color: G2, margin: [0, 0, 0, 6] },
-              { text: company.shortName || company.name, fontSize: 10, bold: true, color: BLACK, margin: [0, 0, 0, 4] },
-              rv('ЄДРПОУ', company.edrpou), rv('ІПН', company.ipn),
-              rv('Адреса', company.address),
-              rv('IBAN', company.iban),
-              rv('Банк', company.bankName ? `${company.bankName}, МФО ${company.mfo}` : null),
-              rv('Тел.', company.phone), rv('Email', company.email),
+              { text: company.shortName || company.name, fontSize: 10, bold: true, color: BLACK, margin: [0, 0, 0, 3] },
+              line8(`ЄДРПОУ ${company.edrpou}${company.ipn ? '  ·  ІПН ' + company.ipn : ''}`),
+              line8(company.address),
+              line8(company.iban ? `IBAN ${company.iban}` : null),
+              line8(company.bankName ? `${company.bankName}${company.mfo ? ', МФО ' + company.mfo : ''}` : null),
+              line8([company.phone, company.email].filter(Boolean).join('  ·  ') || null),
             ].filter(Boolean),
           },
           { width: '2%', text: '' },
@@ -112,11 +104,11 @@ export function pdf(company, contractor, items, options) {
             width: '49%',
             stack: [
               { text: 'ПОКУПЕЦЬ', fontSize: 7, letterSpacing: 2, color: G2, margin: [0, 0, 0, 6] },
-              { text: contractor.short_name || contractor.name || '—', fontSize: 10, bold: true, color: BLACK, margin: [0, 0, 0, 4] },
-              rv('ЄДРПОУ', contractor.edrpou),
-              rv('Адреса', contractor.legal_address || contractor.address),
-              rv('IBAN', contractor.iban),
-              rv('Тел.', contractor.phone),
+              { text: contractor.short_name || contractor.name || '—', fontSize: 10, bold: true, color: BLACK, margin: [0, 0, 0, 3] },
+              line8(contractor.edrpou ? `ЄДРПОУ ${contractor.edrpou}` : null),
+              line8(contractor.legal_address || contractor.address),
+              line8(contractor.iban ? `IBAN ${contractor.iban}` : null),
+              line8(contractor.phone),
             ].filter(Boolean),
           },
         ],
@@ -185,7 +177,7 @@ export function pdf(company, contractor, items, options) {
               { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 230, y2: 0, lineWidth: 1, lineColor: DARK }], margin: [0, 6, 0, 6] },
               {
                 columns: [
-                  { text: 'Всього до сплати', alignment: 'right', fontSize: 12, bold: true, color: BLACK, width: '*' },
+                  { text: 'Всього', alignment: 'right', fontSize: 13, bold: true, color: BLACK, width: '*' },
                   { text: formatMoney(total), alignment: 'right', fontSize: 16, bold: true, color: BLACK, width: 120 },
                   { text: 'грн', fontSize: 10, color: G2, width: 26, margin: [4, 5, 0, 0] },
                 ],
