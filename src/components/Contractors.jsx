@@ -713,6 +713,40 @@ export default function Contractors({ user, onNavigate }) {
         {/* ── Tab: Документи ── */}
         {detailTab === 'docs' && (
           <div>
+            {/* Ланцюжки документів */}
+            {(() => {
+              const chains = []
+              const childMap = {}
+              contractorDocs.forEach(d => { if (d.parent_doc_id) { childMap[d.parent_doc_id] = childMap[d.parent_doc_id] || []; childMap[d.parent_doc_id].push(d) } })
+              const roots = contractorDocs.filter(d => !d.parent_doc_id && childMap[d.id])
+              roots.forEach(root => {
+                chains.push({ root, children: childMap[root.id] || [] })
+              })
+              if (chains.length === 0) return null
+              return (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', marginBottom: 8 }}>Ланцюжки документів</div>
+                  {chains.map(chain => (
+                    <div key={chain.root.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: 'var(--surface2)', borderRadius: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 11, fontWeight: 500 }}>{getDocLabel(chain.root.doc_type)} {chain.root.doc_number}</span>
+                      {chain.children.map(ch => (
+                        <span key={ch.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <i className="ti ti-arrow-right" style={{ fontSize: 11, color: 'var(--text3)' }} />
+                          <span style={{ fontSize: 11, fontWeight: 500 }}>{getDocLabel(ch.doc_type)} {ch.doc_number}</span>
+                        </span>
+                      ))}
+                      {chain.root.bank_transaction_id && (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <i className="ti ti-arrow-right" style={{ fontSize: 11, color: 'var(--text3)' }} />
+                          <span style={{ fontSize: 11, color: 'var(--green)' }}><i className="ti ti-cash" style={{ fontSize: 11 }} /> Оплачено</span>
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
+
             <div className="tbl-wrap">
               <table>
                 <thead>
@@ -736,7 +770,10 @@ export default function Contractors({ user, onNavigate }) {
                       <tr key={doc.id} style={{ borderBottom: '1px solid var(--border)' }}>
                         <td style={{ fontSize: 13, whiteSpace: 'nowrap' }}>{doc.doc_date}</td>
                         <td style={{ fontSize: 13 }}>{getDocLabel(doc.doc_type)}</td>
-                        <td style={{ fontSize: 13, fontWeight: 500 }}>{doc.doc_number}</td>
+                        <td style={{ fontSize: 13, fontWeight: 500 }}>
+                          {doc.doc_number}
+                          {doc.parent_doc_id && <i className="ti ti-link" style={{ fontSize: 10, color: 'var(--blue)', marginLeft: 4 }} title="На підставі іншого документа" />}
+                        </td>
                         <td style={{ textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{fmtDoc(doc.total)} грн</td>
                         <td>
                           <select style={{ fontSize: 11, border: '1px solid var(--border)', borderRadius: 6, padding: '2px 6px', background: st.bg, color: st.color, fontFamily: 'inherit', cursor: 'pointer' }}
@@ -781,7 +818,7 @@ export default function Contractors({ user, onNavigate }) {
                                 title="Створити акт/накладну на підставі"
                                 onClick={() => {
                                   const docItems = typeof doc.items === 'string' ? JSON.parse(doc.items) : doc.items
-                                  setEditingDoc({ ...doc, id: null, doc_type: null, doc_number: '', items: docItems, _fromInvoice: doc.doc_number })
+                                  setEditingDoc({ ...doc, id: null, doc_type: null, doc_number: '', items: docItems, _fromInvoice: doc.doc_number, _parentDocId: doc.id })
                                   setShowDocGen(true)
                                 }}>
                                 <i className="ti ti-copy" style={{ fontSize: 14 }} />
