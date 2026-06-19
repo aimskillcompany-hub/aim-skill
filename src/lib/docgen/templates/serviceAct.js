@@ -82,9 +82,9 @@ export function pdf(company, contractor, items, options) {
       // ═══ СТОРОНИ ═══
       {
         columns: [
-          partyCard('Виконавець', company, true),
-          { width: 14, text: '' },
-          partyCard('Замовник', contractor, false),
+          partyBlock('Виконавець', company, true),
+          { width: 20, text: '' },
+          partyBlock('Замовник', contractor, false),
         ],
         margin: [0, 0, 0, 16],
       },
@@ -96,7 +96,7 @@ export function pdf(company, contractor, items, options) {
           widths: [20, '*', 32, 38, 56, 26, 46, 60],
           body: [
             ['№', 'Послуга', 'К-сть', 'Од.', 'Ціна', 'ПДВ', 'ПДВ ₴', 'Сума'].map(t => ({
-              text: t, fontSize: 7, bold: true, color: GRAY2, alignment: 'center', margin: [0, 5, 0, 5],
+              text: t, fontSize: 7.5, bold: true, color: '#FFFFFF', fillColor: DARK, alignment: 'center', margin: [0, 6, 0, 6],
             })),
             ...rows.map(r => [
               { text: r.i, alignment: 'center', fontSize: 9, color: GRAY2 },
@@ -139,18 +139,9 @@ export function pdf(company, contractor, items, options) {
       { text: amountInWords(total), fontSize: 8, italics: true, color: GRAY2, margin: [0, 6, 0, 0] },
 
       // ═══ ПРИЙОМ ═══
-      { text: '', margin: [0, 10] },
-      {
-        table: {
-          widths: [3, '*'],
-          body: [[
-            { text: '', border: [false, false, false, false] },
-            { text: 'Вищевказані послуги виконані повністю та в строк. Замовник претензій щодо обсягу, якості та строків надання послуг не має.',
-              fontSize: 9, lineHeight: 1.4, color: GRAY1, margin: [10, 8, 10, 8], border: [false, false, false, false] },
-          ]],
-        },
-        layout: { hLineWidth: () => 0, vLineWidth: () => 0, fillColor: (r, n, c) => c === 0 ? GREEN : GRAY5 },
-      },
+      { text: '', margin: [0, 8] },
+      { text: 'Вищевказані послуги виконані повністю та в строк. Замовник претензій щодо обсягу, якості та строків надання послуг не має.',
+        fontSize: 9, lineHeight: 1.4, color: GRAY1, margin: [0, 0, 0, 0] },
 
       notes ? { text: notes, fontSize: 8, color: GRAY2, italics: true, margin: [0, 8, 0, 0] } : {},
 
@@ -200,7 +191,7 @@ export function pdf(company, contractor, items, options) {
 }
 
 // ── Допоміжні ──
-function partyCard(label, entity, isCompany) {
+function partyBlock(label, entity, isCompany) {
   const name = isCompany ? (entity.shortName || entity.name) : (entity.short_name || entity.name || '—')
   const edrpou = entity.edrpou
   const address = isCompany ? entity.address : (entity.legal_address || entity.address)
@@ -208,23 +199,13 @@ function partyCard(label, entity, isCompany) {
 
   return {
     width: '*',
-    table: {
-      widths: ['*'],
-      body: [[{
-        stack: [
-          { text: label.toUpperCase(), fontSize: 7, letterSpacing: 1.5, color: GRAY2, margin: [0, 0, 0, 4] },
-          { text: name, fontSize: 10, bold: true, color: BLACK, margin: [0, 0, 0, 3] },
-          edrpou ? { text: `ЄДРПОУ ${edrpou}`, fontSize: 8, color: GRAY1 } : {},
-          address ? { text: address, fontSize: 8, color: GRAY2, margin: [0, 1, 0, 0] } : {},
-          iban ? { text: `IBAN ${iban}`, fontSize: 7.5, color: GRAY2, margin: [0, 1, 0, 0] } : {},
-        ],
-        margin: [10, 8, 10, 8],
-      }]],
-    },
-    layout: {
-      hLineWidth: () => 1, vLineWidth: () => 1,
-      hLineColor: () => GRAY4, vLineColor: () => GRAY4,
-    },
+    stack: [
+      { text: label.toUpperCase(), fontSize: 7, letterSpacing: 1.5, color: GRAY2, margin: [0, 0, 0, 4] },
+      { text: name, fontSize: 10, bold: true, color: BLACK, margin: [0, 0, 0, 2] },
+      edrpou ? { text: `ЄДРПОУ ${edrpou}`, fontSize: 8, color: GRAY1 } : {},
+      address ? { text: address, fontSize: 8, color: GRAY2, margin: [0, 1, 0, 0] } : {},
+      iban ? { text: `IBAN ${iban}`, fontSize: 7.5, color: GRAY2, margin: [0, 1, 0, 0] } : {},
+    ],
   }
 }
 
