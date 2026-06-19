@@ -9,7 +9,6 @@ const G1 = '#3A3A3C'
 const G2 = '#8E8E93'
 const G3 = '#C7C7CC'
 const G4 = '#E5E5EA'
-const GREEN = '#00C853'
 
 function itm(it, i) {
   const q = parseFloat(it.quantity) || 0, p = parseFloat(it.unitPrice) || 0
@@ -18,209 +17,192 @@ function itm(it, i) {
   return { n: i + 1, name: it.name || '', q, u: it.unit || 'шт', p, vr, v, t: a + v, a }
 }
 
-const line8 = (value) => value ? { text: value, fontSize: 8, color: G1, margin: [0, 1, 0, 1] } : null
+function vatInWords(vatAmount) {
+  if (!vatAmount || vatAmount === 0) return ''
+  return amountInWords(vatAmount).toLowerCase() + ' ПДВ'
+}
 
-const aimLogo = (size) => ({
-  text: [
-    { text: 'A', color: BLACK, bold: true }, { text: 'i', color: GREEN, bold: true },
-    { text: 'M ', color: BLACK, bold: true }, { text: 'Sk', color: BLACK, bold: true },
-    { text: 'i', color: GREEN, bold: true }, { text: 'll.', color: BLACK, bold: true },
-  ], fontSize: size || 8,
-})
+const rvLine = (label, value) => value ? {
+  columns: [
+    { text: label, width: 42, fontSize: 8, color: G2, alignment: 'left', margin: [0, 0, 2, 0] },
+    { text: value, width: '*', fontSize: 8, color: G1 },
+  ], margin: [0, 1, 0, 1],
+} : null
+
+const sectionTitle = (text) => ({ text: text, fontSize: 7.5, letterSpacing: 2, color: G2, bold: true, margin: [0, 0, 0, 6] })
 
 export function pdf(company, contractor, items, options) {
   const { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city } = options
   const { subtotal, vatAmount, total, vatByRate } = calcTotals(items)
-  const qrData = `AIM|INV|${docNumber}|${docDate}|${total}|${company.edrpou}|${contractor.edrpou || ''}`
   const rows = items.map((it, i) => itm(it, i))
   const contractStr = contractNum ? `№${contractNum}${contractDate ? ` від ${formatDate(contractDate)}` : ''}` : null
   const paymentPurpose = `Оплата за товари/послуги згідно рахунку №${docNumber} від ${formatDate(docDate)}${contractStr ? `, Договір ${contractStr}` : ''}. ${vatAmount > 0 ? `В т.ч. ПДВ 20% — ${formatMoney(vatAmount)} грн` : 'Без ПДВ'}`
 
+  const addInfo = [
+    contractStr ? [{ text: 'Договір: ', color: G2 }, { text: contractStr, color: G1 }] : null,
+    paymentDue ? [{ text: 'Термін оплати: ', color: G2 }, { text: paymentDue, color: G1 }] : null,
+  ].filter(Boolean)
+
   return {
     pageSize: 'A4',
-    pageMargins: [44, 40, 44, 46],
-    defaultStyle: { fontSize: 9.5, color: G1 },
+    pageMargins: [40, 20, 40, 56],
+    defaultStyle: { fontSize: 9, color: G1 },
 
-    header: {
-      columns: [
-        { image: LOGO_BASE64, width: 64, margin: [44, 16, 0, 0] },
+    footer: () => ({
+      margin: [40, 0, 40, 0],
+      stack: [
+        { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.3, lineColor: G4 }], margin: [0, 0, 0, 5] },
         {
-          width: '*', alignment: 'right', margin: [0, 20, 44, 0],
-          text: company.shortName || company.name, fontSize: 9, bold: true, color: BLACK,
-        },
-      ],
-    },
-
-    footer: (currentPage, pageCount) => ({
-      margin: [44, 0, 44, 10],
-      columns: [
-        { qr: qrData, fit: 30, foreground: G2 },
-        {
-          stack: [
-            { text: `${docNumber}  ·  ${formatDate(docDate)}  ·  ${formatMoney(total)} грн`, fontSize: 6.5, color: G2, margin: [6, 5, 0, 0] },
-            { text: 'QR: тип, номер, дата, сума, ЄДРПОУ сторін', fontSize: 5, color: G3, margin: [6, 1, 0, 0] },
+          columns: [
+            { qr: `${docNumber}|${formatDate(docDate)}|${formatMoney(total)}`, fit: 36, margin: [0, 0, 4, 0] },
+            {
+              stack: [
+                { text: docNumber, fontSize: 6, bold: true, color: G2 },
+                { text: 'Сформовано в корпоративній системі AiM Skill', fontSize: 5.5, color: G3, margin: [0, 1, 0, 0] },
+                { text: '073 700 77 58  ·  office@aim-skill.com.ua  ·  www.aim-skill.com.ua', fontSize: 5.5, color: G3, margin: [0, 1, 0, 0] },
+              ],
+              width: '*', margin: [0, 3, 0, 0],
+            },
+            { image: LOGO_BASE64, width: 52, alignment: 'right' },
           ],
-          width: '*',
-        },
-        {
-          width: 'auto', alignment: 'right', margin: [0, 4, 0, 0],
-          stack: [aimLogo(8), { text: `${currentPage}/${pageCount}`, fontSize: 5.5, color: G3, alignment: 'right', margin: [0, 1, 0, 0] }],
         },
       ],
     }),
 
     content: [
-      { text: '', margin: [0, 10, 0, 0] },
-      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 427, y2: 0, lineWidth: 2, lineColor: BLACK }], margin: [0, 0, 0, 20] },
-
       // ═══ НАЗВА ═══
-      { text: 'РАХУНОК НА ОПЛАТУ', fontSize: 7.5, letterSpacing: 4, color: G2 },
-      { text: `№ ${docNumber}`, fontSize: 26, bold: true, color: BLACK, margin: [0, 2, 0, 4] },
-      {
-        columns: [
-          { text: formatDateLong(docDate), fontSize: 10, color: G2, width: 'auto' },
-          city ? { text: `  ·  ${city}`, fontSize: 10, color: G2, width: 'auto' } : {},
-        ],
-        margin: [0, 0, 0, 14],
-      },
+      sectionTitle('РАХУНОК НА ОПЛАТУ'),
+      { text: `від ${formatDateLong(docDate)}${city ? '  ·  ' + city : ''}`, fontSize: 9, color: G1, margin: [0, 0, 0, 2] },
+      { text: `№ ${docNumber}`, fontSize: 24, bold: true, color: BLACK, margin: [0, 0, 0, 12] },
 
-      // ═══ СТОРОНИ ═══
+      // ═══ РЕКВІЗИТИ ═══
       {
         columns: [
           {
             width: '49%',
             stack: [
-              { text: 'ПОСТАЧАЛЬНИК', fontSize: 7, letterSpacing: 2, color: G2, margin: [0, 0, 0, 6] },
-              { text: company.shortName || company.name, fontSize: 10, bold: true, color: BLACK, margin: [0, 0, 0, 3] },
-              line8(`ЄДРПОУ ${company.edrpou}${company.ipn ? '  ·  ІПН ' + company.ipn : ''}`),
-              line8(company.address),
-              line8(company.iban ? `IBAN ${company.iban}` : null),
-              line8(company.bankName ? `${company.bankName}${company.mfo ? ', МФО ' + company.mfo : ''}` : null),
-              line8([company.phone, company.email].filter(Boolean).join('  ·  ') || null),
+              sectionTitle('ПОСТАЧАЛЬНИК'),
+              { text: company.shortName || company.name, fontSize: 9.5, bold: true, color: BLACK, margin: [0, 0, 0, 4] },
+              rvLine('ЄДРПОУ', company.edrpou),
+              rvLine('ІПН', company.ipn),
+              rvLine('Адреса', company.address),
+              rvLine('IBAN', company.iban),
+              rvLine('Банк', company.bankName ? `${company.bankName}, МФО ${company.mfo}` : null),
+              rvLine('Тел.', company.phone),
+              rvLine('Email', company.email),
             ].filter(Boolean),
           },
           { width: '2%', text: '' },
           {
             width: '49%',
             stack: [
-              { text: 'ПОКУПЕЦЬ', fontSize: 7, letterSpacing: 2, color: G2, margin: [0, 0, 0, 6] },
-              { text: contractor.short_name || contractor.name || '—', fontSize: 10, bold: true, color: BLACK, margin: [0, 0, 0, 3] },
-              line8(contractor.edrpou ? `ЄДРПОУ ${contractor.edrpou}` : null),
-              line8(contractor.legal_address || contractor.address),
-              line8(contractor.iban ? `IBAN ${contractor.iban}` : null),
-              line8(contractor.phone),
+              sectionTitle('ПОКУПЕЦЬ'),
+              { text: contractor.short_name || contractor.name || '—', fontSize: 9.5, bold: true, color: BLACK, margin: [0, 0, 0, 4] },
+              rvLine('ЄДРПОУ', contractor.edrpou),
+              rvLine('ІПН', contractor.ipn),
+              rvLine('Адреса', contractor.legal_address || contractor.address),
+              rvLine('IBAN', contractor.iban),
+              rvLine('Банк', contractor.bank_name ? `${contractor.bank_name}${contractor.mfo ? ', МФО ' + contractor.mfo : ''}` : null),
+              rvLine('Тел.', contractor.phone),
+              rvLine('Email', contractor.email),
             ].filter(Boolean),
           },
         ],
-        margin: [0, 0, 0, 12],
+        margin: [0, 0, 0, 8],
       },
 
       // ═══ ДОДАТКОВА ІНФОРМАЦІЯ ═══
-      (contractStr || paymentDue) ? {
-        table: {
-          widths: ['*'],
-          body: [[{
-            stack: [
-              { text: 'ДОДАТКОВА ІНФОРМАЦІЯ', fontSize: 6.5, letterSpacing: 2, color: G2, margin: [0, 0, 0, 4] },
-              contractStr ? { text: `Договір ${contractStr}`, fontSize: 8.5, color: G1, margin: [0, 0, 0, 2] } : {},
-              paymentDue ? { text: `Термін оплати: ${paymentDue}`, fontSize: 8.5, color: G1 } : {},
-            ].filter(Boolean),
-            margin: [10, 8, 10, 8],
-          }]],
-        },
-        layout: { hLineWidth: () => 0.5, vLineWidth: () => 0, hLineColor: () => G4 },
-        margin: [0, 0, 0, 16],
-      } : { text: '', margin: [0, 0, 0, 4] },
+      ...(addInfo.length > 0 ? [
+        sectionTitle('ДОДАТКОВА ІНФОРМАЦІЯ'),
+        ...addInfo.map(line => ({ text: line, fontSize: 8.5, margin: [0, 0, 0, 1] })),
+        { text: '', margin: [0, 0, 0, 4] },
+      ] : [{ text: '', margin: [0, 0, 0, 2] }]),
 
       // ═══ ТАБЛИЦЯ ═══
       {
         table: {
           headerRows: 1,
-          widths: [20, '*', 30, 36, 62, 24, 48, 62],
+          widths: [18, '*', 28, 28, 58, 22, 42, 56],
           body: [
-            ['№', 'Найменування', 'К-сть', 'Од.', 'Вартість без ПДВ', 'ПДВ', 'Сума ПДВ', 'Сума'].map(t => ({
-              text: t, fontSize: 6.5, bold: true, color: '#FFF', fillColor: DARK,
-              alignment: 'center', margin: [0, 7, 0, 7],
+            ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна без ПДВ', 'ПДВ', 'Сума ПДВ', 'Сума'].map(t => ({
+              text: t, fontSize: 6, bold: true, color: '#FFF', fillColor: DARK,
+              alignment: 'center', margin: [0, 3, 0, 3],
             })),
             ...rows.map(r => [
-              { text: r.n, alignment: 'center', fontSize: 9, color: G2 },
-              { text: r.name, fontSize: 9, color: BLACK },
-              { text: r.q, alignment: 'center', fontSize: 9 },
+              { text: r.n, alignment: 'center', fontSize: 8.5, color: G2 },
+              { text: r.name, fontSize: 8.5, color: BLACK },
               { text: r.u, alignment: 'center', fontSize: 8, color: G2 },
-              { text: formatMoney(r.p), alignment: 'right', fontSize: 9 },
-              { text: r.vr > 0 ? `${r.vr}%` : '—', alignment: 'center', fontSize: 7.5, color: G2 },
-              { text: formatMoney(r.v), alignment: 'right', fontSize: 9, color: G2 },
-              { text: formatMoney(r.t), alignment: 'right', fontSize: 9, bold: true, color: BLACK },
+              { text: r.q, alignment: 'center', fontSize: 8.5 },
+              { text: formatMoney(r.p), alignment: 'right', fontSize: 8.5 },
+              { text: r.vr > 0 ? `${r.vr}%` : '—', alignment: 'center', fontSize: 7, color: G2 },
+              { text: formatMoney(r.v), alignment: 'right', fontSize: 8.5, color: G2 },
+              { text: formatMoney(r.t), alignment: 'right', fontSize: 8.5, bold: true, color: BLACK },
             ]),
           ],
         },
         layout: {
-          hLineWidth: (i) => i === 0 ? 0 : i === 1 ? 1.5 : 0.5,
+          hLineWidth: (i) => i === 0 ? 0 : i === 1 ? 1 : 0.5,
           vLineWidth: () => 0,
           hLineColor: (i) => i === 1 ? DARK : G4,
-          paddingLeft: () => 5, paddingRight: () => 5,
-          paddingTop: () => 7, paddingBottom: () => 7,
+          paddingLeft: () => 4, paddingRight: () => 4,
+          paddingTop: () => 4, paddingBottom: () => 4,
           fillColor: (i) => i > 0 && i % 2 === 0 ? '#FAFAFA' : null,
         },
       },
 
       // ═══ ПІДСУМКИ ═══
-      { text: '', margin: [0, 10] },
       {
         columns: [
           { width: '*', text: '' },
           {
-            width: 230,
-            stack: [
-              sr('Разом без ПДВ', subtotal),
-              ...Object.entries(vatByRate).map(([rate, amt]) => sr(`ПДВ ${rate}%`, amt)),
-              { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 230, y2: 0, lineWidth: 1, lineColor: DARK }], margin: [0, 6, 0, 6] },
-              {
-                columns: [
-                  { text: 'Всього', alignment: 'right', fontSize: 13, bold: true, color: BLACK, width: '*' },
-                  { text: formatMoney(total), alignment: 'right', fontSize: 16, bold: true, color: BLACK, width: 120 },
-                  { text: 'грн', fontSize: 10, color: G2, width: 26, margin: [4, 5, 0, 0] },
-                ],
-              },
-            ],
+            width: 190,
+            table: {
+              widths: [90, 90],
+              body: [
+                [{ text: 'Без ПДВ:', alignment: 'right', fontSize: 8.5, color: G2 }, { text: `${formatMoney(subtotal)} грн`, alignment: 'right', fontSize: 8.5 }],
+                ...Object.entries(vatByRate).map(([rate, amt]) =>
+                  [{ text: `ПДВ ${rate}%:`, alignment: 'right', fontSize: 8.5, color: G2 }, { text: `${formatMoney(amt)} грн`, alignment: 'right', fontSize: 8.5 }]
+                ),
+                [{ text: 'Всього:', alignment: 'right', fontSize: 10, bold: true, color: BLACK }, { text: `${formatMoney(total)} грн`, alignment: 'right', fontSize: 10, bold: true, color: BLACK }],
+              ],
+            },
+            layout: 'noBorders',
+            margin: [0, 4, 0, 0],
           },
         ],
       },
-      { text: '', margin: [0, 4] },
-      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 427, y2: 0, lineWidth: 0.5, lineColor: G4 }], margin: [0, 0, 0, 4] },
-      { text: amountInWords(total), fontSize: 8, italics: true, color: G2 },
+
+      // ═══ РОЗШИФРОВКА ═══
+      { text: '', margin: [0, 6] },
+      { text: [
+        { text: 'Всього до сплати: ' },
+        { text: amountInWords(total).charAt(0).toLowerCase() + amountInWords(total).slice(1) },
+      ], fontSize: 9, color: G1, margin: [0, 0, 0, 1] },
+      vatAmount > 0 ? { text: [
+        { text: 'у тому числі ' },
+        { text: vatInWords(vatAmount) },
+      ], fontSize: 9, color: G1 } : {},
 
       // ═══ ПРИЗНАЧЕННЯ ПЛАТЕЖУ ═══
-      { text: '', margin: [0, 10] },
-      { text: 'ПРИЗНАЧЕННЯ ПЛАТЕЖУ', fontSize: 6.5, letterSpacing: 2, color: G2, margin: [0, 0, 0, 4] },
+      { text: '', margin: [0, 8] },
+      sectionTitle('ПРИЗНАЧЕННЯ ПЛАТЕЖУ'),
       { text: paymentPurpose, fontSize: 8.5, color: G1, lineHeight: 1.4 },
 
-      notes ? { text: `Примітка: ${notes}`, fontSize: 8, color: G2, italics: true, margin: [0, 8, 0, 0] } : {},
+      notes ? { text: `Примітка: ${notes}`, fontSize: 8, color: G2, italics: true, margin: [0, 6, 0, 0] } : {},
 
       // ═══ ПІДПИС ═══
-      { text: '', margin: [0, 18] },
-      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 427, y2: 0, lineWidth: 0.5, lineColor: G4 }], margin: [0, 0, 0, 8] },
+      { text: '', margin: [0, 12] },
+      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: G4 }], margin: [0, 0, 0, 6] },
       {
         width: '48%',
         stack: [
-          { text: 'ВИПИСАВ', fontSize: 6.5, letterSpacing: 2, color: G2, margin: [0, 0, 0, 16] },
-          { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 190, y2: 0, lineWidth: 0.5, lineColor: G3 }] },
+          { text: 'ВИПИСАВ', fontSize: 6.5, letterSpacing: 2, color: G2, margin: [0, 0, 0, 12] },
+          { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 0.5, lineColor: G3 }] },
           { text: `${company.directorPosition || 'Директор'} ${company.director || ''}`, fontSize: 9, color: G1, margin: [0, 3, 0, 0] },
-          { text: 'М.П.', fontSize: 6.5, color: G3, margin: [0, 5, 0, 0] },
+          { text: 'М.П.', fontSize: 6.5, color: G3, margin: [0, 4, 0, 0] },
         ],
       },
     ],
-  }
-}
-
-function sr(label, amount) {
-  return {
-    columns: [
-      { text: label, alignment: 'right', fontSize: 9, color: G2, width: '*' },
-      { text: formatMoney(amount), alignment: 'right', fontSize: 9, color: G1, width: 120 },
-      { text: 'грн', fontSize: 8, color: G3, width: 26, margin: [4, 1, 0, 0] },
-    ],
-    margin: [0, 2, 0, 2],
   }
 }
 
@@ -231,13 +213,13 @@ export function xlsx(company, contractor, items, options) {
   const data = [
     [`Рахунок на оплату №${docNumber} від ${formatDate(docDate)}`],
     contract ? [contract] : [],
-    [], ['Постачальник:', company.shortName || company.name, '', 'ЄДРПОУ:', company.edrpou],
-    ['Адреса:', company.address, '', 'IBAN:', company.iban],
-    ['Покупець:', contractor.short_name || contractor.name, '', 'ЄДРПОУ:', contractor.edrpou],
-    [], ['№', 'Найменування', 'К-сть', 'Од.', 'Вартість без ПДВ', 'ПДВ%', 'Сума ПДВ', 'Сума'],
-    ...items.map((it, i) => { const r = itm(it, i); return [r.n, r.name, r.q, r.u, r.p, r.vr > 0 ? `${r.vr}%` : '', r.v, r.t] }),
-    [], ['','','','','','','Без ПДВ:', subtotal], ['','','','','','','ПДВ:', vatAmount], ['','','','','','','Всього:', total],
-    [], [amountInWords(total)],
+    [], ['Постачальник:', company.shortName || company.name, 'ЄДРПОУ:', company.edrpou, 'IBAN:', company.iban],
+    ['Покупець:', contractor.short_name || contractor.name, 'ЄДРПОУ:', contractor.edrpou],
+    [], ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна без ПДВ', 'ПДВ%', 'Сума ПДВ', 'Сума'],
+    ...items.map((it, i) => { const r = itm(it, i); return [r.n, r.name, r.u, r.q, r.p, r.vr > 0 ? `${r.vr}%` : '', r.v, r.t] }),
+    [], ['','','','','','Без ПДВ:', '', subtotal], ['','','','','','ПДВ:', '', vatAmount], ['','','','','','Всього:', '', total],
+    [], [`Всього до сплати: ${amountInWords(total).charAt(0).toLowerCase() + amountInWords(total).slice(1)}`],
+    vatAmount > 0 ? [`у тому числі ${amountInWords(vatAmount).toLowerCase()} ПДВ`] : [],
   ].filter(r => r.length > 0)
   const wb = createWorkbook(); addSheet(wb, data, 'Рахунок'); return wb
 }
