@@ -508,8 +508,8 @@ export default function Reports({ initialTab }) {
         </button>
       </div>
 
-      {/* KPIs */}
-      <div className="kpi-grid" style={{ marginBottom:20 }}>
+      {/* KPIs — only when standalone or no initialTab */}
+      {!initialTab && <div className="kpi-grid" style={{ marginBottom:20 }}>
         <div className="kpi">
           <div className="kpi-label">Загальна виручка</div>
           <div className="kpi-value blue">{fmt(totRevenue)} грн</div>
@@ -541,9 +541,10 @@ export default function Reports({ initialTab }) {
           <div className="kpi-label">Поточний CF</div>
           <div className={`kpi-value ${lastCF>=0?'green':'red'}`}>{fmt(lastCF)} грн</div>
         </div>
-      </div>
+      </div>}
 
-      {/* Charts */}
+      {/* Charts — only standalone */}
+      {!initialTab && <>
       <div style={{ display:'grid', gridTemplateColumns: expenseByArt.length > 0 ? '3fr 2fr' : '1fr', gap:14, marginBottom:14 }}>
         <div className="card" style={{ padding:'18px 16px' }}>
           <div style={{ fontSize:13, fontWeight:600, color:'var(--text2)', marginBottom:16 }}>Виручка та витрати по місяцях, грн</div>
@@ -608,8 +609,10 @@ export default function Reports({ initialTab }) {
           </AreaChart>
         </ResponsiveContainer>
       </div>
+      </>}
 
       {/* ── Cash Flow Table ── */}
+      {(!initialTab || initialTab === 'cf') && <>
       <div className="card" style={{ padding:'18px 0', overflowX:'auto', marginBottom:14 }}>
         <div style={{ padding:'0 18px 12px', fontSize:14, fontWeight:600, color:'var(--text)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <span>Рух грошових коштів</span>
@@ -642,9 +645,11 @@ export default function Reports({ initialTab }) {
           </tbody>
         </table>
       </div>
+      </>}
 
       {/* ── P&L Table by articles ──────────────────────────────────────────────── */}
-      {(() => {
+      {(!initialTab || initialTab === 'pl') &&
+      (() => {
         const curMonth = currentMonth()
         const allDisplayMonths = [
           ...months,
