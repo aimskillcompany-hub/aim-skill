@@ -64,14 +64,14 @@ export function pdf(company, contractor, items, options) {
         { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.3, lineColor: G4 }], margin: [0, 0, 0, 5] },
         {
           columns: [
-            { qr: `${docNumber}|${formatDate(docDate)}|${formatMoney(total)}`, fit: 36 },
+            { qr: `${docNumber}|${formatDate(docDate)}|${formatMoney(total)}`, fit: 36, margin: [0, 0, 4, 0] },
             {
               stack: [
-                { text: docNumber, fontSize: 6, bold: true, color: G2, margin: [6, 3, 0, 0] },
-                { text: 'Сформовано в корпоративній системі AiM Skill', fontSize: 5.5, color: G3, margin: [6, 1, 0, 0] },
-                { text: '073 700 77 58  ·  office@aim-skill.com.ua  ·  www.aim-skill.com.ua', fontSize: 5.5, color: G3, margin: [6, 1, 0, 0] },
+                { text: docNumber, fontSize: 6, bold: true, color: G2 },
+                { text: 'Сформовано в корпоративній системі AiM Skill', fontSize: 5.5, color: G3, margin: [0, 1, 0, 0] },
+                { text: '073 700 77 58  ·  office@aim-skill.com.ua  ·  www.aim-skill.com.ua', fontSize: 5.5, color: G3, margin: [0, 1, 0, 0] },
               ],
-              width: '*',
+              width: '*', margin: [0, 3, 0, 0],
             },
             { image: LOGO_BASE64, width: 52, alignment: 'right' },
           ],
