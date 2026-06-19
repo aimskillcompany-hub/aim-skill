@@ -445,6 +445,12 @@ export default function Contractors({ user, onNavigate }) {
     const txExpense = detailTxs.filter(t=>t.direction==='Витрати').reduce((s,t)=>s+Math.abs(t.amount||0),0)
     const balance = txIncome - txExpense
 
+    // Дебіторка / Кредиторка
+    const docsOutgoing = contractorDocs.filter(d => ['waybill','serviceAct'].includes(d.doc_type) && d.status !== 'cancelled').reduce((s, d) => s + (parseFloat(d.total) || 0), 0)
+    const docsIncoming = contractorDocs.filter(d => d.doc_type === 'incomingWaybill' && d.status !== 'cancelled').reduce((s, d) => s + (parseFloat(d.total) || 0), 0)
+    const debit = docsOutgoing - txIncome   // нам винні (відвантажили але не оплатили)
+    const credit = docsIncoming - txExpense  // ми винні (отримали але не оплатили)
+
     return (
       <div>
         {/* Header */}
@@ -518,6 +524,29 @@ export default function Contractors({ user, onNavigate }) {
           <div className="kpi"><div className="kpi-label">Сальдо</div><div className="kpi-value" style={{ color:balance>=0?'var(--green)':'var(--red)' }}>{balance>=0?'+':'-'}{fmt(balance)}</div><div className="kpi-sub">грн</div></div>
           <div className="kpi"><div className="kpi-label">Операцій</div><div className="kpi-value">{detail.operations_count||0}</div><div className="kpi-sub">остання: {detail.last_operation_date||'—'}</div></div>
         </div>
+        {(debit > 0 || credit > 0) && (
+          <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(3,1fr)', marginBottom:12 }}>
+            {debit > 0 && (
+              <div className="kpi" style={{ borderLeft:'3px solid var(--amber)' }}>
+                <div className="kpi-label">Дебіторка</div>
+                <div className="kpi-value" style={{ color:'var(--amber)' }}>{fmt(debit)}</div>
+                <div className="kpi-sub">нам винні</div>
+              </div>
+            )}
+            {credit > 0 && (
+              <div className="kpi" style={{ borderLeft:'3px solid var(--red)' }}>
+                <div className="kpi-label">Кредиторка</div>
+                <div className="kpi-value" style={{ color:'var(--red)' }}>{fmt(credit)}</div>
+                <div className="kpi-sub">ми винні</div>
+              </div>
+            )}
+            <div className="kpi">
+              <div className="kpi-label">Відвантажено</div>
+              <div className="kpi-value">{fmt(docsOutgoing)}</div>
+              <div className="kpi-sub">за документами</div>
+            </div>
+          </div>
+        )}
         {(detail.total_otherIn > 0 || detail.total_otherOut > 0) && (
           <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(3,1fr)', marginBottom:20 }}>
             <div className="kpi"><div className="kpi-label">Інші вхідні</div><div className="kpi-value" style={{ color:'var(--green)' }}>+{fmt(detail.total_otherIn)}</div><div className="kpi-sub">грн</div></div>
