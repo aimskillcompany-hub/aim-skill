@@ -8,12 +8,17 @@ import {
 const today = () => new Date().toISOString().split('T')[0]
 
 export default function DocGenModal({ contractor, userId, onClose, onSaved, editDoc }) {
-  const isEdit = !!editDoc
-  const [step, setStep] = useState(isEdit ? 2 : 1) // при редагуванні одразу крок 2
+  const isEdit = !!editDoc && !!editDoc.id
+  const isFromInvoice = !!editDoc?._fromInvoice
+  const [step, setStep] = useState(isEdit ? 2 : 1)
   const [docType, setDocType] = useState(editDoc?.doc_type || null)
   const [docNumber, setDocNumber] = useState(editDoc?.doc_number || '')
   const [docDate, setDocDate] = useState(editDoc?.doc_date || today())
   const [notes, setNotes] = useState(editDoc?.notes || '')
+  const [contractNum, setContractNum] = useState(editDoc?.contract_num || '')
+  const [contractDate, setContractDate] = useState(editDoc?.contract_date || '')
+  const [paymentDue, setPaymentDue] = useState(editDoc?.payment_due || '')
+  const [city, setCity] = useState(editDoc?.city || 'м. Київ')
   const [editId] = useState(editDoc?.id || null)
   const [items, setItems] = useState(() => {
     if (editDoc?.items) {
@@ -99,7 +104,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
         await updateDoc(editId, {
           docNumber, docDate, items,
           subtotal: totals.subtotal, vatAmount: totals.vatAmount, total: totals.total,
-          notes,
+          notes, contractNum, contractDate, paymentDue, city,
         })
       } else {
         // Створити новий
@@ -108,11 +113,11 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
           contractorId: contractor.id,
           contractorName: contractor.short_name || contractor.name,
           items, subtotal: totals.subtotal, vatAmount: totals.vatAmount, total: totals.total,
-          notes, userId,
+          notes, contractNum, contractDate, paymentDue, city, userId,
         })
       }
-      if (andDownload === 'pdf') generatePdf(docType, contractor, items, { docNumber, docDate, notes })
-      if (andDownload === 'xlsx') generateXlsx(docType, contractor, items, { docNumber, docDate, notes })
+      if (andDownload === 'pdf') generatePdf(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city })
+      if (andDownload === 'xlsx') generateXlsx(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city })
       onSaved?.()
       if (!andDownload) onClose()
     } catch (e) { setError(e.message) }
@@ -121,8 +126,8 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
 
   const handleDownloadOnly = (format) => {
     try {
-      if (format === 'pdf') generatePdf(docType, contractor, items, { docNumber, docDate, notes })
-      else generateXlsx(docType, contractor, items, { docNumber, docDate, notes })
+      if (format === 'pdf') generatePdf(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city })
+      else generateXlsx(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city })
     } catch (e) { setError(e.message) }
   }
 
@@ -186,6 +191,24 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
               <div className="form-group">
                 <label>Дата</label>
                 <input type="date" className="form-input" value={docDate} onChange={e => setDocDate(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>Договір №</label>
+                <input className="form-input" value={contractNum} onChange={e => setContractNum(e.target.value)} placeholder="Номер договору" />
+              </div>
+              <div className="form-group">
+                <label>Дата договору</label>
+                <input type="date" className="form-input" value={contractDate} onChange={e => setContractDate(e.target.value)} />
+              </div>
+              {docType === 'invoice' && (
+                <div className="form-group">
+                  <label>Термін оплати</label>
+                  <input className="form-input" value={paymentDue} onChange={e => setPaymentDue(e.target.value)} placeholder="5 банківських днів" />
+                </div>
+              )}
+              <div className="form-group">
+                <label>Місто</label>
+                <input className="form-input" value={city} onChange={e => setCity(e.target.value)} />
               </div>
             </div>
 

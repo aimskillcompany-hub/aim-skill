@@ -21,11 +21,12 @@ function itemData(it, i) {
 }
 
 export function pdf(company, contractor, items, options) {
-  const { docNumber, docDate, notes } = options
-  const { subtotal, vatAmount, total } = calcTotals(items)
-  const hasVat = vatAmount > 0
+  const { docNumber, docDate, notes, contractNum, contractDate, city } = options
+  const { subtotal, vatAmount, total, vatByRate } = calcTotals(items)
   const qrData = `AIM|WB|${docNumber}|${docDate}|${total}|${company.edrpou}`
   const rows = items.map((it, i) => itemData(it, i))
+  const contract = contractNum ? `Договору №${contractNum}${contractDate ? ` від ${formatDate(contractDate)}` : ''}` : null
+  const itemCount = items.length
 
   return {
     pageSize: 'A4',
@@ -57,8 +58,11 @@ export function pdf(company, contractor, items, options) {
           { text: `№ ${docNumber}`, fontSize: 22, bold: true, color: BLACK, width: 'auto' },
           { text: formatDateLong(docDate), fontSize: 11, color: GRAY2, margin: [10, 11, 0, 0] },
         ],
-        margin: [0, 0, 0, 14],
+        margin: [0, 0, 0, 4],
       },
+      city ? { text: city, fontSize: 9, color: GRAY2, margin: [0, 0, 0, 2] } : {},
+      contract ? { text: `Підстава: ${contract}`, fontSize: 9, color: GRAY1, margin: [0, 0, 0, 2] } : {},
+      { text: '', margin: [0, 0, 0, 8] },
 
       // ═══ СТОРОНИ ═══
       {
@@ -101,17 +105,20 @@ export function pdf(company, contractor, items, options) {
         },
       },
 
+      // Кількість найменувань
+      { text: `Кількість найменувань: ${itemCount}`, fontSize: 8, color: GRAY2, margin: [0, 6, 0, 0] },
+
       // ═══ ПІДСУМКИ ═══
-      { text: '', margin: [0, 8] },
+      { text: '', margin: [0, 4] },
       {
         columns: [
           { width: '*', text: '' },
           {
-            width: 190,
+            width: 210,
             stack: [
-              sumRow('Без ПДВ', subtotal, false),
-              ...(hasVat ? [sumRow('ПДВ', vatAmount, false)] : []),
-              { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 190, y2: 0, lineWidth: 0.5, lineColor: GRAY4 }], margin: [0, 3, 0, 3] },
+              sumRow('Разом без ПДВ', subtotal, false),
+              ...Object.entries(vatByRate).map(([rate, amt]) => sumRow(`ПДВ ${rate}%`, amt, false)),
+              { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 210, y2: 0, lineWidth: 0.5, lineColor: GRAY4 }], margin: [0, 3, 0, 3] },
               sumRow('Всього', total, true),
             ],
           },
@@ -119,7 +126,7 @@ export function pdf(company, contractor, items, options) {
       },
       { text: amountInWords(total), fontSize: 8, italics: true, color: GRAY2, margin: [0, 6, 0, 0] },
 
-      notes ? { text: notes, fontSize: 8, color: GRAY2, italics: true, margin: [0, 8, 0, 0] } : {},
+      notes ? { text: `Примітка: ${notes}`, fontSize: 8, color: GRAY2, italics: true, margin: [0, 8, 0, 0] } : {},
 
       // ═══ ПІДПИСИ ═══
       { text: '', margin: [0, 16] },
@@ -128,7 +135,7 @@ export function pdf(company, contractor, items, options) {
           {
             width: '48%',
             stack: [
-              { text: 'ВІД ПОСТАЧАЛЬНИКА', fontSize: 7, letterSpacing: 1, color: GRAY2, margin: [0, 0, 0, 12] },
+              { text: 'ВІДПУСТИВ', fontSize: 7, letterSpacing: 1, color: GRAY2, margin: [0, 0, 0, 12] },
               { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 0.5, lineColor: GRAY3 }] },
               { text: `${company.directorPosition || 'Директор'} ${company.director || ''}`, fontSize: 9, color: GRAY1, margin: [0, 3, 0, 0] },
               { text: 'М.П.', fontSize: 7, color: GRAY3, margin: [0, 4, 0, 0] },
@@ -168,21 +175,15 @@ export function pdf(company, contractor, items, options) {
 
 function partyBlock(label, entity, isCompany) {
   const name = isCompany ? (entity.shortName || entity.name) : (entity.short_name || entity.name || '—')
-  const edrpou = entity.edrpou
-  const address = isCompany ? entity.address : (entity.legal_address || entity.address)
-  const iban = isCompany ? entity.iban : entity.iban
-  const bank = isCompany ? entity.bankName : null
-  const mfo = isCompany ? entity.mfo : null
-
   return {
     width: '*',
     stack: [
       { text: label.toUpperCase(), fontSize: 7, letterSpacing: 1.5, color: GRAY2, margin: [0, 0, 0, 4] },
       { text: name, fontSize: 10, bold: true, color: BLACK, margin: [0, 0, 0, 2] },
-      edrpou ? { text: `ЄДРПОУ ${edrpou}`, fontSize: 8, color: GRAY1 } : {},
-      address ? { text: address, fontSize: 8, color: GRAY2, margin: [0, 1, 0, 0] } : {},
-      iban ? { text: `IBAN ${iban}`, fontSize: 7.5, color: GRAY2, margin: [0, 1, 0, 0] } : {},
-      bank ? { text: `${bank}${mfo ? ', МФО ' + mfo : ''}`, fontSize: 7.5, color: GRAY2, margin: [0, 1, 0, 0] } : {},
+      entity.edrpou ? { text: `ЄДРПОУ ${entity.edrpou}`, fontSize: 8, color: GRAY1 } : {},
+      (isCompany ? entity.address : (entity.legal_address || entity.address)) ? { text: isCompany ? entity.address : (entity.legal_address || entity.address), fontSize: 8, color: GRAY2, margin: [0, 1, 0, 0] } : {},
+      (isCompany ? entity.iban : entity.iban) ? { text: `IBAN ${isCompany ? entity.iban : entity.iban}`, fontSize: 7.5, color: GRAY2, margin: [0, 1, 0, 0] } : {},
+      isCompany && entity.bankName ? { text: `${entity.bankName}${entity.mfo ? ', МФО ' + entity.mfo : ''}`, fontSize: 7.5, color: GRAY2, margin: [0, 1, 0, 0] } : {},
     ],
   }
 }
@@ -191,24 +192,27 @@ function sumRow(label, amount, isBold) {
   return {
     columns: [
       { text: label, alignment: 'right', fontSize: isBold ? 11 : 9, bold: isBold, color: isBold ? BLACK : GRAY2, width: '*' },
-      { text: `${formatMoney(amount)} грн`, alignment: 'right', fontSize: isBold ? 12 : 9, bold: isBold, color: isBold ? BLACK : GRAY1, width: 95 },
+      { text: `${formatMoney(amount)} грн`, alignment: 'right', fontSize: isBold ? 12 : 9, bold: isBold, color: isBold ? BLACK : GRAY1, width: 100 },
     ],
     margin: [0, 1, 0, 1],
   }
 }
 
 export function xlsx(company, contractor, items, options) {
-  const { docNumber, docDate } = options
+  const { docNumber, docDate, contractNum, contractDate } = options
   const { subtotal, vatAmount, total } = calcTotals(items)
+  const contract = contractNum ? `Договір №${contractNum}${contractDate ? ` від ${formatDate(contractDate)}` : ''}` : ''
   const data = [
-    [`Рахунок на оплату №${docNumber} від ${formatDate(docDate)}`],
+    [`Видаткова накладна №${docNumber} від ${formatDate(docDate)}`],
+    contract ? [`Підстава: ${contract}`] : [],
     [], ['Постачальник:', company.shortName || company.name, '', 'ЄДРПОУ:', company.edrpou],
     ['Адреса:', company.address, '', 'IBAN:', company.iban],
     ['Покупець:', contractor.short_name || contractor.name, '', 'ЄДРПОУ:', contractor.edrpou],
     [], ['№', 'Найменування', 'К-сть', 'Од.', 'Ціна', 'ПДВ%', 'ПДВ', 'Сума'],
     ...items.map((it, i) => { const r = itemData(it, i); return [r.i, r.name, r.qty, r.unit, r.price, r.vatRate > 0 ? `${r.vatRate}%` : '', r.vat, r.total] }),
-    [], ['','','','','','','Без ПДВ:', subtotal], ['','','','','','','ПДВ:', vatAmount], ['','','','','','','Всього:', total],
+    [], [`Кількість найменувань: ${items.length}`],
+    ['','','','','','','Без ПДВ:', subtotal], ['','','','','','','ПДВ:', vatAmount], ['','','','','','','Всього:', total],
     [], [amountInWords(total)],
-  ]
-  const wb = createWorkbook(); addSheet(wb, data, 'Рахунок'); return wb
+  ].filter(r => r.length > 0)
+  const wb = createWorkbook(); addSheet(wb, data, 'Видаткова'); return wb
 }

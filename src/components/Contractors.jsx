@@ -910,6 +910,21 @@ export default function Contractors({ user, onNavigate }) {
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: 4 }}>
+                            {doc.doc_type === 'invoice' && (
+                              <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', fontSize: 15, padding: '0 4px' }}
+                                title="Створити акт/накладну на підставі"
+                                onClick={() => {
+                                  const docItems = typeof doc.items === 'string' ? JSON.parse(doc.items) : doc.items
+                                  setEditingDoc({
+                                    ...doc, id: null, doc_type: null, doc_number: '',
+                                    items: docItems,
+                                    _fromInvoice: doc.doc_number,
+                                  })
+                                  setShowDocGen(true)
+                                }}>
+                                <i className="ti ti-copy" style={{ fontSize: 14 }} />
+                              </button>
+                            )}
                             <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--blue)', fontSize: 15, padding: '0 4px' }}
                               title="Редагувати"
                               onClick={() => { setEditingDoc(doc); setShowDocGen(true) }}>

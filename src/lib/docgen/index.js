@@ -53,7 +53,7 @@ export async function getNextDocNumber(docTypeKey) {
 }
 
 // ── Зберегти документ в БД ──
-export async function saveDoc({ docType, docNumber, docDate, contractorId, contractorName, items, subtotal, vatAmount, total, notes, userId }) {
+export async function saveDoc({ docType, docNumber, docDate, contractorId, contractorName, items, subtotal, vatAmount, total, notes, contractNum, contractDate, paymentDue, city, userId }) {
   const { data, error } = await supabase.from('generated_docs').insert({
     doc_type: docType,
     doc_number: docNumber,
@@ -63,6 +63,10 @@ export async function saveDoc({ docType, docNumber, docDate, contractorId, contr
     items: JSON.stringify(cleanItems(items)),
     subtotal, vat_amount: vatAmount, total,
     notes: notes || null,
+    contract_num: contractNum || null,
+    contract_date: contractDate || null,
+    payment_due: paymentDue || null,
+    city: city || null,
     created_by: userId,
   }).select('id').single()
 
@@ -71,13 +75,17 @@ export async function saveDoc({ docType, docNumber, docDate, contractorId, contr
 }
 
 // ── Оновити документ ──
-export async function updateDoc(id, { docNumber, docDate, items, subtotal, vatAmount, total, notes }) {
+export async function updateDoc(id, { docNumber, docDate, items, subtotal, vatAmount, total, notes, contractNum, contractDate, paymentDue, city }) {
   const { error } = await supabase.from('generated_docs').update({
     doc_number: docNumber,
     doc_date: docDate,
     items: JSON.stringify(cleanItems(items)),
     subtotal, vat_amount: vatAmount, total,
     notes: notes || null,
+    contract_num: contractNum || null,
+    contract_date: contractDate || null,
+    payment_due: paymentDue || null,
+    city: city || null,
   }).eq('id', id)
   if (error) throw new Error(error.message)
 }

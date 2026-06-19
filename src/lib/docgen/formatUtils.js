@@ -85,12 +85,17 @@ export function amountInWords(amount) {
 export function calcTotals(items) {
   let subtotal = 0
   let vatAmount = 0
+  const vatByRate = {} // { '20': 1234.56, '7': 100.00 }
   for (const item of items) {
     const amount = parseFloat(item.amount) || (parseFloat(item.quantity || 0) * parseFloat(item.unitPrice || 0))
     const vatRate = parseFloat(item.vatRate) || 0
     const vat = vatRate > 0 ? amount * vatRate / 100 : 0
     subtotal += amount
     vatAmount += vat
+    if (vatRate > 0) {
+      const key = String(vatRate)
+      vatByRate[key] = (vatByRate[key] || 0) + vat
+    }
   }
-  return { subtotal, vatAmount, total: subtotal + vatAmount }
+  return { subtotal, vatAmount, total: subtotal + vatAmount, vatByRate }
 }
