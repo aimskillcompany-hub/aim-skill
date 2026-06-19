@@ -162,6 +162,64 @@ ${articles?.length ? articles.map(a => `- ${a.name} (${a.type})`).join('\n') : '
   }
 }
 
+// ── Розпізнати реквізити компанії з тексту ──
+export async function parseCompanyFromText(text) {
+  if (!API_KEY) throw new Error('API ключ не налаштовано')
+  if (!text?.trim()) throw new Error('Вставте текст з реквізитами')
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': API_KEY,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1000,
+      system: `Ти розпізнаєш реквізити українських компаній з будь-якого тексту.
+Текст може містити реквізити з документів, листів, сайтів, візиток тощо.
+Поверни ТІЛЬКИ валідний JSON без markdown:
+{
+  "name": "повна назва компанії або null",
+  "short_name": "скорочена назва (ТОВ/АТ/ФОП + назва) або null",
+  "edrpou": "код ЄДРПОУ (8 цифр) або РНОКПП (10 цифр) або null",
+  "ipn": "ІПН (12 цифр для юр.осіб) або null",
+  "legal_form": "ТОВ/АТ/ПП/ФОП або null",
+  "address": "адреса або null",
+  "iban": "IBAN (UA...) або null",
+  "bank_name": "назва банку або null",
+  "mfo": "МФО (6 цифр) або null",
+  "phone": "телефон або null",
+  "email": "email або null",
+  "website": "сайт або null",
+  "contact_person": "ПІБ контактної особи/директора або null",
+  "contact_position": "посада або null",
+  "is_vat_payer": true/false (якщо є ІПН або згадка ПДВ — true),
+  "vat_certificate": "номер свідоцтва ПДВ або null",
+  "type": "client/supplier/other (спробуй визначити)"
+}
+Якщо поле невідоме — вкажи null. НЕ вигадуй дані.`,
+      messages: [{ role: 'user', content: text.trim() }],
+    }),
+  })
+
+  const data = await res.json()
+  if (data.error) throw new Error(data.error.message)
+  const responseText = data.content?.find(b => b.type === 'text')?.text || ''
+
+  let clean = responseText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+  const jsonMatch = clean.match(/\{[\s\S]*\}/)
+  if (jsonMatch) clean = jsonMatch[0]
+
+  try {
+    return JSON.parse(clean)
+  } catch {
+    throw new Error('Не вдалось розпізнати реквізити. Спробуйте ще раз.')
+  }
+}
+
 function toBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()

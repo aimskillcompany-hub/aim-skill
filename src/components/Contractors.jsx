@@ -230,6 +230,10 @@ export default function Contractors({ user, onNavigate }) {
   const [contractorDocs, setContractorDocs] = useState([])
   const [contacts, setContacts] = useState([])
   const [contracts, setContracts] = useState([])
+  const [aiPasteMode, setAiPasteMode] = useState(false)
+  const [aiPasteText, setAiPasteText] = useState('')
+  const [aiParsing, setAiParsing] = useState(false)
+  const [aiPasteError, setAiPasteError] = useState(null)
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState(null)
 
@@ -1102,6 +1106,43 @@ export default function Contractors({ user, onNavigate }) {
             <h2>{editId ? 'Редагувати контрагента' : 'Новий контрагент'}</h2>
             <button className="modal-close" onClick={() => setShowForm(false)}>×</button>
           </div>
+          {/* AI розпізнавання */}
+          {!editId && (
+            <div style={{ marginBottom:14 }}>
+              {!aiPasteMode ? (
+                <button onClick={() => setAiPasteMode(true)} style={{ width:'100%', padding:'10px', background:'var(--bg)', border:'1px dashed var(--border)', borderRadius:10, cursor:'pointer', fontSize:13, color:'var(--blue)', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+                  <i className="ti ti-sparkles" style={{ fontSize:16 }} /> Вставити текст з реквізитами — AI заповнить поля
+                </button>
+              ) : (
+                <div style={{ border:'1px solid var(--border)', borderRadius:10, padding:12, background:'var(--bg)' }}>
+                  <div style={{ fontSize:12, fontWeight:500, marginBottom:6, color:'var(--text2)' }}>Вставте будь-який текст з реквізитами компанії</div>
+                  <textarea className="form-input" rows={4} style={{ fontSize:12, marginBottom:8 }}
+                    value={aiPasteText} onChange={e => setAiPasteText(e.target.value)}
+                    placeholder="Наприклад: ТОВ «Компанія», ЄДРПОУ 12345678, м. Київ, вул. Хрещатик 1, IBAN UA123..." />
+                  {aiPasteError && <div style={{ fontSize:12, color:'var(--red)', marginBottom:6 }}>{aiPasteError}</div>}
+                  <div style={{ display:'flex', gap:6 }}>
+                    <button className="btn btn-primary btn-sm" disabled={aiParsing || !aiPasteText.trim()} onClick={async () => {
+                      setAiParsing(true); setAiPasteError(null)
+                      try {
+                        const { parseCompanyFromText } = await import('../lib/ai')
+                        const parsed = await parseCompanyFromText(aiPasteText)
+                        setForm(f => {
+                          const updated = { ...f }
+                          Object.entries(parsed).forEach(([k, v]) => {
+                            if (v && v !== 'null' && k in f) updated[k] = v
+                          })
+                          return updated
+                        })
+                        setAiPasteMode(false); setAiPasteText('')
+                      } catch (e) { setAiPasteError(e.message) }
+                      setAiParsing(false)
+                    }}>{aiParsing ? 'Розпізнаю...' : 'Розпізнати'}</button>
+                    <button className="btn btn-secondary btn-sm" onClick={() => { setAiPasteMode(false); setAiPasteText('') }}>Скасувати</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <div className="form-grid">
             <div className="form-group full"><label>Повна назва *</label><input className="form-input" value={form.name} onChange={setF('name')} placeholder="ТОВ Компанія" /></div>
             <div className="form-group"><label>Коротка назва</label><input className="form-input" value={form.short_name} onChange={setF('short_name')} /></div>
