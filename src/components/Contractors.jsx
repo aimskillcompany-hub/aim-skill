@@ -1129,7 +1129,16 @@ export default function Contractors({ user, onNavigate }) {
                         setForm(f => {
                           const updated = { ...f }
                           Object.entries(parsed).forEach(([k, v]) => {
-                            if (v && v !== 'null' && k in f) updated[k] = v
+                            if (v && v !== null && v !== 'null' && v !== '') {
+                              if (k in f) updated[k] = typeof v === 'boolean' ? v : String(v)
+                              // Додатковий маппінг
+                              if (k === 'legal_address' && !updated.legal_address) updated.legal_address = String(v)
+                              if (k === 'address' && !updated.address) updated.address = String(v)
+                              if (k === 'ipn' && String(v).length === 12) {
+                                updated.is_vat_payer = true
+                                if (!updated.vat_certificate) updated.vat_certificate = String(v)
+                              }
+                            }
                           })
                           return updated
                         })

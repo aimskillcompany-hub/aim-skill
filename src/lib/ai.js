@@ -182,25 +182,30 @@ export async function parseCompanyFromText(text) {
 Текст може містити реквізити з документів, листів, сайтів, візиток тощо.
 Поверни ТІЛЬКИ валідний JSON без markdown:
 {
-  "name": "повна назва компанії або null",
-  "short_name": "скорочена назва (ТОВ/АТ/ФОП + назва) або null",
+  "name": "повна офіційна назва компанії або null",
+  "short_name": "скорочена назва (ТОВ/АТ/ФОП + коротка назва) або null",
   "edrpou": "код ЄДРПОУ (8 цифр) або РНОКПП (10 цифр) або null",
-  "ipn": "ІПН (12 цифр для юр.осіб) або null",
+  "ipn": "ІПН/індивідуальний податковий номер (12 цифр) або null",
   "legal_form": "ТОВ/АТ/ПП/ФОП або null",
-  "address": "адреса або null",
-  "iban": "IBAN (UA...) або null",
+  "legal_address": "юридична адреса (повна, з індексом та містом) або null",
+  "address": "те саме що legal_address",
+  "iban": "IBAN (UA + 27 цифр) або null",
   "bank_name": "назва банку або null",
   "mfo": "МФО (6 цифр) або null",
   "phone": "телефон або null",
   "email": "email або null",
   "website": "сайт або null",
-  "contact_person": "ПІБ контактної особи/директора або null",
-  "contact_position": "посада або null",
-  "is_vat_payer": true/false (якщо є ІПН або згадка ПДВ — true),
-  "vat_certificate": "номер свідоцтва ПДВ або null",
-  "type": "client/supplier/other (спробуй визначити)"
+  "contact_person": "ПІБ директора або контактної особи або null",
+  "contact_position": "посада (Директор тощо) або null",
+  "is_vat_payer": true якщо є ІПН з 12 цифр або згадка ПДВ або свідоцтво ПДВ,
+  "vat_certificate": "ІПН (12 цифр) = це і є номер свідоцтва ПДВ, або null",
+  "type": "client/supplier/other"
 }
-Якщо поле невідоме — вкажи null. НЕ вигадуй дані.`,
+ВАЖЛИВО:
+- Якщо є ІПН з 12 цифр — це платник ПДВ, is_vat_payer=true, vat_certificate = цей ІПН
+- Адресу завжди клади і в address і в legal_address
+- Директора/керівника клади в contact_person + contact_position
+- Якщо поле невідоме — null. НЕ вигадуй дані.`,
       messages: [{ role: 'user', content: text.trim() }],
     }),
   })
