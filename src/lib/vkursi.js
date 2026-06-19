@@ -62,12 +62,13 @@ export async function fetchByEdrpou(edrpou) {
   return fetchFromEdr(code)
 }
 
-// ── Безкоштовний пошук через ЄДР ──
+// ── Пошук через API податкової (cabinet.tax.gov.ua) ──
 async function fetchFromEdr(code) {
+  const taxToken = localStorage.getItem('tax_api_token') || ''
   const res = await fetch('/api/edr', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({ code, token: taxToken }),
   })
 
   if (!res.ok) throw new Error(`ЄДР error: ${res.status}`)
