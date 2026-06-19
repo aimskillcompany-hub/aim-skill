@@ -64,12 +64,12 @@ export function pdf(company, contractor, items, options) {
         { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.3, lineColor: G4 }], margin: [0, 0, 0, 5] },
         {
           columns: [
-            // Штрихкод з номером документа
+            // QR-код з номером документа
             {
-              width: 90,
+              width: 60,
               stack: [
-                { qr: `${docNumber}|${formatDate(docDate)}`, fit: 24, foreground: G1 },
-                { text: docNumber, fontSize: 5.5, color: G2, margin: [0, 1, 0, 0] },
+                { qr: `${docNumber}|${formatDate(docDate)}|${formatMoney(total)}`, fit: 40 },
+                { text: docNumber, fontSize: 5.5, color: G2, alignment: 'center', margin: [0, 2, 0, 0] },
               ],
             },
             // Інфо
@@ -240,21 +240,15 @@ function rvLine(label, value) {
   if (!value) return null
   return {
     columns: [
-      { text: label, width: 48, fontSize: 8, color: G2, alignment: 'right', margin: [0, 0, 4, 0] },
+      { text: label, width: 42, fontSize: 8, color: G2, alignment: 'left', margin: [0, 0, 2, 0] },
       { text: value, width: '*', fontSize: 8, color: G1 },
     ],
     margin: [0, 1, 0, 1],
   }
 }
 
-// Заголовок блоку — uppercase, letterSpacing, лінія знизу
 function sectionTitle(text) {
-  return {
-    stack: [
-      { text: text, fontSize: 7, letterSpacing: 3, color: G2, bold: true, margin: [0, 0, 0, 4] },
-      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 100, y2: 0, lineWidth: 1.5, lineColor: DARK }], margin: [0, 0, 0, 6] },
-    ],
-  }
+  return { text: text, fontSize: 7.5, letterSpacing: 2, color: G2, bold: true, margin: [0, 0, 0, 6] }
 }
 
 // ── EXCEL ──
