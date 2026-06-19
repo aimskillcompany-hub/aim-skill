@@ -20,8 +20,8 @@ export default function MovementFixer() {
       .not('description', 'is', null)
       .order('date')
 
-    const { data: prods } = await supabase.from('products')
-      .select('id, name, status, product_type, computed_stock:current_stock')
+    const { data: prods } = await supabase.from('product_stock')
+      .select('id, name, status, product_type, computed_stock')
       .eq('status', 'active')
 
     setProducts(prods || [])

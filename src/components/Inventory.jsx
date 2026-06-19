@@ -158,18 +158,10 @@ export default function Inventory({ user }) {
       .order('name')
 
     if (!viewErr && viewData) {
-      prods = viewData.map(p => ({ ...p, current_stock: p.computed_stock ?? p.current_stock ?? 0 }))
+      prods = viewData
     } else {
-      // Fallback: view ще не створений
       const { data: fallback } = await supabase.from('products').select('*').eq('status','active').order('name')
-      const { data: movs } = await supabase.from('stock_movements').select('product_id, type, quantity')
-      const stockMap = {}
-      ;(movs || []).forEach(m => {
-        if (!stockMap[m.product_id]) stockMap[m.product_id] = 0
-        if (m.type === 'in' || m.type === 'adjustment') stockMap[m.product_id] += (m.quantity || 0)
-        else stockMap[m.product_id] -= (m.quantity || 0)
-      })
-      prods = (fallback || []).map(p => ({ ...p, current_stock: stockMap[p.id] || p.current_stock || 0 }))
+      prods = fallback || []
     }
 
     setProducts(prods || [])
@@ -204,10 +196,10 @@ export default function Inventory({ user }) {
   }
   const sorted = [...filtered].sort((a, b) => {
     let va = a[sortCol], vb = b[sortCol]
-    if (sortCol === 'current_stock' || sortCol === 'buy_price') {
+    if (sortCol === 'computed_stock' || sortCol === 'buy_price') {
       va = parseFloat(va) || 0; vb = parseFloat(vb) || 0
     } else if (sortCol === 'value') {
-      va = (a.current_stock || 0) * (a.buy_price || 0); vb = (b.current_stock || 0) * (b.buy_price || 0)
+      va = (a.computed_stock || 0) * (a.buy_price || 0); vb = (b.computed_stock || 0) * (b.buy_price || 0)
     } else {
       va = (va || '').toString().toLowerCase(); vb = (vb || '').toString().toLowerCase()
     }
@@ -226,10 +218,10 @@ export default function Inventory({ user }) {
 
   const kpi = {
     total: products.length,
-    inStock: products.filter(p => p.current_stock > 0).length,
-    lowStock: products.filter(p => p.current_stock > 0 && p.current_stock <= (p.min_stock || 0)).length,
-    outOfStock: products.filter(p => p.current_stock <= 0).length,
-    totalValue: products.reduce((s, p) => s + (p.current_stock || 0) * (p.buy_price || 0), 0),
+    inStock: products.filter(p => p.computed_stock > 0).length,
+    lowStock: products.filter(p => p.computed_stock > 0 && p.computed_stock <= (p.min_stock || 0)).length,
+    outOfStock: products.filter(p => p.computed_stock <= 0).length,
+    totalValue: products.reduce((s, p) => s + (p.computed_stock || 0) * (p.buy_price || 0), 0),
   }
 
   // CRUD
@@ -277,7 +269,7 @@ export default function Inventory({ user }) {
     if (editId && detail?.id === editId) {
       const { data: updated } = await supabase.from('product_stock').select('*').eq('id', editId).single()
       if (updated) {
-        const p = { ...updated, current_stock: updated.computed_stock ?? updated.current_stock ?? 0 }
+        const p = { ...updated, computed_stock: updated.computed_stock ?? 0 }
         setDetail(p)
         openDetail(p)
       }
@@ -296,7 +288,7 @@ export default function Inventory({ user }) {
     await supabase.from('product_aliases').update({ product_id: detail.id }).eq('product_id', mergeTarget.id)
     // Архівувати дублікат
     await supabase.from('products').update({ status: 'archived' }).eq('id', mergeTarget.id)
-    // current_stock обчислюється через VIEW — не потрібно перераховувати
+    // computed_stock обчислюється через VIEW — не потрібно перераховувати
     setSaving(false); setShowMerge(false); setMergeTarget(null)
     await loadAll()
     const updated = products.find(p => p.id === detail.id)
@@ -450,7 +442,7 @@ export default function Inventory({ user }) {
       date: movForm.date, description: movForm.description || null,
       created_by: user?.id,
     })
-    // current_stock обчислюється через VIEW — не оновлюємо вручну
+    // computed_stock обчислюється через VIEW — не оновлюємо вручну
     setSaving(false); setShowMovement(false)
     setMovForm({ type:'in', quantity:'', price:'', description:'', date:new Date().toISOString().split('T')[0] })
     await loadAll()
@@ -537,14 +529,14 @@ export default function Inventory({ user }) {
               <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(5,1fr)', marginBottom:20 }}>
                 <div className="kpi">
                   <div className="kpi-label">Залишок</div>
-                  <div className="kpi-value" style={{ color: detail.current_stock <= 0 ? 'var(--red)' : detail.current_stock <= (detail.min_stock||0) ? '#D97706' : 'var(--green)' }}>
-                    {fmt(detail.current_stock)} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>{detail.unit}</span>
+                  <div className="kpi-value" style={{ color: detail.computed_stock <= 0 ? 'var(--red)' : detail.computed_stock <= (detail.min_stock||0) ? '#D97706' : 'var(--green)' }}>
+                    {fmt(detail.computed_stock)} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>{detail.unit}</span>
                   </div>
                 </div>
                 <div className="kpi"><div className="kpi-label">Закуплено</div><div className="kpi-value" style={{ color:'var(--green)' }}>+{fmt(totalIn)} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>{detail.unit}</span></div><div className="kpi-sub">{fmtInt(totalBought)} грн</div></div>
                 <div className="kpi"><div className="kpi-label">Реалізовано</div><div className="kpi-value" style={{ color:'var(--red)' }}>-{fmt(totalOut)} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>{detail.unit}</span></div><div className="kpi-sub">{fmtInt(totalSold)} грн</div></div>
                 <div className="kpi"><div className="kpi-label">Маржа</div><div className="kpi-value" style={{ color: margin >= 0 ? 'var(--green)' : 'var(--red)' }}>{margin >= 0 ? '+' : '-'}{fmtInt(Math.abs(margin))} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>грн</span></div>{totalBought > 0 && <div className="kpi-sub">{((margin / totalBought) * 100).toFixed(0)}%</div>}</div>
-                <div className="kpi"><div className="kpi-label">Вартість залишку</div><div className="kpi-value">{fmtInt((detail.current_stock||0) * (detail.buy_price||0))} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>грн</span></div></div>
+                <div className="kpi"><div className="kpi-label">Вартість залишку</div><div className="kpi-value">{fmtInt((detail.computed_stock||0) * (detail.buy_price||0))} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>грн</span></div></div>
               </div>
 
               {/* Purchases */}
@@ -719,7 +711,7 @@ export default function Inventory({ user }) {
                     }}>
                       <div style={{ fontWeight:500, fontSize:14 }}>{p.name}</div>
                       <div style={{ fontSize:12, color:'var(--text2)', marginTop:2 }}>
-                        Залишок: {fmt(p.current_stock)} {p.unit} · {p.sku || 'без SKU'}
+                        Залишок: {fmt(p.computed_stock)} {p.unit} · {p.sku || 'без SKU'}
                       </div>
                     </div>
                   ))}
@@ -996,7 +988,7 @@ export default function Inventory({ user }) {
               <th style={{ cursor:'pointer' }} onClick={() => toggleSort('manufacturer')}>Виробник <SortIcon col="manufacturer" /></th>
               <th style={{ cursor:'pointer' }} onClick={() => toggleSort('sku')}>SKU <SortIcon col="sku" /></th>
               <th style={{ cursor:'pointer' }} onClick={() => toggleSort('uktzed')}>УКТЗЕД <SortIcon col="uktzed" /></th>
-              <th style={{ textAlign:'right', cursor:'pointer' }} onClick={() => toggleSort('current_stock')}>Залишок <SortIcon col="current_stock" /></th>
+              <th style={{ textAlign:'right', cursor:'pointer' }} onClick={() => toggleSort('computed_stock')}>Залишок <SortIcon col="computed_stock" /></th>
               <th style={{ textAlign:'right', cursor:'pointer' }} onClick={() => toggleSort('buy_price')}>Ціна закуп. <SortIcon col="buy_price" /></th>
               <th style={{ textAlign:'right', cursor:'pointer' }} onClick={() => toggleSort('value')}>Вартість <SortIcon col="value" /></th>
               <th style={{ width:80 }}></th>
@@ -1005,7 +997,7 @@ export default function Inventory({ user }) {
           <tbody>
             {sorted.length === 0 && <tr><td colSpan={9} style={{ textAlign:'center', padding:32, color:'var(--text3)' }}>Немає товарів</td></tr>}
             {sorted.map(p => {
-              const stockColor = p.current_stock <= 0 ? 'var(--red)' : p.current_stock <= (p.min_stock||0) ? '#D97706' : 'var(--green)'
+              const stockColor = p.computed_stock <= 0 ? 'var(--red)' : p.computed_stock <= (p.min_stock||0) ? '#D97706' : 'var(--green)'
               return (
                 <tr key={p.id} style={{ cursor:'pointer', background: checkedIds.has(p.id) ? 'var(--blue-bg)' : '' }} onClick={() => openDetail(p)}>
                   <td onClick={e => toggleCheck(p.id, e)}>
@@ -1026,10 +1018,10 @@ export default function Inventory({ user }) {
                   <td style={{ fontSize:12, color:'var(--text2)' }}>{p.sku || '—'}</td>
                   <td style={{ fontSize:11, color:'var(--text3)' }}>{p.uktzed || '—'}</td>
                   <td style={{ textAlign:'right', fontWeight:500, color: stockColor, fontVariantNumeric:'tabular-nums' }}>
-                    {fmt(p.current_stock)} {p.unit}
+                    {fmt(p.computed_stock)} {p.unit}
                   </td>
                   <td style={{ textAlign:'right', color:'var(--text2)', fontVariantNumeric:'tabular-nums' }}>{p.buy_price ? fmtInt(p.buy_price)+' грн' : '—'}</td>
-                  <td style={{ textAlign:'right', fontWeight:500, fontVariantNumeric:'tabular-nums' }}>{p.buy_price ? fmtInt((p.current_stock||0)*p.buy_price)+' грн' : '—'}</td>
+                  <td style={{ textAlign:'right', fontWeight:500, fontVariantNumeric:'tabular-nums' }}>{p.buy_price ? fmtInt((p.computed_stock||0)*p.buy_price)+' грн' : '—'}</td>
                   <td onClick={e => e.stopPropagation()}>
                     <div style={{ display:'flex', gap:4 }}>
                       <button onClick={() => openEdit(p)} style={{ background:'none', border:'1px solid var(--border)', borderRadius:8, width:32, height:32, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text2)' }}>

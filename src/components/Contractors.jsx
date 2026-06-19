@@ -829,14 +829,14 @@ export default function Contractors({ user, onNavigate }) {
                               <i className="ti ti-pencil" style={{ fontSize: 14 }} />
                             </button>
                             <button className="btn btn-sm btn-secondary" style={{ padding: '2px 8px', fontSize: 11 }}
-                              onClick={() => {
+                              onClick={async () => {
                                 const items = typeof doc.items === 'string' ? JSON.parse(doc.items) : doc.items
-                                generatePdf(doc.doc_type, detail, items, { docNumber: doc.doc_number, docDate: doc.doc_date, notes: doc.notes })
+                                await generatePdf(doc.doc_type, detail, items, { docNumber: doc.doc_number, docDate: doc.doc_date, notes: doc.notes })
                               }}>PDF</button>
                             <button className="btn btn-sm btn-secondary" style={{ padding: '2px 8px', fontSize: 11 }}
-                              onClick={() => {
+                              onClick={async () => {
                                 const items = typeof doc.items === 'string' ? JSON.parse(doc.items) : doc.items
-                                generateXlsx(doc.doc_type, detail, items, { docNumber: doc.doc_number, docDate: doc.doc_date, notes: doc.notes })
+                                await generateXlsx(doc.doc_type, detail, items, { docNumber: doc.doc_number, docDate: doc.doc_date, notes: doc.notes })
                               }}>XLS</button>
                             <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 15, padding: '0 4px' }}
                               title="Видалити" onClick={async () => {

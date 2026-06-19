@@ -13,24 +13,40 @@ function cleanItems(items) {
   return (items || []).filter(it => it.name?.trim())
 }
 
+// ── Підтягнути підписанта з contractor_contacts ──
+async function enrichContractorSigner(contractor) {
+  if (!contractor?.id) return contractor
+  const { data } = await supabase.from('contractor_contacts')
+    .select('name, position')
+    .eq('contractor_id', contractor.id)
+    .eq('is_signer', true)
+    .limit(1)
+    .maybeSingle()
+  if (data) {
+    return { ...contractor, contact_person: data.name, contact_position: data.position || '' }
+  }
+  return contractor
+}
+
 // ── Генерація та завантаження PDF ──
-export function generatePdf(docTypeKey, contractor, items, options) {
+export async function generatePdf(docTypeKey, contractor, items, options) {
   const dt = getDocType(docTypeKey)
   if (!dt) throw new Error(`Невідомий тип документа: ${docTypeKey}`)
-  // Для прихідних — сторони міняються (контрагент = постачальник, ми = покупець)
-  const seller = dt.direction === 'incoming' ? contractor : getCompany()
-  const buyer = dt.direction === 'incoming' ? getCompany() : contractor
+  const enriched = await enrichContractorSigner(contractor)
+  const seller = dt.direction === 'incoming' ? enriched : getCompany()
+  const buyer = dt.direction === 'incoming' ? getCompany() : enriched
   const docDef = dt.template.pdf(seller, buyer, cleanItems(items), options)
   const fileName = `${dt.label}_${options.docNumber}_${options.docDate}.pdf`
   downloadPdf(docDef, fileName)
 }
 
 // ── Генерація та завантаження Excel ──
-export function generateXlsx(docTypeKey, contractor, items, options) {
+export async function generateXlsx(docTypeKey, contractor, items, options) {
   const dt = getDocType(docTypeKey)
   if (!dt) throw new Error(`Невідомий тип документа: ${docTypeKey}`)
-  const seller = dt.direction === 'incoming' ? contractor : getCompany()
-  const buyer = dt.direction === 'incoming' ? getCompany() : contractor
+  const enriched = await enrichContractorSigner(contractor)
+  const seller = dt.direction === 'incoming' ? enriched : getCompany()
+  const buyer = dt.direction === 'incoming' ? getCompany() : enriched
   const wb = dt.template.xlsx(seller, buyer, cleanItems(items), options)
   const fileName = `${dt.label}_${options.docNumber}_${options.docDate}.xlsx`
   downloadXlsx(wb, fileName)

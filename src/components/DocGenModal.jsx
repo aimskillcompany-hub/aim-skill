@@ -129,18 +129,18 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
           notes, contractNum, contractDate, paymentDue, city, parentDocId, contractId: selectedContract || null, userId,
         })
       }
-      if (andDownload === 'pdf') generatePdf(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress })
-      if (andDownload === 'xlsx') generateXlsx(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress })
+      if (andDownload === 'pdf') await generatePdf(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress })
+      if (andDownload === 'xlsx') await generateXlsx(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress })
       onSaved?.()
       if (!andDownload) onClose()
     } catch (e) { setError(e.message) }
     setSaving(false)
   }
 
-  const handleDownloadOnly = (format) => {
+  const handleDownloadOnly = async (format) => {
     try {
-      if (format === 'pdf') generatePdf(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress })
-      else generateXlsx(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress })
+      if (format === 'pdf') await generatePdf(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress })
+      else await generateXlsx(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress })
     } catch (e) { setError(e.message) }
   }
 

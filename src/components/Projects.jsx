@@ -155,7 +155,7 @@ export default function Projects({ user }) {
     setProjTxs(allTxs)
 
     // Load products for linking
-    const { data: prods } = await supabase.from('products').select('id, name, current_stock, unit, buy_price').eq('status', 'active').order('name')
+    const { data: prods } = await supabase.from('product_stock').select('id, name, computed_stock, unit, buy_price').eq('status', 'active').order('name')
     setAllProducts(prods || [])
 
     // Load stock_movements для маржинальності (OUT рухи з cost_price)
@@ -788,7 +788,7 @@ export default function Projects({ user }) {
                                 </td>
                                 <td>
                                   {product ? (
-                                    <i className="ti ti-check" style={{ fontSize:14, color:'var(--green)' }} title={`${product.current_stock} ${product.unit} на складі`} />
+                                    <i className="ti ti-check" style={{ fontSize:14, color:'var(--green)' }} title={`${product.computed_stock} ${product.unit} на складі`} />
                                   ) : autoMatch ? (
                                     <i className="ti ti-sparkles" style={{ fontSize:14, color:'var(--green)', cursor:'pointer' }} title="Привʼязати"
                                       onClick={() => handleLinkProduct(it.id, autoMatch.id)} />
@@ -809,7 +809,7 @@ export default function Projects({ user }) {
                                       onMouseEnter={e => e.currentTarget.style.background='var(--bg)'}
                                       onMouseLeave={e => e.currentTarget.style.background='var(--surface)'}>
                                       <span style={{ fontWeight:500, fontSize:13 }}>{p.name}</span>
-                                      <span style={{ fontSize:12, color: p.current_stock > 0 ? 'var(--green)' : 'var(--red)' }}>{p.current_stock} {p.unit}</span>
+                                      <span style={{ fontSize:12, color: p.computed_stock > 0 ? 'var(--green)' : 'var(--red)' }}>{p.computed_stock} {p.unit}</span>
                                     </div>
                                   ))}
                                   {productSearch.length >= 2 && searchResults.length === 0 && <div style={{ padding:8, textAlign:'center', color:'var(--text3)', fontSize:13 }}>Не знайдено</div>}
