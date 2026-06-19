@@ -57,12 +57,31 @@ export function pdf(company, contractor, items, options) {
 
     // ═══ FOOTER ═══
     footer: (currentPage, pageCount) => ({
-      margin: [44, 0, 44, 0],
+      margin: [44, 0, 44, 12],
       columns: [
-        { qr: qrData, fit: 28, foreground: G3 },
-        { text: `${docNumber}  ·  ${formatDate(docDate)}`, fontSize: 6, color: G3, margin: [6, 9, 0, 0], width: 'auto' },
-        { text: `${currentPage}/${pageCount}`, fontSize: 6, color: G3, alignment: 'center', margin: [0, 9, 0, 0] },
-        { text: 'AiM Skill', fontSize: 7, bold: true, color: G3, alignment: 'right', margin: [0, 9, 0, 0] },
+        { qr: qrData, fit: 32, foreground: G2 },
+        {
+          stack: [
+            { text: `${docNumber}  ·  ${formatDate(docDate)}  ·  ${formatMoney(total)} грн`, fontSize: 6.5, color: G2, margin: [8, 4, 0, 0] },
+            { text: `QR: тип, номер, дата, сума, ЄДРПОУ сторін`, fontSize: 5.5, color: G3, margin: [8, 1, 0, 0] },
+            { text: `Стор. ${currentPage} з ${pageCount}`, fontSize: 5.5, color: G3, margin: [8, 1, 0, 0] },
+          ],
+          width: '*',
+        },
+        {
+          width: 'auto', alignment: 'right', margin: [0, 2, 0, 0],
+          stack: [
+            { text: [
+              { text: 'A', color: BLACK, bold: true },
+              { text: 'i', color: '#00C853', bold: true },
+              { text: 'M ', color: BLACK, bold: true },
+              { text: 'Sk', color: BLACK, bold: true },
+              { text: 'i', color: '#00C853', bold: true },
+              { text: 'll.', color: BLACK, bold: true },
+            ], fontSize: 8 },
+            { text: 'ITSOLUTIONS', fontSize: 4.5, letterSpacing: 0.8, color: G3, margin: [0, 1, 0, 0] },
+          ],
+        },
       ],
     }),
 
