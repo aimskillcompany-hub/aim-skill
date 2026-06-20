@@ -517,13 +517,6 @@ export default function Reports({ initialTab }) {
           <option value="">Всі контрагенти</option>
           {contractors.map(c => <option key={c.id} value={c.id}>{c.short_name || c.name}</option>)}
         </select>
-        {projects.length > 0 && (
-          <select className="form-input" style={{ height:40, fontSize:13, width:'auto', minWidth:160 }}
-            value={filterProject} onChange={e => setFilterProject(e.target.value)}>
-            <option value="">Всі проєкти</option>
-            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        )}
       </div>
 
       {/* KPIs — only when standalone or no initialTab */}

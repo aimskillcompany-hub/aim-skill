@@ -12,7 +12,7 @@ import Bank from './components/Bank'
 import Cash from './components/Cash'
 import TransactionModal from './components/TransactionModal'
 import ArticlesSettings from './components/ArticlesSettings'
-import Planning from './components/Planning'
+// import Planning from './components/Planning' // removed from nav
 import Contractors from './components/Contractors'
 import Inventory from './components/Inventory'
 import Assembly from './components/Assembly'
@@ -428,7 +428,7 @@ export default function App() {
     contractors: <Contractors user={user} onNavigate={setPage} />,
     inventory: <Inventory user={user} />,
     assembly: <Assembly user={user} />,
-    planning: <Planning user={user} />,
+    // planning: <Planning user={user} />,
     settings: <Settings user={user} />,
   }
 
