@@ -100,9 +100,25 @@ export default function PlTable({ artData, months, plData, isCurrent, isPlan, pl
                 {fmtS(row._total)}
               </td>
               {hasPlan && (() => {
-                // Факт + план для всіх місяців
-                const allTotal = months.reduce((s, m) => s + (row[m] || 0), 0)
-                return <td style={{ ...cellStyle(allTotal, true), background: '#EFF5EF' }}>{fmtS(allTotal)}</td>
+                // Факт (з row) + план (перерахувати секції з planData)
+                const factTotal = row._total || 0
+                // Для розрахункових рядків потрібно додати планові дані по секціях
+                const planRevenue = months.filter(m => isPlan(m)).reduce((s, m) =>
+                  (byLevel.revenue || []).reduce((ss, name) => ss + (planData?.[name]?.[m] || 0), 0) + s, 0)
+                const planCogs = months.filter(m => isPlan(m)).reduce((s, m) =>
+                  (byLevel.cogs || []).reduce((ss, name) => ss + (planData?.[name]?.[m] || 0), 0) + s, 0)
+                const planOpex = months.filter(m => isPlan(m)).reduce((s, m) =>
+                  (byLevel.opex || []).reduce((ss, name) => ss + (planData?.[name]?.[m] || 0), 0) + s, 0)
+                const planOther = months.filter(m => isPlan(m)).reduce((s, m) =>
+                  (byLevel.other_income || []).reduce((ss, name) => ss + (planData?.[name]?.[m] || 0), 0) + s, 0)
+                const planBelow = months.filter(m => isPlan(m)).reduce((s, m) =>
+                  (byLevel.below_line || []).reduce((ss, name) => ss + (planData?.[name]?.[m] || 0), 0) + s, 0)
+                let forecast = factTotal
+                if (level === '_gp') forecast = factTotal + planRevenue - planCogs
+                else if (level === '_ebit') forecast = factTotal + planRevenue - planCogs - planOpex
+                else if (level === '_np') forecast = factTotal + planRevenue - planCogs - planOpex + planOther
+                else if (level === '_net') forecast = factTotal + planRevenue - planCogs - planOpex + planOther - planBelow
+                return <td style={{ ...cellStyle(forecast, true), background: '#EFF5EF' }}>{fmtS(forecast)}</td>
               })()}
             </tr>
           )
