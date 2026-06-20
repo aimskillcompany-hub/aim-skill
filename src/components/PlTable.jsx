@@ -100,24 +100,30 @@ export default function PlTable({ artData, months, plData, isCurrent, isPlan, pl
                 {fmtS(row._total)}
               </td>
               {hasPlan && (() => {
-                // Факт (з row) + план (перерахувати секції з planData)
+                // planData вже має знаки (доходи +, витрати -)
+                // Тому просто сумуємо всі планові дані по всіх секціях
                 const factTotal = row._total || 0
-                // Для розрахункових рядків потрібно додати планові дані по секціях
-                const planRevenue = months.filter(m => isPlan(m)).reduce((s, m) =>
-                  (byLevel.revenue || []).reduce((ss, name) => ss + (planData?.[name]?.[m] || 0), 0) + s, 0)
-                const planCogs = months.filter(m => isPlan(m)).reduce((s, m) =>
-                  (byLevel.cogs || []).reduce((ss, name) => ss + (planData?.[name]?.[m] || 0), 0) + s, 0)
-                const planOpex = months.filter(m => isPlan(m)).reduce((s, m) =>
-                  (byLevel.opex || []).reduce((ss, name) => ss + (planData?.[name]?.[m] || 0), 0) + s, 0)
-                const planOther = months.filter(m => isPlan(m)).reduce((s, m) =>
-                  (byLevel.other_income || []).reduce((ss, name) => ss + (planData?.[name]?.[m] || 0), 0) + s, 0)
-                const planBelow = months.filter(m => isPlan(m)).reduce((s, m) =>
-                  (byLevel.below_line || []).reduce((ss, name) => ss + (planData?.[name]?.[m] || 0), 0) + s, 0)
-                let forecast = factTotal
-                if (level === '_gp') forecast = factTotal + planRevenue - planCogs
-                else if (level === '_ebit') forecast = factTotal + planRevenue - planCogs - planOpex
-                else if (level === '_np') forecast = factTotal + planRevenue - planCogs - planOpex + planOther
-                else if (level === '_net') forecast = factTotal + planRevenue - planCogs - planOpex + planOther - planBelow
+                const allPlanLevels = ['revenue', 'cogs', 'opex', 'other_income', 'below_line']
+                const planTotal = months.filter(m => isPlan(m)).reduce((s, m) => {
+                  return s + allPlanLevels.reduce((ls, lv) =>
+                    ls + (byLevel[lv] || []).reduce((as, name) => as + (planData?.[name]?.[m] || 0), 0), 0)
+                }, 0)
+                // Для _gp, _ebit і т.д. потрібно рахувати тільки відповідні секції
+                let planForLevel = planTotal // для _net — все
+                if (level === '_gp') {
+                  planForLevel = months.filter(m => isPlan(m)).reduce((s, m) =>
+                    s + ['revenue', 'cogs'].reduce((ls, lv) =>
+                      ls + (byLevel[lv] || []).reduce((as, name) => as + (planData?.[name]?.[m] || 0), 0), 0), 0)
+                } else if (level === '_ebit') {
+                  planForLevel = months.filter(m => isPlan(m)).reduce((s, m) =>
+                    s + ['revenue', 'cogs', 'opex'].reduce((ls, lv) =>
+                      ls + (byLevel[lv] || []).reduce((as, name) => as + (planData?.[name]?.[m] || 0), 0), 0), 0)
+                } else if (level === '_np') {
+                  planForLevel = months.filter(m => isPlan(m)).reduce((s, m) =>
+                    s + ['revenue', 'cogs', 'opex', 'other_income'].reduce((ls, lv) =>
+                      ls + (byLevel[lv] || []).reduce((as, name) => as + (planData?.[name]?.[m] || 0), 0), 0), 0)
+                }
+                const forecast = factTotal + planForLevel
                 return <td style={{ ...cellStyle(forecast, true), background: '#EFF5EF' }}>{fmtS(forecast)}</td>
               })()}
             </tr>
@@ -200,6 +206,7 @@ export default function PlTable({ artData, months, plData, isCurrent, isPlan, pl
                 {fmtS(sign * secTotal)}
               </td>
               {hasPlan && (() => {
+                // planData вже зі знаком (доходи +, витрати -)
                 const planSecTotal = months.filter(m => isPlan(m)).reduce((s, m) =>
                   s + (byLevel[level] || []).reduce((ss, name) => ss + (planData?.[name]?.[m] || 0), 0), 0)
                 const forecast = sign * secTotal + planSecTotal
