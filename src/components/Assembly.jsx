@@ -384,8 +384,8 @@ export default function Assembly({ user }) {
               </tbody>
               <tfoot>
                 <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 600 }}>
-                  <td colSpan={4}>Разом</td>
-                  <td style={{ textAlign: 'right' }}>{fmt(a.total_cost)} грн</td>
+                  <td colSpan={4} style={{ padding: '10px 8px' }}>Разом</td>
+                  <td style={{ textAlign: 'right', padding: '10px 8px' }}>{fmt(a.total_cost)} грн</td>
                 </tr>
               </tfoot>
             </table>
