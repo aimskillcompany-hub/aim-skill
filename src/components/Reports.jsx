@@ -741,8 +741,13 @@ export default function Reports({ initialTab }) {
                 </th>
               ))}
               <th style={{ padding:'8px 12px', background:'#EFF4FF', borderBottom:'1px solid var(--border)', textAlign:'right', fontWeight:700, color:'var(--blue)', whiteSpace:'nowrap', borderLeft:'2px solid #E2E8F0' }}>
-                РАЗОМ
+                ФАКТ
               </th>
+              {planMonths.length > 0 && (
+                <th style={{ padding:'8px 12px', background:'#EFF5EF', borderBottom:'1px solid var(--border)', textAlign:'right', fontWeight:700, color:'#4A7C59', whiteSpace:'nowrap' }}>
+                  ПРОГНОЗ
+                </th>
+              )}
             </tr>
           </thead>
           <PlTable

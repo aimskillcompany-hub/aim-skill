@@ -71,6 +71,8 @@ export function buildPlData(articles, artData, months) {
 }
 
 export default function PlTable({ artData, months, plData, isCurrent, isPlan, planData, onCellClick, onSectionClick }) {
+  const hasPlan = isPlan && months.some(m => isPlan(m))
+  const factMonths = months.filter(m => !isPlan?.(m))
   const { byLevel, sectionTotals, calcRows } = plData
 
   return (
@@ -94,6 +96,7 @@ export default function PlTable({ artData, months, plData, isCurrent, isPlan, pl
               <td style={{ ...cellStyle(row._total, true), background: '#EFF4FF', borderLeft: '2px solid #E2E8F0' }}>
                 {fmtS(row._total)}
               </td>
+              {hasPlan && <td style={{ ...cellStyle(0, true), background: '#EFF5EF', color: 'var(--text3)' }}>—</td>}
             </tr>
           )
         }
@@ -145,6 +148,11 @@ export default function PlTable({ artData, months, plData, isCurrent, isPlan, pl
                   <td style={{ ...cellStyle(sign * rowTotal, true), background: '#EFF4FF', borderLeft: '2px solid #E2E8F0' }}>
                     {fmtS(sign * rowTotal)}
                   </td>
+                  {hasPlan && (() => {
+                    const planTotal = months.filter(m => isPlan(m)).reduce((s, m) => s + (planData?.[artName]?.[m] || 0), 0)
+                    const forecast = sign * rowTotal + planTotal
+                    return <td style={{ ...cellStyle(forecast, true), background: '#EFF5EF' }}>{fmtS(forecast)}</td>
+                  })()}
                 </tr>
               )
             })}
@@ -168,6 +176,7 @@ export default function PlTable({ artData, months, plData, isCurrent, isPlan, pl
               <td style={{ ...cellStyle(sign * secTotal, true), background: '#EFF4FF', borderLeft: '2px solid #E2E8F0' }}>
                 {fmtS(sign * secTotal)}
               </td>
+              {hasPlan && <td style={{ ...cellStyle(0, true), background: '#EFF5EF', color: 'var(--text3)' }}>—</td>}
             </tr>
           </React.Fragment>
         )
