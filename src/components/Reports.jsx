@@ -741,18 +741,17 @@ export default function Reports({ initialTab }) {
                 </th>
               ))}
               <th style={{ padding:'8px 12px', background:'#EFF4FF', borderBottom:'1px solid var(--border)', textAlign:'right', fontWeight:700, color:'var(--blue)', whiteSpace:'nowrap', borderLeft:'2px solid #E2E8F0' }}>
-                ФАКТ
-              </th>
-              <th style={{ padding:'8px 12px', background:'#EFF5EF', borderBottom:'1px solid var(--border)', textAlign:'right', fontWeight:700, color:'#4A7C59', whiteSpace:'nowrap' }}>
-                ПРОГНОЗ
+                РАЗОМ
               </th>
             </tr>
           </thead>
           <PlTable
             artData={artData}
-            months={months}
+            months={allDisplayMonths}
             plData={plData}
             isCurrent={isCurrent}
+            isPlan={isPlan}
+            planData={planData}
             onCellClick={handleCellClick}
             onSectionClick={handleSectionClick}
           />

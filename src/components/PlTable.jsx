@@ -70,7 +70,7 @@ export function buildPlData(articles, artData, months) {
   return { byLevel, sectionTotals, calcRows }
 }
 
-export default function PlTable({ artData, months, plData, isCurrent, onCellClick, onSectionClick }) {
+export default function PlTable({ artData, months, plData, isCurrent, isPlan, planData, onCellClick, onSectionClick }) {
   const { byLevel, sectionTotals, calcRows } = plData
 
   return (
@@ -124,9 +124,19 @@ export default function PlTable({ artData, months, plData, isCurrent, onCellClic
                     {artName}
                   </td>
                   {months.map(m => {
+                    if (isPlan && isPlan(m)) {
+                      const pv = planData?.[artName]?.[m] || 0
+                      return (
+                        <td key={m} style={{ padding:'7px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums',
+                          color: pv === 0 ? 'var(--text3)' : pv > 0 ? '#4A7C59' : '#9B3A3A',
+                          fontStyle:'italic', fontSize:12.5, background:'#FEF9EF' }}>
+                          {pv === 0 ? '—' : fmtS(pv)}
+                        </td>
+                      )
+                    }
                     const v = sign * (artData[artName]?.[m]?.sum || 0)
                     return (
-                      <td key={m} style={{ ...cellStyle(v, false), cursor: v !== 0 ? 'pointer' : 'default', background: isCurrent(m) ? '#EFF4FF' : '' }}
+                      <td key={m} style={{ ...cellStyle(v, false), cursor: v !== 0 ? 'pointer' : 'default', background: isCurrent?.(m) ? '#EFF4FF' : '' }}
                         onClick={() => onCellClick && onCellClick(artName, m)}>
                         {fmtS(v)}
                       </td>
@@ -144,9 +154,12 @@ export default function PlTable({ artData, months, plData, isCurrent, onCellClic
                 Разом {(PL_LABELS[level] || level).toLowerCase()}
               </td>
               {months.map(m => {
+                if (isPlan && isPlan(m)) {
+                  return <td key={m} style={{ padding:'7px 12px', textAlign:'right', background:'#FEF9EF', color:'var(--text3)' }}>—</td>
+                }
                 const v = sign * (sectionTotals[level]?.[m] || 0)
                 return (
-                  <td key={m} style={{ ...cellStyle(v, true), cursor: v !== 0 ? 'pointer' : 'default', background: isCurrent(m) ? '#EFF4FF' : 'var(--surface2)' }}
+                  <td key={m} style={{ ...cellStyle(v, true), cursor: v !== 0 ? 'pointer' : 'default', background: isCurrent?.(m) ? '#EFF4FF' : 'var(--surface2)' }}
                     onClick={() => onSectionClick && onSectionClick(level, m)}>
                     {fmtS(v)}
                   </td>
