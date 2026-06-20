@@ -144,8 +144,9 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
     } catch (e) { setError(e.message) }
   }
 
+  const isContract = DOCUMENT_TYPES.find(t => t.key === docType)?.isContract
   const canProceed = step === 1 ? !!docType
-    : step === 2 ? items.length > 0 && items.some(it => it.name.trim())
+    : step === 2 ? isContract ? true : items.length > 0 && items.some(it => it.name?.trim())
     : true
 
   return (
@@ -265,8 +266,45 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
               )}
             </div>
 
-            {/* Пошук товару зі складу */}
-            <div style={{ position: 'relative', marginBottom: 12 }}>
+            {/* Спеціальні поля для договорів */}
+            {DOCUMENT_TYPES.find(t => t.key === docType)?.isContract && (
+              <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 12, background: 'var(--bg)' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10, color: 'var(--text2)' }}>Умови договору</div>
+                <div className="form-grid">
+                  {docType === 'loanAgreement' && <>
+                    <div className="form-group">
+                      <label>Сума допомоги (грн)</label>
+                      <input type="number" className="form-input" value={items[0]?.amount || ''} onChange={e => setItems([{ ...items[0], amount: e.target.value, name: 'Фінансова допомога', quantity: 1, unitPrice: e.target.value }])} placeholder="0.00" />
+                    </div>
+                    <div className="form-group">
+                      <label>Строк повернення</label>
+                      <input className="form-input" value={items[0]?.returnPeriod || '12 місяців'} onChange={e => setItems([{ ...items[0], returnPeriod: e.target.value }])} placeholder="12 місяців" />
+                    </div>
+                    <div className="form-group">
+                      <label>Дата повернення (або залишити строк)</label>
+                      <input type="date" className="form-input" value={items[0]?.returnDate || ''} onChange={e => setItems([{ ...items[0], returnDate: e.target.value }])} />
+                    </div>
+                  </>}
+                  {docType === 'supplyAgreement' && <>
+                    <div className="form-group">
+                      <label>Строк оплати</label>
+                      <input className="form-input" value={items[0]?.paymentTerms || '5 банківських днів'} onChange={e => setItems([{ ...items[0], paymentTerms: e.target.value }])} />
+                    </div>
+                    <div className="form-group">
+                      <label>Строк поставки</label>
+                      <input className="form-input" value={items[0]?.deliveryTerms || '10 робочих днів'} onChange={e => setItems([{ ...items[0], deliveryTerms: e.target.value }])} />
+                    </div>
+                    <div className="form-group">
+                      <label>Гарантійний строк</label>
+                      <input className="form-input" value={items[0]?.warrantyPeriod || '12 місяців'} onChange={e => setItems([{ ...items[0], warrantyPeriod: e.target.value }])} />
+                    </div>
+                  </>}
+                </div>
+              </div>
+            )}
+
+            {/* Пошук товару зі складу — тільки для НЕ-договорів */}
+            {!DOCUMENT_TYPES.find(t => t.key === docType)?.isContract && <div style={{ position: 'relative', marginBottom: 12 }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <div style={{ flex: 1, position: 'relative' }}>
                   <input className="form-input" style={{ height: 36, fontSize: 13, paddingLeft: 32 }}
@@ -321,8 +359,9 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
                   </div>
                 </div>
               )}
-            </div>
+            </div>}
 
+            {!DOCUMENT_TYPES.find(t => t.key === docType)?.isContract && <>
             {/* Таблиця позицій */}
             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
               Позиції ({items.filter(it => it.name).length})
@@ -389,6 +428,8 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
                 </tbody>
               </table>
             </div>
+
+            </>}
 
             <div className="form-group" style={{ marginTop: 12 }}>
               <label>Примітки</label>
