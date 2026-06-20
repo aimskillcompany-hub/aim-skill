@@ -88,15 +88,22 @@ export default function PlTable({ artData, months, plData, isCurrent, isPlan, pl
               <td style={{ padding: isNet ? '10px 18px' : '8px 18px', fontWeight: 700, fontSize: isNet ? 14 : 13, color: 'var(--text)', position: 'sticky', left: 0, background: isNet ? '#EFF5EF' : 'var(--surface2)' }}>
                 {PL_LABELS[level]}
               </td>
-              {months.map(m => (
-                <td key={m} style={{ ...cellStyle(row[m] || 0, true), background: isCurrent(m) ? '#EFF4FF' : isNet ? '#EFF5EF' : 'var(--surface2)', fontSize: isNet ? 13 : 12.5 }}>
-                  {fmtS(row[m] || 0)}
-                </td>
-              ))}
+              {months.map(m => {
+                const v = row[m] || 0
+                return (
+                  <td key={m} style={{ ...cellStyle(v, true), background: isCurrent?.(m) ? '#EFF4FF' : isPlan?.(m) ? '#FEF9EF' : isNet ? '#EFF5EF' : 'var(--surface2)', fontSize: isNet ? 13 : 12.5 }}>
+                    {fmtS(v)}
+                  </td>
+                )
+              })}
               <td style={{ ...cellStyle(row._total, true), background: '#EFF4FF', borderLeft: '2px solid #E2E8F0' }}>
                 {fmtS(row._total)}
               </td>
-              {hasPlan && <td style={{ ...cellStyle(0, true), background: '#EFF5EF', color: 'var(--text3)' }}>—</td>}
+              {hasPlan && (() => {
+                // Факт + план для всіх місяців
+                const allTotal = months.reduce((s, m) => s + (row[m] || 0), 0)
+                return <td style={{ ...cellStyle(allTotal, true), background: '#EFF5EF' }}>{fmtS(allTotal)}</td>
+              })()}
             </tr>
           )
         }
@@ -176,7 +183,12 @@ export default function PlTable({ artData, months, plData, isCurrent, isPlan, pl
               <td style={{ ...cellStyle(sign * secTotal, true), background: '#EFF4FF', borderLeft: '2px solid #E2E8F0' }}>
                 {fmtS(sign * secTotal)}
               </td>
-              {hasPlan && <td style={{ ...cellStyle(0, true), background: '#EFF5EF', color: 'var(--text3)' }}>—</td>}
+              {hasPlan && (() => {
+                const planSecTotal = months.filter(m => isPlan(m)).reduce((s, m) =>
+                  s + (byLevel[level] || []).reduce((ss, name) => ss + (planData?.[name]?.[m] || 0), 0), 0)
+                const forecast = sign * secTotal + planSecTotal
+                return <td style={{ ...cellStyle(forecast, true), background: '#EFF5EF' }}>{fmtS(forecast)}</td>
+              })()}
             </tr>
           </React.Fragment>
         )
