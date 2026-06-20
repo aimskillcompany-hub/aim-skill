@@ -109,7 +109,7 @@ export default function Analytics({ user, onPage }) {
       }
       if (!bucketMap[key]) bucketMap[key] = { month: key, revenue: 0, expenses: 0 }
       if (t.direction === 'Доходи') bucketMap[key].revenue += Math.abs(t.amount || 0)
-      if (t.direction === 'Витрати') bucketMap[key].expenses += Math.abs(t.amount || 0)
+      if (t.direction === 'Витрати') bucketMap[key].expenses -= Math.abs(t.amount || 0)
     })
     const chart = Object.values(bucketMap).sort((a, b) => a.month.localeCompare(b.month))
     chart.forEach(m => { m.net = m.revenue - m.expenses })
