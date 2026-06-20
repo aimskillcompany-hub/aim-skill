@@ -118,6 +118,8 @@ export default function Reports({ initialTab }) {
   const [compareMode, setCompareMode] = useState(false)
   const [cfMonthly, setCfMonthly]   = useState([])
   const [filterProject, setFilterProject] = useState('')
+  const [filterContractor, setFilterContractor] = useState('')
+  const [contractors, setContractors] = useState([])
 
   const rptPeriodKey = (dateStr) => {
     if (!dateStr) return null
@@ -133,6 +135,7 @@ export default function Reports({ initialTab }) {
 
   useEffect(() => {
     supabase.from('projects').select('id,name').eq('status','active').order('name').then(({ data }) => setProjects(data || []))
+    supabase.from('contractors').select('id,name,short_name').eq('status','active').order('name').then(({ data }) => setContractors(data || []))
 
     // Fetch plans
     supabase.from('plans').select('*').then(({ data: plns }) => {
@@ -154,7 +157,7 @@ export default function Reports({ initialTab }) {
     fetchArticles().then(setAllArticles)
     Promise.all([
       fetchArticles(),
-      supabase.from('bank_transactions').select('id,date,amount,direction,article,counterparty,description,is_ignored,project_id').eq('is_ignored', false).order('date'),
+      supabase.from('bank_transactions').select('id,date,amount,direction,article,counterparty,description,is_ignored,project_id,contractor_id').eq('is_ignored', false).order('date'),
     ]).then(([arts, { data: txs }]) => {
       // Normalize field names for compatibility
       ;(txs || []).forEach(t => { t.contractor = t.counterparty; t.projects = null })
@@ -241,6 +244,7 @@ export default function Reports({ initialTab }) {
       if (rptFrom && tx.date < rptFrom) return false
       if (rptTo && tx.date > rptTo) return false
       if (filterProject && tx.project_id !== filterProject) return false
+      if (filterContractor && tx.contractor_id !== filterContractor) return false
       return true
     })
     // Re-group by period
@@ -287,7 +291,7 @@ export default function Reports({ initialTab }) {
       expByArt[art] = (expByArt[art]||0) + Math.abs(tx.amount||0)
     })
     setExpenseByArt(Object.entries(expByArt).sort((a,b)=>b[1]-a[1]).map(([name,value])=>({ name:name.substring(0,28), fullName:name, value })))
-  }, [rptGran, rptFrom, rptTo, rawTxs, filterProject])
+  }, [rptGran, rptFrom, rptTo, rawTxs, filterProject, filterContractor])
 
   const openEdit = (tx) => {
     setEditForm({
@@ -316,7 +320,7 @@ export default function Reports({ initialTab }) {
       // Перезавантажуємо дані — оновлюємо drill-down і таблицю
       Promise.all([
         fetchArticles(),
-        supabase.from('bank_transactions').select('id,date,amount,direction,article,counterparty,description,is_ignored,project_id').eq('is_ignored', false).order('date'),
+        supabase.from('bank_transactions').select('id,date,amount,direction,article,counterparty,description,is_ignored,project_id,contractor_id').eq('is_ignored', false).order('date'),
       ]).then(([arts, { data: txs }]) => {
         ;(txs || []).forEach(t => { t.contractor = t.counterparty; t.projects = null })
         const all = (txs || []).filter(t => t.direction === 'Доходи' || t.direction === 'Витрати')
@@ -508,6 +512,11 @@ export default function Reports({ initialTab }) {
           <i className="ti ti-arrows-diff" style={{ fontSize:14 }} />
           Порівняння
         </button>
+        <select className="form-input" style={{ height:40, fontSize:13, width:'auto', minWidth:180 }}
+          value={filterContractor} onChange={e => setFilterContractor(e.target.value)}>
+          <option value="">Всі контрагенти</option>
+          {contractors.map(c => <option key={c.id} value={c.id}>{c.short_name || c.name}</option>)}
+        </select>
         {projects.length > 0 && (
           <select className="form-input" style={{ height:40, fontSize:13, width:'auto', minWidth:160 }}
             value={filterProject} onChange={e => setFilterProject(e.target.value)}>
