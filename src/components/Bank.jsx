@@ -405,7 +405,10 @@ export default function Bank({ user }) {
           _isDuplicate: isDuplicate,
         }
       })
-      setParsed({ txs: withMatches, fileName: f.name })
+      // Авто-класифікація
+      const { classifyBatch } = await import('../lib/autoClassify')
+      const classified = await classifyBatch(withMatches)
+      setParsed({ txs: classified, fileName: f.name })
     } catch (e) {
       setParseError(e.message)
     } finally {
@@ -447,6 +450,7 @@ export default function Bank({ user }) {
 
     const toInsert = selected.map(t => {
       const ct = contractorMap[t.counterparty?.trim().toLowerCase()] || {}
+      const auto = t._auto || {}
       return {
         bank_name: bankName || null,
         date: t.date,
@@ -455,13 +459,12 @@ export default function Bank({ user }) {
         description: t.description,
         reference: t.reference,
         account: t.account,
-        matched_transaction_id: t._match?.id || null,
-        is_matched: !!t._match,
         imported_by: user.id,
-        direction: ct.default_direction || (t.amount > 0 ? 'Доходи' : 'Витрати'),
-        article: ct.default_article || null,
+        // Авто-класифікація → contractor defaults → amount sign
+        direction: t._userDirection || auto.direction || ct.default_direction || (t.amount > 0 ? 'Доходи' : 'Витрати'),
+        article: t._userArticle || auto.article || ct.default_article || null,
         edrpou: t.edrpou || ct.edrpou || null,
-        contractor_id: ct.id || null,
+        contractor_id: auto.contractor_id || ct.id || null,
       }
     })
     await supabase.from('bank_transactions').insert(toInsert)
@@ -703,12 +706,19 @@ export default function Bank({ user }) {
                         <th>Дата</th>
                         <th>Контрагент</th>
                         <th style={{ textAlign:'right' }}>Сума</th>
-                        <th>Призначення</th>
-                        <th>Статус</th>
+                        <th>Напрям</th>
+                        <th>Стаття</th>
+                        <th style={{ width: 60 }}></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {parsed.txs.map((tx, i) => (
+                      {parsed.txs.map((tx, i) => {
+                        const auto = tx._auto || {}
+                        const confIcon = auto.confidence === 'high' ? { icon: 'ti-circle-check', color: 'var(--green)' }
+                          : auto.confidence === 'medium' ? { icon: 'ti-help-circle', color: 'var(--amber)' }
+                          : auto.confidence === 'low' ? { icon: 'ti-info-circle', color: 'var(--text3)' }
+                          : null
+                        return (
                         <tr key={i} style={{
                           background: tx._isDuplicate ? '#F0F2F5' : tx._match ? '#EFF5EF' : undefined,
                           opacity: tx._isDuplicate ? 0.75 : 1,
@@ -718,24 +728,38 @@ export default function Bank({ user }) {
                           <td style={{ fontSize:12.5 }}>
                             <div style={{ wordBreak:'break-word' }} title={tx.counterparty}>{tx.counterparty || '—'}</div>
                           </td>
-                          <td style={{ textAlign:'right', fontWeight:600, color: tx.amount > 0 ? 'var(--green)' : 'var(--red)', whiteSpace:'nowrap' }}>
-                            {tx.amount > 0 ? '+' : ''}{fmt(tx.amount)} грн
+                          <td style={{ textAlign:'right', fontWeight:600, color: tx.amount > 0 ? 'var(--green)' : 'var(--red)', whiteSpace:'nowrap', fontSize:12 }}>
+                            {tx.amount > 0 ? '+' : ''}{fmt(tx.amount)}
                           </td>
-                          <td style={{ fontSize:11.5, color:'var(--text2)', wordBreak:'break-word' }} title={tx.description}>{tx.description}</td>
                           <td>
-                            {tx._isDuplicate
-                              ? <span style={{ fontSize:11, background:'#F0F2F5', color:'#6B6B6B', padding:'2px 8px', borderRadius:6, fontWeight:500, border:'1px solid #E2E8F0', whiteSpace:'nowrap' }}>
-                                  <i className="ti ti-copy" style={{ marginRight:3, fontSize:11 }} />Дублікат
-                                </span>
-                              : tx._match
-                                ? <span style={{ fontSize:11, background:'#EFF5EF', color:'var(--green)', padding:'2px 8px', borderRadius:6, fontWeight:500, whiteSpace:'nowrap' }}>
-                                    <i className="ti ti-check" style={{ marginRight:3, fontSize:11 }} />{tx._match.contractor?.substring(0,18)}
-                                  </span>
-                                : <span style={{ fontSize:11, color:'var(--text3)' }}>Нова</span>
-                            }
+                            <select style={{ fontSize:11, border:'1px solid var(--border)', borderRadius:4, padding:'2px 4px', fontFamily:'inherit',
+                              background: auto.direction ? (auto.direction === 'Доходи' ? 'var(--green-bg)' : 'var(--red-bg)') : 'var(--surface)',
+                              color: auto.direction === 'Доходи' ? 'var(--green)' : auto.direction === 'Витрати' ? 'var(--red)' : 'var(--text2)',
+                            }}
+                              value={tx._userDirection || auto.direction || ''}
+                              onChange={e => setParsed(p => ({ ...p, txs: p.txs.map((t, j) => j === i ? { ...t, _userDirection: e.target.value } : t) }))}>
+                              <option value="">—</option>
+                              <option value="Доходи">Доходи</option>
+                              <option value="Витрати">Витрати</option>
+                              <option value="ПФД">ПФД</option>
+                              <option value="Інше">Інше</option>
+                            </select>
+                          </td>
+                          <td>
+                            <input style={{ fontSize:11, border:'1px solid var(--border)', borderRadius:4, padding:'2px 6px', width:100, fontFamily:'inherit',
+                              background: auto.article ? 'var(--blue-bg)' : 'var(--surface)',
+                            }}
+                              value={tx._userArticle || auto.article || ''}
+                              onChange={e => setParsed(p => ({ ...p, txs: p.txs.map((t, j) => j === i ? { ...t, _userArticle: e.target.value } : t) }))}
+                              placeholder="Стаття"
+                              title={auto.rule ? `Правило: ${auto.rule}` : ''} />
+                          </td>
+                          <td>
+                            {confIcon && <i className={`ti ${confIcon.icon}`} style={{ fontSize:14, color: confIcon.color }} title={`${auto.confidence} (${auto.rule})`} />}
+                            {tx._isDuplicate && <span style={{ fontSize:10, color:'var(--text3)' }}>дубль</span>}
                           </td>
                         </tr>
-                      ))}
+                      )})}
                     </tbody>
                   </table>
                 </div>
@@ -826,9 +850,29 @@ export default function Bank({ user }) {
                   </div>
                 )}
 
-                <div style={{ fontSize:12, color:'var(--text2)', marginBottom:8 }}>
-                  {filtered.length} з {unmatched.length} операцій
-                  {filtered.length < unmatched.length && ' (фільтр активний)'}
+                <div style={{ fontSize:12, color:'var(--text2)', marginBottom:8, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <span>{filtered.length} з {unmatched.length} операцій{filtered.length < unmatched.length && ' (фільтр активний)'}</span>
+                  <button className="btn btn-sm btn-secondary" style={{ display:'flex', alignItems:'center', gap:4 }}
+                    onClick={async () => {
+                      const { classifyBatch } = await import('../lib/autoClassify')
+                      const noArticle = unmatched.filter(t => !t.article?.trim())
+                      if (noArticle.length === 0) { alert('Всі транзакції вже мають статтю'); return }
+                      const classified = await classifyBatch(noArticle)
+                      const updates = classified.filter(t => t._auto?.article && t._auto.confidence !== 'none')
+                      if (updates.length === 0) { alert('Не вдалось класифікувати жодну транзакцію'); return }
+                      if (!confirm(`Авто-рознести ${updates.length} транзакцій?`)) return
+                      for (const t of updates) {
+                        await supabase.from('bank_transactions').update({
+                          direction: t._auto.direction || t.direction,
+                          article: t._auto.article,
+                          contractor_id: t._auto.contractor_id || t.contractor_id,
+                        }).eq('id', t.id)
+                      }
+                      alert(`Рознесено: ${updates.length} транзакцій`)
+                      loadUnmatched()
+                    }}>
+                    <i className="ti ti-sparkles" style={{ fontSize:13 }} /> Авто-рознести
+                  </button>
                 </div>
 
                 <div className="tbl-wrap">
