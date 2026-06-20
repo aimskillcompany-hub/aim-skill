@@ -91,16 +91,27 @@ export default function Analytics({ user, onPage }) {
     setDebtors(debtList.sort((a, b) => b.amount - a.amount))
     setCreditors(creditList.sort((a, b) => b.amount - a.amount))
 
-    // Chart — по місяцях
-    const monthMap = {}
+    // Chart — по днях або тижнях (автоматично)
+    const daysDiff = Math.ceil((new Date(to) - new Date(from)) / 86400000)
+    const useWeeks = daysDiff > 60
+    const bucketMap = {}
     ;(bankTxs || []).forEach(t => {
-      const m = t.date?.substring(0, 7)
-      if (!m) return
-      if (!monthMap[m]) monthMap[m] = { month: m, revenue: 0, expenses: 0 }
-      if (t.direction === 'Доходи') monthMap[m].revenue += Math.abs(t.amount || 0)
-      if (t.direction === 'Витрати') monthMap[m].expenses += Math.abs(t.amount || 0)
+      if (!t.date) return
+      let key
+      if (useWeeks) {
+        // Початок тижня (понеділок)
+        const d = new Date(t.date)
+        const day = d.getDay() || 7
+        d.setDate(d.getDate() - day + 1)
+        key = d.toISOString().split('T')[0]
+      } else {
+        key = t.date
+      }
+      if (!bucketMap[key]) bucketMap[key] = { month: key, revenue: 0, expenses: 0 }
+      if (t.direction === 'Доходи') bucketMap[key].revenue += Math.abs(t.amount || 0)
+      if (t.direction === 'Витрати') bucketMap[key].expenses += Math.abs(t.amount || 0)
     })
-    const chart = Object.values(monthMap).sort((a, b) => a.month.localeCompare(b.month))
+    const chart = Object.values(bucketMap).sort((a, b) => a.month.localeCompare(b.month))
     chart.forEach(m => { m.net = m.revenue - m.expenses })
     setChartData(chart)
 
@@ -222,7 +233,8 @@ export default function Analytics({ user, onPage }) {
               <ResponsiveContainer width="100%" height={280}>
                 <ComposedChart data={chartData} barGap={4}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--text2)' }} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="month" tick={{ fontSize: 10, fill: 'var(--text2)' }} axisLine={false} tickLine={false}
+                    tickFormatter={v => { const d = v.split('-'); return d.length === 3 ? `${d[2]}.${d[1]}` : v }} />
                   <YAxis tick={{ fontSize: 11, fill: 'var(--text3)' }} axisLine={false} tickLine={false} width={52}
                     tickFormatter={v => v >= 1000000 ? (v/1000000).toFixed(1)+'M' : v >= 1000 ? (v/1000).toFixed(0)+'k' : v} />
                   <Tooltip formatter={v => fmt(v) + ' грн'} />
