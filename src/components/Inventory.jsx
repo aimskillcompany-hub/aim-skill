@@ -164,7 +164,12 @@ export default function Inventory({ user }) {
       prods = fallback || []
     }
 
-    setProducts(prods || [])
+    // Позначити збірки
+    const { data: asmProducts } = await supabase.from('assemblies').select('result_product_id')
+    const asmSet = new Set((asmProducts || []).map(a => a.result_product_id).filter(Boolean))
+    prods = (prods || []).map(p => ({ ...p, _isAssembly: asmSet.has(p.id) }))
+
+    setProducts(prods)
     setLoading(false)
   }
 
@@ -1006,6 +1011,11 @@ export default function Inventory({ user }) {
                   <td>
                     <div style={{ fontWeight:500, fontSize:14, display:'flex', alignItems:'center', gap:6 }}>
                       {p.name}
+                      {p._isAssembly && (
+                        <span style={{ fontSize:9, background:'#F0E6FF', color:'#7C3AED', padding:'1px 5px', borderRadius:3, flexShrink:0, display:'flex', alignItems:'center', gap:2 }}>
+                          <i className="ti ti-assembly" style={{ fontSize:10 }} /> збірка
+                        </span>
+                      )}
                       {p.product_type && p.product_type !== 'goods' && (
                         <span style={{ fontSize:9, background: p.product_type === 'service' ? 'var(--blue-bg)' : 'var(--amber-bg)', color: p.product_type === 'service' ? 'var(--blue)' : 'var(--amber)', padding:'1px 4px', borderRadius:3, flexShrink:0 }}>
                           {p.product_type === 'service' ? 'послуга' : 'госп.'}
