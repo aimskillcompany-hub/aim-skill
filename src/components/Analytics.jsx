@@ -65,17 +65,18 @@ export default function Analytics({ user, onPage }) {
       txNetMap[item.bank_transaction_id].vat += vat
     })
 
-    let revenueGross = 0, revenueNet = 0, revenueVat = 0
-    let expensesGross = 0, expensesNet = 0, expensesVat = 0
+    let revenueGross = 0, revenueVat = 0
+    let expensesGross = 0, expensesVat = 0
     all.forEach(t => {
       const gross = Math.abs(t.amount || 0)
       const mapped = txNetMap[t.id]
-      // Якщо є items — рахуємо з них, якщо ні — gross = net (ПДВ невідомий)
-      const net = mapped ? mapped.net : gross
+      // ПДВ з items (точно) або 0 якщо items немає
       const vat = mapped ? mapped.vat : 0
-      if (t.direction === 'Доходи') { revenueGross += gross; revenueNet += net; revenueVat += vat }
-      if (t.direction === 'Витрати') { expensesGross += gross; expensesNet += net; expensesVat += vat }
+      if (t.direction === 'Доходи') { revenueGross += gross; revenueVat += vat }
+      if (t.direction === 'Витрати') { expensesGross += gross; expensesVat += vat }
     })
+    const revenueNet = revenueGross - revenueVat
+    const expensesNet = expensesGross - expensesVat
 
     // Bank balance (all time)
     const { data: allBank } = await supabase.from('bank_transactions').select('amount').eq('is_ignored', false)

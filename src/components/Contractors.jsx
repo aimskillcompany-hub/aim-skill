@@ -443,24 +443,19 @@ export default function Contractors({ user, onNavigate }) {
   if (view === 'detail' && detail) {
     const txIncomeGross = detailTxs.filter(t=>t.direction==='Доходи').reduce((s,t)=>s+Math.abs(t.amount||0),0)
     const txExpenseGross = detailTxs.filter(t=>t.direction==='Витрати').reduce((s,t)=>s+Math.abs(t.amount||0),0)
-    // Рахуємо net з transaction_items (якщо є)
-    let txIncomeNet = 0, txIncomeVat = 0, txExpenseNet = 0, txExpenseVat = 0
+    // Рахуємо ПДВ з transaction_items
+    let txIncomeVat = 0, txExpenseVat = 0
     detailTxs.forEach(t => {
-      const gross = Math.abs(t.amount || 0)
       const txItems = t.transaction_items || []
-      if (txItems.length > 0) {
-        const net = txItems.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0)
-        const vat = txItems.reduce((s, i) => { const r = parseFloat(i.vat_rate) || 0; return s + (parseFloat(i.amount) || 0) * r / 100 }, 0)
-        if (t.direction === 'Доходи') { txIncomeNet += net; txIncomeVat += vat }
-        if (t.direction === 'Витрати') { txExpenseNet += net; txExpenseVat += vat }
-      } else {
-        // Немає items — gross = net (ПДВ невідомий)
-        if (t.direction === 'Доходи') txIncomeNet += gross
-        if (t.direction === 'Витрати') txExpenseNet += gross
-      }
+      const vat = txItems.reduce((s, i) => {
+        const r = parseFloat(i.vat_rate) || 0
+        return s + (parseFloat(i.amount) || 0) * r / 100
+      }, 0)
+      if (t.direction === 'Доходи') txIncomeVat += vat
+      if (t.direction === 'Витрати') txExpenseVat += vat
     })
-    const txIncome = txIncomeNet
-    const txExpense = txExpenseNet
+    const txIncome = txIncomeGross - txIncomeVat
+    const txExpense = txExpenseGross - txExpenseVat
     const balance = txIncome - txExpense
 
     // Дебіторка / Кредиторка
