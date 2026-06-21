@@ -528,14 +528,14 @@ export default function Contractors({ user, onNavigate }) {
           <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(3,1fr)', marginBottom:12 }}>
             {debit > 0 && (
               <div className="kpi" style={{ borderLeft:'3px solid var(--amber)' }}>
-                <div className="kpi-label">Дебіторка</div>
+                <div className="kpi-label">Дебіторка (з ПДВ)</div>
                 <div className="kpi-value" style={{ color:'var(--amber)' }}>{fmt(debit)}</div>
                 <div className="kpi-sub">нам винні</div>
               </div>
             )}
             {credit > 0 && (
               <div className="kpi" style={{ borderLeft:'3px solid var(--red)' }}>
-                <div className="kpi-label">Кредиторка</div>
+                <div className="kpi-label">Кредиторка (з ПДВ)</div>
                 <div className="kpi-value" style={{ color:'var(--red)' }}>{fmt(credit)}</div>
                 <div className="kpi-sub">ми винні</div>
               </div>

@@ -25,7 +25,9 @@ const EXPENSE_COLORS = ['#2563EB','#6B6B6B','#0891b2','#059669','#4A7C59','#9B3A
 const DIRS = ['Витрати','Доходи','ПФД','Внутрішні перекази','Відсотки банку','Інше']
 
 // Абсолютна сума для P&L (direction визначає секцію, amount завжди показується додатнім)
-const absAmount = (tx) => Math.abs(tx.amount || 0)
+// P&L — суми без ПДВ; Cash Flow — з ПДВ
+const absAmount = (tx) => tx.amount_net || Math.abs(tx.amount || 0)
+const absAmountGross = (tx) => Math.abs(tx.amount || 0)
 
 // ── Planning helpers ─────────────────────────────────────────────────────────
 function getMonthRange(from, to) {
@@ -158,9 +160,28 @@ export default function Reports({ initialTab }) {
     Promise.all([
       fetchArticles(),
       supabase.from('bank_transactions').select('id,date,amount,direction,article,counterparty,description,is_ignored,project_id,contractor_id').eq('is_ignored', false).order('date'),
-    ]).then(([arts, { data: txs }]) => {
+      supabase.from('transaction_items').select('bank_transaction_id, amount, vat_rate'),
+    ]).then(([arts, { data: txs }, { data: allItems }]) => {
+      // Побудувати map: bank_tx_id → сума без ПДВ
+      const netAmountMap = {}
+      ;(allItems || []).forEach(item => {
+        if (!item.bank_transaction_id) return
+        if (!netAmountMap[item.bank_transaction_id]) netAmountMap[item.bank_transaction_id] = 0
+        netAmountMap[item.bank_transaction_id] += parseFloat(item.amount) || 0
+      })
+
       // Normalize field names for compatibility
-      ;(txs || []).forEach(t => { t.contractor = t.counterparty; t.projects = null })
+      ;(txs || []).forEach(t => {
+        t.contractor = t.counterparty
+        t.projects = null
+        // Сума без ПДВ: з items якщо є, інакше розрахувати зі стандартної ставки
+        if (netAmountMap[t.id]) {
+          t.amount_net = netAmountMap[t.id]
+        } else {
+          // Якщо немає items — припускаємо 20% ПДВ
+          t.amount_net = Math.abs(t.amount) / 1.2
+        }
+      })
 
       // CF from all transactions (not just Доходи/Витрати)
       const cfByMonth = {}
@@ -522,7 +543,7 @@ export default function Reports({ initialTab }) {
       {/* KPIs — only when standalone or no initialTab */}
       {!initialTab && <div className="kpi-grid" style={{ marginBottom:20 }}>
         <div className="kpi">
-          <div className="kpi-label">Загальна виручка</div>
+          <div className="kpi-label">Виручка (без ПДВ)</div>
           <div className="kpi-value blue">{fmt(totRevenue)} грн</div>
           {prevRevenue && (
             <div className="kpi-sub" style={{ color: totRevenue >= prevRevenue.revenue ? 'var(--green)' : 'var(--red)' }}>

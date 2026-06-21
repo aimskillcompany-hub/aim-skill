@@ -153,19 +153,19 @@ export default function ProductDetail({
           </div>
           <div style={{ display:'grid', gridTemplateColumns: avgSellPrice > 0 ? '1fr 1fr' : '1fr', gap:10 }}>
             <div>
-              <div style={{ fontSize:11, color:'var(--text3)' }}>Сер. ціна закупки</div>
+              <div style={{ fontSize:11, color:'var(--text3)' }}>Сер. закупка (без ПДВ)</div>
               <div style={{ fontSize:18, fontWeight:600 }}>{avgBuyPrice > 0 ? fmt(avgBuyPrice) + ' грн' : '—'}</div>
               {lastPurchase && <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>остання: {fmt(lastPurchase.price||0)} грн · {lastPurchase.date}</div>}
             </div>
             {avgSellPrice > 0 && <div>
-              <div style={{ fontSize:11, color:'var(--text3)' }}>Сер. ціна продажу</div>
+              <div style={{ fontSize:11, color:'var(--text3)' }}>Сер. продаж (без ПДВ)</div>
               <div style={{ fontSize:18, fontWeight:600 }}>{fmt(avgSellPrice)} грн</div>
               {lastSale && <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>остання: {fmt(lastSale.price||0)} грн · {lastSale.date}</div>}
             </div>}
           </div>
           {avgBuyPrice > 0 && avgSellPrice > 0 && (
             <div style={{ marginTop:10, paddingTop:8, borderTop:'1px solid var(--border)' }}>
-              <div style={{ fontSize:11, color:'var(--text3)' }}>Маржа на одиницю</div>
+              <div style={{ fontSize:11, color:'var(--text3)' }}>Маржа (без ПДВ)</div>
               <div style={{ fontSize:15, fontWeight:600, color: avgSellPrice > avgBuyPrice ? 'var(--green)' : 'var(--red)' }}>
                 {avgSellPrice > avgBuyPrice ? '+' : ''}{fmtInt(avgSellPrice - avgBuyPrice)} грн ({((avgSellPrice - avgBuyPrice) / avgBuyPrice * 100).toFixed(0)}%)
               </div>

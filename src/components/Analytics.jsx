@@ -175,12 +175,12 @@ export default function Analytics({ user, onPage }) {
           {/* KPIs */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12, marginBottom: 16 }}>
             <div className="kpi">
-              <div className="kpi-label">Виручка</div>
+              <div className="kpi-label">Виручка (з ПДВ)</div>
               <div className="kpi-value" style={{ color: 'var(--green)' }}>{fmt(stats.revenue)}</div>
               <div className="kpi-sub">грн</div>
             </div>
             <div className="kpi">
-              <div className="kpi-label">Витрати</div>
+              <div className="kpi-label">Витрати (з ПДВ)</div>
               <div className="kpi-value" style={{ color: 'var(--red)' }}>{fmt(stats.expenses)}</div>
               <div className="kpi-sub">грн</div>
             </div>
