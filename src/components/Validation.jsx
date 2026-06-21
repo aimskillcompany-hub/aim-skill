@@ -122,9 +122,16 @@ export default function Validation() {
         }
       }
     } else {
-      // Без items — net = bank (ПДВ невідомий)
-      amountNet = bankAbs
-      vatAmount = 0
+      // Без items — визначаємо по вибору користувача
+      if (pricesWithVat === true) {
+        // Банківська сума з ПДВ 20%
+        amountNet = bankAbs / 1.2
+        vatAmount = bankAbs - amountNet
+      } else {
+        // Банківська сума без ПДВ
+        amountNet = bankAbs
+        vatAmount = 0
+      }
     }
 
     await supabase.from('bank_transactions').update({
@@ -350,9 +357,14 @@ export default function Validation() {
                   </>
                 )}
                 {items.length === 0 && (
-                  <button className="btn btn-primary" disabled={saving} onClick={() => markValidated(tx, null)} style={{ flex: 1 }}>
-                    {saving ? '...' : '✓ Валідувати'}
-                  </button>
+                  <>
+                    <button className="btn btn-primary" disabled={saving} onClick={() => markValidated(tx, true)} style={{ flex: 1 }}>
+                      {saving ? '...' : '✓ Сума З ПДВ (20%)'}
+                    </button>
+                    <button className="btn btn-secondary" disabled={saving} onClick={() => markValidated(tx, false)} style={{ flex: 1 }}>
+                      {saving ? '...' : '✓ Сума БЕЗ ПДВ'}
+                    </button>
+                  </>
                 )}
               </div>
             )}
