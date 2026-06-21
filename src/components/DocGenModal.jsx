@@ -341,8 +341,10 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
                               }
                             })
                             setItems(newItems)
-                            if (result.docNumber && !docNumber) setDocNumber(result.docNumber)
+                            if (result.docNumber) setDocNumber(result.docNumber)
                             if (result.date) setDocDate(result.date)
+                            if (result.description) setNotes(result.description)
+                            if (result.contractNum) setContractNum(result.contractNum)
                           } else {
                             alert('Не вдалося розпізнати позиції з документу')
                           }
