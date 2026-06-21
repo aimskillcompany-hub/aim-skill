@@ -356,7 +356,7 @@ export default function Contractors({ user, onNavigate }) {
 
     // Fetch transactions by ЄДРПОУ (primary) or by name (fallback)
     let txQuery = supabase.from('bank_transactions')
-      .select('id,date,amount,direction,article,counterparty,description,project_id,edrpou,doc_type,doc_number,documents(id,file_name,file_path,file_type,file_size,doc_role),transaction_items(id,name,quantity,unit,unit_price,amount,product_id)')
+      .select('id,date,amount,direction,article,counterparty,description,project_id,edrpou,doc_type,doc_number,documents(id,file_name,file_path,file_type,file_size,doc_role),transaction_items(id,name,quantity,unit,unit_price,amount,product_id,vat_rate)')
       .eq('is_ignored', false)
       .order('date', { ascending: false }).limit(500)
 
@@ -443,10 +443,24 @@ export default function Contractors({ user, onNavigate }) {
   if (view === 'detail' && detail) {
     const txIncomeGross = detailTxs.filter(t=>t.direction==='Доходи').reduce((s,t)=>s+Math.abs(t.amount||0),0)
     const txExpenseGross = detailTxs.filter(t=>t.direction==='Витрати').reduce((s,t)=>s+Math.abs(t.amount||0),0)
-    const txIncome = txIncomeGross / 1.2
-    const txExpense = txExpenseGross / 1.2
-    const txIncomeVat = txIncomeGross - txIncome
-    const txExpenseVat = txExpenseGross - txExpense
+    // Рахуємо net з transaction_items (якщо є)
+    let txIncomeNet = 0, txIncomeVat = 0, txExpenseNet = 0, txExpenseVat = 0
+    detailTxs.forEach(t => {
+      const gross = Math.abs(t.amount || 0)
+      const txItems = t.transaction_items || []
+      if (txItems.length > 0) {
+        const net = txItems.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0)
+        const vat = txItems.reduce((s, i) => { const r = parseFloat(i.vat_rate) || 0; return s + (parseFloat(i.amount) || 0) * r / 100 }, 0)
+        if (t.direction === 'Доходи') { txIncomeNet += net; txIncomeVat += vat }
+        if (t.direction === 'Витрати') { txExpenseNet += net; txExpenseVat += vat }
+      } else {
+        // Немає items — gross = net (ПДВ невідомий)
+        if (t.direction === 'Доходи') txIncomeNet += gross
+        if (t.direction === 'Витрати') txExpenseNet += gross
+      }
+    })
+    const txIncome = txIncomeNet
+    const txExpense = txExpenseNet
     const balance = txIncome - txExpense
 
     // Дебіторка / Кредиторка
