@@ -41,6 +41,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
   const [products, setProducts] = useState([])
   const [searchIdx, setSearchIdx] = useState(null)
   const [searchText, setSearchText] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
 
   // Завантажити товари зі складу + договори контрагента
   useEffect(() => {
@@ -299,6 +300,59 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
                       <input className="form-input" value={items[0]?.warrantyPeriod || '12 місяців'} onChange={e => setItems([{ ...items[0], warrantyPeriod: e.target.value }])} />
                     </div>
                   </>}
+                </div>
+              </div>
+            )}
+
+            {/* Завантажити документ для AI розпізнавання */}
+            {!DOCUMENT_TYPES.find(t => t.key === docType)?.isContract && (
+              <div style={{ marginBottom: 12, padding: '12px 14px', background: 'var(--surface2)', borderRadius: 10, border: '1px dashed var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ fontSize: 13, color: 'var(--text2)' }}>
+                    <i className="ti ti-file-upload" style={{ fontSize: 16, marginRight: 6 }} />
+                    Завантажте накладну — AI заповнить позиції автоматично
+                  </div>
+                  <label style={{ cursor: aiLoading ? 'wait' : 'pointer' }}>
+                    <span className="btn btn-sm btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 4, pointerEvents: aiLoading ? 'none' : 'auto' }}>
+                      {aiLoading ? <><i className="ti ti-loader-2" style={{ fontSize: 14, animation: 'spin 1s linear infinite' }} /> Розпізнаю...</> : <><i className="ti ti-upload" style={{ fontSize: 14 }} /> Завантажити</>}
+                    </span>
+                    <input type="file" accept=".pdf,image/*" multiple style={{ display: 'none' }} disabled={aiLoading}
+                      onChange={async (e) => {
+                        const files = Array.from(e.target.files || [])
+                        if (!files.length) return
+                        setAiLoading(true)
+                        try {
+                          const { extractDocumentMulti } = await import('../lib/ai')
+                          const { fetchArticles } = await import('../lib/articles')
+                          const arts = await fetchArticles()
+                          const result = await extractDocumentMulti(files, arts)
+                          if (result?.items?.length > 0) {
+                            const newItems = result.items.map(it => {
+                              // Спробувати знайти товар на складі по назві
+                              const match = products.find(p => p.name.toLowerCase() === (it.name || '').toLowerCase())
+                              return {
+                                name: it.name || '',
+                                quantity: it.quantity || 1,
+                                unit: it.unit || 'шт',
+                                unitPrice: it.unitPrice || '',
+                                vatRate: it.vatRate ?? 20,
+                                amount: it.amount || '',
+                                productId: match?.id || null,
+                              }
+                            })
+                            setItems(newItems)
+                            if (result.docNumber && !docNumber) setDocNumber(result.docNumber)
+                            if (result.date) setDocDate(result.date)
+                          } else {
+                            alert('Не вдалося розпізнати позиції з документу')
+                          }
+                        } catch (err) {
+                          alert('Помилка розпізнавання: ' + err.message)
+                        }
+                        setAiLoading(false)
+                        e.target.value = ''
+                      }} />
+                  </label>
                 </div>
               </div>
             )}
