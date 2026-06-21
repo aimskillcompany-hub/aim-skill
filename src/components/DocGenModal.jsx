@@ -130,6 +130,20 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
           notes, contractNum, contractDate, paymentDue, city, parentDocId, contractId: selectedContract || null, userId,
         })
       }
+      // Автоматично створити договір якщо є номер і такого ще немає
+      if (contractNum && !selectedContract && contractor?.id) {
+        const { data: existing } = await supabase.from('contractor_contracts')
+          .select('id').eq('contractor_id', contractor.id).eq('number', contractNum).maybeSingle()
+        if (!existing) {
+          await supabase.from('contractor_contracts').insert({
+            contractor_id: contractor.id,
+            number: contractNum,
+            date: contractDate || null,
+            subject: notes || null,
+            status: 'active',
+          })
+        }
+      }
       if (andDownload === 'pdf') await generatePdf(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress })
       if (andDownload === 'xlsx') await generateXlsx(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress })
       onSaved?.()

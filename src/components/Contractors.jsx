@@ -659,14 +659,45 @@ export default function Contractors({ user, onNavigate }) {
                         </div>
                         {ct.subject && <div style={{ fontSize:12, color:'var(--text2)' }}>{ct.subject}</div>}
                       </div>
-                      <button style={{ background:'none', border:'none', cursor:'pointer', color:'var(--red)', fontSize:14 }}
-                        onClick={async () => {
-                          if (!confirm(`Видалити договір №${ct.number}?`)) return
-                          await supabase.from('contractor_contracts').delete().eq('id', ct.id)
-                          supabase.from('contractor_contracts').select('*').eq('contractor_id', detail.id).order('date', { ascending: false }).then(({ data }) => setContracts(data || []))
-                        }}>
-                        <i className="ti ti-trash" />
-                      </button>
+                      <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+                        {ct.file_path ? (
+                          <button style={{ background:'none', border:'1px solid var(--border)', borderRadius:6, padding:'4px 8px', cursor:'pointer', fontSize:11, color:'var(--blue)', fontFamily:'inherit', display:'flex', alignItems:'center', gap:3 }}
+                            onClick={async () => {
+                              const { data } = await supabase.storage.from('documents').createSignedUrl(ct.file_path, 300)
+                              if (data?.signedUrl) window.open(data.signedUrl, '_blank')
+                            }}>
+                            <i className="ti ti-file-text" style={{ fontSize:13 }} />Файл
+                          </button>
+                        ) : (
+                          <label style={{ cursor:'pointer' }}>
+                            <span style={{ background:'none', border:'1px dashed var(--border)', borderRadius:6, padding:'4px 8px', fontSize:11, color:'var(--text3)', fontFamily:'inherit', display:'flex', alignItems:'center', gap:3, cursor:'pointer' }}>
+                              <i className="ti ti-upload" style={{ fontSize:13 }} />Прикріпити
+                            </span>
+                            <input type="file" accept=".pdf,image/*" style={{ display:'none' }}
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0]
+                                if (!file) return
+                                const ext = file.name.split('.').pop()?.toLowerCase() || 'pdf'
+                                const path = `contracts/${ct.id}/${Date.now()}.${ext}`
+                                const { error } = await supabase.storage.from('documents').upload(path, file, { contentType: file.type })
+                                if (!error) {
+                                  await supabase.from('contractor_contracts').update({ file_path: path, file_name: file.name }).eq('id', ct.id)
+                                  supabase.from('contractor_contracts').select('*').eq('contractor_id', detail.id).order('date', { ascending: false }).then(({ data }) => setContracts(data || []))
+                                }
+                                e.target.value = ''
+                              }} />
+                          </label>
+                        )}
+                        <button style={{ background:'none', border:'none', cursor:'pointer', color:'var(--red)', fontSize:14 }}
+                          onClick={async () => {
+                            if (!confirm(`Видалити договір №${ct.number}?`)) return
+                            if (ct.file_path) await supabase.storage.from('documents').remove([ct.file_path])
+                            await supabase.from('contractor_contracts').delete().eq('id', ct.id)
+                            supabase.from('contractor_contracts').select('*').eq('contractor_id', detail.id).order('date', { ascending: false }).then(({ data }) => setContracts(data || []))
+                          }}>
+                          <i className="ti ti-trash" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
