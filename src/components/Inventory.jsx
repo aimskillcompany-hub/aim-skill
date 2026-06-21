@@ -466,148 +466,208 @@ export default function Inventory({ user }) {
     const totalIn = detailMovements.filter(m => m.type === 'in').reduce((s, m) => s + (m.quantity || 0), 0)
     const totalOut = detailMovements.filter(m => m.type === 'out').reduce((s, m) => s + (m.quantity || 0), 0)
 
+    const purchases = detailMovements.filter(m => m.type === 'in')
+    const sales = detailMovements.filter(m => m.type === 'out')
+    const totalBought = purchases.reduce((s, m) => s + (m.total || (m.quantity * (m.price || 0)) || 0), 0)
+    const totalSold = sales.reduce((s, m) => s + (m.total || (m.quantity * (m.price || 0)) || 0), 0)
+    const margin = totalSold - totalBought
+    const stockValue = (detail.computed_stock || 0) * (detail.buy_price || 0)
+    const lastPurchase = purchases[purchases.length - 1]
+    const lastSale = sales[sales.length - 1]
+    const isNegative = detail.computed_stock < 0
+    const isLow = detail.computed_stock > 0 && detail.computed_stock <= (detail.min_stock || 0)
+    const stockColor = isNegative ? 'var(--red)' : isLow ? '#D97706' : 'var(--green)'
+
+    const infoField = (label, value) => value ? (
+      <div style={{ display:'flex', gap:6, fontSize:13, marginBottom:4 }}>
+        <span style={{ color:'var(--text3)', minWidth:80 }}>{label}</span>
+        <span style={{ color:'var(--text)' }}>{value}</span>
+      </div>
+    ) : null
+
     return (
       <div>
-        <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:24, flexWrap:'wrap' }}>
+        {/* ═══ ШАПКА ═══ */}
+        <div style={{ display:'flex', alignItems:'flex-start', gap:12, marginBottom:16, flexWrap:'wrap' }}>
           <button onClick={() => setDetail(null)} className="btn btn-secondary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}>
             <i className="ti ti-arrow-left" style={{ fontSize:16 }} /> Назад
           </button>
           <div style={{ flex:1 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
               <h1 style={{ fontSize:22, fontWeight:600, margin:0 }}>{detail.name}</h1>
-              {detail.is_verified && <i className="ti ti-circle-check-filled" style={{ fontSize:18, color:'var(--green)' }} title="Верифіковано" />}
-              {detailAliases.length > 0 && (
-                <span title={`Історичні назви:\n${detailAliases.join('\n')}`}
-                  style={{ fontSize:14, color:'var(--amber)', cursor:'help', display:'flex', alignItems:'center', gap:2 }}>
-                  <i className="ti ti-alert-circle" style={{ fontSize:16 }} />
-                  <span style={{ fontSize:10 }}>{detailAliases.length}</span>
-                </span>
-              )}
-            </div>
-            <div style={{ fontSize:13, color:'var(--text2)', marginTop:4, display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-              {detail.product_type && detail.product_type !== 'goods' && (
-                <span style={{ fontSize:10, background: detail.product_type === 'service' ? 'var(--blue-bg)' : 'var(--amber-bg)', color: detail.product_type === 'service' ? 'var(--blue)' : 'var(--amber)', padding:'1px 6px', borderRadius:4 }}>
-                  {detail.product_type === 'service' ? 'Послуга' : 'Госп. витрата'}
-                </span>
-              )}
-              {detail.manufacturer && <span>{detail.manufacturer} · </span>}
-              {detail.sku && <span>SKU: {detail.sku} · </span>}
-              {detail.uktzed && <span>УКТЗЕД: {detail.uktzed} · </span>}
-              {detail.category && <span>{detail.category} · </span>}
-              <span>{detail.unit}</span>
-              <button
-                onClick={async () => {
-                  const newVal = !detail.is_verified
-                  await supabase.from('products').update({ is_verified: newVal }).eq('id', detail.id)
-                  setDetail(prev => ({ ...prev, is_verified: newVal }))
-                  loadAll()
-                }}
-                style={{ fontSize:11, background:'none', border:'1px solid var(--border)', borderRadius:6, padding:'2px 8px', cursor:'pointer', color: detail.is_verified ? 'var(--green)' : 'var(--text3)', fontFamily:'inherit', display:'flex', alignItems:'center', gap:3 }}
-              >
-                <i className={`ti ${detail.is_verified ? 'ti-circle-check-filled' : 'ti-circle-check'}`} style={{ fontSize:12 }} />
-                {detail.is_verified ? 'Верифіковано' : 'Верифікувати'}
-              </button>
+              {detail._isAssembly && <span style={{ fontSize:10, background:'#F0E6FF', color:'#7C3AED', padding:'2px 6px', borderRadius:4 }}>збірка</span>}
+              {detail.product_type === 'service' && <span style={{ fontSize:10, background:'var(--blue-bg)', color:'var(--blue)', padding:'2px 6px', borderRadius:4 }}>послуга</span>}
+              {detail.product_type === 'expense' && <span style={{ fontSize:10, background:'var(--amber-bg)', color:'var(--amber)', padding:'2px 6px', borderRadius:4 }}>госп.</span>}
+              {detail.is_verified && <i className="ti ti-circle-check-filled" style={{ fontSize:16, color:'var(--green)' }} title="Верифіковано" />}
             </div>
           </div>
-          <button onClick={() => openEdit(detail)} className="btn btn-secondary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}>
-            <i className="ti ti-pencil" style={{ fontSize:14 }} /> Редагувати
-          </button>
-          <button onClick={() => { setShowMerge(true); setMergeSearch(''); setMergeTarget(null) }}
-            className="btn btn-secondary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}>
-            <i className="ti ti-arrows-merge" style={{ fontSize:14 }} /> Об'єднати
-          </button>
-          <button onClick={() => { setShowMovement(true); setMovForm({ type:'in', quantity:'', price:'', description:'', date:new Date().toISOString().split('T')[0] }) }}
-            className="btn btn-primary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}>
-            <i className="ti ti-plus" style={{ fontSize:14 }} /> Рух товару
-          </button>
+          <div style={{ display:'flex', gap:8 }}>
+            <button onClick={async () => {
+              const newVal = !detail.is_verified
+              await supabase.from('products').update({ is_verified: newVal }).eq('id', detail.id)
+              setDetail(prev => ({ ...prev, is_verified: newVal })); loadAll()
+            }} className="btn btn-secondary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}>
+              <i className={`ti ${detail.is_verified ? 'ti-circle-check-filled' : 'ti-circle-check'}`} style={{ fontSize:14, color: detail.is_verified ? 'var(--green)' : undefined }} />
+            </button>
+            <button onClick={() => openEdit(detail)} className="btn btn-secondary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}>
+              <i className="ti ti-pencil" style={{ fontSize:14 }} /> Редагувати
+            </button>
+            <button onClick={() => { setShowMerge(true); setMergeSearch(''); setMergeTarget(null) }}
+              className="btn btn-secondary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}>
+              <i className="ti ti-arrows-merge" style={{ fontSize:14 }} />
+            </button>
+            <button onClick={() => { setShowMovement(true); setMovForm({ type:'in', quantity:'', price:'', description:'', date:new Date().toISOString().split('T')[0] }) }}
+              className="btn btn-primary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}>
+              <i className="ti ti-plus" style={{ fontSize:14 }} /> Рух
+            </button>
+          </div>
         </div>
 
-        {/* KPI */}
-        {(() => {
-          const purchases = detailMovements.filter(m => m.type === 'in')
-          const sales = detailMovements.filter(m => m.type === 'out')
-          const totalBought = purchases.reduce((s, m) => s + (m.total || (m.quantity * (m.price || 0)) || 0), 0)
-          const totalSold = sales.reduce((s, m) => s + (m.total || (m.quantity * (m.price || 0)) || 0), 0)
-          const margin = totalSold - totalBought
-          return (
-            <>
-              <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(5,1fr)', marginBottom:20 }}>
-                <div className="kpi">
-                  <div className="kpi-label">Залишок</div>
-                  <div className="kpi-value" style={{ color: detail.computed_stock <= 0 ? 'var(--red)' : detail.computed_stock <= (detail.min_stock||0) ? '#D97706' : 'var(--green)' }}>
-                    {fmt(detail.computed_stock)} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>{detail.unit}</span>
-                  </div>
+        {/* ═══ ALERT: негативний залишок ═══ */}
+        {isNegative && (
+          <div style={{ background:'var(--red-bg)', border:'1px solid var(--red)', borderRadius:10, padding:'10px 16px', marginBottom:16, display:'flex', alignItems:'center', gap:8 }}>
+            <i className="ti ti-alert-triangle" style={{ fontSize:18, color:'var(--red)' }} />
+            <div>
+              <div style={{ fontWeight:600, color:'var(--red)', fontSize:13 }}>Негативний залишок: {fmt(detail.computed_stock)} {detail.unit}</div>
+              <div style={{ fontSize:12, color:'var(--red)' }}>Відсутня закупка або неправильний рух. Потрібна корекція.</div>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ ІНФОРМАЦІЯ + ЦІНИ (два блоки в ряд) ═══ */}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:16 }}>
+          {/* Інформація */}
+          <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:16 }}>
+            <div style={{ fontSize:13, fontWeight:600, marginBottom:10, display:'flex', alignItems:'center', gap:6, color:'var(--text2)' }}>
+              <i className="ti ti-info-circle" style={{ fontSize:15 }} /> Інформація
+            </div>
+            {infoField('Виробник', detail.manufacturer)}
+            {infoField('SKU', detail.sku)}
+            {infoField('УКТЗЕД', detail.uktzed)}
+            {infoField('Категорія', detail.category)}
+            {infoField('Одиниця', detail.unit)}
+            {infoField('Мін. залишок', detail.min_stock > 0 ? `${detail.min_stock} ${detail.unit}` : null)}
+            {detailAliases.length > 0 && (
+              <div style={{ marginTop:6 }}>
+                <div style={{ fontSize:11, color:'var(--amber)', display:'flex', alignItems:'center', gap:4, marginBottom:2 }}>
+                  <i className="ti ti-alert-circle" style={{ fontSize:12 }} /> {detailAliases.length} альтернативних назв
                 </div>
-                <div className="kpi"><div className="kpi-label">Закуплено</div><div className="kpi-value" style={{ color:'var(--green)' }}>+{fmt(totalIn)} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>{detail.unit}</span></div><div className="kpi-sub">{fmtInt(totalBought)} грн</div></div>
-                <div className="kpi"><div className="kpi-label">Реалізовано</div><div className="kpi-value" style={{ color:'var(--red)' }}>-{fmt(totalOut)} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>{detail.unit}</span></div><div className="kpi-sub">{fmtInt(totalSold)} грн</div></div>
-                <div className="kpi"><div className="kpi-label">Маржа</div><div className="kpi-value" style={{ color: margin >= 0 ? 'var(--green)' : 'var(--red)' }}>{margin >= 0 ? '+' : '-'}{fmtInt(Math.abs(margin))} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>грн</span></div>{totalBought > 0 && <div className="kpi-sub">{((margin / totalBought) * 100).toFixed(0)}%</div>}</div>
-                <div className="kpi"><div className="kpi-label">Вартість залишку</div><div className="kpi-value">{fmtInt((detail.computed_stock||0) * (detail.buy_price||0))} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>грн</span></div></div>
+                {detailAliases.map((a, i) => <div key={i} style={{ fontSize:11, color:'var(--text3)', paddingLeft:16 }}>{a}</div>)}
               </div>
+            )}
+            {detail.notes && <div style={{ marginTop:8, fontSize:12, color:'var(--text2)', fontStyle:'italic' }}>{detail.notes}</div>}
+          </div>
 
-              {/* Purchases */}
-              {purchases.length > 0 && (
-                <div className="card" style={{ marginBottom: 14 }}>
-                  <div style={{ fontWeight:600, fontSize:14, marginBottom:10, display:'flex', alignItems:'center', gap:6, color:'var(--green)' }}>
-                    <i className="ti ti-arrow-down-circle" style={{ fontSize:16 }} />
-                    Закупівлі ({purchases.length})
+          {/* Ціни */}
+          <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:16 }}>
+            <div style={{ fontSize:13, fontWeight:600, marginBottom:10, display:'flex', alignItems:'center', gap:6, color:'var(--text2)' }}>
+              <i className="ti ti-currency-hryvnia" style={{ fontSize:15 }} /> Ціни
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+              <div>
+                <div style={{ fontSize:11, color:'var(--text3)' }}>Закупка</div>
+                <div style={{ fontSize:18, fontWeight:600, color:'var(--text)' }}>{detail.buy_price ? fmtInt(detail.buy_price) + ' грн' : '—'}</div>
+              </div>
+              <div>
+                <div style={{ fontSize:11, color:'var(--text3)' }}>Продаж</div>
+                <div style={{ fontSize:18, fontWeight:600, color:'var(--text)' }}>{detail.sell_price ? fmtInt(detail.sell_price) + ' грн' : '—'}</div>
+              </div>
+              {detail.buy_price && detail.sell_price && (
+                <div>
+                  <div style={{ fontSize:11, color:'var(--text3)' }}>Маржа</div>
+                  <div style={{ fontSize:16, fontWeight:600, color: detail.sell_price > detail.buy_price ? 'var(--green)' : 'var(--red)' }}>
+                    {((detail.sell_price - detail.buy_price) / detail.buy_price * 100).toFixed(0)}%
                   </div>
-                  {purchases.map(m => (
-                    <div key={m.id} style={{ padding:'8px 0', borderBottom:'1px solid var(--bg)' }}>
-                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                        <div>
-                          <div style={{ fontWeight:500, fontSize:13 }}>{m.bank_transactions?.counterparty || m.description || '—'}</div>
-                          <div style={{ fontSize:12, color:'var(--text2)' }}>{m.date}</div>
-                        </div>
-                        <div style={{ textAlign:'right' }}>
-                          <div style={{ fontWeight:500, color:'var(--green)' }}>{fmt(m.quantity)} {detail.unit} × {m.price ? fmt(m.price) + ' грн' : '—'}</div>
-                          <div style={{ fontSize:12, color:'var(--text2)' }}>{m.total ? fmtInt(m.total) + ' грн' : '—'}</div>
-                        </div>
-                      </div>
-                      {m.documents?.length > 0 && m.documents.map(doc => (
-                        <div key={doc.id} style={{ display:'flex', alignItems:'center', gap:6, marginTop:4, paddingLeft:4 }}>
-                          <i className="ti ti-file-text" style={{ fontSize:13, color:'var(--blue)' }} />
-                          <span style={{ fontSize:11, color:'var(--blue)', cursor:'pointer', textDecoration:'underline' }}
-                            onClick={() => openDocPreview(doc)}>{doc.file_name}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
                 </div>
               )}
+              <div>
+                <div style={{ fontSize:11, color:'var(--text3)' }}>Вартість залишку</div>
+                <div style={{ fontSize:16, fontWeight:600 }}>{fmtInt(stockValue)} грн</div>
+              </div>
+            </div>
+            {lastPurchase && (
+              <div style={{ marginTop:10, paddingTop:8, borderTop:'1px solid var(--border)', fontSize:11, color:'var(--text3)' }}>
+                Остання закупка: {lastPurchase.date} · {lastPurchase.bank_transactions?.counterparty || '—'} · {lastPurchase.price ? fmt(lastPurchase.price) + ' грн' : '—'}
+              </div>
+            )}
+            {lastSale && (
+              <div style={{ fontSize:11, color:'var(--text3)', marginTop:2 }}>
+                Останній продаж: {lastSale.date} · {lastSale.bank_transactions?.counterparty || '—'} · {lastSale.price ? fmt(lastSale.price) + ' грн' : '—'}
+              </div>
+            )}
+          </div>
+        </div>
 
-              {/* Sales */}
-              {sales.length > 0 && (
-                <div className="card" style={{ marginBottom: 14 }}>
-                  <div style={{ fontWeight:600, fontSize:14, marginBottom:10, display:'flex', alignItems:'center', gap:6, color:'var(--red)' }}>
-                    <i className="ti ti-arrow-up-circle" style={{ fontSize:16 }} />
-                    Реалізації ({sales.length})
+        {/* ═══ KPI ═══ */}
+        <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(4,1fr)', marginBottom:16 }}>
+          <div className="kpi" style={{ borderLeft: isNegative ? '3px solid var(--red)' : isLow ? '3px solid #D97706' : undefined }}>
+            <div className="kpi-label">Залишок</div>
+            <div className="kpi-value" style={{ color: stockColor }}>{fmt(detail.computed_stock)} <span style={{ fontSize:13, fontWeight:400, color:'var(--text3)' }}>{detail.unit}</span></div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-label">Закуплено</div>
+            <div className="kpi-value" style={{ color:'var(--green)' }}>+{fmt(totalIn)}</div>
+            <div className="kpi-sub">{fmtInt(totalBought)} грн</div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-label">Реалізовано</div>
+            <div className="kpi-value" style={{ color:'var(--red)' }}>-{fmt(totalOut)}</div>
+            <div className="kpi-sub">{fmtInt(totalSold)} грн</div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-label">Маржа</div>
+            <div className="kpi-value" style={{ color: margin >= 0 ? 'var(--green)' : 'var(--red)' }}>{margin >= 0 ? '+' : '-'}{fmtInt(Math.abs(margin))} грн</div>
+            {totalBought > 0 && <div className="kpi-sub">{((margin / totalBought) * 100).toFixed(0)}%</div>}
+          </div>
+        </div>
+
+        {/* ═══ ЗАКУПІВЛІ ═══ */}
+        {purchases.length > 0 && (
+          <div className="card" style={{ marginBottom: 14 }}>
+            <div style={{ fontWeight:600, fontSize:14, marginBottom:10, display:'flex', alignItems:'center', gap:6, color:'var(--green)' }}>
+              <i className="ti ti-arrow-down-circle" style={{ fontSize:16 }} />
+              Закупівлі ({purchases.length})
+            </div>
+            {purchases.map(m => (
+              <div key={m.id} style={{ padding:'8px 0', borderBottom:'1px solid var(--bg)' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <div>
+                    <div style={{ fontWeight:500, fontSize:13 }}>{m.bank_transactions?.counterparty || m.description || '—'}</div>
+                    <div style={{ fontSize:12, color:'var(--text2)' }}>{m.date}{m.source && m.source !== 'manual' ? ` · ${m.source}` : ''}</div>
                   </div>
-                  {sales.map(m => (
-                    <div key={m.id} style={{ padding:'8px 0', borderBottom:'1px solid var(--bg)' }}>
-                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                        <div>
-                          <div style={{ fontWeight:500, fontSize:13 }}>{m.bank_transactions?.counterparty || m.description || '—'}</div>
-                          <div style={{ fontSize:12, color:'var(--text2)' }}>{m.date}</div>
-                        </div>
-                        <div style={{ textAlign:'right' }}>
-                          <div style={{ fontWeight:500, color:'var(--red)' }}>{fmt(m.quantity)} {detail.unit} × {m.price ? fmt(m.price) + ' грн' : '—'}</div>
-                          <div style={{ fontSize:12, color:'var(--text2)' }}>{m.total ? fmtInt(m.total) + ' грн' : '—'}</div>
-                        </div>
-                      </div>
-                      {m.documents?.length > 0 && m.documents.map(doc => (
-                        <div key={doc.id} style={{ display:'flex', alignItems:'center', gap:6, marginTop:4, paddingLeft:4 }}>
-                          <i className="ti ti-file-text" style={{ fontSize:13, color:'var(--blue)' }} />
-                          <span style={{ fontSize:11, color:'var(--blue)', cursor:'pointer', textDecoration:'underline' }}
-                            onClick={() => openDocPreview(doc)}>{doc.file_name}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
+                  <div style={{ textAlign:'right' }}>
+                    <div style={{ fontWeight:500, color:'var(--green)' }}>{fmt(m.quantity)} {detail.unit} × {m.price ? fmt(m.price) + ' грн' : '—'}</div>
+                    <div style={{ fontSize:12, color:'var(--text2)' }}>{m.total ? fmtInt(m.total) + ' грн' : '—'}</div>
+                  </div>
                 </div>
-              )}
-            </>
-          )
-        })()}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ═══ РЕАЛІЗАЦІЇ ═══ */}
+        {sales.length > 0 && (
+          <div className="card" style={{ marginBottom: 14 }}>
+            <div style={{ fontWeight:600, fontSize:14, marginBottom:10, display:'flex', alignItems:'center', gap:6, color:'var(--red)' }}>
+              <i className="ti ti-arrow-up-circle" style={{ fontSize:16 }} />
+              Реалізації ({sales.length})
+            </div>
+            {sales.map(m => (
+              <div key={m.id} style={{ padding:'8px 0', borderBottom:'1px solid var(--bg)' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <div>
+                    <div style={{ fontWeight:500, fontSize:13 }}>{m.bank_transactions?.counterparty || m.description || '—'}</div>
+                    <div style={{ fontSize:12, color:'var(--text2)' }}>{m.date}{m.cost_price ? ` · FIFO: ${fmt(m.cost_price)} грн` : ''}</div>
+                  </div>
+                  <div style={{ textAlign:'right' }}>
+                    <div style={{ fontWeight:500, color:'var(--red)' }}>{fmt(m.quantity)} {detail.unit} × {m.price ? fmt(m.price) + ' грн' : '—'}</div>
+                    <div style={{ fontSize:12, color:'var(--text2)' }}>{m.total ? fmtInt(m.total) + ' грн' : '—'}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Full movement history */}
         <div className="card" style={{ padding:0, overflow:'hidden' }}>
