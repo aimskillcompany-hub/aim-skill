@@ -55,13 +55,15 @@ export default function Analytics({ user, onPage }) {
     const all = bankTxs || []
     // Побудувати map: bank_tx_id → { net, vat } з transaction_items
     const txNetMap = {}
+    // items.amount = сума З ПДВ. net = amount / (1 + rate/100)
     ;(items || []).forEach(item => {
       if (!item.bank_transaction_id) return
       const amt = parseFloat(item.amount) || 0
       const vatRate = parseFloat(item.vat_rate) || 0
-      const vat = vatRate > 0 ? amt * vatRate / 100 : 0
+      const net = vatRate > 0 ? amt / (1 + vatRate / 100) : amt
+      const vat = amt - net
       if (!txNetMap[item.bank_transaction_id]) txNetMap[item.bank_transaction_id] = { net: 0, vat: 0 }
-      txNetMap[item.bank_transaction_id].net += amt
+      txNetMap[item.bank_transaction_id].net += net
       txNetMap[item.bank_transaction_id].vat += vat
     })
 
@@ -70,8 +72,8 @@ export default function Analytics({ user, onPage }) {
     all.forEach(t => {
       const gross = Math.abs(t.amount || 0)
       const mapped = txNetMap[t.id]
-      // ПДВ з items (точно) або 0 якщо items немає
-      const vat = mapped ? mapped.vat : 0
+      // Якщо є items — ПДВ точний. Якщо ні — припускаємо що ПДВ = gross * 20/120
+      const vat = mapped ? mapped.vat : gross * 20 / 120
       if (t.direction === 'Доходи') { revenueGross += gross; revenueVat += vat }
       if (t.direction === 'Витрати') { expensesGross += gross; expensesVat += vat }
     })

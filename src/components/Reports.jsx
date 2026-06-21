@@ -163,22 +163,25 @@ export default function Reports({ initialTab }) {
       supabase.from('transaction_items').select('bank_transaction_id, amount, vat_rate'),
     ]).then(([arts, { data: txs }, { data: allItems }]) => {
       // Побудувати map: bank_tx_id → сума без ПДВ
+      // items.amount = З ПДВ, net = amount / (1 + vat_rate/100)
       const netAmountMap = {}
       ;(allItems || []).forEach(item => {
         if (!item.bank_transaction_id) return
+        const amt = parseFloat(item.amount) || 0
+        const vatRate = parseFloat(item.vat_rate) || 0
+        const net = vatRate > 0 ? amt / (1 + vatRate / 100) : amt
         if (!netAmountMap[item.bank_transaction_id]) netAmountMap[item.bank_transaction_id] = 0
-        netAmountMap[item.bank_transaction_id] += parseFloat(item.amount) || 0
+        netAmountMap[item.bank_transaction_id] += net
       })
 
       // Normalize field names for compatibility
       ;(txs || []).forEach(t => {
         t.contractor = t.counterparty
         t.projects = null
-        // Сума без ПДВ: з items якщо є, інакше розрахувати зі стандартної ставки
+        // Сума без ПДВ: з items (точно) або gross / 1.2 (припущення 20%)
         if (netAmountMap[t.id]) {
           t.amount_net = netAmountMap[t.id]
         } else {
-          // Якщо немає items — припускаємо 20% ПДВ
           t.amount_net = Math.abs(t.amount) / 1.2
         }
       })

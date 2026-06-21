@@ -443,16 +443,25 @@ export default function Contractors({ user, onNavigate }) {
   if (view === 'detail' && detail) {
     const txIncomeGross = detailTxs.filter(t=>t.direction==='Доходи').reduce((s,t)=>s+Math.abs(t.amount||0),0)
     const txExpenseGross = detailTxs.filter(t=>t.direction==='Витрати').reduce((s,t)=>s+Math.abs(t.amount||0),0)
-    // Рахуємо ПДВ з transaction_items
+    // Рахуємо ПДВ з transaction_items (amount = з ПДВ, net = amount / (1+rate/100))
     let txIncomeVat = 0, txExpenseVat = 0
     detailTxs.forEach(t => {
       const txItems = t.transaction_items || []
-      const vat = txItems.reduce((s, i) => {
-        const r = parseFloat(i.vat_rate) || 0
-        return s + (parseFloat(i.amount) || 0) * r / 100
-      }, 0)
-      if (t.direction === 'Доходи') txIncomeVat += vat
-      if (t.direction === 'Витрати') txExpenseVat += vat
+      if (txItems.length > 0) {
+        const vat = txItems.reduce((s, i) => {
+          const amt = parseFloat(i.amount) || 0
+          const r = parseFloat(i.vat_rate) || 0
+          return s + (r > 0 ? amt - amt / (1 + r / 100) : 0)
+        }, 0)
+        if (t.direction === 'Доходи') txIncomeVat += vat
+        if (t.direction === 'Витрати') txExpenseVat += vat
+      } else {
+        // Немає items — припускаємо 20%
+        const gross = Math.abs(t.amount || 0)
+        const vat = gross * 20 / 120
+        if (t.direction === 'Доходи') txIncomeVat += vat
+        if (t.direction === 'Витрати') txExpenseVat += vat
+      }
     })
     const txIncome = txIncomeGross - txIncomeVat
     const txExpense = txExpenseGross - txExpenseVat
