@@ -524,8 +524,18 @@ export default function Contractors({ user, onNavigate }) {
           <div className="kpi"><div className="kpi-label">Сальдо</div><div className="kpi-value" style={{ color:balance>=0?'var(--green)':'var(--red)' }}>{balance>=0?'+':'-'}{fmt(balance)}</div><div className="kpi-sub">грн</div></div>
           <div className="kpi"><div className="kpi-label">Операцій</div><div className="kpi-value">{detail.operations_count||0}</div><div className="kpi-sub">остання: {detail.last_operation_date||'—'}</div></div>
         </div>
-        {(debit > 0 || credit > 0) && (
-          <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(3,1fr)', marginBottom:12 }}>
+        {(docsOutgoing > 0 || docsIncoming > 0) && (
+          <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(4,1fr)', marginBottom:12 }}>
+            <div className="kpi">
+              <div className="kpi-label">Відвантажено нами</div>
+              <div className="kpi-value">{fmt(docsOutgoing)}</div>
+              <div className="kpi-sub">за документами</div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-label">Отримано від них</div>
+              <div className="kpi-value">{fmt(docsIncoming)}</div>
+              <div className="kpi-sub">за документами</div>
+            </div>
             {debit > 0 && (
               <div className="kpi" style={{ borderLeft:'3px solid var(--amber)' }}>
                 <div className="kpi-label">Дебіторка</div>
@@ -540,11 +550,20 @@ export default function Contractors({ user, onNavigate }) {
                 <div className="kpi-sub">ми винні</div>
               </div>
             )}
-            <div className="kpi">
-              <div className="kpi-label">Відвантажено</div>
-              <div className="kpi-value">{fmt(docsOutgoing)}</div>
-              <div className="kpi-sub">за документами</div>
-            </div>
+            {debit < 0 && txExpense > 0 && docsIncoming > 0 && (
+              <div className="kpi" style={{ borderLeft:'3px solid var(--green)' }}>
+                <div className="kpi-label">Переплата</div>
+                <div className="kpi-value" style={{ color:'var(--green)' }}>{fmt(txExpense - docsIncoming)}</div>
+                <div className="kpi-sub">оплатили більше ніж отримали</div>
+              </div>
+            )}
+            {credit < 0 && txIncome > 0 && docsOutgoing > 0 && (
+              <div className="kpi" style={{ borderLeft:'3px solid var(--green)' }}>
+                <div className="kpi-label">Передоплата від них</div>
+                <div className="kpi-value" style={{ color:'var(--green)' }}>{fmt(txIncome - docsOutgoing)}</div>
+                <div className="kpi-sub">оплатили більше ніж відвантажили</div>
+              </div>
+            )}
           </div>
         )}
         {(detail.total_otherIn > 0 || detail.total_otherOut > 0) && (
