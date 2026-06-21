@@ -523,8 +523,8 @@ export default function Validation() {
               <th>Дата</th>
               <th>Контрагент</th>
               <th style={{ textAlign: 'right' }}>Банк</th>
-              <th style={{ textAlign: 'right' }}>Items</th>
-              <th style={{ textAlign: 'center' }}>ПДВ</th>
+              <th style={{ textAlign: 'right' }}>Без ПДВ</th>
+              <th style={{ textAlign: 'right' }}>ПДВ</th>
               <th>Стаття</th>
               <th>Доки</th>
             </tr>
@@ -548,10 +548,10 @@ export default function Validation() {
                     {tx.amount > 0 ? '+' : ''}{fmtInt(tx.amount)}
                   </td>
                   <td style={{ textAlign: 'right', fontSize: 12, color: 'var(--text2)', fontVariantNumeric: 'tabular-nums' }}>
-                    {tx._items.length > 0 ? fmtInt(tx._itemsTotal) : '—'}
+                    {tx.is_validated && tx.amount_net ? fmtInt(tx.amount_net) : tx._items.length > 0 ? <span style={{ color: 'var(--text3)' }}>{fmtInt(tx._itemsTotal)}</span> : '—'}
                   </td>
-                  <td style={{ textAlign: 'center', fontSize: 10, fontWeight: 500, color: ratioColor }}>
-                    {tx._ratio === null ? '—' : Math.abs(tx._ratio - 1.0) < 0.01 ? 'з ПДВ' : Math.abs(tx._ratio - 1.2) < 0.01 ? 'без ПДВ' : '⚠'}
+                  <td style={{ textAlign: 'right', fontSize: 12, fontVariantNumeric: 'tabular-nums', color: tx.is_validated ? (tx.vat_amount > 0 ? 'var(--text2)' : 'var(--green)') : ratioColor }}>
+                    {tx.is_validated ? (tx.vat_amount > 0 ? fmtInt(tx.vat_amount) : 'без ПДВ') : tx._ratio === null ? '—' : Math.abs(tx._ratio - 1.0) < 0.01 ? 'з ПДВ' : Math.abs(tx._ratio - 1.2) < 0.01 ? 'без ПДВ' : '⚠'}
                   </td>
                   <td style={{ fontSize: 12, color: tx.article ? 'var(--text2)' : 'var(--red)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {tx.article || 'без статті'}
