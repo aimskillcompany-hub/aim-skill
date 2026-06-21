@@ -157,7 +157,7 @@ export default function Reports({ initialTab }) {
     fetchArticles().then(setAllArticles)
     Promise.all([
       fetchArticles(),
-      supabase.from('bank_transactions').select('id,date,amount,direction,article,counterparty,description,is_ignored,project_id,contractor_id').eq('is_ignored', false).order('date'),
+      supabase.from('bank_transactions').select('id,date,amount,amount_net,vat_amount,direction,article,counterparty,description,is_ignored,project_id,contractor_id').eq('is_ignored', false).eq('is_validated', true).order('date'),
       supabase.from('transaction_items').select('bank_transaction_id, amount, vat_rate'),
       supabase.from('contractors').select('id, is_vat_payer').eq('status', 'active'),
     ]).then(([arts, { data: txs }, { data: allItems }, { data: contrs }]) => {
@@ -354,7 +354,7 @@ export default function Reports({ initialTab }) {
       // Перезавантажуємо дані — оновлюємо drill-down і таблицю
       Promise.all([
         fetchArticles(),
-        supabase.from('bank_transactions').select('id,date,amount,direction,article,counterparty,description,is_ignored,project_id,contractor_id').eq('is_ignored', false).order('date'),
+        supabase.from('bank_transactions').select('id,date,amount,amount_net,vat_amount,direction,article,counterparty,description,is_ignored,project_id,contractor_id').eq('is_ignored', false).eq('is_validated', true).order('date'),
       ]).then(([arts, { data: txs }]) => {
         ;(txs || []).forEach(t => { t.contractor = t.counterparty; t.projects = null })
         const all = (txs || []).filter(t => t.direction === 'Доходи' || t.direction === 'Витрати')

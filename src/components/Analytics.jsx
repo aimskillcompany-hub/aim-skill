@@ -45,10 +45,10 @@ export default function Analytics({ user, onPage }) {
   const loadOverview = async () => {
     setLoading(true)
     const [{ data: bankTxs }, { data: cashTxs }, { data: docs }, { data: contractors }, { data: items }, { data: contrs }] = await Promise.all([
-      supabase.from('bank_transactions').select('id, amount, direction, date, article, contractor_id').eq('is_ignored', false).gte('date', from).lte('date', to),
+      supabase.from('bank_transactions').select('id, amount, amount_net, vat_amount, direction, date, article, contractor_id').eq('is_ignored', false).eq('is_validated', true).gte('date', from).lte('date', to),
       supabase.from('cash_transactions').select('amount, type'),
       supabase.from('generated_docs').select('doc_type, total, status, contractor_id, contractor_name, bank_transaction_id'),
-      supabase.from('bank_transactions').select('amount, direction, contractor_id').eq('is_ignored', false),
+      supabase.from('bank_transactions').select('amount, direction, contractor_id').eq('is_ignored', false).eq('is_validated', true),
       supabase.from('transaction_items').select('bank_transaction_id, amount, vat_rate'),
       supabase.from('contractors').select('id, is_vat_payer').eq('status', 'active'),
     ])
@@ -98,7 +98,7 @@ export default function Analytics({ user, onPage }) {
     const expensesNet = expensesGross - expensesVat
 
     // Bank balance (all time)
-    const { data: allBank } = await supabase.from('bank_transactions').select('amount').eq('is_ignored', false)
+    const { data: allBank } = await supabase.from('bank_transactions').select('amount').eq('is_ignored', false).eq('is_validated', true)
     const bankFlow = (allBank || []).reduce((s, t) => s + (t.amount || 0), 0)
     const cashBalance = (cashTxs || []).reduce((s, t) => s + (CASH_DIR[t.type] || 0) * (t.amount || 0), 0)
     const noArticle = all.filter(t => !t.article?.trim()).length

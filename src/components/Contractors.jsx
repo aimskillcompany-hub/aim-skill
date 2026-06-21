@@ -243,7 +243,7 @@ export default function Contractors({ user, onNavigate }) {
     setLoading(true)
     const { data } = await supabase.from('contractors').select('*').order('name')
     const contractors = data || []
-    const { data: txStats } = await supabase.from('bank_transactions').select('counterparty, edrpou, amount, direction, date').eq('is_ignored', false)
+    const { data: txStats } = await supabase.from('bank_transactions').select('counterparty, edrpou, amount, direction, date').eq('is_ignored', false).eq('is_validated', true)
 
     // Build stats by ЄДРПОУ (primary) and by name (fallback)
     const statsByCode = {}
@@ -357,7 +357,7 @@ export default function Contractors({ user, onNavigate }) {
     // Fetch transactions by ЄДРПОУ (primary) or by name (fallback)
     let txQuery = supabase.from('bank_transactions')
       .select('id,date,amount,direction,article,counterparty,description,project_id,edrpou,doc_type,doc_number,documents(id,file_name,file_path,file_type,file_size,doc_role),transaction_items(id,name,quantity,unit,unit_price,amount,product_id,vat_rate)')
-      .eq('is_ignored', false)
+      .eq('is_ignored', false).eq('is_validated', true)
       .order('date', { ascending: false }).limit(500)
 
     if (c.edrpou?.trim()) {
