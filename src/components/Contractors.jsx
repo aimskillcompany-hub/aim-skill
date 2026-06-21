@@ -441,8 +441,12 @@ export default function Contractors({ user, onNavigate }) {
   // DETAIL VIEW — full screen
   // ═══════════════════════════════════════════
   if (view === 'detail' && detail) {
-    const txIncome = detailTxs.filter(t=>t.direction==='Доходи').reduce((s,t)=>s+Math.abs(t.amount||0),0)
-    const txExpense = detailTxs.filter(t=>t.direction==='Витрати').reduce((s,t)=>s+Math.abs(t.amount||0),0)
+    const txIncomeGross = detailTxs.filter(t=>t.direction==='Доходи').reduce((s,t)=>s+Math.abs(t.amount||0),0)
+    const txExpenseGross = detailTxs.filter(t=>t.direction==='Витрати').reduce((s,t)=>s+Math.abs(t.amount||0),0)
+    const txIncome = txIncomeGross / 1.2
+    const txExpense = txExpenseGross / 1.2
+    const txIncomeVat = txIncomeGross - txIncome
+    const txExpenseVat = txExpenseGross - txExpense
     const balance = txIncome - txExpense
 
     // Дебіторка / Кредиторка
@@ -519,9 +523,9 @@ export default function Contractors({ user, onNavigate }) {
 
         {/* KPI row */}
         <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(4,1fr)', marginBottom:12 }}>
-          <div className="kpi"><div className="kpi-label">Доходи</div><div className="kpi-value" style={{ color:'var(--green)' }}>+{fmt(txIncome)}</div><div className="kpi-sub">грн</div></div>
-          <div className="kpi"><div className="kpi-label">Витрати</div><div className="kpi-value" style={{ color:'var(--red)' }}>-{fmt(txExpense)}</div><div className="kpi-sub">грн</div></div>
-          <div className="kpi"><div className="kpi-label">Сальдо</div><div className="kpi-value" style={{ color:balance>=0?'var(--green)':'var(--red)' }}>{balance>=0?'+':'-'}{fmt(balance)}</div><div className="kpi-sub">грн</div></div>
+          <div className="kpi"><div className="kpi-label">Доходи</div><div className="kpi-value" style={{ color:'var(--green)' }}>+{fmt(txIncome)}</div><div className="kpi-sub" style={{ fontSize:11, color:'var(--text3)' }}>з ПДВ: {fmt(txIncomeGross)} · ПДВ: {fmt(txIncomeVat)}</div></div>
+          <div className="kpi"><div className="kpi-label">Витрати</div><div className="kpi-value" style={{ color:'var(--red)' }}>-{fmt(txExpense)}</div><div className="kpi-sub" style={{ fontSize:11, color:'var(--text3)' }}>з ПДВ: {fmt(txExpenseGross)} · ПДВ: {fmt(txExpenseVat)}</div></div>
+          <div className="kpi"><div className="kpi-label">Сальдо</div><div className="kpi-value" style={{ color:balance>=0?'var(--green)':'var(--red)' }}>{balance>=0?'+':'-'}{fmt(balance)}</div><div className="kpi-sub" style={{ fontSize:11, color:'var(--text3)' }}>без ПДВ</div></div>
           <div className="kpi"><div className="kpi-label">Операцій</div><div className="kpi-value">{detail.operations_count||0}</div><div className="kpi-sub">остання: {detail.last_operation_date||'—'}</div></div>
         </div>
         {(debit > 0 || credit > 0) && (

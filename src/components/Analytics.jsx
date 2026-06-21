@@ -52,8 +52,12 @@ export default function Analytics({ user, onPage }) {
     ])
 
     const all = bankTxs || []
-    const revenue = all.filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
-    const expenses = all.filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+    const revenueGross = all.filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+    const expensesGross = all.filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+    const revenueNet = revenueGross / 1.2
+    const expensesNet = expensesGross / 1.2
+    const revenueVat = revenueGross - revenueNet
+    const expensesVat = expensesGross - expensesNet
 
     // Bank balance (all time)
     const { data: allBank } = await supabase.from('bank_transactions').select('amount').eq('is_ignored', false)
@@ -61,7 +65,7 @@ export default function Analytics({ user, onPage }) {
     const cashBalance = (cashTxs || []).reduce((s, t) => s + (CASH_DIR[t.type] || 0) * (t.amount || 0), 0)
     const noArticle = all.filter(t => !t.article?.trim()).length
 
-    setStats({ revenue, expenses, net: revenue - expenses, bankFlow, cashBalance, noArticle })
+    setStats({ revenueGross, expensesGross, revenueNet, expensesNet, revenueVat, expensesVat, net: revenueNet - expensesNet, netGross: revenueGross - expensesGross, bankFlow, cashBalance, noArticle })
 
     // Дебіторка / Кредиторка по контрагентах
     const allDocs = docs || []
@@ -175,19 +179,19 @@ export default function Analytics({ user, onPage }) {
           {/* KPIs */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12, marginBottom: 16 }}>
             <div className="kpi">
-              <div className="kpi-label">Виручка (з ПДВ)</div>
-              <div className="kpi-value" style={{ color: 'var(--green)' }}>{fmt(stats.revenue)}</div>
-              <div className="kpi-sub">грн</div>
+              <div className="kpi-label">Виручка</div>
+              <div className="kpi-value" style={{ color: 'var(--green)' }}>{fmt(stats.revenueNet)}</div>
+              <div className="kpi-sub" style={{ fontSize:11, color:'var(--text3)' }}>з ПДВ: {fmt(stats.revenueGross)} · ПДВ: {fmt(stats.revenueVat)}</div>
             </div>
             <div className="kpi">
-              <div className="kpi-label">Витрати (з ПДВ)</div>
-              <div className="kpi-value" style={{ color: 'var(--red)' }}>{fmt(stats.expenses)}</div>
-              <div className="kpi-sub">грн</div>
+              <div className="kpi-label">Витрати</div>
+              <div className="kpi-value" style={{ color: 'var(--red)' }}>{fmt(stats.expensesNet)}</div>
+              <div className="kpi-sub" style={{ fontSize:11, color:'var(--text3)' }}>з ПДВ: {fmt(stats.expensesGross)} · ПДВ: {fmt(stats.expensesVat)}</div>
             </div>
             <div className="kpi">
-              <div className="kpi-label">Чистий результат</div>
+              <div className="kpi-label">Результат</div>
               <div className="kpi-value" style={{ color: stats.net >= 0 ? 'var(--green)' : 'var(--red)' }}>{stats.net >= 0 ? '+' : '−'}{fmt(stats.net)}</div>
-              <div className="kpi-sub">грн</div>
+              <div className="kpi-sub" style={{ fontSize:11, color:'var(--text3)' }}>з ПДВ: {stats.netGross >= 0 ? '+' : '−'}{fmt(stats.netGross)}</div>
             </div>
             <div className="kpi">
               <div className="kpi-label">Банк</div>
