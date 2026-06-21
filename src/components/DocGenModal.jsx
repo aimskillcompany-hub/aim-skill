@@ -42,6 +42,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
   const [searchIdx, setSearchIdx] = useState(null)
   const [searchText, setSearchText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
+  const [uploadedFiles, setUploadedFiles] = useState([])
 
   // Завантажити товари зі складу + договори контрагента
   useEffect(() => {
@@ -122,13 +123,25 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
         })
       } else {
         // Створити новий
-        await saveDoc({
+        const savedDoc = await saveDoc({
           docType, docNumber, docDate,
           contractorId: contractor.id,
           contractorName: contractor.short_name || contractor.name,
           items, subtotal: totals.subtotal, vatAmount: totals.vatAmount, total: totals.total,
           notes, contractNum, contractDate, paymentDue, city, parentDocId, contractId: selectedContract || null, userId,
         })
+        // Для прихідних документів — зберегти завантажені файли
+        const isIncoming = DOCUMENT_TYPES.find(t => t.key === docType)?.direction === 'incoming'
+        if (isIncoming && uploadedFiles.length > 0 && savedDoc?.id) {
+          for (const f of uploadedFiles) {
+            const ext = f.name.split('.').pop()?.toLowerCase() || 'pdf'
+            const path = `incoming/${savedDoc.id}/${Date.now()}.${ext}`
+            const { error: upErr } = await supabase.storage.from('documents').upload(path, f, { contentType: f.type })
+            if (!upErr) {
+              await supabase.from('generated_docs').update({ file_path: path, file_name: f.name }).eq('id', savedDoc.id)
+            }
+          }
+        }
       }
       // Автоматично створити договір якщо є номер і такого ще немає
       if (contractNum && !selectedContract && contractor?.id) {
@@ -364,6 +377,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
                             if (result.contractDate) setContractDate(result.contractDate)
                             if (result.invoiceRef) setInvoiceRef(result.invoiceRef)
                             if (result.invoiceRefDate) setInvoiceRefDate(result.invoiceRefDate)
+                            setUploadedFiles(files)
                           } else {
                             alert('Не вдалося розпізнати позиції з документу')
                           }
@@ -593,19 +607,40 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
                 Далі →
               </button>
             )}
-            {step === 3 && (
-              <>
-                <button className="btn btn-secondary" onClick={() => handleSave(null)} disabled={saving}>
-                  <i className="ti ti-device-floppy" style={{ fontSize: 14 }} /> {saving ? '...' : 'Зберегти чернетку'}
-                </button>
-                <button className="btn btn-secondary" onClick={() => handleDownloadOnly('xlsx')}>
-                  <i className="ti ti-file-spreadsheet" style={{ fontSize: 14 }} /> Excel
-                </button>
-                <button className="btn btn-primary" onClick={() => handleSave('pdf')} disabled={saving}>
-                  <i className="ti ti-file-type-pdf" style={{ fontSize: 14 }} /> {saving ? '...' : 'Зберегти + PDF'}
-                </button>
+            {step === 3 && (() => {
+              const isIncoming = DOCUMENT_TYPES.find(t => t.key === docType)?.direction === 'incoming'
+              return <>
+                {isIncoming ? (
+                  <>
+                    <button className="btn btn-primary" onClick={() => handleSave(null)} disabled={saving}>
+                      <i className="ti ti-device-floppy" style={{ fontSize: 14 }} /> {saving ? '...' : 'Зберегти'}
+                      {uploadedFiles.length > 0 && <span style={{ fontSize: 10, marginLeft: 4 }}>+ файл</span>}
+                    </button>
+                    {!uploadedFiles.length && (
+                      <label style={{ cursor: 'pointer', display: 'inline-flex' }}>
+                        <span className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <i className="ti ti-upload" style={{ fontSize: 14 }} /> Прикріпити файл
+                        </span>
+                        <input type="file" accept=".pdf,image/*" multiple style={{ display: 'none' }}
+                          onChange={e => { setUploadedFiles(Array.from(e.target.files || [])); e.target.value = '' }} />
+                      </label>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <button className="btn btn-secondary" onClick={() => handleSave(null)} disabled={saving}>
+                      <i className="ti ti-device-floppy" style={{ fontSize: 14 }} /> {saving ? '...' : 'Зберегти чернетку'}
+                    </button>
+                    <button className="btn btn-secondary" onClick={() => handleDownloadOnly('xlsx')}>
+                      <i className="ti ti-file-spreadsheet" style={{ fontSize: 14 }} /> Excel
+                    </button>
+                    <button className="btn btn-primary" onClick={() => handleSave('pdf')} disabled={saving}>
+                      <i className="ti ti-file-type-pdf" style={{ fontSize: 14 }} /> {saving ? '...' : 'Зберегти + PDF'}
+                    </button>
+                  </>
+                )}
               </>
-            )}
+            })()}
           </div>
         </div>
       </div>
