@@ -812,7 +812,7 @@ export default function Bank({ user }) {
       {/* ── TAB: UNMATCHED ── */}
       {tab === 'unmatched' && (
         <div>
-          {loading && <div style={{ textAlign:'center', padding:40, color:'var(--text2)' }}>Завантаження...</div>}
+          {loading && <div style={{ textAlign:'center', padding:40, color:'var(--text2)' }} aria-live="polite">Завантаження...</div>}
           {!loading && unmatched.length === 0 && (
             <div className="card">
               <div className="empty">
@@ -955,7 +955,7 @@ export default function Bank({ user }) {
                               </button>
                               <button
                                 style={{ background:'none', border:'1px solid var(--border2)', borderRadius:6, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text3)' }}
-                                onClick={() => handleIgnore(btx.id)} title="Ігнорувати"
+                                onClick={() => handleIgnore(btx.id)} title="Ігнорувати" aria-label="Ігнорувати"
                               ><i className="ti ti-eye-off" style={{ fontSize:13 }} /></button>
                             </div>
                           </td>
@@ -976,7 +976,7 @@ export default function Bank({ user }) {
       {/* ── TAB: ALL ── */}
       {tab === 'all' && (
         <div>
-          {loading && <div style={{ textAlign:'center', padding:40, color:'var(--text2)' }}>Завантаження...</div>}
+          {loading && <div style={{ textAlign:'center', padding:40, color:'var(--text2)' }} aria-live="polite">Завантаження...</div>}
           {!loading && (() => {
             const filteredAll = allBankTxs.filter(btx => {
               if (allFilter.search) {
@@ -1097,7 +1097,7 @@ export default function Bank({ user }) {
           <div className="modal">
             <div className="modal-header">
               <h2>Створити документ з транзакції</h2>
-              <button className="modal-close" onClick={() => setCreateFrom(null)}>×</button>
+              <button className="modal-close" onClick={() => setCreateFrom(null)} aria-label="Закрити">×</button>
             </div>
             <div style={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:8, padding:'10px 14px', marginBottom:14, fontSize:12.5 }}>
               <div style={{ display:'flex', gap:16 }}>
@@ -1157,7 +1157,7 @@ export default function Bank({ user }) {
           <div className="modal modal-xl">
             <div className="modal-header">
               <h2>Привʼязати до документу</h2>
-              <button className="modal-close" onClick={() => setLinkFor(null)}>×</button>
+              <button className="modal-close" onClick={() => setLinkFor(null)} aria-label="Закрити">×</button>
             </div>
             <div style={{ background:'var(--surface2)', borderRadius:8, padding:'12px 14px', marginBottom:14 }}>
               <div style={{ display:'flex', gap:12, flexWrap:'wrap', alignItems:'center', marginBottom: linkFor.description ? 6 : 0 }}>
@@ -1228,7 +1228,7 @@ export default function Bank({ user }) {
                   {[...selected].length} банківських транзакцій → стануть операціями в реєстрі
                 </div>
               </div>
-              <button className="modal-close" onClick={() => setShowBulk(false)}>×</button>
+              <button className="modal-close" onClick={() => setShowBulk(false)} aria-label="Закрити">×</button>
             </div>
 
             <div style={{ background:'var(--blue-bg)', border:'1px solid #bfdbfe', borderRadius:8, padding:'10px 14px', marginBottom:14, fontSize:12.5, color:'var(--blue)' }}>
@@ -1409,7 +1409,7 @@ export default function Bank({ user }) {
           <div className="modal modal-lg">
             <div className="modal-header">
               <h2 style={{ fontSize:15 }}>{linkedTxDetail?.contractor || 'Завантаження...'}</h2>
-              <button className="modal-close" onClick={() => { setLinkedTxDetail(null); setLinkedTxDocs([]); setLinkedTxItems([]) }}>×</button>
+              <button className="modal-close" onClick={() => { setLinkedTxDetail(null); setLinkedTxDocs([]); setLinkedTxItems([]) }} aria-label="Закрити">×</button>
             </div>
             {linkedTxLoading ? (
               <div style={{ textAlign:'center', padding:40 }}><div className="spinner" style={{ margin:'0 auto' }} /></div>

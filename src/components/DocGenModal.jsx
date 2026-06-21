@@ -182,7 +182,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
       <div className="modal modal-lg" style={{ maxWidth: 800 }}>
         <div className="modal-header">
           <h2>{step === 1 ? 'Створити документ' : step === 2 ? (isEdit ? 'Редагування документа' : 'Позиції документа') : 'Перегляд та збереження'}</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="modal-close" onClick={onClose} aria-label="Закрити">×</button>
         </div>
 
         {/* Кроки */}

@@ -292,7 +292,7 @@ export default function Validation() {
   const [editItems, setEditItems] = useState([])
   const [vatChoice, setVatChoice] = useState(null) // true = з ПДВ, false = без ПДВ
 
-  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text2)' }}>Завантаження...</div>
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text2)' }} aria-live="polite">Завантаження...</div>
 
   const openForEdit = (tx) => {
     setEditForm({
@@ -449,7 +449,7 @@ export default function Validation() {
                         </td>
                         <td style={{ padding: '4px 2px', textAlign: 'center' }}>
                           <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', fontSize: 14, padding: 2 }}
-                            title="Видалити позицію"
+                            title="Видалити позицію" aria-label="Видалити"
                             onClick={async () => {
                               if (it.id) {
                                 // Перевірити чи є рух на складі
@@ -619,7 +619,7 @@ export default function Validation() {
                 {docUrl ? (
                   <iframe src={docUrl} style={{ width: '100%', height: '100%', border: 'none', minHeight: 500 }} title="Document" />
                 ) : (
-                  <div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Завантаження документа...</div>
+                  <div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }} aria-live="polite">Завантаження документа...</div>
                 )}
               </div>
             </div>
@@ -672,7 +672,7 @@ export default function Validation() {
         <input className="form-input" style={{ width: '100%', paddingLeft: 38 }}
           placeholder="Пошук по контрагенту..."
           value={searchText} onChange={e => { setSearchText(e.target.value); setCheckedIds(new Set()) }} />
-        {searchText && <button onClick={() => { setSearchText(''); setCheckedIds(new Set()) }} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 16 }}><i className="ti ti-x" /></button>}
+        {searchText && <button onClick={() => { setSearchText(''); setCheckedIds(new Set()) }} aria-label="Закрити" style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 16 }}><i className="ti ti-x" /></button>}
       </div>
 
       {/* Фільтри */}

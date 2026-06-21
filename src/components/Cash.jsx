@@ -206,7 +206,7 @@ export default function Cash({ user }) {
         ))}
       </div>
 
-      {loading && <div style={{ textAlign: 'center', padding: 40, color: 'var(--text2)' }}>Завантаження...</div>}
+      {loading && <div style={{ textAlign: 'center', padding: 40, color: 'var(--text2)' }} aria-live="polite">Завантаження...</div>}
 
       {/* ── TAB: ALL ── */}
       {!loading && tab === 'all' && (
@@ -252,6 +252,7 @@ export default function Cash({ user }) {
                       <button
                         style={{ background: 'none', border: '1px solid #E2E8F0', borderRadius: 6, width: 26, height: 26, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red)' }}
                         onClick={() => deleteOp(op.id)}
+                        aria-label="Видалити"
                       ><i className="ti ti-trash" style={{ fontSize: 13 }} /></button>
                     </td>
                   </tr>
@@ -359,7 +360,7 @@ export default function Cash({ user }) {
                 <i className={`ti ${TYPES[formType]?.icon}`} style={{ fontSize: 18, color: TYPES[formType]?.color }} />
                 {TYPES[formType]?.label}
               </h2>
-              <button className="modal-close" onClick={() => setShowForm(false)}>×</button>
+              <button className="modal-close" onClick={() => setShowForm(false)} aria-label="Закрити">×</button>
             </div>
 
             {/* Type switcher */}
@@ -460,7 +461,7 @@ export default function Cash({ user }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px' }}>
                   <i className="ti ti-file-text" style={{ fontSize: 18, color: 'var(--blue)' }} />
                   <span style={{ flex: 1, fontSize: 13 }}>{pendingFile.name}</span>
-                  <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)' }} onClick={() => setPendingFile(null)}>
+                  <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)' }} onClick={() => setPendingFile(null)} aria-label="Закрити">
                     <i className="ti ti-x" style={{ fontSize: 14 }} />
                   </button>
                 </div>
@@ -489,7 +490,7 @@ export default function Cash({ user }) {
           <div className="modal">
             <div className="modal-header">
               <h2>Повернення підзвітних</h2>
-              <button className="modal-close" onClick={() => setShowReturn(null)}>×</button>
+              <button className="modal-close" onClick={() => setShowReturn(null)} aria-label="Закрити">×</button>
             </div>
             <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13 }}>
               <strong>{showReturn.advance_person}</strong>
@@ -524,7 +525,7 @@ export default function Cash({ user }) {
           <div className="modal">
             <div className="modal-header">
               <h2><TypeBadge type={detail.type} /></h2>
-              <button className="modal-close" onClick={() => setDetail(null)}>×</button>
+              <button className="modal-close" onClick={() => setDetail(null)} aria-label="Закрити">×</button>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px', marginBottom: 16, background: 'var(--surface2)', borderRadius: 8, padding: '12px 14px' }}>
               {[
@@ -556,7 +557,7 @@ export default function Cash({ user }) {
                       <div style={{ fontSize: 13, fontWeight: 500 }}>{doc.file_name}</div>
                       <div style={{ fontSize: 11, color: 'var(--text3)' }}>{(doc.file_size / 1024).toFixed(0)} KB</div>
                     </div>
-                    <button className="btn btn-sm btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => downloadDoc(doc)}>
+                    <button className="btn btn-sm btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => downloadDoc(doc)} aria-label="Завантажити">
                       <i className="ti ti-download" style={{ fontSize: 13 }} />
                     </button>
                   </div>

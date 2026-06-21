@@ -259,14 +259,14 @@ export default function ProductDetail({
           <div className="modal modal-xl" style={{ padding:0, display:'flex', flexDirection:'column', overflow:'hidden' }}>
             <div style={{ display:'flex', alignItems:'center', gap:12, padding:'14px 18px', borderBottom:'1px solid var(--border)' }}>
               <div style={{ flex:1, fontWeight:600, fontSize:14, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{previewDoc.file_name}</div>
-              <button className="modal-close" onClick={() => setPreviewDoc(null)}>×</button>
+              <button className="modal-close" onClick={() => setPreviewDoc(null)} aria-label="Закрити">×</button>
             </div>
             <div style={{ flex:1, overflow:'auto', background:'var(--bg)', display:'flex', alignItems:'center', justifyContent:'center', minHeight:400 }}>
               {previewUrl ? (
                 previewDoc.file_type === 'application/pdf'
                   ? <iframe src={previewUrl} style={{ width:'100%', height:'75vh', border:'none' }} title={previewDoc.file_name} />
                   : <img src={previewUrl} alt={previewDoc.file_name} style={{ maxWidth:'100%', maxHeight:'75vh', objectFit:'contain' }} />
-              ) : <div style={{ color:'var(--text3)', padding:40 }}>Завантаження...</div>}
+              ) : <div style={{ color:'var(--text3)', padding:40 }} aria-live="polite">Завантаження...</div>}
             </div>
           </div>
         </div>
@@ -278,7 +278,7 @@ export default function ProductDetail({
           <div className="modal modal-lg">
             <div className="modal-header">
               <h2>Обʼєднати з іншим товаром</h2>
-              <button className="modal-close" onClick={() => setShowMerge(false)}>×</button>
+              <button className="modal-close" onClick={() => setShowMerge(false)} aria-label="Закрити">×</button>
             </div>
             <div style={{ background:'var(--surface2)', borderRadius:8, padding:'12px 16px', marginBottom:16, fontSize:13 }}>
               <strong>Основний товар:</strong> {detail.name}
@@ -317,7 +317,7 @@ export default function ProductDetail({
           <div className="modal">
             <div className="modal-header">
               <h2>Рух товару</h2>
-              <button className="modal-close" onClick={() => setShowMovement(false)}>×</button>
+              <button className="modal-close" onClick={() => setShowMovement(false)} aria-label="Закрити">×</button>
             </div>
             <div className="form-grid">
               <div className="form-group">

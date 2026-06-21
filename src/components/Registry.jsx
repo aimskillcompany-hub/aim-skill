@@ -739,7 +739,7 @@ export default function Registry({ user }) {
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan={9} style={{ textAlign:'center', padding:24, color:'var(--text2)' }}>Завантаження...</td></tr>}
+              {loading && <tr><td colSpan={9} style={{ textAlign:'center', padding:24, color:'var(--text2)' }} aria-live="polite">Завантаження...</td></tr>}
               {!loading && transactions.length === 0 && <tr><td colSpan={9} style={{ textAlign:'center', padding:32, color:'var(--text3)' }}>Операцій не знайдено</td></tr>}
               {transactions.map(tx => {
                 const isChecked = checkedIds.has(tx.id)
@@ -790,13 +790,13 @@ export default function Registry({ user }) {
                             const newVal = !tx.is_validated
                             await supabase.from('bank_transactions').update({ is_validated: newVal }).eq('id', tx.id)
                             setTransactions(prev => prev.map(t => t.id === tx.id ? { ...t, is_validated: newVal } : t))
-                          }} title={tx.is_validated ? 'Зняти валідацію' : 'Валідувати'}>
+                          }} title={tx.is_validated ? 'Зняти валідацію' : 'Валідувати'} aria-label={tx.is_validated ? 'Зняти валідацію' : 'Валідувати'}>
                           <i className={`ti ${tx.is_validated ? 'ti-circle-check-filled' : 'ti-circle-check'}`} style={{ fontSize:14 }} />
                         </button>
                         <button style={{ background:'none', border:'1px solid var(--border)', borderRadius:8, width:32, height:32, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text2)' }}
-                          onClick={() => openEdit(tx)} title="Редагувати"><i className="ti ti-pencil" style={{ fontSize:14 }} /></button>
+                          onClick={() => openEdit(tx)} title="Редагувати" aria-label="Редагувати"><i className="ti ti-pencil" style={{ fontSize:14 }} /></button>
                         <button style={{ background:'none', border:'1px solid #FCA5A5', borderRadius:8, width:32, height:32, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--red)' }}
-                          onClick={() => handleDelete(tx.id)} title="Видалити"><i className="ti ti-trash" style={{ fontSize:14 }} /></button>
+                          onClick={() => handleDelete(tx.id)} title="Видалити" aria-label="Видалити"><i className="ti ti-trash" style={{ fontSize:14 }} /></button>
                       </div>
                     </td>
                   </tr>
@@ -809,7 +809,7 @@ export default function Registry({ user }) {
 
       {/* Mobile card list */}
       <div className="reg-mobile-list">
-        {loading && <div style={{ textAlign:'center', padding:24, color:'var(--text2)' }}>Завантаження...</div>}
+        {loading && <div style={{ textAlign:'center', padding:24, color:'var(--text2)' }} aria-live="polite">Завантаження...</div>}
         {!loading && transactions.length === 0 && <div style={{ textAlign:'center', padding:32, color:'var(--text3)' }}>Операцій не знайдено</div>}
         {!loading && transactions.map(tx => (
           <div key={tx.id}
@@ -865,7 +865,7 @@ export default function Registry({ user }) {
           <div className="modal">
             <div className="modal-header">
               <h2>Масове редагування — {checkedIds.size} операцій</h2>
-              <button className="modal-close" onClick={() => setShowBulkEdit(false)}>×</button>
+              <button className="modal-close" onClick={() => setShowBulkEdit(false)} aria-label="Закрити">×</button>
             </div>
             <p style={{ fontSize:13, color:'var(--text2)', marginBottom:16 }}>
               Заповніть тільки поля які хочете змінити. Порожні поля залишаться без змін.
@@ -1182,7 +1182,7 @@ export default function Registry({ user }) {
                               await supabase.from('transaction_items').delete().eq('id', it.id)
                               setSelectedItems(prev => prev.filter(item => item.id !== it.id))
                               setItemMovements(prev => { const n = { ...prev }; delete n[it.id]; return n })
-                            }} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--red)', fontSize:14, padding:2 }} title="Видалити позицію">
+                            }} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--red)', fontSize:14, padding:2 }} title="Видалити позицію" aria-label="Видалити">
                               <i className="ti ti-trash" />
                             </button>
                           </td>
@@ -1457,10 +1457,11 @@ export default function Registry({ user }) {
                     <button className="btn btn-sm btn-secondary" style={{ display:'flex', alignItems:'center', gap:4 }} onClick={() => openPreview(doc)}>
                       <i className="ti ti-eye" style={{ fontSize:13 }} />Перегляд
                     </button>
-                    <button className="btn btn-sm btn-secondary" style={{ display:'flex', alignItems:'center', gap:4 }} onClick={() => downloadDoc(doc)}>
+                    <button className="btn btn-sm btn-secondary" style={{ display:'flex', alignItems:'center', gap:4 }} onClick={() => downloadDoc(doc)} aria-label="Завантажити">
                       <i className="ti ti-download" style={{ fontSize:13 }} />
                     </button>
                     <button className="btn btn-sm" style={{ display:'flex', alignItems:'center', gap:4, color:'var(--red)', background:'none', border:'1px solid var(--border)' }}
+                      aria-label="Видалити"
                       onClick={async () => {
                         if (!confirm(`Видалити документ "${doc.file_name}"?`)) return
                         // Видалити файл зі storage
@@ -1488,7 +1489,7 @@ export default function Registry({ user }) {
           <div className="modal">
             <div className="modal-header">
               <h2>Редагувати операцію</h2>
-              <button className="modal-close" onClick={() => setEdit(null)}>×</button>
+              <button className="modal-close" onClick={() => setEdit(null)} aria-label="Закрити">×</button>
             </div>
             <div className="form-grid">
               <div className="form-group"><label>Контрагент</label><ContractorSelect
@@ -1569,7 +1570,7 @@ export default function Registry({ user }) {
                     <i className="ti ti-download" style={{ fontSize:13 }} />Завантажити
                   </a>
                 )}
-                <button className="modal-close" onClick={() => setPreviewDoc(null)}>×</button>
+                <button className="modal-close" onClick={() => setPreviewDoc(null)} aria-label="Закрити">×</button>
               </div>
             </div>
             {/* Content */}
@@ -1577,7 +1578,7 @@ export default function Registry({ user }) {
               {previewLoading ? (
                 <div style={{ textAlign:'center', color:'var(--text2)' }}>
                   <div className="spinner" style={{ margin:'0 auto 12px' }} />
-                  Завантаження...
+                  <span aria-live="polite">Завантаження...</span>
                 </div>
               ) : previewUrl ? (
                 previewDoc.file_type === 'application/pdf' ? (
@@ -1607,11 +1608,11 @@ export default function Registry({ user }) {
                   Транзакції з документами але без позицій товарів — оберіть які розпізнати
                 </p>
               </div>
-              <button className="modal-close" onClick={() => setShowRecover(false)}>×</button>
+              <button className="modal-close" onClick={() => setShowRecover(false)} aria-label="Закрити">×</button>
             </div>
 
             {recoverLoading ? (
-              <div style={{ textAlign:'center', padding:40, color:'var(--text2)' }}>
+              <div style={{ textAlign:'center', padding:40, color:'var(--text2)' }} aria-live="polite">
                 <div className="spinner" style={{ margin:'0 auto 12px' }} />
                 Завантаження...
               </div>
@@ -1719,6 +1720,7 @@ export default function Registry({ user }) {
                 </button>
                 <button
                   onClick={() => setShowDupModal(false)}
+                  aria-label="Закрити"
                   style={{ width:32, height:32, background:'var(--surface2)', border:'none', borderRadius:8, cursor:'pointer', fontSize:15, color:'var(--text2)', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'Inter,sans-serif', flexShrink:0 }}
                 >X</button>
               </div>

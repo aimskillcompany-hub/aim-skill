@@ -442,7 +442,7 @@ export default function Contractors({ user, onNavigate, openContractorId, onPara
 
   const setF = k => e => setForm(f => ({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
 
-  if (loading) return <div style={{ padding:40, textAlign:'center', color:'var(--text2)' }}>Завантаження...</div>
+  if (loading) return <div style={{ padding:40, textAlign:'center', color:'var(--text2)' }} aria-live="polite">Завантаження...</div>
 
   // ═══════════════════════════════════════════
   // DETAIL VIEW — full screen
@@ -619,14 +619,14 @@ export default function Contractors({ user, onNavigate, openContractorId, onPara
                           {[c.position, c.phone, c.email].filter(Boolean).join('  ·  ')}
                         </div>
                       </div>
-                      <button style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', fontSize:14 }}
+                      <button style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', fontSize:14 }} aria-label={c.is_signer ? 'Зняти підписанта' : 'Зробити підписантом'}
                         onClick={async () => {
                           await supabase.from('contractor_contacts').update({ is_signer: !c.is_signer }).eq('id', c.id)
                           supabase.from('contractor_contacts').select('*').eq('contractor_id', detail.id).order('is_signer', { ascending: false }).order('name').then(({ data }) => setContacts(data || []))
                         }} title={c.is_signer ? 'Зняти підписанта' : 'Зробити підписантом'}>
                         <i className={`ti ${c.is_signer ? 'ti-signature' : 'ti-signature-off'}`} />
                       </button>
-                      <button style={{ background:'none', border:'none', cursor:'pointer', color:'var(--red)', fontSize:14 }}
+                      <button style={{ background:'none', border:'none', cursor:'pointer', color:'var(--red)', fontSize:14 }} aria-label="Видалити"
                         onClick={async () => {
                           if (!confirm(`Видалити ${c.name}?`)) return
                           await supabase.from('contractor_contacts').delete().eq('id', c.id)
@@ -698,7 +698,7 @@ export default function Contractors({ user, onNavigate, openContractorId, onPara
                               }} />
                           </label>
                         )}
-                        <button style={{ background:'none', border:'none', cursor:'pointer', color:'var(--red)', fontSize:14 }}
+                        <button style={{ background:'none', border:'none', cursor:'pointer', color:'var(--red)', fontSize:14 }} aria-label="Видалити"
                           onClick={async () => {
                             if (!confirm(`Видалити договір №${ct.number}?`)) return
                             if (ct.file_path) await supabase.storage.from('documents').remove([ct.file_path])
@@ -843,7 +843,7 @@ export default function Contractors({ user, onNavigate, openContractorId, onPara
                             {/* Списати зі складу — для видаткових */}
                             {getDocType(doc.doc_type)?.stockEffect === 'out' && doc.status !== 'cancelled' && (
                               <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--amber)', fontSize: 15, padding: '0 4px' }}
-                                title="Списати зі складу"
+                                title="Списати зі складу" aria-label="Списати зі складу"
                                 onClick={async () => {
                                   const docItems = typeof doc.items === 'string' ? JSON.parse(doc.items) : doc.items
                                   const names = docItems.map(i => `${i.name} × ${i.quantity}`).join('\n')
@@ -856,7 +856,7 @@ export default function Contractors({ user, onNavigate, openContractorId, onPara
                             )}
                             {doc.doc_type === 'invoice' && (
                               <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', fontSize: 15, padding: '0 4px' }}
-                                title="Створити акт/накладну на підставі"
+                                title="Створити акт/накладну на підставі" aria-label="Копіювати"
                                 onClick={() => {
                                   const docItems = typeof doc.items === 'string' ? JSON.parse(doc.items) : doc.items
                                   setEditingDoc({ ...doc, id: null, doc_type: null, doc_number: '', items: docItems, _fromInvoice: doc.doc_number, _parentDocId: doc.id })
@@ -866,7 +866,7 @@ export default function Contractors({ user, onNavigate, openContractorId, onPara
                               </button>
                             )}
                             <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--blue)', fontSize: 15, padding: '0 4px' }}
-                              title="Редагувати" onClick={() => { setEditingDoc(doc); setShowDocGen(true) }}>
+                              title="Редагувати" aria-label="Редагувати" onClick={() => { setEditingDoc(doc); setShowDocGen(true) }}>
                               <i className="ti ti-pencil" style={{ fontSize: 14 }} />
                             </button>
                             {DOCUMENT_TYPES.find(t => t.key === doc.doc_type)?.direction === 'incoming' ? (
@@ -913,7 +913,7 @@ export default function Contractors({ user, onNavigate, openContractorId, onPara
                               </>
                             )}
                             <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 15, padding: '0 4px' }}
-                              title="Видалити" onClick={async () => {
+                              title="Видалити" aria-label="Видалити" onClick={async () => {
                                 if (!confirm(`Видалити ${getDocLabel(doc.doc_type)} №${doc.doc_number}?`)) return
                                 await supabase.from('generated_docs').delete().eq('id', doc.id)
                                 loadContractorDocs(detail.id).then(docs => setContractorDocs(docs))
@@ -1273,7 +1273,7 @@ export default function Contractors({ user, onNavigate, openContractorId, onPara
         <div className="modal modal-lg">
           <div className="modal-header">
             <h2>{editId ? 'Редагувати контрагента' : 'Новий контрагент'}</h2>
-            <button className="modal-close" onClick={() => setShowForm(false)}>×</button>
+            <button className="modal-close" onClick={() => setShowForm(false)} aria-label="Закрити">×</button>
           </div>
           {/* AI розпізнавання */}
           {!editId && (
@@ -1451,7 +1451,7 @@ export default function Contractors({ user, onNavigate, openContractorId, onPara
       {syncResult && (
         <div style={{ background:'var(--green-bg)', border:'1px solid var(--border)', borderRadius:8, padding:'10px 16px', marginBottom:12, fontSize:13, color:'var(--green)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <span>Імпортовано: {syncResult.imported} нових · Об'єднано дублікатів: {syncResult.merged || 0} · Оновлено: {syncResult.synced}</span>
-          <button onClick={() => setSyncResult(null)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--green)', fontSize:16 }}>×</button>
+          <button onClick={() => setSyncResult(null)} aria-label="Закрити" style={{ background:'none', border:'none', cursor:'pointer', color:'var(--green)', fontSize:16 }}>×</button>
         </div>
       )}
 
@@ -1489,8 +1489,8 @@ export default function Contractors({ user, onNavigate, openContractorId, onPara
                 <td style={{ fontSize:13, color:'var(--text2)', whiteSpace:'nowrap' }}>{c.last_operation_date||'—'}</td>
                 <td onClick={e => e.stopPropagation()}>
                   <div style={{ display:'flex', gap:4 }}>
-                    <button onClick={() => openEdit(c)} style={{ background:'none', border:'1px solid var(--border)', borderRadius:8, width:32, height:32, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text2)' }}><i className="ti ti-pencil" style={{ fontSize:14 }} /></button>
-                    <button onClick={() => handleDelete(c.id)} style={{ background:'none', border:'1px solid var(--border)', borderRadius:8, width:32, height:32, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--red)' }}><i className="ti ti-trash" style={{ fontSize:14 }} /></button>
+                    <button onClick={() => openEdit(c)} aria-label="Редагувати" style={{ background:'none', border:'1px solid var(--border)', borderRadius:8, width:32, height:32, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text2)' }}><i className="ti ti-pencil" style={{ fontSize:14 }} /></button>
+                    <button onClick={() => handleDelete(c.id)} aria-label="Видалити" style={{ background:'none', border:'1px solid var(--border)', borderRadius:8, width:32, height:32, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--red)' }}><i className="ti ti-trash" style={{ fontSize:14 }} /></button>
                   </div>
                 </td>
               </tr>

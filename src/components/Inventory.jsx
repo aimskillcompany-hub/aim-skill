@@ -459,7 +459,7 @@ export default function Inventory({ user }) {
 
   const setF = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
 
-  if (loading) return <div style={{ padding:40, textAlign:'center', color:'var(--text2)' }}>Завантаження...</div>
+  if (loading) return <div style={{ padding:40, textAlign:'center', color:'var(--text2)' }} aria-live="polite">Завантаження...</div>
 
   // ═══ DETAIL VIEW ═══
   if (detail) {
@@ -486,7 +486,7 @@ export default function Inventory({ user }) {
         <div className="modal">
           <div className="modal-header">
             <h2>{editId ? 'Редагувати товар' : 'Новий товар'}</h2>
-            <button className="modal-close" onClick={() => setShowForm(false)}>×</button>
+            <button className="modal-close" onClick={() => setShowForm(false)} aria-label="Закрити">×</button>
           </div>
           <div className="form-grid">
             <div className="form-group full"><label>Назва *</label><input className="form-input" value={form.name} onChange={setF('name')} placeholder="Назва товару або послуги" /></div>
@@ -569,7 +569,7 @@ export default function Inventory({ user }) {
               </>
             )}
           </div>
-          <button onClick={() => setSyncLog(null)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, color:'var(--text3)' }}>×</button>
+          <button onClick={() => setSyncLog(null)} aria-label="Закрити" style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, color:'var(--text3)' }}>×</button>
         </div>
       )}
 
@@ -588,7 +588,7 @@ export default function Inventory({ user }) {
               </>
             )}
           </div>
-          <button onClick={() => setCleanLog(null)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, color:'var(--text3)' }}>×</button>
+          <button onClick={() => setCleanLog(null)} aria-label="Закрити" style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, color:'var(--text3)' }}>×</button>
         </div>
       )}
 
@@ -719,9 +719,9 @@ export default function Inventory({ user }) {
                   <td style={{ textAlign:'right', fontWeight:500, fontVariantNumeric:'tabular-nums' }}>{p.buy_price ? fmtInt((p.computed_stock||0)*p.buy_price)+' грн' : '—'}</td>
                   <td onClick={e => e.stopPropagation()}>
                     <div style={{ display:'flex', gap:4 }}>
-                      <button onClick={() => openEdit(p)} style={{ background:'none', border:'1px solid var(--border)', borderRadius:8, width:32, height:32, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text2)' }}>
+                      <button onClick={() => openEdit(p)} aria-label="Редагувати" style={{ background:'none', border:'1px solid var(--border)', borderRadius:8, width:32, height:32, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text2)' }}>
                         <i className="ti ti-pencil" style={{ fontSize:14 }} /></button>
-                      <button onClick={() => handleDelete(p.id)} style={{ background:'none', border:'1px solid var(--border)', borderRadius:8, width:32, height:32, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--red)' }}>
+                      <button onClick={() => handleDelete(p.id)} aria-label="Видалити" style={{ background:'none', border:'1px solid var(--border)', borderRadius:8, width:32, height:32, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--red)' }}>
                         <i className="ti ti-trash" style={{ fontSize:14 }} /></button>
                     </div>
                   </td>
@@ -741,7 +741,7 @@ export default function Inventory({ user }) {
           <div style={{ background:'var(--surface)', borderRadius:16, width:'100%', maxWidth:800, maxHeight:'85vh', display:'flex', flexDirection:'column', overflow:'hidden' }}>
             <div style={{ padding:'12px 20px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
               <span style={{ fontWeight:600, fontSize:15 }}>Виправлення невідповідностей</span>
-              <button onClick={() => { setShowFixer(false); loadAll() }} style={{ background:'none', border:'none', cursor:'pointer', fontSize:22, color:'var(--text3)' }}>×</button>
+              <button onClick={() => { setShowFixer(false); loadAll() }} aria-label="Закрити" style={{ background:'none', border:'none', cursor:'pointer', fontSize:22, color:'var(--text3)' }}>×</button>
             </div>
             <div style={{ flex:1, overflowY:'auto', padding:'16px 20px' }}>
               <MovementFixer />
@@ -762,7 +762,7 @@ export default function Inventory({ user }) {
                   Зліва — продані без закупки ({pairs.outOnly.length}). Справа — закуплені без продажу ({pairs.inOnly.length}).
                 </div>
               </div>
-              <button onClick={() => setShowPairs(false)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:22, color:'var(--text3)' }}>×</button>
+              <button onClick={() => setShowPairs(false)} aria-label="Закрити" style={{ background:'none', border:'none', cursor:'pointer', fontSize:22, color:'var(--text3)' }}>×</button>
             </div>
             <div style={{ flex:1, overflowY:'auto', padding:'16px 20px' }}>
               {pairs.outOnly.length === 0 ? (

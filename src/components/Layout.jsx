@@ -91,7 +91,7 @@ export default function Layout({ page, onPage, user, children }) {
           <aside style={{ width:280,height:'100%',background:'var(--surface)',display:'flex',flexDirection:'column',animation:'slideInLeft .25s cubic-bezier(.22,.68,0,1)',borderRight:'1px solid var(--border)' }} onClick={e => e.stopPropagation()}>
             <div className="sidebar-logo" style={{ display:'flex',justifyContent:'space-between',alignItems:'center' }}>
               <AimLogo size={16} />
-              <button onClick={() => setSidebarOpen(false)} style={{ background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text2)',fontSize:16,cursor:'pointer',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center' }}>
+              <button onClick={() => setSidebarOpen(false)} aria-label="Закрити" style={{ background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text2)',fontSize:16,cursor:'pointer',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center' }}>
                 <i className="ti ti-x" />
               </button>
             </div>
@@ -102,7 +102,7 @@ export default function Layout({ page, onPage, user, children }) {
 
       <main className="main">
         <div className="mobile-topbar">
-          <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)}>
+          <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)} aria-label="Меню">
             <i className="ti ti-menu-2" />
           </button>
           <AimLogo size={14} />
