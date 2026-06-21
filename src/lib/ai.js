@@ -123,6 +123,9 @@ ${articles?.length ? articles.map(a => `- ${a.name} (${a.type})`).join('\n') : '
   "suggestedDirection": "Витрати|Доходи|Інше",
   "suggestedArticle": "назва статті зі списку вище або null",
   "docRole": "incoming|outgoing",
+  "invoiceRef": "номер пов'язаного рахунку (якщо в накладній вказано 'згідно рахунку №...') або null",
+  "invoiceRefDate": "YYYY-MM-DD дата рахунку або null",
+  "contractNum": "номер договору (якщо вказано 'згідно договору №...') або null",
   "items": [
     {
       "name": "назва товару або послуги",
