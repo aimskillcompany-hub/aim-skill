@@ -859,16 +859,49 @@ export default function Contractors({ user, onNavigate }) {
                               title="Редагувати" onClick={() => { setEditingDoc(doc); setShowDocGen(true) }}>
                               <i className="ti ti-pencil" style={{ fontSize: 14 }} />
                             </button>
-                            <button className="btn btn-sm btn-secondary" style={{ padding: '2px 8px', fontSize: 11 }}
-                              onClick={async () => {
-                                const items = typeof doc.items === 'string' ? JSON.parse(doc.items) : doc.items
-                                await generatePdf(doc.doc_type, detail, items, { docNumber: doc.doc_number, docDate: doc.doc_date, notes: doc.notes })
-                              }}>PDF</button>
-                            <button className="btn btn-sm btn-secondary" style={{ padding: '2px 8px', fontSize: 11 }}
-                              onClick={async () => {
-                                const items = typeof doc.items === 'string' ? JSON.parse(doc.items) : doc.items
-                                await generateXlsx(doc.doc_type, detail, items, { docNumber: doc.doc_number, docDate: doc.doc_date, notes: doc.notes })
-                              }}>XLS</button>
+                            {DOCUMENT_TYPES.find(t => t.key === doc.doc_type)?.direction === 'incoming' ? (
+                              doc.file_path ? (
+                                <button className="btn btn-sm btn-secondary" style={{ padding: '2px 8px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 3 }}
+                                  onClick={async () => {
+                                    const { data } = await supabase.storage.from('documents').createSignedUrl(doc.file_path, 300)
+                                    if (data?.signedUrl) window.open(data.signedUrl, '_blank')
+                                  }}>
+                                  <i className="ti ti-file-text" style={{ fontSize: 12 }} />{doc.file_name || 'Файл'}
+                                </button>
+                              ) : (
+                                <label style={{ cursor: 'pointer', display: 'inline-flex' }}>
+                                  <span className="btn btn-sm btn-secondary" style={{ padding: '2px 8px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 3 }}>
+                                    <i className="ti ti-upload" style={{ fontSize: 12 }} />Прикріпити
+                                  </span>
+                                  <input type="file" accept=".pdf,image/*" style={{ display: 'none' }}
+                                    onChange={async (e) => {
+                                      const file = e.target.files?.[0]
+                                      if (!file) return
+                                      const ext = file.name.split('.').pop()?.toLowerCase() || 'pdf'
+                                      const path = `incoming/${doc.id}/${Date.now()}.${ext}`
+                                      const { error } = await supabase.storage.from('documents').upload(path, file, { contentType: file.type })
+                                      if (!error) {
+                                        await supabase.from('generated_docs').update({ file_path: path, file_name: file.name }).eq('id', doc.id)
+                                        loadContractorDocs(detail.id).then(docs => setContractorDocs(docs))
+                                      }
+                                      e.target.value = ''
+                                    }} />
+                                </label>
+                              )
+                            ) : (
+                              <>
+                                <button className="btn btn-sm btn-secondary" style={{ padding: '2px 8px', fontSize: 11 }}
+                                  onClick={async () => {
+                                    const items = typeof doc.items === 'string' ? JSON.parse(doc.items) : doc.items
+                                    await generatePdf(doc.doc_type, detail, items, { docNumber: doc.doc_number, docDate: doc.doc_date, notes: doc.notes })
+                                  }}>PDF</button>
+                                <button className="btn btn-sm btn-secondary" style={{ padding: '2px 8px', fontSize: 11 }}
+                                  onClick={async () => {
+                                    const items = typeof doc.items === 'string' ? JSON.parse(doc.items) : doc.items
+                                    await generateXlsx(doc.doc_type, detail, items, { docNumber: doc.doc_number, docDate: doc.doc_date, notes: doc.notes })
+                                  }}>XLS</button>
+                              </>
+                            )}
                             <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 15, padding: '0 4px' }}
                               title="Видалити" onClick={async () => {
                                 if (!confirm(`Видалити ${getDocLabel(doc.doc_type)} №${doc.doc_number}?`)) return
