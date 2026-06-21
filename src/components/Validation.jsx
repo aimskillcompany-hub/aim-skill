@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 
 const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(Math.abs(n || 0))
 const fmtInt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
@@ -12,8 +13,9 @@ export default function Validation() {
   const [filter, setFilter] = useState('all') // all, pending, validated, problems
   const [saving, setSaving] = useState(false)
   const [stats, setStats] = useState({ total: 0, validated: 0, withItems: 0, problems: 0 })
+  const [articles, setArticles] = useState([])
 
-  useEffect(() => { loadData() }, [])
+  useEffect(() => { loadData(); fetchArticles().then(setArticles) }, [])
 
   const loadData = async () => {
     setLoading(true)
@@ -225,8 +227,14 @@ export default function Validation() {
                 <div><span style={{ color: 'var(--text3)' }}>Сума (банк):</span> <strong>{fmtInt(bankAbs)} грн</strong></div>
                 <div>
                   <span style={{ color: 'var(--text3)' }}>Стаття: </span>
-                  <input style={{ fontSize: 12, border: '1px solid var(--border)', borderRadius: 4, padding: '2px 6px', width: 140, fontFamily: 'inherit' }}
-                    value={editForm.article} onChange={e => setEditForm(f => ({ ...f, article: e.target.value }))} placeholder="Стаття" />
+                  <select style={{ fontSize: 12, border: '1px solid var(--border)', borderRadius: 4, padding: '2px 6px', fontFamily: 'inherit', maxWidth: 180,
+                    color: editForm.article ? 'var(--text)' : 'var(--red)' }}
+                    value={editForm.article} onChange={e => setEditForm(f => ({ ...f, article: e.target.value }))}>
+                    <option value="">— без статті —</option>
+                    {Object.entries(groupByType(articles)).map(([type, items]) =>
+                      items.length > 0 ? <optgroup key={type} label={TYPE_LABELS[type]}>{items.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}</optgroup> : null
+                    )}
+                  </select>
                 </div>
                 <div style={{ gridColumn: 'span 2' }}><span style={{ color: 'var(--text3)' }}>Опис:</span> <span style={{ fontSize: 12 }}>{tx.description || '—'}</span></div>
               </div>
