@@ -14,6 +14,9 @@ export default function Validation() {
   const [saving, setSaving] = useState(false)
   const [stats, setStats] = useState({ total: 0, validated: 0, withItems: 0, problems: 0 })
   const [articles, setArticles] = useState([])
+  const [sort, setSort] = useState({ col: 'date', dir: 'desc' })
+  const [checkedIds, setCheckedIds] = useState(new Set())
+  const [bulkSaving, setBulkSaving] = useState(false)
 
   useEffect(() => { loadData(); fetchArticles().then(setArticles) }, [])
 
@@ -163,7 +166,41 @@ export default function Validation() {
     if (filter === 'no_items') return tx._items.length === 0 && !tx.is_validated
     if (filter === 'no_article') return !tx.article?.trim()
     return true
+  }).sort((a, b) => {
+    const dir = sort.dir === 'asc' ? 1 : -1
+    const col = sort.col
+    if (col === 'date') return dir * ((a.date || '').localeCompare(b.date || ''))
+    if (col === 'counterparty') return dir * ((a.counterparty || '').localeCompare(b.counterparty || ''))
+    if (col === 'amount') return dir * ((Math.abs(a.amount || 0)) - (Math.abs(b.amount || 0)))
+    if (col === 'net') return dir * ((a.amount_net || 0) - (b.amount_net || 0))
+    if (col === 'vat') return dir * ((a.vat_amount || 0) - (b.vat_amount || 0))
+    if (col === 'article') return dir * ((a.article || '').localeCompare(b.article || ''))
+    if (col === 'status') return dir * ((a.is_validated ? 1 : 0) - (b.is_validated ? 1 : 0))
+    return 0
   })
+
+  const toggleSort = (col) => setSort(prev => prev.col === col ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' })
+  const SortIcon = ({ col }) => sort.col !== col
+    ? <i className="ti ti-selector" style={{ fontSize: 11, opacity: .35, marginLeft: 3 }} />
+    : <i className={`ti ti-sort-${sort.dir === 'asc' ? 'ascending' : 'descending'}`} style={{ fontSize: 11, color: 'var(--blue)', marginLeft: 3 }} />
+
+  const toggleCheck = (id, e) => { e.stopPropagation(); setCheckedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s }) }
+  const toggleAll = () => { if (checkedIds.size === filtered.length) setCheckedIds(new Set()); else setCheckedIds(new Set(filtered.map(t => t.id))) }
+
+  const bulkValidate = async (withVat) => {
+    setBulkSaving(true)
+    const ids = [...checkedIds]
+    const selected = txs.filter(t => checkedIds.has(t.id))
+    for (const tx of selected) {
+      const bankAbs = Math.abs(tx.amount || 0)
+      const net = withVat ? Math.round(bankAbs / 1.2 * 100) / 100 : bankAbs
+      const vat = withVat ? Math.round((bankAbs - net) * 100) / 100 : 0
+      await supabase.from('bank_transactions').update({ is_validated: true, amount_net: net, vat_amount: vat }).eq('id', tx.id)
+    }
+    await loadData()
+    setBulkSaving(false)
+    setCheckedIds(new Set())
+  }
 
   const pct = stats.total > 0 ? Math.round(stats.validated / stats.total * 100) : 0
 
@@ -514,33 +551,52 @@ export default function Validation() {
         <span style={{ fontSize: 12, color: 'var(--text3)', marginLeft: 8, alignSelf: 'center' }}>{filtered.length} записів</span>
       </div>
 
+      {/* Масові дії */}
+      {checkedIds.size > 0 && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, padding: '10px 14px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10 }}>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>Обрано: {checkedIds.size}</span>
+          <button className="btn btn-sm btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}
+            onClick={() => bulkValidate(false)} disabled={bulkSaving}>
+            <i className="ti ti-circle-check" style={{ fontSize: 14 }} /> Без ПДВ — валідувати
+          </button>
+          <button className="btn btn-sm btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+            onClick={() => bulkValidate(true)} disabled={bulkSaving}>
+            <i className="ti ti-circle-check" style={{ fontSize: 14 }} /> З ПДВ 20% — валідувати
+          </button>
+          <button className="btn btn-sm btn-secondary" onClick={() => setCheckedIds(new Set())}>Скасувати</button>
+        </div>
+      )}
+
       {/* Таблиця */}
       <div className="tbl-wrap">
         <table>
           <thead>
             <tr>
-              <th style={{ width: 30 }}></th>
-              <th>Дата</th>
-              <th>Контрагент</th>
-              <th style={{ textAlign: 'right' }}>Банк</th>
-              <th style={{ textAlign: 'right' }}>Без ПДВ</th>
-              <th style={{ textAlign: 'right' }}>ПДВ</th>
-              <th>Стаття</th>
+              <th style={{ width: 30, padding: '8px 6px' }}>
+                <input type="checkbox" checked={filtered.length > 0 && checkedIds.size === filtered.length} onChange={toggleAll}
+                  style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--text)' }} />
+              </th>
+              <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('date')}>Дата<SortIcon col="date" /></th>
+              <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('counterparty')}>Контрагент<SortIcon col="counterparty" /></th>
+              <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('amount')}>Банк<SortIcon col="amount" /></th>
+              <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('net')}>Без ПДВ<SortIcon col="net" /></th>
+              <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('vat')}>ПДВ<SortIcon col="vat" /></th>
+              <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('article')}>Стаття<SortIcon col="article" /></th>
               <th>Доки</th>
             </tr>
           </thead>
           <tbody>
             {filtered.slice(0, 100).map(tx => {
               const ratioColor = tx._ratio === null ? '' : Math.abs(tx._ratio - 1.0) < 0.01 ? 'var(--blue)' : Math.abs(tx._ratio - 1.2) < 0.01 ? 'var(--green)' : 'var(--red)'
+              const isChecked = checkedIds.has(tx.id)
               return (
-                <tr key={tx.id} style={{ cursor: 'pointer', borderBottom: '1px solid var(--border)' }}
+                <tr key={tx.id} style={{ cursor: 'pointer', borderBottom: '1px solid var(--border)', background: isChecked ? 'var(--green-bg)' : '' }}
                   onClick={() => openForEdit(tx)}
-                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
-                  onMouseLeave={e => e.currentTarget.style.background = ''}>
-                  <td>
-                    {tx.is_validated
-                      ? <i className="ti ti-circle-check-filled" style={{ color: 'var(--green)', fontSize: 16 }} />
-                      : <i className="ti ti-circle" style={{ color: 'var(--text3)', fontSize: 16 }} />}
+                  onMouseEnter={e => { if (!isChecked) e.currentTarget.style.background = 'var(--bg)' }}
+                  onMouseLeave={e => { if (!isChecked) e.currentTarget.style.background = '' }}>
+                  <td style={{ padding: '8px 6px' }} onClick={e => toggleCheck(tx.id, e)}>
+                    <input type="checkbox" checked={isChecked} onChange={() => {}}
+                      style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--text)' }} />
                   </td>
                   <td style={{ fontSize: 12, whiteSpace: 'nowrap', color: 'var(--text2)' }}>{tx.date}</td>
                   <td style={{ fontSize: 13, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx.counterparty || '—'}</td>
