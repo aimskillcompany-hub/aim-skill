@@ -441,38 +441,8 @@ export default function Contractors({ user, onNavigate }) {
   // DETAIL VIEW — full screen
   // ═══════════════════════════════════════════
   if (view === 'detail' && detail) {
-    const txIncomeGross = detailTxs.filter(t=>t.direction==='Доходи').reduce((s,t)=>s+Math.abs(t.amount||0),0)
-    const txExpenseGross = detailTxs.filter(t=>t.direction==='Витрати').reduce((s,t)=>s+Math.abs(t.amount||0),0)
-    // Рахуємо ПДВ з transaction_items (amount = з ПДВ, net = amount / (1+rate/100))
-    let txIncomeVat = 0, txExpenseVat = 0
-    detailTxs.forEach(t => {
-      const txItems = t.transaction_items || []
-      if (txItems.length > 0) {
-        const vat = txItems.reduce((s, i) => {
-          const amt = parseFloat(i.amount) || 0
-          const r = parseFloat(i.vat_rate) || 0
-          return s + (r > 0 ? amt - amt / (1 + r / 100) : 0)
-        }, 0)
-        if (t.direction === 'Доходи') txIncomeVat += vat
-        if (t.direction === 'Витрати') txExpenseVat += vat
-      } else {
-        // Немає items — визначаємо по контрагенту
-        const gross = Math.abs(t.amount || 0)
-        let vat = 0
-        if (t.direction === 'Доходи') {
-          // Ми продаємо — завжди з ПДВ
-          vat = gross * 20 / 120
-        } else if (detail.is_vat_payer) {
-          // Купуємо у платника ПДВ
-          vat = gross * 20 / 120
-        }
-        // Якщо не платник — vat = 0 (без ПДВ)
-        if (t.direction === 'Доходи') txIncomeVat += vat
-        if (t.direction === 'Витрати') txExpenseVat += vat
-      }
-    })
-    const txIncome = txIncomeGross - txIncomeVat
-    const txExpense = txExpenseGross - txExpenseVat
+    const txIncome = detailTxs.filter(t=>t.direction==='Доходи').reduce((s,t)=>s+Math.abs(t.amount||0),0)
+    const txExpense = detailTxs.filter(t=>t.direction==='Витрати').reduce((s,t)=>s+Math.abs(t.amount||0),0)
     const balance = txIncome - txExpense
 
     // Дебіторка / Кредиторка
@@ -549,23 +519,23 @@ export default function Contractors({ user, onNavigate }) {
 
         {/* KPI row */}
         <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(4,1fr)', marginBottom:12 }}>
-          <div className="kpi"><div className="kpi-label">Доходи</div><div className="kpi-value" style={{ color:'var(--green)' }}>+{fmt(txIncome)}</div><div className="kpi-sub" style={{ fontSize:11, color:'var(--text3)' }}>з ПДВ: {fmt(txIncomeGross)} · ПДВ: {fmt(txIncomeVat)}</div></div>
-          <div className="kpi"><div className="kpi-label">Витрати</div><div className="kpi-value" style={{ color:'var(--red)' }}>-{fmt(txExpense)}</div><div className="kpi-sub" style={{ fontSize:11, color:'var(--text3)' }}>з ПДВ: {fmt(txExpenseGross)} · ПДВ: {fmt(txExpenseVat)}</div></div>
-          <div className="kpi"><div className="kpi-label">Сальдо</div><div className="kpi-value" style={{ color:balance>=0?'var(--green)':'var(--red)' }}>{balance>=0?'+':'-'}{fmt(balance)}</div><div className="kpi-sub" style={{ fontSize:11, color:'var(--text3)' }}>без ПДВ</div></div>
+          <div className="kpi"><div className="kpi-label">Доходи</div><div className="kpi-value" style={{ color:'var(--green)' }}>+{fmt(txIncome)}</div><div className="kpi-sub">грн</div></div>
+          <div className="kpi"><div className="kpi-label">Витрати</div><div className="kpi-value" style={{ color:'var(--red)' }}>-{fmt(txExpense)}</div><div className="kpi-sub">грн</div></div>
+          <div className="kpi"><div className="kpi-label">Сальдо</div><div className="kpi-value" style={{ color:balance>=0?'var(--green)':'var(--red)' }}>{balance>=0?'+':'-'}{fmt(balance)}</div><div className="kpi-sub">грн</div></div>
           <div className="kpi"><div className="kpi-label">Операцій</div><div className="kpi-value">{detail.operations_count||0}</div><div className="kpi-sub">остання: {detail.last_operation_date||'—'}</div></div>
         </div>
         {(debit > 0 || credit > 0) && (
           <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(3,1fr)', marginBottom:12 }}>
             {debit > 0 && (
               <div className="kpi" style={{ borderLeft:'3px solid var(--amber)' }}>
-                <div className="kpi-label">Дебіторка (з ПДВ)</div>
+                <div className="kpi-label">Дебіторка</div>
                 <div className="kpi-value" style={{ color:'var(--amber)' }}>{fmt(debit)}</div>
                 <div className="kpi-sub">нам винні</div>
               </div>
             )}
             {credit > 0 && (
               <div className="kpi" style={{ borderLeft:'3px solid var(--red)' }}>
-                <div className="kpi-label">Кредиторка (з ПДВ)</div>
+                <div className="kpi-label">Кредиторка</div>
                 <div className="kpi-value" style={{ color:'var(--red)' }}>{fmt(credit)}</div>
                 <div className="kpi-sub">ми винні</div>
               </div>

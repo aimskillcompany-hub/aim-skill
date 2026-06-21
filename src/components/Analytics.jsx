@@ -218,23 +218,23 @@ export default function Analytics({ user, onPage }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12, marginBottom: 16 }}>
             <div className="kpi">
               <div className="kpi-label">Виручка</div>
-              <div className="kpi-value" style={{ color: 'var(--green)' }}>{fmt(stats.revenueNet)}</div>
-              <div className="kpi-sub" style={{ fontSize:11, color:'var(--text3)' }}>з ПДВ: {fmt(stats.revenueGross)} · ПДВ: {fmt(stats.revenueVat)}</div>
+              <div className="kpi-value" style={{ color: 'var(--green)' }}>{fmt(stats.revenueGross)}</div>
+              <div className="kpi-sub">грн</div>
             </div>
             <div className="kpi">
               <div className="kpi-label">Витрати</div>
-              <div className="kpi-value" style={{ color: 'var(--red)' }}>{fmt(stats.expensesNet)}</div>
-              <div className="kpi-sub" style={{ fontSize:11, color:'var(--text3)' }}>з ПДВ: {fmt(stats.expensesGross)} · ПДВ: {fmt(stats.expensesVat)}</div>
+              <div className="kpi-value" style={{ color: 'var(--red)' }}>{fmt(stats.expensesGross)}</div>
+              <div className="kpi-sub">грн</div>
             </div>
             <div className="kpi">
               <div className="kpi-label">Результат</div>
-              <div className="kpi-value" style={{ color: stats.net >= 0 ? 'var(--green)' : 'var(--red)' }}>{stats.net >= 0 ? '+' : '−'}{fmt(stats.net)}</div>
-              <div className="kpi-sub" style={{ fontSize:11, color:'var(--text3)' }}>з ПДВ: {stats.netGross >= 0 ? '+' : '−'}{fmt(stats.netGross)}</div>
+              <div className="kpi-value" style={{ color: stats.netGross >= 0 ? 'var(--green)' : 'var(--red)' }}>{stats.netGross >= 0 ? '+' : '−'}{fmt(stats.netGross)}</div>
+              <div className="kpi-sub">грн</div>
             </div>
             <div className="kpi">
               <div className="kpi-label">Банк</div>
               <div className="kpi-value" style={{ color: stats.bankFlow >= 0 ? 'var(--green)' : 'var(--red)' }}>{stats.bankFlow >= 0 ? '+' : '−'}{fmt(stats.bankFlow)}</div>
-              <div className="kpi-sub">грн (весь час)</div>
+              <div className="kpi-sub">весь час</div>
             </div>
             <div className="kpi">
               <div className="kpi-label">Каса</div>
