@@ -390,7 +390,7 @@ export default function Validation() {
                   return (
                     <div style={{ background: 'var(--surface2)', borderRadius: 10, padding: 14, marginBottom: 12 }}>
                       <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', marginBottom: 8 }}>Результат перерахунку:</div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
                         <div>
                           <div style={{ fontSize: 11, color: 'var(--text3)' }}>Без ПДВ</div>
                           <div style={{ fontSize: 16, fontWeight: 600 }}>{fmtInt(previewNet)} грн</div>
@@ -400,8 +400,15 @@ export default function Validation() {
                           <div style={{ fontSize: 16, fontWeight: 600, color: previewVat > 0 ? 'var(--amber)' : 'var(--text3)' }}>{fmtInt(previewVat)} грн</div>
                         </div>
                         <div>
-                          <div style={{ fontSize: 11, color: 'var(--text3)' }}>З ПДВ (банк)</div>
-                          <div style={{ fontSize: 16, fontWeight: 600 }}>{fmtInt(bankAbs)} грн</div>
+                          <div style={{ fontSize: 11, color: 'var(--text3)' }}>Сума з ПДВ</div>
+                          <div style={{ fontSize: 16, fontWeight: 600 }}>{fmtInt(previewNet + previewVat)} грн</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, color: 'var(--text3)' }}>Банк</div>
+                          <div style={{ fontSize: 16, fontWeight: 600, color: Math.abs(bankAbs - (previewNet + previewVat)) < 1 ? 'var(--green)' : 'var(--red)' }}>{fmtInt(bankAbs)} грн</div>
+                          {Math.abs(bankAbs - (previewNet + previewVat)) >= 1 && (
+                            <div style={{ fontSize: 10, color: 'var(--red)' }}>різниця: {fmtInt(bankAbs - (previewNet + previewVat))}</div>
+                          )}
                         </div>
                       </div>
                     </div>
