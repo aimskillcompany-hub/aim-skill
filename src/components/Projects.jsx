@@ -2,9 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import TransactionModal from './TransactionModal'
 import ContractorSelect from './ui/ContractorSelect'
-
-const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(n || 0))
-const fmtInt = fmt
+import { fmtInt as fmt, fmtInt } from '../lib/fmt'
 
 const UA_MONTHS = ['січень','лютий','березень','квітень','травень','червень','липень','серпень','вересень','жовтень','листопад','грудень']
 

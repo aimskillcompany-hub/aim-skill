@@ -5,8 +5,7 @@ import { upsertContractor, syncContractorStats, importMissingContractors, mergeD
 import { fetchByEdrpou, isVkursiConfigured, getVkursiCredentials, setVkursiCredentials } from '../lib/vkursi'
 import DocGenModal from './DocGenModal'
 import { loadContractorDocs, getDocLabel, getDocType, STATUS_LABELS, STATUS_COLORS, formatMoney as fmtDoc, updateDocStatus, generatePdf, generateXlsx, DOCUMENT_TYPES, createStockFromDoc } from '../lib/docgen'
-
-const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
+import { fmtInt as fmt } from '../lib/fmt'
 
 function ItemsTable({ items, isSale, onProductClick }) {
   const totalSell = items.reduce((s, it) => s + (parseFloat(it.amount) || 0), 0)
@@ -202,7 +201,7 @@ function Field({ label, value }) {
   )
 }
 
-export default function Contractors({ user, onNavigate }) {
+export default function Contractors({ user, onNavigate, openContractorId, onParamConsumed }) {
   const [list, setList] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -238,6 +237,14 @@ export default function Contractors({ user, onNavigate }) {
   const [syncResult, setSyncResult] = useState(null)
 
   useEffect(() => { loadAll(); fetchArticles().then(setArticles) }, [])
+
+  // Авто-відкрити контрагента якщо передано openContractorId
+  useEffect(() => {
+    if (openContractorId && list.length > 0) {
+      const c = list.find(c => c.id === openContractorId)
+      if (c) { openDetail(c); onParamConsumed?.() }
+    }
+  }, [openContractorId, list])
 
   const loadAll = async () => {
     setLoading(true)
@@ -520,14 +527,14 @@ export default function Contractors({ user, onNavigate }) {
         </div>
 
         {/* KPI row */}
-        <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(4,1fr)', marginBottom:12 }}>
+        <div className="kpi-grid" style={{ marginBottom:12 }}>
           <div className="kpi"><div className="kpi-label">Доходи</div><div className="kpi-value" style={{ color:'var(--green)' }}>+{fmt(txIncome)}</div><div className="kpi-sub">грн</div></div>
           <div className="kpi"><div className="kpi-label">Витрати</div><div className="kpi-value" style={{ color:'var(--red)' }}>-{fmt(txExpense)}</div><div className="kpi-sub">грн</div></div>
           <div className="kpi"><div className="kpi-label">Сальдо</div><div className="kpi-value" style={{ color:balance>=0?'var(--green)':'var(--red)' }}>{balance>=0?'+':'-'}{fmt(balance)}</div><div className="kpi-sub">грн</div></div>
           <div className="kpi"><div className="kpi-label">Операцій</div><div className="kpi-value">{detail.operations_count||0}</div><div className="kpi-sub">остання: {detail.last_operation_date||'—'}</div></div>
         </div>
         {(docsOutgoing > 0 || docsIncoming > 0) && (
-          <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(4,1fr)', marginBottom:12 }}>
+          <div className="kpi-grid" style={{ marginBottom:12 }}>
             <div className="kpi">
               <div className="kpi-label">Відвантажено нами</div>
               <div className="kpi-value">{fmt(docsOutgoing)}</div>
@@ -555,7 +562,7 @@ export default function Contractors({ user, onNavigate }) {
           </div>
         )}
         {(detail.total_otherIn > 0 || detail.total_otherOut > 0) && (
-          <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(3,1fr)', marginBottom:20 }}>
+          <div className="kpi-grid cols-3">
             <div className="kpi"><div className="kpi-label">Інші вхідні</div><div className="kpi-value" style={{ color:'var(--green)' }}>+{fmt(detail.total_otherIn)}</div><div className="kpi-sub">грн</div></div>
             <div className="kpi"><div className="kpi-label">Інші вихідні</div><div className="kpi-value" style={{ color:'var(--red)' }}>-{fmt(detail.total_otherOut)}</div><div className="kpi-sub">грн</div></div>
             <div className="kpi"><div className="kpi-label">Сальдо інших</div><div className="kpi-value" style={{ color:((detail.total_otherIn||0)-(detail.total_otherOut||0))>=0?'var(--green)':'var(--red)' }}>{((detail.total_otherIn||0)-(detail.total_otherOut||0))>=0?'+':'-'}{fmt((detail.total_otherIn||0)-(detail.total_otherOut||0))}</div><div className="kpi-sub">грн</div></div>
@@ -563,7 +570,7 @@ export default function Contractors({ user, onNavigate }) {
         )}
 
         {/* Tabs */}
-        <div style={{ display:'flex', borderBottom:'1px solid var(--border)', marginBottom:20, gap:0 }}>
+        <div className="tab-bar">
           {[
             { id:'info', label:'Реквізити', icon:'ti-file-info' },
             { id:'docs', label:`Документи (${contractorDocs.length})`, icon:'ti-file-text' },
@@ -571,13 +578,9 @@ export default function Contractors({ user, onNavigate }) {
             { id:'txs', label:`Операції (${detailTxs.length})`, icon:'ti-list-details' },
             { id:'notes', label:'Нотатки', icon:'ti-notes' },
           ].map(t => (
-            <button key={t.id} onClick={() => setDetailTab(t.id)} style={{
-              padding:'10px 18px', border:'none', background:'none', cursor:'pointer',
-              fontSize:14, fontWeight:500, fontFamily:'inherit',
-              display:'flex', alignItems:'center', gap:6,
-              borderBottom: detailTab===t.id ? '2px solid #000' : '2px solid transparent',
-              color: detailTab===t.id ? 'var(--text)' : 'var(--text2)',
-            }}><i className={`ti ${t.icon}`} style={{ fontSize:15 }} />{t.label}</button>
+            <button key={t.id} onClick={() => setDetailTab(t.id)} className={`tab-btn ${detailTab===t.id ? 'active' : ''}`}>
+              <i className={`ti ${t.icon}`} />{t.label}
+            </button>
           ))}
         </div>
 
@@ -1435,7 +1438,7 @@ export default function Contractors({ user, onNavigate }) {
         </div>
       </div>
 
-      <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(5,1fr)', marginBottom:20 }}>
+      <div className="kpi-grid cols-5">
         <div className="kpi"><div className="kpi-label">Всього</div><div className="kpi-value">{kpi.total}</div></div>
         <div className="kpi"><div className="kpi-label">Клієнти</div><div className="kpi-value" style={{ color:'var(--green)' }}>{kpi.clients}</div></div>
         <div className="kpi"><div className="kpi-label">Постачальники</div><div className="kpi-value" style={{ color:'var(--red)' }}>{kpi.suppliers}</div></div>

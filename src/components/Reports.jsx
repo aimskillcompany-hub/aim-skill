@@ -8,7 +8,8 @@ import {
   CartesianGrid, Legend, AreaChart, Area, Cell, PieChart, Pie,
 } from 'recharts'
 
-const fmt  = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
+import { fmtInt as fmt } from '../lib/fmt'
+
 const fmtS = n => n === 0 ? '—' : (n > 0 ? '+' : '−') + fmt(n)
 const fmtK = n => {
   const abs = Math.abs(n || 0)

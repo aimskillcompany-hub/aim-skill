@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
-
-const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
+import { fmtInt as fmt } from '../../lib/fmt'
 
 export default function ItemsTable({ items, onUpdateItem }) {
   const [products, setProducts] = useState([])

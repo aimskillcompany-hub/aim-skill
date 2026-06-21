@@ -86,8 +86,17 @@ export const css = `
   }
   .card-title { font-size: 14px; font-weight: 600; color: var(--text2); margin-bottom: 16px; }
 
+  /* ═══ Tabs ═══ */
+  .tab-bar { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 20px; gap: 0; overflow-x: auto; }
+  .tab-btn { padding: 10px 18px; border: none; background: none; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--text2); font-family: inherit; border-bottom: 2px solid transparent; white-space: nowrap; display: flex; align-items: center; gap: 6px; transition: color .15s, border-color .15s; }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--text); border-bottom-color: var(--text); }
+  .tab-btn i { font-size: 15px; }
+
   /* ═══ KPI ═══ */
   .kpi-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 20px; }
+  .kpi-grid.cols-3 { grid-template-columns: repeat(3,1fr); }
+  .kpi-grid.cols-5 { grid-template-columns: repeat(5,1fr); }
   .kpi {
     background: var(--surface);
     border: 1px solid var(--border);

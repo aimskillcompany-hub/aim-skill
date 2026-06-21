@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-
-const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(n))
+import { fmtInt as fmt } from '../lib/fmt'
 const fmt2 = n => n != null ? new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(n) : '—'
 
 const DIR_COLORS = {

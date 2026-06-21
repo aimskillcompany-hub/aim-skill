@@ -1,8 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
-
-const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(Math.abs(n || 0))
-const fmtInt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
+import { fmt, fmtInt } from '../lib/fmt'
 
 export default function ProductDetail({
   detail, detailMovements, detailAliases, products,

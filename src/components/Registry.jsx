@@ -6,8 +6,9 @@ import Badge from './ui/Badge'
 import ContractorSelect from './ui/ContractorSelect'
 
 const DIRS = ['Витрати','Доходи','ПФД','Внутрішні перекази','Відсотки банку','Інше']
+import { fmtInt as fmt } from '../lib/fmt'
+
 const PER_PAGE = 50
-const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(n))
 const fmt2 = n => n != null ? new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(n) : '—'
 
 const DIR_TO_ARTICLE_TYPE = {

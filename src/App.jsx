@@ -78,7 +78,7 @@ function Dashboard({ user, onPage }) {
       </div>
 
       {/* KPI Row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 16 }}>
+      <div className="kpi-grid">
         <div className="kpi">
           <div className="kpi-label">Загальна виручка</div>
           <div className="kpi-value">{fmt(stats.revenue)} <span style={{ fontSize: 16, fontWeight: 500, color: 'var(--text3)' }}>грн</span></div>
@@ -377,6 +377,7 @@ export default function App() {
     return saved || 'analytics'
   })
   const [toast, setToast] = useState(null)
+  const [navParam, setNavParam] = useState(null)
 
   useEffect(() => { sessionStorage.setItem('aim-page', page) }, [page])
 
@@ -405,6 +406,8 @@ export default function App() {
     setTimeout(() => setToast(null), 3000)
   }
 
+  const navigate = (pageId, param) => { setPage(pageId); setNavParam(param || null) }
+
   const user = session ? { ...session.user, ...profile } : null
 
   if (loading) return (
@@ -421,12 +424,12 @@ export default function App() {
   )
 
   const pages = {
-    analytics: <Analytics user={user} onPage={setPage} />,
+    analytics: <Analytics user={user} onPage={navigate} />,
     upload: <DocumentUpload user={user} onSaved={showToast} />,
     registry: <Registry user={user} />,
     bank: <Bank user={user} />,
     cash: <Cash user={user} />,
-    contractors: <Contractors user={user} onNavigate={setPage} />,
+    contractors: <Contractors user={user} onNavigate={setPage} openContractorId={navParam} onParamConsumed={() => setNavParam(null)} />,
     inventory: <Inventory user={user} />,
     assembly: <Assembly user={user} />,
     validation: <Validation />,

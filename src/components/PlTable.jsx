@@ -1,7 +1,7 @@
 import React from 'react'
 import { PL_ORDER, PL_LABELS, PL_SIGN } from '../lib/articles'
+import { fmtInt as fmt } from '../lib/fmt'
 
-const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
 const fmtS = n => n === 0 ? '—' : (n > 0 ? '+' : '−') + fmt(n)
 const numColor = v => v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--text3)'
 

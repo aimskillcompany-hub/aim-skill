@@ -4,9 +4,9 @@ import * as XLSX from 'xlsx'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import ContractorSelect from './ui/ContractorSelect'
 import { upsertContractor } from '../lib/contractors'
+import { fmtInt as fmt } from '../lib/fmt'
 
 const API_KEY = import.meta.env.VITE_ANTHROPIC_KEY
-const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
 
 // ── Пряме читання XLSX/XLS (SheetJS) ─────────────────────────────────────────
 async function readXlsx(file) {

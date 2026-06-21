@@ -6,7 +6,8 @@ import {
   CartesianGrid, Legend,
 } from 'recharts'
 
-const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
+import { fmtInt as fmt } from '../lib/fmt'
+
 const CASH_DIR = { income: 1, expense: -1, advance: -1, advance_return: 1, bank_to_cash: 1, cash_to_bank: -1 }
 
 export default function Analytics({ user, onPage }) {
@@ -178,16 +179,10 @@ export default function Analytics({ user, onPage }) {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 20, gap: 0 }}>
+      <div className="tab-bar">
         {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer',
-            fontSize: 14, fontWeight: 500, fontFamily: 'inherit',
-            display: 'flex', alignItems: 'center', gap: 6,
-            borderBottom: tab === t.id ? '2px solid var(--blue)' : '2px solid transparent',
-            color: tab === t.id ? 'var(--blue)' : 'var(--text2)',
-          }}>
-            <i className={`ti ${t.icon}`} style={{ fontSize: 15 }} />{t.label}
+          <button key={t.id} onClick={() => setTab(t.id)} className={`tab-btn ${tab === t.id ? 'active' : ''}`}>
+            <i className={`ti ${t.icon}`} />{t.label}
           </button>
         ))}
       </div>
@@ -215,7 +210,7 @@ export default function Analytics({ user, onPage }) {
           </div>
 
           {/* KPIs */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12, marginBottom: 16 }}>
+          <div className="kpi-grid cols-5">
             <div className="kpi">
               <div className="kpi-label">Виручка</div>
               <div className="kpi-value" style={{ color: 'var(--green)' }}>{fmt(stats.revenueGross)}</div>

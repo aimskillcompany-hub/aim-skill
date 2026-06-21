@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { assembleProduct, getFifoCost } from '../lib/stockService'
-
-const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(Math.round(Math.abs(n || 0)))
+import { fmtInt as fmt } from '../lib/fmt'
 const fmtDate = d => d ? new Date(d).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'
 
 export default function Assembly({ user }) {

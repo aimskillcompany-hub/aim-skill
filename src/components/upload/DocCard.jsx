@@ -1,6 +1,5 @@
 import DocForm from './DocForm'
-
-const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
+import { fmtInt as fmt } from '../../lib/fmt'
 
 export default function DocCard({
   card, articles, projects, groupByType, TYPE_LABELS,

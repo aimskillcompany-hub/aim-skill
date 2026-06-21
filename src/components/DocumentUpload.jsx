@@ -5,8 +5,7 @@ import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import { processDocumentItems, matchProduct } from '../lib/stockService'
 import { upsertContractor } from '../lib/contractors'
 import DocCard from './upload/DocCard'
-
-const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
+import { fmtInt as fmt } from '../lib/fmt'
 
 function buildDocFileName(docType, docNumber, contractor, date, ext) {
   const parts = [

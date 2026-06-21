@@ -3,9 +3,7 @@ import { supabase } from '../lib/supabase'
 import { processDocumentItems, migrateProductAliases, mergeProductDuplicates, backfillCostPrices } from '../lib/stockService'
 import MovementFixer from './MovementFixer'
 import ProductDetail from './ProductDetail'
-
-const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(n || 0)
-const fmtInt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(n || 0))
+import { fmt, fmtInt } from '../lib/fmt'
 
 const EMPTY_PRODUCT = { name:'', sku:'', uktzed:'', manufacturer:'', category:'', unit:'шт', buy_price:'', sell_price:'', min_stock:'0', notes:'' }
 
@@ -595,7 +593,7 @@ export default function Inventory({ user }) {
       )}
 
       {/* KPI */}
-      <div className="kpi-grid" style={{ gridTemplateColumns:'repeat(5,1fr)', marginBottom:20 }}>
+      <div className="kpi-grid cols-5">
         <div className="kpi"><div className="kpi-label">Всього товарів</div><div className="kpi-value">{kpi.total}</div></div>
         <div className="kpi"><div className="kpi-label">В наявності</div><div className="kpi-value" style={{ color:'var(--green)' }}>{kpi.inStock}</div></div>
         <div className="kpi"><div className="kpi-label">Низький залишок</div><div className="kpi-value" style={{ color:'#D97706' }}>{kpi.lowStock}</div></div>

@@ -2,8 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import ContractorSelect from './ui/ContractorSelect'
-
-const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
+import { fmtInt as fmt } from '../lib/fmt'
 
 const TYPES = {
   income:         { label: 'Готівкова виручка',    color: '#4A7C59', bg: '#EFF5EF', icon: 'ti-arrow-down-circle',  dir: +1 },

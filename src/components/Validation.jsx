@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
-
-const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(Math.abs(n || 0))
-const fmtInt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
+import { fmt, fmtInt } from '../lib/fmt'
 
 export default function Validation() {
   const [txs, setTxs] = useState([])
@@ -648,7 +646,7 @@ export default function Validation() {
         <div style={{ height: 8, background: 'var(--surface2)', borderRadius: 4, overflow: 'hidden' }}>
           <div style={{ height: '100%', width: `${pct}%`, background: pct === 100 ? 'var(--green)' : 'var(--blue)', borderRadius: 4, transition: 'width .3s' }} />
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginTop: 12 }}>
+        <div className="kpi-grid" style={{ marginTop: 12, marginBottom: 0 }}>
           <div className="kpi" style={{ cursor: 'pointer' }} onClick={() => setFilter('pending')}>
             <div className="kpi-label">Очікують</div>
             <div className="kpi-value" style={{ color: 'var(--amber)' }}>{stats.total - stats.validated}</div>
