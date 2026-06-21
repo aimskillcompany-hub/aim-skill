@@ -514,7 +514,7 @@ export default function Inventory({ user }) {
             </button>
             <button onClick={() => { setShowMerge(true); setMergeSearch(''); setMergeTarget(null) }}
               className="btn btn-secondary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}>
-              <i className="ti ti-arrows-merge" style={{ fontSize:14 }} />
+              <i className="ti ti-arrows-merge" style={{ fontSize:14 }} /> Обʼєднати
             </button>
             <button onClick={() => { setShowMovement(true); setMovForm({ type:'in', quantity:'', price:'', description:'', date:new Date().toISOString().split('T')[0] }) }}
               className="btn btn-primary" style={{ width:'auto', minHeight:40, padding:'8px 14px' }}>
@@ -549,10 +549,13 @@ export default function Inventory({ user }) {
             {infoField('Мін. залишок', detail.min_stock > 0 ? `${detail.min_stock} ${detail.unit}` : null)}
             {detailAliases.length > 0 && (
               <div style={{ marginTop:6 }}>
-                <div style={{ fontSize:11, color:'var(--amber)', display:'flex', alignItems:'center', gap:4, marginBottom:2 }}>
-                  <i className="ti ti-alert-circle" style={{ fontSize:12 }} /> {detailAliases.length} альтернативних назв
+                <div style={{ fontSize:11, color:'var(--amber)', display:'flex', alignItems:'center', gap:4, marginBottom:2, cursor:'pointer' }}
+                  onClick={e => { const el = e.currentTarget.nextSibling; if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none' }}>
+                  <i className="ti ti-alert-circle" style={{ fontSize:12 }} /> {detailAliases.length} альтернативних назв ▾
                 </div>
-                {detailAliases.map((a, i) => <div key={i} style={{ fontSize:11, color:'var(--text3)', paddingLeft:16 }}>{a}</div>)}
+                <div style={{ display:'none' }}>
+                  {detailAliases.map((a, i) => <div key={i} style={{ fontSize:10, color:'var(--text3)', paddingLeft:16, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:280 }} title={a}>{a}</div>)}
+                </div>
               </div>
             )}
             {detail.notes && <div style={{ marginTop:8, fontSize:12, color:'var(--text2)', fontStyle:'italic' }}>{detail.notes}</div>}
@@ -563,27 +566,27 @@ export default function Inventory({ user }) {
             <div style={{ fontSize:13, fontWeight:600, marginBottom:10, display:'flex', alignItems:'center', gap:6, color:'var(--text2)' }}>
               <i className="ti ti-currency-hryvnia" style={{ fontSize:15 }} /> Ціни
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+            <div style={{ display:'grid', gridTemplateColumns: detail.sell_price ? '1fr 1fr' : '1fr', gap:10 }}>
               <div>
-                <div style={{ fontSize:11, color:'var(--text3)' }}>Закупка</div>
+                <div style={{ fontSize:11, color:'var(--text3)' }}>Ціна закупки</div>
                 <div style={{ fontSize:18, fontWeight:600, color:'var(--text)' }}>{detail.buy_price ? fmtInt(detail.buy_price) + ' грн' : '—'}</div>
               </div>
-              <div>
-                <div style={{ fontSize:11, color:'var(--text3)' }}>Продаж</div>
-                <div style={{ fontSize:18, fontWeight:600, color:'var(--text)' }}>{detail.sell_price ? fmtInt(detail.sell_price) + ' грн' : '—'}</div>
-              </div>
-              {detail.buy_price && detail.sell_price && (
+              {detail.sell_price && <div>
+                <div style={{ fontSize:11, color:'var(--text3)' }}>Ціна продажу</div>
+                <div style={{ fontSize:18, fontWeight:600, color:'var(--text)' }}>{fmtInt(detail.sell_price)} грн</div>
+              </div>}
+              {detail.buy_price > 0 && detail.sell_price > 0 && (
                 <div>
-                  <div style={{ fontSize:11, color:'var(--text3)' }}>Маржа</div>
+                  <div style={{ fontSize:11, color:'var(--text3)' }}>Маржа на одиницю</div>
                   <div style={{ fontSize:16, fontWeight:600, color: detail.sell_price > detail.buy_price ? 'var(--green)' : 'var(--red)' }}>
-                    {((detail.sell_price - detail.buy_price) / detail.buy_price * 100).toFixed(0)}%
+                    {fmtInt(detail.sell_price - detail.buy_price)} грн ({((detail.sell_price - detail.buy_price) / detail.buy_price * 100).toFixed(0)}%)
                   </div>
                 </div>
               )}
-              <div>
+              {stockValue > 0 && <div>
                 <div style={{ fontSize:11, color:'var(--text3)' }}>Вартість залишку</div>
                 <div style={{ fontSize:16, fontWeight:600 }}>{fmtInt(stockValue)} грн</div>
-              </div>
+              </div>}
             </div>
             {lastPurchase && (
               <div style={{ marginTop:10, paddingTop:8, borderTop:'1px solid var(--border)', fontSize:11, color:'var(--text3)' }}>
