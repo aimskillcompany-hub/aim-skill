@@ -146,8 +146,10 @@ export default function Validation() {
     const items = tx._items || []
     const bankAbs = Math.abs(tx.amount || 0)
     const ratio = tx._ratio
-    const ratioLabel = ratio === null ? '—' : ratio === 1 ? '1.0 (items = банк)' : Math.abs(ratio - 1.2) < 0.01 ? '1.2 (items без ПДВ)' : ratio.toFixed(3)
-    const ratioColor = ratio === null ? 'var(--text3)' : Math.abs(ratio - 1.0) < 0.01 ? 'var(--blue)' : Math.abs(ratio - 1.2) < 0.01 ? 'var(--green)' : 'var(--red)'
+    const isRatio1 = ratio !== null && Math.abs(ratio - 1.0) < 0.01
+    const isRatio12 = ratio !== null && Math.abs(ratio - 1.2) < 0.01
+    const ratioLabel = ratio === null ? '' : isRatio1 ? 'Ціни в документі З ПДВ' : isRatio12 ? 'Ціни в документі БЕЗ ПДВ' : '⚠ Суми не збігаються'
+    const ratioColor = ratio === null ? 'var(--text3)' : isRatio1 ? 'var(--blue)' : isRatio12 ? 'var(--green)' : 'var(--red)'
 
     return (
       <div>
@@ -176,9 +178,9 @@ export default function Validation() {
             {/* Items */}
             {items.length > 0 && (
               <div className="card" style={{ marginBottom: 12 }}>
-                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span>Позиції ({items.length})</span>
-                  <span style={{ color: ratioColor, fontSize: 12 }}>Ratio: {ratioLabel}</span>
+                  {ratioLabel && <span style={{ color: ratioColor, fontSize: 12, fontWeight: 500 }}>{ratioLabel}</span>}
                 </div>
                 <table style={{ width: '100%', fontSize: 12 }}>
                   <thead>
@@ -213,8 +215,8 @@ export default function Validation() {
                       <td></td>
                     </tr>
                     <tr>
-                      <td colSpan={3} style={{ padding: '4px 8px', color: 'var(--text3)' }}>Різниця</td>
-                      <td style={{ textAlign: 'right', padding: '4px 8px', color: Math.abs(bankAbs - tx._itemsTotal) > 1 ? 'var(--red)' : 'var(--green)', fontWeight: 500 }}>
+                      <td colSpan={3} style={{ padding: '4px 8px', color: 'var(--text3)' }}>{isRatio12 ? 'ПДВ (різниця)' : 'Різниця'}</td>
+                      <td style={{ textAlign: 'right', padding: '4px 8px', color: isRatio12 ? 'var(--text2)' : Math.abs(bankAbs - tx._itemsTotal) > 1 ? 'var(--red)' : 'var(--green)', fontWeight: 500 }}>
                         {fmtInt(bankAbs - tx._itemsTotal)} грн
                       </td>
                       <td></td>
@@ -245,29 +247,21 @@ export default function Validation() {
             {/* Кнопки */}
             {!tx.is_validated && (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {items.length > 0 && Math.abs(tx._ratio - 1.0) < 0.01 && (
-                  <button className="btn btn-primary" disabled={saving} onClick={() => markValidated(tx, true)} style={{ flex: 1 }}>
-                    {saving ? '...' : 'Ціни З ПДВ (ratio 1.0)'}
-                  </button>
-                )}
-                {items.length > 0 && Math.abs(tx._ratio - 1.2) < 0.01 && (
-                  <button className="btn btn-primary" disabled={saving} onClick={() => markValidated(tx, false)} style={{ flex: 1 }}>
-                    {saving ? '...' : 'Ціни БЕЗ ПДВ (ratio 1.2)'}
-                  </button>
-                )}
-                {items.length > 0 && Math.abs(tx._ratio - 1.0) >= 0.01 && Math.abs(tx._ratio - 1.2) >= 0.01 && (
+                {items.length > 0 && (
                   <>
-                    <button className="btn btn-secondary" disabled={saving} onClick={() => markValidated(tx, true)} style={{ flex: 1 }}>
-                      Ціни З ПДВ
+                    <button className={`btn ${isRatio12 ? 'btn-primary' : 'btn-secondary'}`} disabled={saving} onClick={() => markValidated(tx, false)} style={{ flex: 1 }}>
+                      {saving ? '...' : '✓ Підтвердити: ціни БЕЗ ПДВ'}
                     </button>
-                    <button className="btn btn-secondary" disabled={saving} onClick={() => markValidated(tx, false)} style={{ flex: 1 }}>
-                      Ціни БЕЗ ПДВ
+                    <button className={`btn ${isRatio1 ? 'btn-primary' : 'btn-secondary'}`} disabled={saving} onClick={() => markValidated(tx, true)} style={{ flex: 1 }}>
+                      {saving ? '...' : '✓ Підтвердити: ціни З ПДВ'}
                     </button>
                   </>
                 )}
-                <button className="btn btn-secondary" disabled={saving} onClick={() => markValidated(tx, null)} style={{ flex: items.length === 0 ? 1 : undefined }}>
-                  {saving ? '...' : items.length === 0 ? '✓ Валідувати (без items)' : '✓ Як є'}
-                </button>
+                {items.length === 0 && (
+                  <button className="btn btn-primary" disabled={saving} onClick={() => markValidated(tx, null)} style={{ flex: 1 }}>
+                    {saving ? '...' : '✓ Валідувати'}
+                  </button>
+                )}
               </div>
             )}
             {tx.is_validated && (
@@ -373,7 +367,7 @@ export default function Validation() {
               <th>Контрагент</th>
               <th style={{ textAlign: 'right' }}>Банк</th>
               <th style={{ textAlign: 'right' }}>Items</th>
-              <th style={{ textAlign: 'center' }}>Ratio</th>
+              <th style={{ textAlign: 'center' }}>ПДВ</th>
               <th>Стаття</th>
               <th>Доки</th>
             </tr>
@@ -399,8 +393,8 @@ export default function Validation() {
                   <td style={{ textAlign: 'right', fontSize: 12, color: 'var(--text2)', fontVariantNumeric: 'tabular-nums' }}>
                     {tx._items.length > 0 ? fmtInt(tx._itemsTotal) : '—'}
                   </td>
-                  <td style={{ textAlign: 'center', fontSize: 11, fontWeight: 500, color: ratioColor }}>
-                    {tx._ratio ? tx._ratio.toFixed(1) : '—'}
+                  <td style={{ textAlign: 'center', fontSize: 10, fontWeight: 500, color: ratioColor }}>
+                    {tx._ratio === null ? '—' : Math.abs(tx._ratio - 1.0) < 0.01 ? 'з ПДВ' : Math.abs(tx._ratio - 1.2) < 0.01 ? 'без ПДВ' : '⚠'}
                   </td>
                   <td style={{ fontSize: 12, color: tx.article ? 'var(--text2)' : 'var(--red)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {tx.article || 'без статті'}
