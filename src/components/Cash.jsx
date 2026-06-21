@@ -95,7 +95,8 @@ export default function Cash({ user }) {
     }
 
     const { data: saved, error } = await supabase.from('cash_transactions').insert(row).select().single()
-    if (!error && saved && pendingFile) {
+    if (error) { alert('Помилка збереження: ' + error.message); setSaving(false); return }
+    if (saved && pendingFile) {
       const ext = pendingFile.name.split('.').pop()
       const path = `cash/${saved.id}/${Date.now()}.${ext}`
       const { error: upErr } = await supabase.storage.from('documents').upload(path, pendingFile)

@@ -444,13 +444,14 @@ export default function Registry({ user }) {
 
   const handleUpdate = async () => {
     setEditSaving(true)
-    await supabase.from('bank_transactions').update({
+    const { error } = await supabase.from('bank_transactions').update({
       direction: editForm.direction,
       article: editForm.article || null,
       project_id: editForm.project_id || null,
       description: editForm.description || null,
       counterparty: editForm.contractor,
     }).eq('id', editForm.id)
+    if (error) { alert('Помилка збереження: ' + error.message) }
     setEdit(null)
     setEditSaving(false)
     load()

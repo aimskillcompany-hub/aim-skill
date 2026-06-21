@@ -551,6 +551,37 @@ export async function migrateProductAliases() {
   return { added, skipped, total: (products || []).length }
 }
 
+// ── Перерахувати FIFO cost prices для одного продукту ──
+export async function recalcFifoForProduct(productId) {
+  const { data: inMovs } = await supabase.from('stock_movements')
+    .select('id, quantity, price').eq('product_id', productId).eq('type', 'in')
+    .order('date').order('created_at')
+  if (!inMovs?.length) return
+  const { data: outMovs } = await supabase.from('stock_movements')
+    .select('id, quantity').eq('product_id', productId).eq('type', 'out')
+    .order('date').order('created_at')
+  if (!outMovs?.length) return
+
+  const inQueue = inMovs.map(m => ({ price: parseFloat(m.price) || 0, remaining: parseFloat(m.quantity) || 0 }))
+  for (const out of outMovs) {
+    let needQty = parseFloat(out.quantity) || 0
+    let totalCost = 0, totalQty = 0
+    for (const inItem of inQueue) {
+      if (needQty <= 0) break
+      if (inItem.remaining <= 0) continue
+      const take = Math.min(inItem.remaining, needQty)
+      totalCost += take * inItem.price
+      totalQty += take
+      inItem.remaining -= take
+      needQty -= take
+    }
+    const costPrice = totalQty > 0 ? Math.round(totalCost / totalQty * 100) / 100 : null
+    if (costPrice !== null) {
+      await supabase.from('stock_movements').update({ cost_price: costPrice }).eq('id', out.id)
+    }
+  }
+}
+
 // ── Обʼєднати дублікати продуктів по нормалізованій назві (з fuzzy) ──
 export async function mergeProductDuplicates() {
   const { data: products } = await supabase
@@ -609,6 +640,9 @@ export async function mergeProductDuplicates() {
     if (!keep.sell_price) { const sp = group.find(p => p.sell_price); if (sp) upd.sell_price = sp.sell_price }
     if (!keep.category) { const ct = group.find(p => p.category); if (ct) upd.category = ct.category }
     if (Object.keys(upd).length > 0) await supabase.from('products').update(upd).eq('id', keep.id)
+
+    // Перерахувати FIFO cost prices для об'єднаного продукту
+    await recalcFifoForProduct(keep.id)
   }
 
   // Видалити дубльовані stock_movements (по transaction_item_id)

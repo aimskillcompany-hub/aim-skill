@@ -467,7 +467,8 @@ export default function Bank({ user }) {
         contractor_id: auto.contractor_id || ct.id || null,
       }
     })
-    await supabase.from('bank_transactions').insert(toInsert)
+    const { error } = await supabase.from('bank_transactions').insert(toInsert)
+    if (error) { alert('Помилка імпорту: ' + error.message); setImporting(false); return }
     setImporting(false)
     setParsed(null)
     setFile(null)
@@ -477,7 +478,17 @@ export default function Bank({ user }) {
 
   // ── UNMATCHED ACTIONS ────────────────────────────────────────────────────────
   const handleIgnore = async (id) => {
-    if (!confirm('Ігнорувати цю транзакцію? Вона зникне зі списку.')) return
+    // Перевірити чи є складські рухи
+    const { data: movs } = await supabase.from('stock_movements').select('id, product_id, quantity, type')
+      .eq('bank_transaction_id', id)
+    const hasStock = movs && movs.length > 0
+    const msg = hasStock
+      ? `Ігнорувати цю транзакцію? Є ${movs.length} складських рухів — вони також будуть видалені.`
+      : 'Ігнорувати цю транзакцію? Вона зникне зі списку.'
+    if (!confirm(msg)) return
+    if (hasStock) {
+      await supabase.from('stock_movements').delete().eq('bank_transaction_id', id)
+    }
     await supabase.from('bank_transactions').update({ is_ignored: true }).eq('id', id)
     setUnmatched(u => u.filter(t => t.id !== id))
     setSelected(s => { const ns = new Set(s); ns.delete(id); return ns })

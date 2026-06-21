@@ -23,20 +23,17 @@ async function normalizeImage(file) {
             const newName = file.name.replace(/\.(heic|heif)$/i, '.jpg')
             resolve(new File([blob], newName, { type: 'image/jpeg' }))
           } else {
-            // Якщо canvas не спрацював — передаємо оригінал з jpeg типом
-            resolve(new File([file], file.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' }))
+            reject(new Error('Не вдалося конвертувати HEIC. Збережіть фото як JPEG або PNG і спробуйте знову.'))
           }
         }, 'image/jpeg', 0.92)
       } catch(e) {
         URL.revokeObjectURL(url)
-        // Fallback — передаємо з jpeg media_type
-        resolve(new File([file], file.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' }))
+        reject(new Error('Не вдалося конвертувати HEIC. Збережіть фото як JPEG або PNG і спробуйте знову.'))
       }
     }
     img.onerror = () => {
       URL.revokeObjectURL(url)
-      // Safari може не вміти відображати HEIC через img tag — передаємо як є з jpeg типом
-      resolve(new File([file], file.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' }))
+      reject(new Error('Формат HEIC не підтримується вашим браузером. Збережіть фото як JPEG або PNG.'))
     }
     img.src = url
   })

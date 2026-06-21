@@ -55,6 +55,9 @@ export default function ProductDetail({
     await supabase.from('transaction_items').update({ product_id: detail.id }).eq('product_id', mergeTarget.id)
     await supabase.from('product_aliases').update({ product_id: detail.id }).eq('product_id', mergeTarget.id)
     await supabase.from('products').update({ status: 'archived' }).eq('id', mergeTarget.id)
+    // Перерахувати FIFO після об'єднання рухів
+    const { recalcFifoForProduct } = await import('../lib/stockService')
+    await recalcFifoForProduct(detail.id)
     setSaving(false); setShowMerge(false); onLoadAll?.()
   }
 
