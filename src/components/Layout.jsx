@@ -12,7 +12,8 @@ const NAV = [
   { id: 'inventory', label: 'Склад',         icon: 'ti-package',           section: null },
   { id: 'assembly',  label: 'Збірки',        icon: 'ti-assembly',          section: null },
   // { id: 'planning',  label: 'Планування',    icon: 'ti-calendar-stats',    section: null },
-  { id: 'settings',  label: 'Налаштування',  icon: 'ti-settings',          section: 'Адмін' },
+  { id: 'validation', label: 'Валідація',     icon: 'ti-checkbox',          section: 'Адмін' },
+  { id: 'settings',  label: 'Налаштування',  icon: 'ti-settings',          section: null },
 ]
 
 const MOBILE_NAV = [
