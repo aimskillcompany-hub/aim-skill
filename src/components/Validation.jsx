@@ -45,7 +45,15 @@ export default function Validation() {
       total: all.length,
       validated: all.filter(t => t.is_validated).length,
       withItems: all.filter(t => t._items.length > 0).length,
-      problems: all.filter(t => t._items.length > 0 && t._ratio && Math.abs(t._ratio - 1.0) > 0.01 && Math.abs(t._ratio - 1.2) > 0.01).length,
+      problems: all.filter(t => {
+        // Невалідовані з нестандартним ratio
+        if (t._items.length > 0 && t._ratio && Math.abs(t._ratio - 1.0) > 0.01 && Math.abs(t._ratio - 1.2) > 0.01) return true
+        // Валідовані де ПДВ > 20% від нетто
+        if (t.is_validated && t.amount_net > 0 && t.vat_amount > 0 && (t.vat_amount / t.amount_net) > 0.22) return true
+        // Валідовані де нетто > банк (від'ємний ПДВ)
+        if (t.is_validated && t.amount_net > Math.abs(t.amount || 0) * 1.01) return true
+        return false
+      }).length,
     })
     setLoading(false)
   }
@@ -205,7 +213,12 @@ export default function Validation() {
     }
     if (filter === 'pending') return !tx.is_validated
     if (filter === 'validated') return tx.is_validated
-    if (filter === 'problems') return tx._items.length > 0 && tx._ratio && Math.abs(tx._ratio - 1.0) > 0.01 && Math.abs(tx._ratio - 1.2) > 0.01
+    if (filter === 'problems') {
+      if (tx._items.length > 0 && tx._ratio && Math.abs(tx._ratio - 1.0) > 0.01 && Math.abs(tx._ratio - 1.2) > 0.01) return true
+      if (tx.is_validated && tx.amount_net > 0 && tx.vat_amount > 0 && (tx.vat_amount / tx.amount_net) > 0.22) return true
+      if (tx.is_validated && tx.amount_net > Math.abs(tx.amount || 0) * 1.01) return true
+      return false
+    }
     if (filter === 'no_items') return tx._items.length === 0 && !tx.is_validated
     if (filter === 'no_article') return !tx.article?.trim()
     return true
