@@ -150,7 +150,7 @@ export default function Registry({ user }) {
   const load = useCallback(async () => {
     setLoading(true)
     // Map col name to DB field
-    const COL_MAP = { date:'date', counterparty:'counterparty', amount:'amount', direction:'direction', article:'article' }
+    const COL_MAP = { date:'date', counterparty:'counterparty', amount:'amount', direction:'direction', article:'article', is_validated:'is_validated' }
     const dbCol = COL_MAP[sort.col] || 'date'
 
     let q = supabase.from('bank_transactions')
@@ -167,6 +167,10 @@ export default function Registry({ user }) {
     if (filters.amountMin) q = q.gte('amount', parseFloat(filters.amountMin))
     if (filters.amountMax) q = q.lte('amount', parseFloat(filters.amountMax))
     if (filters.search) q = q.or(`counterparty.ilike.%${filters.search}%,description.ilike.%${filters.search}%`)
+    if (filters.vatStatus === 'validated') q = q.eq('is_validated', true)
+    if (filters.vatStatus === 'not_validated') q = q.or('is_validated.is.null,is_validated.eq.false')
+    if (filters.vatStatus === 'no_vat') { q = q.eq('is_validated', true); q = q.eq('vat_amount', 0) }
+    if (filters.vatStatus === 'with_vat') { q = q.eq('is_validated', true); q = q.gt('vat_amount', 0) }
 
     // Паралельно: дані сторінки + загальні суми (без пагінації)
     let qTotals = supabase.from('bank_transactions')
@@ -179,6 +183,10 @@ export default function Registry({ user }) {
     if (filters.amountMin) qTotals = qTotals.gte('amount', parseFloat(filters.amountMin))
     if (filters.amountMax) qTotals = qTotals.lte('amount', parseFloat(filters.amountMax))
     if (filters.search) qTotals = qTotals.or(`counterparty.ilike.%${filters.search}%,description.ilike.%${filters.search}%`)
+    if (filters.vatStatus === 'validated') qTotals = qTotals.eq('is_validated', true)
+    if (filters.vatStatus === 'not_validated') qTotals = qTotals.or('is_validated.is.null,is_validated.eq.false')
+    if (filters.vatStatus === 'no_vat') { qTotals = qTotals.eq('is_validated', true); qTotals = qTotals.eq('vat_amount', 0) }
+    if (filters.vatStatus === 'with_vat') { qTotals = qTotals.eq('is_validated', true); qTotals = qTotals.gt('vat_amount', 0) }
 
     const [{ data, count }, { data: allTxsResult }] = await Promise.all([q, qTotals])
     setAllTxsData(allTxsResult || [])
@@ -365,7 +373,7 @@ export default function Registry({ user }) {
   }
 
   const setF = (k, v) => { setFilters(f => ({ ...f, [k]: v })); setPage(1) }
-  const clearFilters = () => { setFilters({ dateFrom:'',dateTo:'',direction:'',project:'',article:'',search:'',amountMin:'',amountMax:'',noArticle:false,docStatus:'' }); setPage(1) }
+  const clearFilters = () => { setFilters({ dateFrom:'',dateTo:'',direction:'',project:'',article:'',search:'',amountMin:'',amountMax:'',noArticle:false,docStatus:'',vatStatus:'' }); setPage(1) }
   const activeFilterCount = Object.values(filters).filter(v => v === true || (v !== false && Boolean(v))).length
 
   const [projectInfo, setProjectInfo] = useState({}) // projectId → { count, total, lastItems[] }
@@ -566,13 +574,25 @@ export default function Registry({ user }) {
         </button>
         <select
           className="form-input"
-          style={{ flex:'1 1 calc(50% - 4px)', minWidth:0 }}
+          style={{ flex:'1 1 calc(33% - 6px)', minWidth:0 }}
           value={filters.docStatus}
           onChange={e => setF('docStatus', e.target.value)}
         >
           <option value="">Всі статуси</option>
           <option value="has_doc">Є документ</option>
           <option value="no_doc">Без документу</option>
+        </select>
+        <select
+          className="form-input"
+          style={{ flex:'1 1 calc(33% - 6px)', minWidth:0 }}
+          value={filters.vatStatus || ''}
+          onChange={e => setF('vatStatus', e.target.value)}
+        >
+          <option value="">ПДВ: всі</option>
+          <option value="validated">Валідовано</option>
+          <option value="not_validated">Не валідовано</option>
+          <option value="with_vat">З ПДВ</option>
+          <option value="no_vat">Без ПДВ</option>
         </select>
         <button
           className={`btn btn-sm ${activeFilterCount > 0 ? 'btn-primary' : 'btn-secondary'}`}
@@ -712,7 +732,7 @@ export default function Registry({ user }) {
                 <th style={thStyle('direction')} onClick={() => toggleSort('direction')}>Напрям<SortIcon col="direction" /></th>
                 <th style={thStyle('article')} onClick={() => toggleSort('article')}>Стаття<SortIcon col="article" /></th>
                 <th>Проєкт</th>
-                <th style={{ textAlign:'center' }}>Статус</th>
+                <th style={{ ...thStyle('is_validated'), textAlign:'center' }} onClick={() => toggleSort('is_validated')}>Статус<SortIcon col="is_validated" /></th>
                 <th></th>
               </tr>
             </thead>
@@ -740,9 +760,11 @@ export default function Registry({ user }) {
                       <div style={{ fontWeight:500, color: tx.direction === 'Доходи' ? 'var(--green)' : tx.direction === 'Витрати' ? 'var(--red)' : 'var(--text3)' }}>
                         {tx.direction === 'Доходи' ? '+' : tx.direction === 'Витрати' ? '-' : ''}{fmt(Math.abs(tx.amount))}
                       </div>
-                      {tx.is_validated && tx.vat_amount > 0 && (
+                      {tx.is_validated && (
                         <div style={{ fontSize:10, color:'var(--text3)' }}>
-                          без ПДВ: {fmt(tx.amount_net)} · ПДВ: {fmt(tx.vat_amount)}
+                          {tx.vat_amount > 0
+                            ? <>без ПДВ: {fmt(tx.amount_net)} · ПДВ: {fmt(tx.vat_amount)}</>
+                            : 'Без ПДВ'}
                         </div>
                       )}
                     </td>
@@ -899,13 +921,50 @@ export default function Registry({ user }) {
                 onClick={async () => {
                   setBulkSaving(true)
                   const ids = [...checkedIds]
+                  const selectedTxs = transactions.filter(t => checkedIds.has(t.id))
                   for (let i = 0; i < ids.length; i += 50) {
-                    await supabase.from('bank_transactions').update({ is_validated: true }).in('id', ids.slice(i, i + 50))
+                    const batch = ids.slice(i, i + 50)
+                    const updates = batch.map(id => {
+                      const tx = selectedTxs.find(t => t.id === id)
+                      const bankAbs = Math.abs(tx?.amount || 0)
+                      return { id, is_validated: true, amount_net: bankAbs, vat_amount: 0 }
+                    })
+                    for (const u of updates) {
+                      await supabase.from('bank_transactions').update({ is_validated: u.is_validated, amount_net: u.amount_net, vat_amount: u.vat_amount }).eq('id', u.id)
+                    }
                   }
-                  setTransactions(prev => prev.map(t => checkedIds.has(t.id) ? { ...t, is_validated: true } : t))
+                  setTransactions(prev => prev.map(t => checkedIds.has(t.id) ? { ...t, is_validated: true, amount_net: Math.abs(t.amount || 0), vat_amount: 0 } : t))
                   setBulkSaving(false); setCheckedIds(new Set()); setShowBulkEdit(false)
                 }} disabled={bulkSaving}>
-                <i className="ti ti-circle-check" style={{ fontSize:14 }} /> Валідувати всі
+                <i className="ti ti-circle-check" style={{ fontSize:14 }} /> Без ПДВ — валідувати
+              </button>
+              <button className="btn btn-secondary" style={{ display:'flex', alignItems:'center', gap:4 }}
+                onClick={async () => {
+                  setBulkSaving(true)
+                  const ids = [...checkedIds]
+                  const selectedTxs = transactions.filter(t => checkedIds.has(t.id))
+                  for (let i = 0; i < ids.length; i += 50) {
+                    const batch = ids.slice(i, i + 50)
+                    const updates = batch.map(id => {
+                      const tx = selectedTxs.find(t => t.id === id)
+                      const bankAbs = Math.abs(tx?.amount || 0)
+                      const net = Math.round(bankAbs / 1.2 * 100) / 100
+                      const vat = Math.round((bankAbs - net) * 100) / 100
+                      return { id, is_validated: true, amount_net: net, vat_amount: vat }
+                    })
+                    for (const u of updates) {
+                      await supabase.from('bank_transactions').update({ is_validated: u.is_validated, amount_net: u.amount_net, vat_amount: u.vat_amount }).eq('id', u.id)
+                    }
+                  }
+                  setTransactions(prev => prev.map(t => {
+                    if (!checkedIds.has(t.id)) return t
+                    const bankAbs = Math.abs(t.amount || 0)
+                    const net = Math.round(bankAbs / 1.2 * 100) / 100
+                    return { ...t, is_validated: true, amount_net: net, vat_amount: Math.round((bankAbs - net) * 100) / 100 }
+                  }))
+                  setBulkSaving(false); setCheckedIds(new Set()); setShowBulkEdit(false)
+                }} disabled={bulkSaving}>
+                <i className="ti ti-circle-check" style={{ fontSize:14 }} /> З ПДВ 20% — валідувати
               </button>
               <button className="btn btn-secondary" onClick={() => setShowBulkEdit(false)}>Скасувати</button>
             </div>
@@ -934,16 +993,21 @@ export default function Registry({ user }) {
                   const rate = parseFloat(it.vat_rate) ?? 20
                   return s + amt * rate / 100
                 }, 0)
+                const isVal = selected.is_validated
+                const valNet = parseFloat(selected.amount_net) || 0
+                const valVat = parseFloat(selected.vat_amount) || 0
                 return [
                   ['Дата', selected.date],
                   ['Сума (банк)', (selected.direction === 'Доходи' ? '+' : selected.direction === 'Витрати' ? '-' : '') + fmt(bankAbs) + ' грн'],
-                  hasItems ? ['Без ПДВ (з позицій)', fmt(itemsNet) + ' грн'] : null,
-                  hasItems ? ['ПДВ (з позицій)', fmt(itemsVat) + ' грн'] : null,
+                  isVal ? ['Без ПДВ (валідовано)', fmt(valNet) + ' грн'] : hasItems ? ['Без ПДВ (з позицій)', fmt(itemsNet) + ' грн'] : null,
+                  isVal ? ['ПДВ (валідовано)', fmt(valVat) + ' грн'] : hasItems ? ['ПДВ (з позицій)', fmt(itemsVat) + ' грн'] : null,
+                  isVal ? ['Ставка ПДВ', valVat > 0 ? Math.round(valVat / valNet * 100) + '%' : 'Без ПДВ'] : null,
                   ['Напрям', selected.direction],
                   ['Стаття', selected.article],
                   ['Призначення', selected.description],
+                  isVal ? ['Статус', '✓ Валідовано'] : null,
                 ].filter(Boolean).filter(([,v]) => v).map(([l,v]) => (
-                  <div key={l}><div style={{ fontSize:11, color:'var(--text3)', marginBottom:1 }}>{l}</div><div style={{ fontWeight:500 }}>{v}</div></div>
+                  <div key={l}><div style={{ fontSize:11, color:'var(--text3)', marginBottom:1 }}>{l}</div><div style={{ fontWeight:500, color: l === 'Статус' ? 'var(--green)' : undefined }}>{v}</div></div>
                 ))
               })()}
             </div>
@@ -1367,6 +1431,11 @@ export default function Registry({ user }) {
                             file_type: f.type, file_size: f.size,
                             doc_role: 'incoming', uploaded_by: user?.id,
                           })
+                          if (selected.is_validated) {
+                            await supabase.from('bank_transactions').update({ is_validated: false }).eq('id', selected.id)
+                            setSelected(prev => ({ ...prev, is_validated: false }))
+                            setTransactions(prev => prev.map(t => t.id === selected.id ? { ...t, is_validated: false } : t))
+                          }
                         }
                       }
                       openDetail(selected)
