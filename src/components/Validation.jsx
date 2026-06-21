@@ -104,6 +104,30 @@ export default function Validation() {
     if (items.length > 0) {
       const itemsSum = items.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0)
 
+      // Перевірка логічності ПДВ
+      if (pricesWithVat) {
+        // Ціни з ПДВ: items ≈ bank? Якщо items сильно менше bank — позиції не повні
+        if (itemsSum > 0 && Math.abs(itemsSum - bankAbs) / bankAbs > 0.05) {
+          if (!confirm(`Сума позицій (${fmtInt(itemsSum)}) не збігається з банком (${fmtInt(bankAbs)}). Різниця: ${fmtInt(Math.abs(itemsSum - bankAbs))} грн. Продовжити?`)) {
+            setSaving(false); return
+          }
+        }
+      } else {
+        // Ціни без ПДВ: ПДВ = bank - items. Перевірити що ПДВ <= 20%
+        const impliedVat = bankAbs - itemsSum
+        const vatPct = itemsSum > 0 ? (impliedVat / itemsSum * 100) : 0
+        if (vatPct > 22) { // 22% з запасом на округлення
+          if (!confirm(`Увага! ПДВ складає ${Math.round(vatPct)}% (${fmtInt(impliedVat)} грн) — це більше ніж 20%. Можливо ціни вже ВКЛЮЧАЮТЬ ПДВ? Продовжити?`)) {
+            setSaving(false); return
+          }
+        }
+        if (impliedVat < 0) {
+          if (!confirm(`Увага! Сума позицій (${fmtInt(itemsSum)}) більша за банківську суму (${fmtInt(bankAbs)}). Продовжити?`)) {
+            setSaving(false); return
+          }
+        }
+      }
+
       if (pricesWithVat) {
         // items.amount = з ПДВ → net = amount / (1 + rate/100)
         amountNet = items.reduce((s, i) => {
