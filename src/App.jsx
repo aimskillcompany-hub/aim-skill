@@ -1,22 +1,21 @@
-import { useState, useEffect } from 'react'
-// import BatchUpload from './components/BatchUpload' // merged into DocumentUpload
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { supabase } from './lib/supabase'
 import { css, mobileCss } from './lib/styles'
 import Auth from './components/Auth'
 import Layout from './components/Layout'
-import DocumentUpload from './components/DocumentUpload'
-import Registry from './components/Registry'
-import Reports from './components/Reports'
 import Analytics from './components/Analytics'
-import Bank from './components/Bank'
-import Cash from './components/Cash'
-import TransactionModal from './components/TransactionModal'
-import ArticlesSettings from './components/ArticlesSettings'
-// import Planning from './components/Planning' // removed from nav
-import Contractors from './components/Contractors'
-import Inventory from './components/Inventory'
-import Assembly from './components/Assembly'
-import Validation from './components/Validation'
+
+// Lazy load — ці компоненти завантажуються тільки при відкритті
+const DocumentUpload = lazy(() => import('./components/DocumentUpload'))
+const Registry = lazy(() => import('./components/Registry'))
+const Bank = lazy(() => import('./components/Bank'))
+const Cash = lazy(() => import('./components/Cash'))
+const Contractors = lazy(() => import('./components/Contractors'))
+const Inventory = lazy(() => import('./components/Inventory'))
+const Assembly = lazy(() => import('./components/Assembly'))
+const Validation = lazy(() => import('./components/Validation'))
+const TransactionModal = lazy(() => import('./components/TransactionModal'))
+const ArticlesSettings = lazy(() => import('./components/ArticlesSettings'))
 
 const CASH_DIR = {
   income: +1, expense: -1, advance: -1,
@@ -33,26 +32,32 @@ function Dashboard({ user, onPage }) {
   const [selectedTx, setSelectedTx] = useState(null)
 
   useEffect(() => {
+    const monthStart = new Date(); monthStart.setDate(1)
+    const from = monthStart.toISOString().split('T')[0]
+
     Promise.all([
-      supabase.from('bank_transactions').select('amount, direction, date, counterparty, description, article').eq('is_ignored', false).order('date', { ascending: false }),
-      supabase.from('documents').select('id', { count: 'exact' }),
+      supabase.from('bank_transactions').select('amount, direction, date, counterparty, description, article')
+        .eq('is_ignored', false).eq('is_validated', true).gte('date', from).order('date', { ascending: false }),
+      supabase.from('bank_transactions').select('amount').eq('is_ignored', false).eq('is_validated', true),
+      supabase.from('documents').select('id', { count: 'exact', head: true }),
       supabase.from('cash_transactions').select('amount, type'),
     ]).then(([
-      { data: bankTxs },
+      { data: monthTxs },
+      { data: allBank },
       { count: docCount },
       { data: cashTxs },
     ]) => {
-      const all = bankTxs || []
-      const revenue  = all.filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
-      const expenses = all.filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
-      const bankFlow = all.reduce((s, t) => s + (t.amount || 0), 0)
+      const month = monthTxs || []
+      const revenue  = month.filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+      const expenses = month.filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+      const bankFlow = (allBank || []).reduce((s, t) => s + (t.amount || 0), 0)
 
       const cashBalance = (cashTxs || []).reduce((s, t) => {
         const dir = CASH_DIR[t.type] || 0
         return s + dir * (t.amount || 0)
       }, 0)
 
-      const noArticle = all.filter(t => !t.article || t.article.trim() === '').length
+      const noArticle = month.filter(t => !t.article || t.article.trim() === '').length
 
       setStats({
         revenue, expenses, net: revenue - expenses,
@@ -60,8 +65,7 @@ function Dashboard({ user, onPage }) {
         docs: docCount || 0,
         noArticle,
       })
-      // Recent transactions from bank
-      setRecentTxs(all.slice(0, 8).map(t => ({
+      setRecentTxs(month.slice(0, 8).map(t => ({
         ...t, contractor: t.counterparty, projects: null,
       })))
     })
@@ -441,7 +445,9 @@ export default function App() {
     <>
       <style>{css}{mobileCss}</style>
       <Layout page={page} onPage={setPage} user={user}>
-        {pages[page] || pages.analytics}
+        <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Завантаження...</div>}>
+          {pages[page] || pages.analytics}
+        </Suspense>
       </Layout>
       {toast && (
         <div className={`toast toast-${toast.type}`}>{toast.msg}</div>

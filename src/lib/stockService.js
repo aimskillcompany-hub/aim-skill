@@ -1,5 +1,20 @@
 import { supabase } from './supabase'
 
+// ── Кеш аліасів (оновлюється раз на 2 хвилини) ──
+let _aliasCache = null
+let _aliasCacheTime = 0
+const ALIAS_CACHE_TTL = 120000
+
+async function getCachedAliases() {
+  if (_aliasCache && Date.now() - _aliasCacheTime < ALIAS_CACHE_TTL) return _aliasCache
+  const { data } = await supabase.from('product_aliases').select('product_id, normalized')
+  _aliasCache = data || []
+  _aliasCacheTime = Date.now()
+  return _aliasCache
+}
+
+export function invalidateAliasCache() { _aliasCache = null }
+
 // ── Маппінг типу документу → напрям складського руху ──
 const DOC_TYPE_STOCK_MAP = {
   'прибуткова накладна': 'in',
@@ -85,12 +100,9 @@ export async function matchProduct(name) {
     if (prod) return { productId: prod.id, productName: prod.name, productType: prod.product_type, matchType: 'exact' }
   }
 
-  // 2. Fuzzy збіг по aliases
-  const { data: allAliases } = await supabase
-    .from('product_aliases')
-    .select('product_id, normalized')
-
-  const fuzzyHit = (allAliases || []).find(a => fuzzyMatch(normalized, a.normalized))
+  // 2. Fuzzy збіг по aliases (кешовано)
+  const allAliases = await getCachedAliases()
+  const fuzzyHit = allAliases.find(a => fuzzyMatch(normalized, a.normalized))
   if (fuzzyHit?.product_id) {
     const { data: prod } = await supabase.from('products')
       .select('id, name, product_type').eq('id', fuzzyHit.product_id).maybeSingle()
