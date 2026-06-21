@@ -736,8 +736,15 @@ export default function Registry({ user }) {
                       <div style={{ fontSize:14, fontWeight:500, whiteSpace:'normal', wordBreak:'break-word', lineHeight:'1.3' }}>{tx.counterparty}</div>
                       {tx.description && <div style={{ fontSize:12, color:'var(--text2)', marginTop:2, whiteSpace:'normal', wordBreak:'break-word', lineHeight:'1.4' }}>{tx.description}</div>}
                     </td>
-                    <td style={{ textAlign:'right', fontWeight:500, fontVariantNumeric:'tabular-nums', color: tx.direction === 'Доходи' ? 'var(--green)' : tx.direction === 'Витрати' ? 'var(--red)' : 'var(--text3)', whiteSpace:'nowrap' }}>
-                      {tx.direction === 'Доходи' ? '+' : tx.direction === 'Витрати' ? '-' : ''}{fmt(Math.abs(tx.amount))}
+                    <td style={{ textAlign:'right', fontVariantNumeric:'tabular-nums', whiteSpace:'nowrap' }}>
+                      <div style={{ fontWeight:500, color: tx.direction === 'Доходи' ? 'var(--green)' : tx.direction === 'Витрати' ? 'var(--red)' : 'var(--text3)' }}>
+                        {tx.direction === 'Доходи' ? '+' : tx.direction === 'Витрати' ? '-' : ''}{fmt(Math.abs(tx.amount))}
+                      </div>
+                      {tx.is_validated && tx.vat_amount > 0 && (
+                        <div style={{ fontSize:10, color:'var(--text3)' }}>
+                          без ПДВ: {fmt(tx.amount_net)} · ПДВ: {fmt(tx.vat_amount)}
+                        </div>
+                      )}
                     </td>
                     <td><Badge type={tx.direction} /></td>
                     <td style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color: noArticle ? 'var(--amber)' : 'var(--text2)', maxWidth:150 }} title={tx.article}>
