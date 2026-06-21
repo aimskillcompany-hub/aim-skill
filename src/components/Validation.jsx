@@ -74,15 +74,29 @@ export default function Validation() {
     }
 
     // Зберегти зміни в items
-    for (const item of items) {
-      if (!item.id) continue
-      await supabase.from('transaction_items').update({
-        name: item.name,
-        quantity: parseFloat(item.quantity) || 0,
-        unit_price: parseFloat(item.unit_price) || 0,
-        amount: parseFloat(item.amount) || 0,
-        vat_rate: parseFloat(item.vat_rate) || 0,
-      }).eq('id', item.id)
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      if (item._new) {
+        // Нова позиція — insert
+        const { data: inserted } = await supabase.from('transaction_items').insert({
+          bank_transaction_id: tx.id,
+          name: item.name,
+          quantity: parseFloat(item.quantity) || 0,
+          unit: item.unit || 'шт',
+          unit_price: parseFloat(item.unit_price) || 0,
+          amount: parseFloat(item.amount) || 0,
+          vat_rate: parseFloat(item.vat_rate) || 0,
+        }).select().single()
+        if (inserted) items[i] = { ...item, id: inserted.id, _new: false }
+      } else if (item.id) {
+        await supabase.from('transaction_items').update({
+          name: item.name,
+          quantity: parseFloat(item.quantity) || 0,
+          unit_price: parseFloat(item.unit_price) || 0,
+          amount: parseFloat(item.amount) || 0,
+          vat_rate: parseFloat(item.vat_rate) || 0,
+        }).eq('id', item.id)
+      }
     }
 
     let amountNet, vatAmount
@@ -298,11 +312,17 @@ export default function Validation() {
             </div>
 
             {/* Items */}
-            {items.length > 0 && (
+            {(items.length > 0 || true) && (
               <div className="card" style={{ marginBottom: 12 }}>
                 <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span>Позиції ({items.length})</span>
-                  {ratioLabel && <span style={{ color: ratioColor, fontSize: 12, fontWeight: 500 }}>{ratioLabel}</span>}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {ratioLabel && <span style={{ color: ratioColor, fontSize: 12, fontWeight: 500 }}>{ratioLabel}</span>}
+                    <button style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 11, padding: '3px 8px', color: 'var(--blue)', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}
+                      onClick={() => setEditItems(prev => [...prev, { name: '', quantity: 1, unit_price: 0, amount: 0, vat_rate: 20, _new: true }])}>
+                      <i className="ti ti-plus" style={{ fontSize: 12 }} /> Додати
+                    </button>
+                  </div>
                 </div>
                 <table style={{ width: '100%', fontSize: 12 }}>
                   <thead>
