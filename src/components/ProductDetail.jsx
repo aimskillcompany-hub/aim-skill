@@ -230,14 +230,18 @@ export default function ProductDetail({
                     <td style={{ textAlign:'right', color:'var(--text2)', fontVariantNumeric:'tabular-nums' }}>{m.price ? fmt(m.price) + ' грн' : '—'}</td>
                     <td style={{ textAlign:'right', color:'var(--text2)', fontVariantNumeric:'tabular-nums' }}>{m.total ? fmtInt(m.total) + ' грн' : '—'}</td>
                     <td>
-                      {m.documents ? (
-                        <button onClick={() => openDocPreview(m.documents)} style={{
-                          background:'none', border:'1px solid var(--border)', borderRadius:6,
-                          padding:'4px 8px', cursor:'pointer', fontSize:12, color:'var(--blue)',
-                          display:'flex', alignItems:'center', gap:4, fontFamily:'inherit',
-                        }}>
-                          <i className="ti ti-file-text" style={{ fontSize:13 }} />Документ
-                        </button>
+                      {m.documents?.length > 0 ? (
+                        <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+                          {m.documents.map((doc, di) => (
+                            <button key={di} onClick={() => openDocPreview(doc)} style={{
+                              background:'none', border:'1px solid var(--border)', borderRadius:6,
+                              padding:'4px 8px', cursor:'pointer', fontSize:12, color:'var(--blue)',
+                              display:'flex', alignItems:'center', gap:4, fontFamily:'inherit',
+                            }}>
+                              <i className="ti ti-file-text" style={{ fontSize:13 }} />{m.documents.length > 1 ? `Док ${di+1}` : 'Документ'}
+                            </button>
+                          ))}
+                        </div>
                       ) : <span style={{ fontSize:12, color:'var(--text3)' }}>—</span>}
                     </td>
                   </tr>
