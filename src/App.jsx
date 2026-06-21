@@ -198,10 +198,10 @@ function Settings({ user }) {
 
   useEffect(() => {
     supabase.from('profiles').select('*').then(({ data }) => setUsers(data || []))
-    const e = localStorage.getItem('vkursi_email') || ''
-    const p = localStorage.getItem('vkursi_password') || ''
+    const e = sessionStorage.getItem('vkursi_email') || ''
+    const p = sessionStorage.getItem('vkursi_password') || ''
     setVkEmail(e); setVkPass(p)
-    setTaxToken(localStorage.getItem('tax_api_token') || '')
+    setTaxToken(sessionStorage.getItem('tax_api_token') || '')
     // Завантажити реквізити
     import('./lib/companyConfig').then(m => setCompanyForm(m.getCompany()))
   }, [])
@@ -328,7 +328,7 @@ function Settings({ user }) {
           </div>
           <div style={{ display:'flex', gap:8, marginTop:12, alignItems:'center' }}>
             <button className="btn btn-primary" onClick={() => {
-              localStorage.setItem('tax_api_token', taxToken)
+              sessionStorage.setItem('tax_api_token', taxToken)
               setTaxSaved(true); setTimeout(() => setTaxSaved(false), 3000)
             }} disabled={!taxToken}>Зберегти</button>
             {taxSaved && <span style={{ fontSize:13, color:'var(--green)' }}>Збережено!</span>}
@@ -356,8 +356,8 @@ function Settings({ user }) {
           </div>
           <div style={{ display:'flex', gap:8, marginTop:12, alignItems:'center' }}>
             <button className="btn btn-primary" onClick={() => {
-              localStorage.setItem('vkursi_email', vkEmail)
-              localStorage.setItem('vkursi_password', vkPass)
+              sessionStorage.setItem('vkursi_email', vkEmail)
+              sessionStorage.setItem('vkursi_password', vkPass)
               setVkSaved(true); setTimeout(() => setVkSaved(false), 3000)
             }} disabled={!vkEmail || !vkPass}>Зберегти</button>
             {vkSaved && <span style={{ fontSize:13, color:'var(--green)' }}>Збережено!</span>}

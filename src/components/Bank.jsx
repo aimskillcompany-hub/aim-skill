@@ -6,6 +6,7 @@ import ContractorSelect from './ui/ContractorSelect'
 import { upsertContractor } from '../lib/contractors'
 import { fmtInt as fmt } from '../lib/fmt'
 
+const USE_PROXY = !import.meta.env.DEV
 const API_KEY = import.meta.env.VITE_ANTHROPIC_KEY
 
 // ── Пряме читання XLSX/XLS (SheetJS) ─────────────────────────────────────────
@@ -195,16 +196,17 @@ async function parseWithClaude(content, fileName, isPDF = false) {
       ]}]
     : [{ role:'user', content:`Банківська виписка (${fileName}):\n\n${content.substring(0, 28000)}` }]
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method:'POST',
-    headers:{
-      'Content-Type':'application/json',
-      'x-api-key': API_KEY,
-      'anthropic-version':'2023-06-01',
-      'anthropic-dangerous-direct-browser-access':'true',
-    },
-    body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:4096, system:PARSE_PROMPT, messages })
-  })
+  const requestBody = { model:'claude-sonnet-4-6', max_tokens:4096, system:PARSE_PROMPT, messages }
+  let res
+  if (USE_PROXY) {
+    res = await fetch('/api/ai', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(requestBody) })
+  } else {
+    res = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'x-api-key': API_KEY, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' },
+      body: JSON.stringify(requestBody)
+    })
+  }
   const data = await res.json()
   if (data.error) throw new Error(data.error.message)
   const txt = data.content?.find(b => b.type==='text')?.text || '[]'

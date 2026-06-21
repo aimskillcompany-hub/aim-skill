@@ -1,3 +1,5 @@
+// API key тепер на сервері — виклики через /api/ai proxy
+const USE_PROXY = !import.meta.env.DEV // В dev режимі fallback на прямий доступ
 const API_KEY = import.meta.env.VITE_ANTHROPIC_KEY
 
 // Конвертуємо HEIC/HEIF → JPEG через canvas
@@ -81,18 +83,7 @@ export async function extractDocumentMulti(files, articles) {
       : 'Розпізнай цей документ та поверни JSON з усіма позиціями.'
   })
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': API_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
-      system: `Ти бухгалтерський асистент. Аналізуй українські первинні документи.
+  const systemPrompt = `Ти бухгалтерський асистент. Аналізуй українські первинні документи.
 Якщо документ на кількох сторінках — збери дані з усіх сторінок разом.
 
 ВАЖЛИВО — визначення напряму документу:
@@ -137,10 +128,36 @@ ${articles?.length ? articles.map(a => `- ${a.name} (${a.type})`).join('\n') : '
   ]
 }
 Суми завжди позитивні числа. Якщо поле невідоме — null.
-Витягни ВСІ позиції з документу — кожен рядок товару/послуги окремо.`,
-      messages: [{ role: 'user', content: contentBlocks }],
-    }),
-  })
+Витягни ВСІ позиції з документу — кожен рядок товару/послуги окремо.`
+
+  const requestBody = {
+    model: 'claude-sonnet-4-6',
+    max_tokens: 2000,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: contentBlocks }],
+  }
+
+  let res
+  if (USE_PROXY) {
+    // Production: через серверний proxy (ключ на сервері)
+    res = await fetch('/api/ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody),
+    })
+  } else {
+    // Dev: прямий доступ (для локальної розробки)
+    res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify(requestBody),
+    })
+  }
 
   const data = await res.json()
   if (data.error) throw new Error(data.error.message)
