@@ -685,7 +685,7 @@ export default function Inventory({ user }) {
             </tr>
           </thead>
           <tbody>
-            {sorted.length === 0 && <tr><td colSpan={9} style={{ textAlign:'center', padding:32, color:'var(--text3)' }}>Немає товарів</td></tr>}
+            {sorted.length === 0 && <tr><td colSpan={9} style={{ textAlign:'center', padding:32, color:'var(--text3)' }}>Немає товарів. Натисніть «Додати товар» вище або завантажте документ.</td></tr>}
             {sorted.map(p => {
               const stockColor = p.computed_stock <= 0 ? 'var(--red)' : p.computed_stock <= (p.min_stock||0) ? '#D97706' : 'var(--green)'
               return (

@@ -42,6 +42,7 @@ function ArticleSelect({ value, onChange, articles, direction, style }) {
 export default function Registry({ user }) {
   const [transactions, setTransactions] = useState([])
   const [total, setTotal] = useState(0)
+  const [unvalidatedCount, setUnvalidatedCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [allTxsData, setAllTxsData] = useState([])
   const [page, setPage] = useState(1)
@@ -189,8 +190,12 @@ export default function Registry({ user }) {
     if (filters.vatStatus === 'no_vat') { qTotals = qTotals.eq('is_validated', true); qTotals = qTotals.eq('vat_amount', 0) }
     if (filters.vatStatus === 'with_vat') { qTotals = qTotals.eq('is_validated', true); qTotals = qTotals.gt('vat_amount', 0) }
 
-    const [{ data, count }, { data: allTxsResult }] = await Promise.all([q, qTotals])
+    const qUnval = supabase.from('bank_transactions').select('id', { count: 'exact', head: true })
+      .eq('is_ignored', false).or('is_validated.is.null,is_validated.eq.false')
+
+    const [{ data, count }, { data: allTxsResult }, { count: unvalCount }] = await Promise.all([q, qTotals, qUnval])
     setAllTxsData(allTxsResult || [])
+    setUnvalidatedCount(unvalCount || 0)
 
     // Client-side filter by doc status
     let filtered = data || []
@@ -530,7 +535,11 @@ export default function Registry({ user }) {
     <div className="reg-page" style={{ display:'flex', flexDirection:'column', height:'100%' }}>
       <div className="page-header">
         <h1>Реєстр операцій</h1>
-        <p>{total} операцій у базі</p>
+        <p>{total} операцій у базі
+          {unvalidatedCount > 0 && <span style={{ marginLeft: 8, padding: '2px 10px', borderRadius: 12, fontSize: 12, fontWeight: 600, background: 'var(--red-bg)', color: 'var(--red)' }}>
+            {unvalidatedCount} не валідовано
+          </span>}
+        </p>
       </div>
 
       {/* Action buttons */}

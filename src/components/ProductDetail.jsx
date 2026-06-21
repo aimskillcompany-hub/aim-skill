@@ -48,6 +48,7 @@ export default function ProductDetail({
 
   const handleMerge = async () => {
     if (!mergeTarget) return
+    if (!confirm(`Об'єднати "${mergeTarget.name}" → "${detail.name}"?\n\nВсі рухи, позиції та аліаси будуть перенесені. Цю дію неможливо скасувати.`)) return
     setSaving(true)
     await supabase.from('stock_movements').update({ product_id: detail.id }).eq('product_id', mergeTarget.id)
     await supabase.from('transaction_items').update({ product_id: detail.id }).eq('product_id', mergeTarget.id)

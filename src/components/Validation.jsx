@@ -594,7 +594,7 @@ export default function Validation() {
             )}
             {tx.is_validated && (
               <button className="btn btn-secondary" onClick={() => unvalidate(tx)} style={{ width: '100%' }}>
-                Скасувати валідацію
+                Повернути до невалідовано (очистити ПДВ)
               </button>
             )}
           </div>

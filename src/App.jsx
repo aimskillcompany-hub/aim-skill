@@ -97,9 +97,10 @@ function Dashboard({ user, onPage }) {
             {stats.net >= 0 ? '+' : '−'}{fmt(stats.net)} <span style={{ fontSize: 16, fontWeight: 500 }}>грн</span>
           </div>
         </div>
-        <div className="kpi" style={{ cursor: 'pointer' }} onClick={() => onPage?.('registry')}>
-          <div className="kpi-label">Без статті</div>
+        <div className="kpi" style={{ cursor: 'pointer', borderLeft: stats.noArticle > 0 ? '4px solid var(--red)' : '4px solid var(--green)', background: stats.noArticle > 0 ? 'var(--red-bg)' : undefined }} onClick={() => onPage?.('registry')}>
+          <div className="kpi-label">{stats.noArticle > 0 ? '⚠ Без статті' : 'Без статті'}</div>
           <div className="kpi-value" style={{ color: stats.noArticle > 0 ? 'var(--red)' : 'var(--green)' }}>{stats.noArticle}</div>
+          {stats.noArticle > 0 && <div className="kpi-sub">потребує класифікації</div>}
         </div>
       </div>
 
