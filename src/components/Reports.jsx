@@ -161,7 +161,8 @@ export default function Reports({ initialTab }) {
       fetchArticles(),
       supabase.from('bank_transactions').select('id,date,amount,direction,article,counterparty,description,is_ignored,project_id,contractor_id').eq('is_ignored', false).order('date'),
       supabase.from('transaction_items').select('bank_transaction_id, amount, vat_rate'),
-    ]).then(([arts, { data: txs }, { data: allItems }]) => {
+      supabase.from('contractors').select('id, is_vat_payer').eq('status', 'active'),
+    ]).then(([arts, { data: txs }, { data: allItems }, { data: contrs }]) => {
       // Побудувати map: bank_tx_id → сума без ПДВ
       // items.amount = З ПДВ, net = amount / (1 + vat_rate/100)
       const netAmountMap = {}
@@ -174,15 +175,26 @@ export default function Reports({ initialTab }) {
         netAmountMap[item.bank_transaction_id] += net
       })
 
+      // Карта контрагентів: чи платник ПДВ
+      const vatPayerMap = {}
+      ;(contrs || []).forEach(c => { vatPayerMap[c.id] = c.is_vat_payer })
+
       // Normalize field names for compatibility
       ;(txs || []).forEach(t => {
         t.contractor = t.counterparty
         t.projects = null
-        // Сума без ПДВ: з items (точно) або gross / 1.2 (припущення 20%)
         if (netAmountMap[t.id]) {
+          // Є items — точний розрахунок
           t.amount_net = netAmountMap[t.id]
-        } else {
+        } else if (t.direction === 'Доходи') {
+          // Ми продаємо — завжди з ПДВ
           t.amount_net = Math.abs(t.amount) / 1.2
+        } else if (t.contractor_id && vatPayerMap[t.contractor_id]) {
+          // Купуємо у платника ПДВ
+          t.amount_net = Math.abs(t.amount) / 1.2
+        } else {
+          // Купуємо у НЕ платника або невідомо — без ПДВ
+          t.amount_net = Math.abs(t.amount)
         }
       })
 

@@ -456,9 +456,17 @@ export default function Contractors({ user, onNavigate }) {
         if (t.direction === 'Доходи') txIncomeVat += vat
         if (t.direction === 'Витрати') txExpenseVat += vat
       } else {
-        // Немає items — припускаємо 20%
+        // Немає items — визначаємо по контрагенту
         const gross = Math.abs(t.amount || 0)
-        const vat = gross * 20 / 120
+        let vat = 0
+        if (t.direction === 'Доходи') {
+          // Ми продаємо — завжди з ПДВ
+          vat = gross * 20 / 120
+        } else if (detail.is_vat_payer) {
+          // Купуємо у платника ПДВ
+          vat = gross * 20 / 120
+        }
+        // Якщо не платник — vat = 0 (без ПДВ)
         if (t.direction === 'Доходи') txIncomeVat += vat
         if (t.direction === 'Витрати') txExpenseVat += vat
       }
