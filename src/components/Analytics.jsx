@@ -109,26 +109,26 @@ export default function Analytics({ user, onPage }) {
     const allDocs = docs || []
     const allTxs = contractors || []
 
-    // Групуємо по contractor_id
+    // Групуємо по contractor_id — неоплачені документи (без bank_transaction_id)
     const contMap = {}
     allDocs.forEach(d => {
       if (!d.contractor_id || d.status === 'cancelled') return
-      if (!contMap[d.contractor_id]) contMap[d.contractor_id] = { name: d.contractor_name, outDocs: 0, inDocs: 0, income: 0, expense: 0 }
-      if (['waybill', 'serviceAct'].includes(d.doc_type)) contMap[d.contractor_id].outDocs += parseFloat(d.total) || 0
-      if (d.doc_type === 'incomingWaybill') contMap[d.contractor_id].inDocs += parseFloat(d.total) || 0
-    })
-    allTxs.forEach(t => {
-      if (!t.contractor_id || !contMap[t.contractor_id]) return
-      if (t.direction === 'Доходи') contMap[t.contractor_id].income += Math.abs(t.amount || 0)
-      if (t.direction === 'Витрати') contMap[t.contractor_id].expense += Math.abs(t.amount || 0)
+      if (!contMap[d.contractor_id]) contMap[d.contractor_id] = { name: d.contractor_name, unpaidOut: 0, unpaidIn: 0, totalOut: 0, totalIn: 0 }
+      const amt = parseFloat(d.total) || 0
+      if (['waybill', 'serviceAct'].includes(d.doc_type)) {
+        contMap[d.contractor_id].totalOut += amt
+        if (!d.bank_transaction_id) contMap[d.contractor_id].unpaidOut += amt
+      }
+      if (d.doc_type === 'incomingWaybill') {
+        contMap[d.contractor_id].totalIn += amt
+        if (!d.bank_transaction_id) contMap[d.contractor_id].unpaidIn += amt
+      }
     })
 
     const debtList = [], creditList = []
     Object.entries(contMap).forEach(([id, c]) => {
-      const debit = c.outDocs - c.income
-      const credit = c.inDocs - c.expense
-      if (debit > 100) debtList.push({ id, name: c.name, amount: debit, docs: c.outDocs, paid: c.income })
-      if (credit > 100) creditList.push({ id, name: c.name, amount: credit, docs: c.inDocs, paid: c.expense })
+      if (c.unpaidOut > 100) debtList.push({ id, name: c.name, amount: c.unpaidOut, docs: c.totalOut, paid: c.totalOut - c.unpaidOut })
+      if (c.unpaidIn > 100) creditList.push({ id, name: c.name, amount: c.unpaidIn, docs: c.totalIn, paid: c.totalIn - c.unpaidIn })
     })
     setDebtors(debtList.sort((a, b) => b.amount - a.amount))
     setCreditors(creditList.sort((a, b) => b.amount - a.amount))
