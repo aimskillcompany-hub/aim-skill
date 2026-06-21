@@ -45,7 +45,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
 
   // Завантажити товари зі складу + договори контрагента
   useEffect(() => {
-    supabase.from('product_stock').select('id, name, computed_stock, unit, buy_price, sell_price, product_type')
+    supabase.from('product_stock').select('id, name, sku, computed_stock, unit, buy_price, sell_price, product_type')
       .eq('status', 'active').order('name')
       .then(({ data }) => setProducts(data || []))
     if (contractor?.id) {
@@ -329,9 +329,11 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
                           if (result?.items?.length > 0) {
                             const newItems = result.items.map(it => {
                               // Спробувати знайти товар на складі по назві
-                              const match = products.find(p => p.name.toLowerCase() === (it.name || '').toLowerCase())
+                              const match = products.find(p => p.name.toLowerCase() === (it.name || '').toLowerCase()
+                                || (it.sku && p.sku && p.sku.toLowerCase() === it.sku.toLowerCase()))
                               return {
                                 name: it.name || '',
+                                sku: it.sku || '',
                                 quantity: it.quantity || 1,
                                 unit: it.unit || 'шт',
                                 unitPrice: it.unitPrice || '',
@@ -449,8 +451,11 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
                       <td style={{ padding: '4px 4px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                           {it.productId && <i className="ti ti-package" style={{ fontSize: 12, color: 'var(--green)', flexShrink: 0 }} title="Зі складу" />}
-                          <input className="form-input" style={{ height: 32, fontSize: 12 }}
-                            value={it.name} onChange={e => updateItem(i, 'name', e.target.value)} />
+                          <div style={{ flex: 1 }}>
+                            <input className="form-input" style={{ height: 32, fontSize: 12 }}
+                              value={it.name} onChange={e => updateItem(i, 'name', e.target.value)} />
+                            {it.sku && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 1, paddingLeft: 4 }}>Арт: {it.sku}</div>}
+                          </div>
                         </div>
                       </td>
                       <td style={{ padding: '4px 2px' }}>

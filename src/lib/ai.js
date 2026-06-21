@@ -126,6 +126,7 @@ ${articles?.length ? articles.map(a => `- ${a.name} (${a.type})`).join('\n') : '
   "items": [
     {
       "name": "назва товару або послуги",
+      "sku": "артикул/код товару або null",
       "quantity": число_або_null,
       "unit": "шт|кг|л|м|компл|грн|null",
       "unitPrice": число_або_null,
