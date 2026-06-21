@@ -393,6 +393,7 @@ export default function Inventory({ user }) {
   }
 
   const [detailAliases, setDetailAliases] = useState([])
+  const [movFilter, setMovFilter] = useState('all')
 
   // Detail
   const openDetail = async (p) => {
@@ -471,9 +472,13 @@ export default function Inventory({ user }) {
     const totalBought = purchases.reduce((s, m) => s + (m.total || (m.quantity * (m.price || 0)) || 0), 0)
     const totalSold = sales.reduce((s, m) => s + (m.total || (m.quantity * (m.price || 0)) || 0), 0)
     const margin = totalSold - totalBought
-    const stockValue = (detail.computed_stock || 0) * (detail.buy_price || 0)
+    const stockValue = (detail.computed_stock || 0) * (avgBuyPrice || detail.buy_price || 0)
     const lastPurchase = purchases[purchases.length - 1]
     const lastSale = sales[sales.length - 1]
+    // Реальна ціна закупки — з останнього IN руху, не з buy_price
+    const realBuyPrice = lastPurchase?.price || detail.buy_price || 0
+    const avgBuyPrice = totalIn > 0 ? totalBought / totalIn : realBuyPrice
+    const avgSellPrice = totalOut > 0 ? totalSold / totalOut : detail.sell_price || 0
     const isNegative = detail.computed_stock < 0
     const isLow = detail.computed_stock > 0 && detail.computed_stock <= (detail.min_stock || 0)
     const stockColor = isNegative ? 'var(--red)' : isLow ? '#D97706' : 'var(--green)'
@@ -566,36 +571,34 @@ export default function Inventory({ user }) {
             <div style={{ fontSize:13, fontWeight:600, marginBottom:10, display:'flex', alignItems:'center', gap:6, color:'var(--text2)' }}>
               <i className="ti ti-currency-hryvnia" style={{ fontSize:15 }} /> Ціни
             </div>
-            <div style={{ display:'grid', gridTemplateColumns: detail.sell_price ? '1fr 1fr' : '1fr', gap:10 }}>
+            <div style={{ display:'grid', gridTemplateColumns: avgSellPrice > 0 ? '1fr 1fr' : '1fr', gap:10 }}>
               <div>
-                <div style={{ fontSize:11, color:'var(--text3)' }}>Ціна закупки</div>
-                <div style={{ fontSize:18, fontWeight:600, color:'var(--text)' }}>{detail.buy_price ? fmtInt(detail.buy_price) + ' грн' : '—'}</div>
+                <div style={{ fontSize:11, color:'var(--text3)' }}>Сер. ціна закупки</div>
+                <div style={{ fontSize:18, fontWeight:600, color:'var(--text)' }}>{avgBuyPrice > 0 ? fmt(avgBuyPrice) + ' грн' : '—'}</div>
+                {lastPurchase && <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>
+                  остання: {fmt(lastPurchase.price || 0)} грн · {lastPurchase.date}
+                </div>}
               </div>
-              {detail.sell_price && <div>
-                <div style={{ fontSize:11, color:'var(--text3)' }}>Ціна продажу</div>
-                <div style={{ fontSize:18, fontWeight:600, color:'var(--text)' }}>{fmtInt(detail.sell_price)} грн</div>
-              </div>}
-              {detail.buy_price > 0 && detail.sell_price > 0 && (
-                <div>
-                  <div style={{ fontSize:11, color:'var(--text3)' }}>Маржа на одиницю</div>
-                  <div style={{ fontSize:16, fontWeight:600, color: detail.sell_price > detail.buy_price ? 'var(--green)' : 'var(--red)' }}>
-                    {fmtInt(detail.sell_price - detail.buy_price)} грн ({((detail.sell_price - detail.buy_price) / detail.buy_price * 100).toFixed(0)}%)
-                  </div>
-                </div>
-              )}
-              {stockValue > 0 && <div>
-                <div style={{ fontSize:11, color:'var(--text3)' }}>Вартість залишку</div>
-                <div style={{ fontSize:16, fontWeight:600 }}>{fmtInt(stockValue)} грн</div>
+              {avgSellPrice > 0 && <div>
+                <div style={{ fontSize:11, color:'var(--text3)' }}>Сер. ціна продажу</div>
+                <div style={{ fontSize:18, fontWeight:600, color:'var(--text)' }}>{fmt(avgSellPrice)} грн</div>
+                {lastSale && <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>
+                  остання: {fmt(lastSale.price || 0)} грн · {lastSale.date}
+                </div>}
               </div>}
             </div>
-            {lastPurchase && (
-              <div style={{ marginTop:10, paddingTop:8, borderTop:'1px solid var(--border)', fontSize:11, color:'var(--text3)' }}>
-                Остання закупка: {lastPurchase.date} · {lastPurchase.bank_transactions?.counterparty || '—'} · {lastPurchase.price ? fmt(lastPurchase.price) + ' грн' : '—'}
+            {avgBuyPrice > 0 && avgSellPrice > 0 && (
+              <div style={{ marginTop:10, paddingTop:8, borderTop:'1px solid var(--border)' }}>
+                <div style={{ fontSize:11, color:'var(--text3)' }}>Маржа на одиницю</div>
+                <div style={{ fontSize:15, fontWeight:600, color: avgSellPrice > avgBuyPrice ? 'var(--green)' : 'var(--red)' }}>
+                  {avgSellPrice > avgBuyPrice ? '+' : ''}{fmtInt(avgSellPrice - avgBuyPrice)} грн ({((avgSellPrice - avgBuyPrice) / avgBuyPrice * 100).toFixed(0)}%)
+                </div>
               </div>
             )}
-            {lastSale && (
-              <div style={{ fontSize:11, color:'var(--text3)', marginTop:2 }}>
-                Останній продаж: {lastSale.date} · {lastSale.bank_transactions?.counterparty || '—'} · {lastSale.price ? fmt(lastSale.price) + ' грн' : '—'}
+            {stockValue > 0 && (
+              <div style={{ marginTop:8, paddingTop:8, borderTop:'1px solid var(--border)' }}>
+                <div style={{ fontSize:11, color:'var(--text3)' }}>Вартість залишку</div>
+                <div style={{ fontSize:15, fontWeight:600 }}>{fmtInt(stockValue)} грн</div>
               </div>
             )}
           </div>
@@ -624,58 +627,21 @@ export default function Inventory({ user }) {
           </div>
         </div>
 
-        {/* ═══ ЗАКУПІВЛІ ═══ */}
-        {purchases.length > 0 && (
-          <div className="card" style={{ marginBottom: 14 }}>
-            <div style={{ fontWeight:600, fontSize:14, marginBottom:10, display:'flex', alignItems:'center', gap:6, color:'var(--green)' }}>
-              <i className="ti ti-arrow-down-circle" style={{ fontSize:16 }} />
-              Закупівлі ({purchases.length})
-            </div>
-            {purchases.map(m => (
-              <div key={m.id} style={{ padding:'8px 0', borderBottom:'1px solid var(--bg)' }}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                  <div>
-                    <div style={{ fontWeight:500, fontSize:13 }}>{m.bank_transactions?.counterparty || m.description || '—'}</div>
-                    <div style={{ fontSize:12, color:'var(--text2)' }}>{m.date}{m.source && m.source !== 'manual' ? ` · ${m.source}` : ''}</div>
-                  </div>
-                  <div style={{ textAlign:'right' }}>
-                    <div style={{ fontWeight:500, color:'var(--green)' }}>{fmt(m.quantity)} {detail.unit} × {m.price ? fmt(m.price) + ' грн' : '—'}</div>
-                    <div style={{ fontSize:12, color:'var(--text2)' }}>{m.total ? fmtInt(m.total) + ' грн' : '—'}</div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* ═══ РЕАЛІЗАЦІЇ ═══ */}
-        {sales.length > 0 && (
-          <div className="card" style={{ marginBottom: 14 }}>
-            <div style={{ fontWeight:600, fontSize:14, marginBottom:10, display:'flex', alignItems:'center', gap:6, color:'var(--red)' }}>
-              <i className="ti ti-arrow-up-circle" style={{ fontSize:16 }} />
-              Реалізації ({sales.length})
-            </div>
-            {sales.map(m => (
-              <div key={m.id} style={{ padding:'8px 0', borderBottom:'1px solid var(--bg)' }}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                  <div>
-                    <div style={{ fontWeight:500, fontSize:13 }}>{m.bank_transactions?.counterparty || m.description || '—'}</div>
-                    <div style={{ fontSize:12, color:'var(--text2)' }}>{m.date}{m.cost_price ? ` · FIFO: ${fmt(m.cost_price)} грн` : ''}</div>
-                  </div>
-                  <div style={{ textAlign:'right' }}>
-                    <div style={{ fontWeight:500, color:'var(--red)' }}>{fmt(m.quantity)} {detail.unit} × {m.price ? fmt(m.price) + ' грн' : '—'}</div>
-                    <div style={{ fontSize:12, color:'var(--text2)' }}>{m.total ? fmtInt(m.total) + ' грн' : '—'}</div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* Закупівлі та Реалізації обʼєднані в Повну історію руху нижче */}
 
         {/* Full movement history */}
         <div className="card" style={{ padding:0, overflow:'hidden' }}>
-          <div style={{ padding:'16px 20px', fontWeight:600, fontSize:14, borderBottom:'1px solid var(--border)' }}>
-            Повна історія руху ({detailMovements.length})
+          <div style={{ padding:'16px 20px', fontWeight:600, fontSize:14, borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <span>Історія руху ({detailMovements.length})</span>
+            <div style={{ display:'flex', gap:4 }}>
+              {[{ id:'all', label:'Все' }, { id:'in', label:'Прихід', color:'var(--green)' }, { id:'out', label:'Витрата', color:'var(--red)' }].map(f => (
+                <button key={f.id} onClick={() => setMovFilter?.(f.id)}
+                  style={{ fontSize:11, padding:'3px 10px', borderRadius:6, border:'1px solid var(--border)', cursor:'pointer', fontFamily:'inherit',
+                    background: (movFilter || 'all') === f.id ? (f.color ? f.color : 'var(--blue)') : 'var(--surface)',
+                    color: (movFilter || 'all') === f.id ? '#fff' : 'var(--text2)',
+                  }}>{f.label}</button>
+              ))}
+            </div>
           </div>
           {detailMovements.length === 0 ? (
             <div className="empty"><p>Немає руху товару</p></div>
@@ -684,7 +650,7 @@ export default function Inventory({ user }) {
               <table>
                 <thead><tr><th>Дата</th><th>Тип</th><th>Контрагент</th><th style={{ textAlign:'right' }}>Кількість</th><th style={{ textAlign:'right' }}>Ціна</th><th style={{ textAlign:'right' }}>Сума</th><th>Документ</th></tr></thead>
                 <tbody>
-                  {detailMovements.map(m => (
+                  {detailMovements.filter(m => movFilter === 'all' || m.type === movFilter).map(m => (
                     <tr key={m.id}>
                       <td style={{ fontSize:13, color:'var(--text2)', whiteSpace:'nowrap' }}>{m.date}</td>
                       <td>
