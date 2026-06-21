@@ -582,6 +582,7 @@ export default function Validation() {
               <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('net')}>Без ПДВ<SortIcon col="net" /></th>
               <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('vat')}>ПДВ<SortIcon col="vat" /></th>
               <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('article')}>Стаття<SortIcon col="article" /></th>
+              <th style={{ textAlign: 'center', cursor: 'pointer', userSelect: 'none', width: 30 }} onClick={() => toggleSort('status')}><i className="ti ti-circle-check" style={{ fontSize: 14 }} /><SortIcon col="status" /></th>
               <th>Доки</th>
             </tr>
           </thead>
@@ -611,6 +612,11 @@ export default function Validation() {
                   </td>
                   <td style={{ fontSize: 12, color: tx.article ? 'var(--text2)' : 'var(--red)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {tx.article || 'без статті'}
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    {tx.is_validated
+                      ? <i className="ti ti-circle-check-filled" style={{ color: 'var(--green)', fontSize: 16 }} title="Валідовано" />
+                      : <i className="ti ti-circle" style={{ color: 'var(--text3)', fontSize: 16 }} title="Не валідовано" />}
                   </td>
                   <td>
                     {tx._docs.length > 0 && <i className="ti ti-file-text" style={{ color: 'var(--blue)', fontSize: 14 }} />}
