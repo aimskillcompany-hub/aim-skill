@@ -438,7 +438,7 @@ export default function App() {
     <>
       <style>{css}{mobileCss}</style>
       <Layout page={page} onPage={setPage} user={user}>
-        {pages[page] || pages.dashboard}
+        {pages[page] || pages.analytics}
       </Layout>
       {toast && (
         <div className={`toast toast-${toast.type}`}>{toast.msg}</div>

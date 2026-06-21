@@ -477,6 +477,7 @@ export default function Bank({ user }) {
 
   // ── UNMATCHED ACTIONS ────────────────────────────────────────────────────────
   const handleIgnore = async (id) => {
+    if (!confirm('Ігнорувати цю транзакцію? Вона зникне зі списку.')) return
     await supabase.from('bank_transactions').update({ is_ignored: true }).eq('id', id)
     setUnmatched(u => u.filter(t => t.id !== id))
     setSelected(s => { const ns = new Set(s); ns.delete(id); return ns })
@@ -484,6 +485,7 @@ export default function Bank({ user }) {
 
   const handleBulkIgnore = async () => {
     if (!selected.size) return
+    if (!confirm(`Ігнорувати ${selected.size} транзакцій?`)) return
     const ids = [...selected]
     await supabase.from('bank_transactions').update({ is_ignored: true }).in('id', ids)
     setUnmatched(u => u.filter(t => !ids.includes(t.id)))
@@ -566,10 +568,17 @@ export default function Bank({ user }) {
 
   const searchLink = async (q) => {
     setLinkSearch(q)
-    setLinkResults([])
+    if (q.length < 2) { setLinkResults([]); return }
+    const { data } = await supabase.from('generated_docs')
+      .select('id, doc_type, doc_number, doc_date, total, contractor_name, bank_transaction_id')
+      .is('bank_transaction_id', null)
+      .or(`doc_number.ilike.%${q}%,contractor_name.ilike.%${q}%`)
+      .order('doc_date', { ascending: false }).limit(20)
+    setLinkResults(data || [])
   }
 
-  const handleLink = async (txId) => {
+  const handleLink = async (docId) => {
+    await supabase.from('generated_docs').update({ bank_transaction_id: linkFor.id }).eq('id', docId)
     setUnmatched(u => u.filter(t => t.id !== linkFor.id))
     setLinkFor(null)
   }
@@ -578,12 +587,30 @@ export default function Bank({ user }) {
   const runReconcile = async () => {
     setReconcileLoading(true)
     setReconcileRun(true)
+    // Знайти unmatched bank_transactions і порівняти з unpaid generated_docs
+    const { data: unmatchedTxs } = await supabase.from('bank_transactions')
+      .select('id, date, counterparty, amount, direction, edrpou')
+      .eq('is_matched', false).eq('is_ignored', false).limit(200)
+    const { data: unpaidDocs } = await supabase.from('generated_docs')
+      .select('id, doc_type, doc_number, doc_date, total, contractor_name, contractor_id, bank_transaction_id')
+      .is('bank_transaction_id', null).neq('status', 'cancelled')
 
-    setReconcileItems([])
+    const matches = []
+    ;(unmatchedTxs || []).forEach(tx => {
+      const amt = Math.abs(tx.amount || 0)
+      const match = (unpaidDocs || []).find(d => {
+        const docAmt = parseFloat(d.total) || 0
+        return Math.abs(docAmt - amt) < 1 && !matches.some(m => m.doc.id === d.id)
+      })
+      if (match) matches.push({ bankTx: tx, doc: match, confidence: 'amount' })
+    })
+    setReconcileItems(matches)
     setReconcileLoading(false)
   }
 
   const confirmMatch = async (item) => {
+    await supabase.from('generated_docs').update({ bank_transaction_id: item.bankTx.id }).eq('id', item.doc.id)
+    await supabase.from('bank_transactions').update({ is_matched: true }).eq('id', item.bankTx.id)
     setReconcileItems(prev => prev.filter(i => i.bankTx.id !== item.bankTx.id))
   }
 

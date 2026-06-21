@@ -27,6 +27,10 @@ export default function Validation() {
 
   const loadData = async () => {
     setLoading(true)
+    // Stats — lightweight query without items/docs
+    const { count: totalCount } = await supabase.from('bank_transactions').select('id', { count: 'exact', head: true }).eq('is_ignored', false)
+    const { count: validatedCount } = await supabase.from('bank_transactions').select('id', { count: 'exact', head: true }).eq('is_ignored', false).eq('is_validated', true)
+
     const { data } = await supabase.from('bank_transactions')
       .select(`*,
         transaction_items(id, name, quantity, unit, unit_price, amount, vat_rate, is_price_with_vat, unit_price_net, amount_net),
@@ -34,6 +38,7 @@ export default function Validation() {
       `)
       .eq('is_ignored', false)
       .order('date', { ascending: false })
+      .limit(500)
 
     const all = (data || []).map(tx => {
       const items = tx.transaction_items || []
@@ -46,8 +51,8 @@ export default function Validation() {
 
     setTxs(all)
     setStats({
-      total: all.length,
-      validated: all.filter(t => t.is_validated).length,
+      total: totalCount || all.length,
+      validated: validatedCount || all.filter(t => t.is_validated).length,
       withItems: all.filter(t => t._items.length > 0).length,
       problems: all.filter(t => {
         // Невалідовані з нестандартним ratio

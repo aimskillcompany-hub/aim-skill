@@ -7,7 +7,7 @@ import {
 } from 'recharts'
 
 const fmt = n => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(n || 0)))
-const CASH_DIR = { income: 1, expense: -1, advance_out: -1, advance_return: 1 }
+const CASH_DIR = { income: 1, expense: -1, advance: -1, advance_return: 1, bank_to_cash: 1, cash_to_bank: -1 }
 
 export default function Analytics({ user, onPage }) {
   const [tab, setTab] = useState('overview')
