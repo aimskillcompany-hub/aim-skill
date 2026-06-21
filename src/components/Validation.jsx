@@ -354,9 +354,26 @@ export default function Validation() {
                           <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', fontSize: 14, padding: 2 }}
                             title="Видалити позицію"
                             onClick={async () => {
-                              if (!confirm(`Видалити "${it.name}"? Також буде видалено рух на складі.`)) return
                               if (it.id) {
-                                await supabase.from('stock_movements').delete().eq('transaction_item_id', it.id)
+                                // Перевірити чи є рух на складі
+                                const { data: mov } = await supabase.from('stock_movements')
+                                  .select('id, product_id, quantity, type').eq('transaction_item_id', it.id).maybeSingle()
+                                if (mov && mov.product_id) {
+                                  // Перевірити залишок після видалення
+                                  const { data: prod } = await supabase.from('product_stock')
+                                    .select('computed_stock, name').eq('id', mov.product_id).maybeSingle()
+                                  const currentStock = prod?.computed_stock || 0
+                                  const movQty = mov.type === 'in' ? (mov.quantity || 0) : -(mov.quantity || 0)
+                                  const afterDelete = currentStock - movQty
+                                  if (afterDelete < 0) {
+                                    if (!confirm(`Увага! Після видалення "${prod?.name || it.name}" залишок стане ${afterDelete} шт (зараз ${currentStock}). Продовжити?`)) return
+                                  } else {
+                                    if (!confirm(`Видалити "${it.name}"? Залишок на складі зміниться: ${currentStock} → ${afterDelete}`)) return
+                                  }
+                                  await supabase.from('stock_movements').delete().eq('id', mov.id)
+                                } else {
+                                  if (!confirm(`Видалити "${it.name}"?`)) return
+                                }
                                 await supabase.from('transaction_items').delete().eq('id', it.id)
                               }
                               setEditItems(prev => prev.filter((_, i) => i !== idx))
