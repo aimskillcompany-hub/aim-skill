@@ -445,11 +445,13 @@ export default function Contractors({ user, onNavigate }) {
     const txExpense = detailTxs.filter(t=>t.direction==='Витрати').reduce((s,t)=>s+Math.abs(t.amount||0),0)
     const balance = txIncome - txExpense
 
-    // Дебіторка / Кредиторка
+    // Дебіторка / Кредиторка — по неоплачених документах (без bank_transaction_id)
+    const unpaidOutgoing = contractorDocs.filter(d => ['waybill','serviceAct'].includes(d.doc_type) && d.status !== 'cancelled' && !d.bank_transaction_id).reduce((s, d) => s + (parseFloat(d.total) || 0), 0)
+    const unpaidIncoming = contractorDocs.filter(d => d.doc_type === 'incomingWaybill' && d.status !== 'cancelled' && !d.bank_transaction_id).reduce((s, d) => s + (parseFloat(d.total) || 0), 0)
     const docsOutgoing = contractorDocs.filter(d => ['waybill','serviceAct'].includes(d.doc_type) && d.status !== 'cancelled').reduce((s, d) => s + (parseFloat(d.total) || 0), 0)
     const docsIncoming = contractorDocs.filter(d => d.doc_type === 'incomingWaybill' && d.status !== 'cancelled').reduce((s, d) => s + (parseFloat(d.total) || 0), 0)
-    const debit = docsOutgoing - txIncome   // нам винні (відвантажили але не оплатили)
-    const credit = docsIncoming - txExpense  // ми винні (отримали але не оплатили)
+    const debit = unpaidOutgoing   // нам винні (відвантажили але не оплатили)
+    const credit = unpaidIncoming  // ми винні (отримали але не оплатили)
 
     return (
       <div>
@@ -548,20 +550,6 @@ export default function Contractors({ user, onNavigate }) {
                 <div className="kpi-label">Кредиторка</div>
                 <div className="kpi-value" style={{ color:'var(--red)' }}>{fmt(credit)}</div>
                 <div className="kpi-sub">ми винні</div>
-              </div>
-            )}
-            {debit < 0 && txExpense > 0 && docsIncoming > 0 && (
-              <div className="kpi" style={{ borderLeft:'3px solid var(--green)' }}>
-                <div className="kpi-label">Переплата</div>
-                <div className="kpi-value" style={{ color:'var(--green)' }}>{fmt(txExpense - docsIncoming)}</div>
-                <div className="kpi-sub">оплатили більше ніж отримали</div>
-              </div>
-            )}
-            {credit < 0 && txIncome > 0 && docsOutgoing > 0 && (
-              <div className="kpi" style={{ borderLeft:'3px solid var(--green)' }}>
-                <div className="kpi-label">Передоплата від них</div>
-                <div className="kpi-value" style={{ color:'var(--green)' }}>{fmt(txIncome - docsOutgoing)}</div>
-                <div className="kpi-sub">оплатили більше ніж відвантажили</div>
               </div>
             )}
           </div>
