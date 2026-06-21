@@ -126,6 +126,7 @@ ${articles?.length ? articles.map(a => `- ${a.name} (${a.type})`).join('\n') : '
   "invoiceRef": "номер пов'язаного рахунку (якщо в накладній вказано 'згідно рахунку №...') або null",
   "invoiceRefDate": "YYYY-MM-DD дата рахунку або null",
   "contractNum": "номер договору (якщо вказано 'згідно договору №...') або null",
+  "contractDate": "YYYY-MM-DD дата договору або null",
   "items": [
     {
       "name": "назва товару або послуги",
