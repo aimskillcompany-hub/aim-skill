@@ -17,6 +17,7 @@ export default function Validation() {
   const [sort, setSort] = useState({ col: 'date', dir: 'desc' })
   const [checkedIds, setCheckedIds] = useState(new Set())
   const [bulkSaving, setBulkSaving] = useState(false)
+  const [searchText, setSearchText] = useState('')
 
   useEffect(() => { loadData(); fetchArticles().then(setArticles) }, [])
 
@@ -160,6 +161,10 @@ export default function Validation() {
   }
 
   const filtered = txs.filter(tx => {
+    if (searchText) {
+      const s = searchText.toLowerCase()
+      if (!(tx.counterparty || '').toLowerCase().includes(s) && !(tx.description || '').toLowerCase().includes(s)) return false
+    }
     if (filter === 'pending') return !tx.is_validated
     if (filter === 'validated') return tx.is_validated
     if (filter === 'problems') return tx._items.length > 0 && tx._ratio && Math.abs(tx._ratio - 1.0) > 0.01 && Math.abs(tx._ratio - 1.2) > 0.01
@@ -530,6 +535,15 @@ export default function Validation() {
             <div className="kpi-value" style={{ color: stats.problems > 0 ? 'var(--red)' : 'var(--green)' }}>{stats.problems}</div>
           </div>
         </div>
+      </div>
+
+      {/* Пошук */}
+      <div style={{ position: 'relative', marginBottom: 10 }}>
+        <i className="ti ti-search" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)', fontSize: 16 }} />
+        <input className="form-input" style={{ width: '100%', paddingLeft: 38 }}
+          placeholder="Пошук по контрагенту..."
+          value={searchText} onChange={e => { setSearchText(e.target.value); setCheckedIds(new Set()) }} />
+        {searchText && <button onClick={() => { setSearchText(''); setCheckedIds(new Set()) }} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 16 }}><i className="ti ti-x" /></button>}
       </div>
 
       {/* Фільтри */}
