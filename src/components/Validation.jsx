@@ -57,7 +57,27 @@ export default function Validation() {
   const markValidated = async (tx, pricesWithVat) => {
     setSaving(true)
     const bankAbs = Math.abs(tx.amount || 0)
-    const items = tx._items
+    const items = editItems.length > 0 ? editItems : tx._items
+
+    // Зберегти зміни в транзакції (напрям, стаття)
+    if (editForm.direction || editForm.article) {
+      await supabase.from('bank_transactions').update({
+        direction: editForm.direction || tx.direction,
+        article: editForm.article || tx.article,
+      }).eq('id', tx.id)
+    }
+
+    // Зберегти зміни в items
+    for (const item of items) {
+      if (!item.id) continue
+      await supabase.from('transaction_items').update({
+        name: item.name,
+        quantity: parseFloat(item.quantity) || 0,
+        unit_price: parseFloat(item.unit_price) || 0,
+        amount: parseFloat(item.amount) || 0,
+        vat_rate: parseFloat(item.vat_rate) || 0,
+      }).eq('id', item.id)
+    }
 
     let amountNet, vatAmount
 
@@ -140,12 +160,33 @@ export default function Validation() {
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text2)' }}>Завантаження...</div>
 
+  const [editForm, setEditForm] = useState({})
+  const [editItems, setEditItems] = useState([])
+
+  const openForEdit = (tx) => {
+    setEditForm({
+      direction: tx.direction || '',
+      article: tx.article || '',
+      counterparty: tx.counterparty || '',
+    })
+    setEditItems((tx._items || []).map(i => ({
+      id: i.id,
+      name: i.name,
+      quantity: i.quantity,
+      unit_price: i.unit_price,
+      amount: i.amount,
+      vat_rate: i.vat_rate ?? 20,
+    })))
+    openTx(tx)
+  }
+
   // ═══ DETAIL VIEW ═══
   if (selected) {
     const tx = selected
-    const items = tx._items || []
+    const items = editItems.length > 0 ? editItems : tx._items || []
+    const itemsTotal = items.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0)
     const bankAbs = Math.abs(tx.amount || 0)
-    const ratio = tx._ratio
+    const ratio = itemsTotal > 0 ? Math.round(bankAbs / itemsTotal * 1000) / 1000 : null
     const isRatio1 = ratio !== null && Math.abs(ratio - 1.0) < 0.01
     const isRatio12 = ratio !== null && Math.abs(ratio - 1.2) < 0.01
     const ratioLabel = ratio === null ? '' : isRatio1 ? 'Ціни в документі З ПДВ' : isRatio12 ? 'Ціни в документі БЕЗ ПДВ' : '⚠ Суми не збігаються'
@@ -154,23 +195,39 @@ export default function Validation() {
     return (
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-          <button onClick={() => setSelected(null)} className="btn btn-secondary" style={{ width: 'auto', padding: '8px 14px' }}>
+          <button onClick={() => { setSelected(null); setEditItems([]) }} className="btn btn-secondary" style={{ width: 'auto', padding: '8px 14px' }}>
             <i className="ti ti-arrow-left" style={{ fontSize: 16 }} /> Назад
           </button>
-          <h1 style={{ fontSize: 18, margin: 0, flex: 1 }}>Валідація: {tx.counterparty || '—'}</h1>
+          <h1 style={{ fontSize: 18, margin: 0, flex: 1 }}>Валідація: {editForm.counterparty || tx.counterparty || '—'}</h1>
           {tx.is_validated && <span style={{ fontSize: 12, background: 'var(--green-bg)', color: 'var(--green)', padding: '4px 10px', borderRadius: 6, fontWeight: 500 }}>✓ Валідовано</span>}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: tx._docs.length > 0 ? '1fr 1fr' : '1fr', gap: 16 }}>
           {/* ЛІВА ЧАСТИНА — дані */}
           <div>
-            {/* Мета */}
+            {/* Мета — редаговане */}
             <div className="card" style={{ marginBottom: 12 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 13 }}>
                 <div><span style={{ color: 'var(--text3)' }}>Дата:</span> <strong>{tx.date}</strong></div>
-                <div><span style={{ color: 'var(--text3)' }}>Напрям:</span> <strong style={{ color: tx.direction === 'Доходи' ? 'var(--green)' : 'var(--red)' }}>{tx.direction || '—'}</strong></div>
+                <div>
+                  <span style={{ color: 'var(--text3)' }}>Напрям: </span>
+                  <select style={{ fontSize: 13, border: '1px solid var(--border)', borderRadius: 4, padding: '2px 6px', fontFamily: 'inherit',
+                    color: editForm.direction === 'Доходи' ? 'var(--green)' : editForm.direction === 'Витрати' ? 'var(--red)' : 'var(--text2)' }}
+                    value={editForm.direction} onChange={e => setEditForm(f => ({ ...f, direction: e.target.value }))}>
+                    <option value="">—</option>
+                    <option value="Доходи">Доходи</option>
+                    <option value="Витрати">Витрати</option>
+                    <option value="ПФД">ПФД</option>
+                    <option value="Внутрішні перекази">Внутрішні перекази</option>
+                    <option value="Інше">Інше</option>
+                  </select>
+                </div>
                 <div><span style={{ color: 'var(--text3)' }}>Сума (банк):</span> <strong>{fmtInt(bankAbs)} грн</strong></div>
-                <div><span style={{ color: 'var(--text3)' }}>Стаття:</span> <strong>{tx.article || <span style={{ color: 'var(--red)' }}>не заповнена</span>}</strong></div>
+                <div>
+                  <span style={{ color: 'var(--text3)' }}>Стаття: </span>
+                  <input style={{ fontSize: 12, border: '1px solid var(--border)', borderRadius: 4, padding: '2px 6px', width: 140, fontFamily: 'inherit' }}
+                    value={editForm.article} onChange={e => setEditForm(f => ({ ...f, article: e.target.value }))} placeholder="Стаття" />
+                </div>
                 <div style={{ gridColumn: 'span 2' }}><span style={{ color: 'var(--text3)' }}>Опис:</span> <span style={{ fontSize: 12 }}>{tx.description || '—'}</span></div>
               </div>
             </div>
@@ -186,27 +243,54 @@ export default function Validation() {
                   <thead>
                     <tr style={{ background: 'var(--surface2)' }}>
                       <th style={{ textAlign: 'left', padding: '4px 8px' }}>Назва</th>
-                      <th style={{ textAlign: 'right', padding: '4px 8px' }}>К-сть</th>
-                      <th style={{ textAlign: 'right', padding: '4px 8px' }}>Ціна</th>
-                      <th style={{ textAlign: 'right', padding: '4px 8px' }}>Сума</th>
-                      <th style={{ textAlign: 'center', padding: '4px 8px' }}>ПДВ%</th>
+                      <th style={{ textAlign: 'right', padding: '4px 8px', width: 50 }}>К-сть</th>
+                      <th style={{ textAlign: 'right', padding: '4px 8px', width: 80 }}>Ціна</th>
+                      <th style={{ textAlign: 'right', padding: '4px 8px', width: 80 }}>Сума</th>
+                      <th style={{ textAlign: 'center', padding: '4px 8px', width: 50 }}>ПДВ%</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map(it => (
-                      <tr key={it.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td style={{ padding: '4px 8px' }}>{it.name}</td>
-                        <td style={{ textAlign: 'right', padding: '4px 8px' }}>{it.quantity}</td>
-                        <td style={{ textAlign: 'right', padding: '4px 8px' }}>{fmt(it.unit_price)}</td>
+                    {items.map((it, idx) => (
+                      <tr key={it.id || idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '4px 8px' }}>
+                          <input style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 4px', fontSize: 12, fontFamily: 'inherit' }}
+                            value={it.name || ''} onChange={e => {
+                              const v = e.target.value
+                              setEditItems(prev => prev.map((p, i) => i === idx ? { ...p, name: v } : p))
+                            }} />
+                        </td>
+                        <td style={{ padding: '4px 4px' }}>
+                          <input type="number" style={{ width: 50, border: '1px solid var(--border)', borderRadius: 4, padding: '2px 4px', fontSize: 12, textAlign: 'right', fontFamily: 'inherit' }}
+                            value={it.quantity || ''} onChange={e => {
+                              const q = e.target.value
+                              setEditItems(prev => prev.map((p, i) => i === idx ? { ...p, quantity: q, amount: ((parseFloat(q) || 0) * (parseFloat(p.unit_price) || 0)).toFixed(2) } : p))
+                            }} />
+                        </td>
+                        <td style={{ padding: '4px 4px' }}>
+                          <input type="number" style={{ width: 75, border: '1px solid var(--border)', borderRadius: 4, padding: '2px 4px', fontSize: 12, textAlign: 'right', fontFamily: 'inherit' }}
+                            value={it.unit_price || ''} onChange={e => {
+                              const pr = e.target.value
+                              setEditItems(prev => prev.map((p, i) => i === idx ? { ...p, unit_price: pr, amount: ((parseFloat(p.quantity) || 0) * (parseFloat(pr) || 0)).toFixed(2) } : p))
+                            }} />
+                        </td>
                         <td style={{ textAlign: 'right', padding: '4px 8px', fontWeight: 500 }}>{fmt(it.amount)}</td>
-                        <td style={{ textAlign: 'center', padding: '4px 8px', color: 'var(--text3)' }}>{it.vat_rate || 0}%</td>
+                        <td style={{ padding: '4px 4px' }}>
+                          <select style={{ width: 50, border: '1px solid var(--border)', borderRadius: 4, padding: '2px', fontSize: 11, fontFamily: 'inherit' }}
+                            value={it.vat_rate || 0} onChange={e => {
+                              setEditItems(prev => prev.map((p, i) => i === idx ? { ...p, vat_rate: parseFloat(e.target.value) } : p))
+                            }}>
+                            <option value={20}>20%</option>
+                            <option value={7}>7%</option>
+                            <option value={0}>0%</option>
+                          </select>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
                     <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 600 }}>
                       <td colSpan={3} style={{ padding: '6px 8px' }}>Разом (items)</td>
-                      <td style={{ textAlign: 'right', padding: '6px 8px' }}>{fmtInt(tx._itemsTotal)} грн</td>
+                      <td style={{ textAlign: 'right', padding: '6px 8px' }}>{fmtInt(itemsTotal)} грн</td>
                       <td></td>
                     </tr>
                     <tr>
@@ -216,8 +300,8 @@ export default function Validation() {
                     </tr>
                     <tr>
                       <td colSpan={3} style={{ padding: '4px 8px', color: 'var(--text3)' }}>{isRatio12 ? 'ПДВ (різниця)' : 'Різниця'}</td>
-                      <td style={{ textAlign: 'right', padding: '4px 8px', color: isRatio12 ? 'var(--text2)' : Math.abs(bankAbs - tx._itemsTotal) > 1 ? 'var(--red)' : 'var(--green)', fontWeight: 500 }}>
-                        {fmtInt(bankAbs - tx._itemsTotal)} грн
+                      <td style={{ textAlign: 'right', padding: '4px 8px', color: isRatio12 ? 'var(--text2)' : Math.abs(bankAbs - itemsTotal) > 1 ? 'var(--red)' : 'var(--green)', fontWeight: 500 }}>
+                        {fmtInt(bankAbs - itemsTotal)} грн
                       </td>
                       <td></td>
                     </tr>
@@ -377,7 +461,7 @@ export default function Validation() {
               const ratioColor = tx._ratio === null ? '' : Math.abs(tx._ratio - 1.0) < 0.01 ? 'var(--blue)' : Math.abs(tx._ratio - 1.2) < 0.01 ? 'var(--green)' : 'var(--red)'
               return (
                 <tr key={tx.id} style={{ cursor: 'pointer', borderBottom: '1px solid var(--border)' }}
-                  onClick={() => openTx(tx)}
+                  onClick={() => openForEdit(tx)}
                   onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
                   onMouseLeave={e => e.currentTarget.style.background = ''}>
                   <td>
