@@ -18,8 +18,12 @@ export default function Validation() {
   const [checkedIds, setCheckedIds] = useState(new Set())
   const [bulkSaving, setBulkSaving] = useState(false)
   const [searchText, setSearchText] = useState('')
+  const [allProducts, setAllProducts] = useState([])
 
-  useEffect(() => { loadData(); fetchArticles().then(setArticles) }, [])
+  useEffect(() => {
+    loadData(); fetchArticles().then(setArticles)
+    supabase.from('product_stock').select('id, name, unit, product_type').eq('status', 'active').order('name').then(({ data }) => setAllProducts(data || []))
+  }, [])
 
   const loadData = async () => {
     setLoading(true)
@@ -89,13 +93,34 @@ export default function Validation() {
         const { data: inserted } = await supabase.from('transaction_items').insert({
           bank_transaction_id: tx.id,
           name: item.name,
+          product_id: item.product_id || null,
           quantity: parseFloat(item.quantity) || 0,
           unit: item.unit || 'шт',
           unit_price: parseFloat(item.unit_price) || 0,
           amount: parseFloat(item.amount) || 0,
           vat_rate: parseFloat(item.vat_rate) || 0,
         }).select().single()
-        if (inserted) items[i] = { ...item, id: inserted.id, _new: false }
+        if (inserted) {
+          items[i] = { ...item, id: inserted.id, _new: false }
+          // Створити рух на складі якщо обрано продукт
+          if (item.product_id) {
+            const qty = parseFloat(item.quantity) || 0
+            const price = parseFloat(item.unit_price) || 0
+            const dir = (editForm.direction || tx.direction)
+            const movType = dir === 'Доходи' ? 'out' : 'in'
+            await supabase.from('stock_movements').insert({
+              product_id: item.product_id,
+              type: movType,
+              quantity: qty,
+              price: price || null,
+              total: qty * price || null,
+              bank_transaction_id: tx.id,
+              transaction_item_id: inserted.id,
+              date: tx.date || new Date().toISOString().split('T')[0],
+              description: `Відновлено при валідації: ${item.name}`,
+            })
+          }
+        }
       } else if (item.id) {
         await supabase.from('transaction_items').update({
           name: item.name,
@@ -376,11 +401,23 @@ export default function Validation() {
                     {items.map((it, idx) => (
                       <tr key={it.id || idx} style={{ borderBottom: '1px solid var(--border)' }}>
                         <td style={{ padding: '4px 8px' }}>
-                          <input style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 4px', fontSize: 12, fontFamily: 'inherit' }}
-                            value={it.name || ''} onChange={e => {
-                              const v = e.target.value
-                              setEditItems(prev => prev.map((p, i) => i === idx ? { ...p, name: v } : p))
-                            }} />
+                          {it._new ? (
+                            <select style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 4px', fontSize: 12, fontFamily: 'inherit' }}
+                              value={it.product_id || ''} onChange={e => {
+                                const pid = e.target.value
+                                const prod = allProducts.find(p => p.id === parseInt(pid))
+                                setEditItems(prev => prev.map((p, i) => i === idx ? { ...p, product_id: pid ? parseInt(pid) : null, name: prod?.name || p.name, unit: prod?.unit || 'шт' } : p))
+                              }}>
+                              <option value="">— Оберіть товар —</option>
+                              {allProducts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            </select>
+                          ) : (
+                            <input style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 4px', fontSize: 12, fontFamily: 'inherit' }}
+                              value={it.name || ''} onChange={e => {
+                                const v = e.target.value
+                                setEditItems(prev => prev.map((p, i) => i === idx ? { ...p, name: v } : p))
+                              }} />
+                          )}
                         </td>
                         <td style={{ padding: '4px 4px' }}>
                           <input type="number" style={{ width: 50, border: '1px solid var(--border)', borderRadius: 4, padding: '2px 4px', fontSize: 12, textAlign: 'right', fontFamily: 'inherit' }}
