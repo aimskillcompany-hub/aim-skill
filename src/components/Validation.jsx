@@ -312,6 +312,7 @@ export default function Validation() {
                       <th style={{ textAlign: 'right', padding: '4px 8px', width: 80 }}>Ціна</th>
                       <th style={{ textAlign: 'right', padding: '4px 8px', width: 80 }}>Сума</th>
                       <th style={{ textAlign: 'center', padding: '4px 8px', width: 50 }}>ПДВ%</th>
+                      <th style={{ width: 30 }}></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -349,12 +350,26 @@ export default function Validation() {
                             <option value={0}>0%</option>
                           </select>
                         </td>
+                        <td style={{ padding: '4px 2px', textAlign: 'center' }}>
+                          <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', fontSize: 14, padding: 2 }}
+                            title="Видалити позицію"
+                            onClick={async () => {
+                              if (!confirm(`Видалити "${it.name}"? Також буде видалено рух на складі.`)) return
+                              if (it.id) {
+                                await supabase.from('stock_movements').delete().eq('transaction_item_id', it.id)
+                                await supabase.from('transaction_items').delete().eq('id', it.id)
+                              }
+                              setEditItems(prev => prev.filter((_, i) => i !== idx))
+                            }}>
+                            <i className="ti ti-trash" />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
                     <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 600 }}>
-                      <td colSpan={3} style={{ padding: '6px 8px' }}>Разом (items)</td>
+                      <td colSpan={3} style={{ padding: '6px 8px' }}>Разом</td>
                       <td style={{ textAlign: 'right', padding: '6px 8px' }}>{fmtInt(itemsTotal)} грн</td>
                       <td></td>
                     </tr>
