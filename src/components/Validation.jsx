@@ -169,6 +169,7 @@ export default function Validation() {
 
   const [editForm, setEditForm] = useState({})
   const [editItems, setEditItems] = useState([])
+  const [vatChoice, setVatChoice] = useState(null) // true = з ПДВ, false = без ПДВ
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text2)' }}>Завантаження...</div>
 
@@ -186,6 +187,13 @@ export default function Validation() {
       amount: i.amount,
       vat_rate: i.vat_rate ?? 20,
     })))
+    // Автовибір ПДВ на основі ratio
+    const itemsSum = (tx._items || []).reduce((s, i) => s + (parseFloat(i.amount) || 0), 0)
+    const bankAbs = Math.abs(tx.amount || 0)
+    const r = itemsSum > 0 ? bankAbs / itemsSum : null
+    if (r && Math.abs(r - 1.2) < 0.01) setVatChoice(false) // без ПДВ
+    else if (r && Math.abs(r - 1.0) < 0.01) setVatChoice(true) // з ПДВ
+    else setVatChoice(null)
     openTx(tx)
   }
 
@@ -343,29 +351,67 @@ export default function Validation() {
               </div>
             )}
 
-            {/* Кнопки */}
+            {/* Вибір ПДВ + превʼю + валідація */}
             {!tx.is_validated && (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {items.length > 0 && (
-                  <>
-                    <button className={`btn ${isRatio12 ? 'btn-primary' : 'btn-secondary'}`} disabled={saving} onClick={() => markValidated(tx, false)} style={{ flex: 1 }}>
-                      {saving ? '...' : '✓ Підтвердити: ціни БЕЗ ПДВ'}
-                    </button>
-                    <button className={`btn ${isRatio1 ? 'btn-primary' : 'btn-secondary'}`} disabled={saving} onClick={() => markValidated(tx, true)} style={{ flex: 1 }}>
-                      {saving ? '...' : '✓ Підтвердити: ціни З ПДВ'}
-                    </button>
-                  </>
-                )}
-                {items.length === 0 && (
-                  <>
-                    <button className="btn btn-primary" disabled={saving} onClick={() => markValidated(tx, true)} style={{ flex: 1 }}>
-                      {saving ? '...' : '✓ Сума З ПДВ (20%)'}
-                    </button>
-                    <button className="btn btn-secondary" disabled={saving} onClick={() => markValidated(tx, false)} style={{ flex: 1 }}>
-                      {saving ? '...' : '✓ Сума БЕЗ ПДВ'}
-                    </button>
-                  </>
-                )}
+              <div>
+                {/* Перемикач */}
+                <div style={{ display: 'flex', gap: 0, marginBottom: 12, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                  <button onClick={() => setVatChoice(false)} style={{
+                    flex: 1, padding: '10px', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500,
+                    background: vatChoice === false ? 'var(--green)' : 'var(--surface)', color: vatChoice === false ? '#fff' : 'var(--text2)',
+                  }}>Ціни БЕЗ ПДВ</button>
+                  <button onClick={() => setVatChoice(true)} style={{
+                    flex: 1, padding: '10px', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500,
+                    borderLeft: '1px solid var(--border)',
+                    background: vatChoice === true ? 'var(--blue)' : 'var(--surface)', color: vatChoice === true ? '#fff' : 'var(--text2)',
+                  }}>Ціни З ПДВ</button>
+                </div>
+
+                {/* Превʼю розрахунку */}
+                {vatChoice !== null && (() => {
+                  let previewNet, previewVat
+                  if (items.length > 0) {
+                    if (vatChoice) {
+                      // items з ПДВ → net = item / (1 + rate/100)
+                      previewNet = items.reduce((s, i) => {
+                        const a = parseFloat(i.amount) || 0
+                        const r = parseFloat(i.vat_rate) || 0
+                        return s + (r > 0 ? a / (1 + r / 100) : a)
+                      }, 0)
+                    } else {
+                      // items без ПДВ → net = items sum
+                      previewNet = itemsTotal
+                    }
+                  } else {
+                    previewNet = vatChoice ? bankAbs / 1.2 : bankAbs
+                  }
+                  previewVat = bankAbs - previewNet
+
+                  return (
+                    <div style={{ background: 'var(--surface2)', borderRadius: 10, padding: 14, marginBottom: 12 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', marginBottom: 8 }}>Результат перерахунку:</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                        <div>
+                          <div style={{ fontSize: 11, color: 'var(--text3)' }}>Без ПДВ</div>
+                          <div style={{ fontSize: 16, fontWeight: 600 }}>{fmtInt(previewNet)} грн</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, color: 'var(--text3)' }}>ПДВ</div>
+                          <div style={{ fontSize: 16, fontWeight: 600, color: previewVat > 0 ? 'var(--amber)' : 'var(--text3)' }}>{fmtInt(previewVat)} грн</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, color: 'var(--text3)' }}>З ПДВ (банк)</div>
+                          <div style={{ fontSize: 16, fontWeight: 600 }}>{fmtInt(bankAbs)} грн</div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* Кнопка валідації */}
+                <button className="btn btn-primary" disabled={saving || vatChoice === null} onClick={() => markValidated(tx, vatChoice)} style={{ width: '100%' }}>
+                  {saving ? 'Збереження...' : vatChoice === null ? 'Оберіть тип ПДВ вище' : '✓ Валідувати'}
+                </button>
               </div>
             )}
             {tx.is_validated && (
