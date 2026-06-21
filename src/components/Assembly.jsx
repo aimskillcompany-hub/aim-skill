@@ -75,14 +75,22 @@ export default function Assembly({ user }) {
     setError(null)
 
     try {
-      // Видалити stock_movements повʼязані зі збіркою (description містить "Збірка:")
+      // Видалити stock_movements через assembly_id FK (надійніше ніж description match)
       const { data: movements } = await supabase.from('stock_movements')
         .select('id')
-        .or(`description.ilike.%Збірка: ${assembly.name}%`)
-        .eq('date', assembly.assembled_at)
+        .eq('assembly_id', assembly.id)
 
       if (movements?.length) {
         await supabase.from('stock_movements').delete().in('id', movements.map(m => m.id))
+      } else {
+        // Fallback на description match (для старих рухів без assembly_id)
+        const { data: fallbackMovs } = await supabase.from('stock_movements')
+          .select('id')
+          .or(`description.ilike.%Збірка: ${assembly.name}%`)
+          .eq('date', assembly.assembled_at)
+        if (fallbackMovs?.length) {
+          await supabase.from('stock_movements').delete().in('id', fallbackMovs.map(m => m.id))
+        }
       }
 
       // Видалити assembly_items

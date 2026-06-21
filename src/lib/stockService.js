@@ -287,6 +287,7 @@ export async function createStockMovement({
     transaction_item_id: transactionItemId || null,
     date: date || new Date().toISOString().split('T')[0],
     description: description || null,
+    source: bankTransactionId ? 'auto' : 'manual',
     created_by: userId,
   }).select('id').single()
 
@@ -378,13 +379,23 @@ export async function assembleProduct({ name, resultProductId, quantity, compone
     }
   }
 
-  // 2. Розрахувати FIFO собівартість компонентів
+  // 2. Перевірити залишки та розрахувати FIFO собівартість
   let totalCost = 0
   const enrichedComponents = []
   for (const comp of components) {
     const compQty = comp.qty || comp.quantity || 0
-    const costPrice = await getFifoCost(comp.productId, compQty * quantity) || comp.costPrice || 0
-    const total = compQty * quantity * costPrice
+    const needQty = compQty * quantity
+
+    // Перевірити залишок
+    const { data: stockData } = await supabase.from('product_stock')
+      .select('computed_stock').eq('id', comp.productId).maybeSingle()
+    const available = stockData?.computed_stock || 0
+    if (available < needQty) {
+      return { error: `Недостатньо "${comp.productName || comp.productId}" на складі: потрібно ${needQty}, є ${available}` }
+    }
+
+    const costPrice = await getFifoCost(comp.productId, needQty) || comp.costPrice || 0
+    const total = needQty * costPrice
     totalCost += total
     enrichedComponents.push({ ...comp, qty: compQty, costPrice, total })
   }
@@ -411,9 +422,10 @@ export async function assembleProduct({ name, resultProductId, quantity, compone
   for (const c of enrichedComponents) {
     await supabase.from('stock_movements').insert({
       product_id: c.productId, type: 'out',
-      quantity: (c.qty || c.quantity) * quantity, price: c.costPrice, total: c.total,
+      quantity: (c.qty || c.quantity) * quantity, price: c.costPrice, cost_price: c.costPrice, total: c.total,
       date: date || new Date().toISOString().split('T')[0],
       description: `Збірка: ${name}`, created_by: userId,
+      assembly_id: assembly.id, source: 'assembly',
     })
   }
 
@@ -421,10 +433,11 @@ export async function assembleProduct({ name, resultProductId, quantity, compone
   const unitCost = quantity > 0 ? totalCost / quantity : totalCost
   await supabase.from('stock_movements').insert({
     product_id: productId, type: 'in',
-    quantity, price: unitCost, total: totalCost,
+    quantity, price: unitCost, cost_price: unitCost, total: totalCost,
     date: date || new Date().toISOString().split('T')[0],
     description: `Збірка: ${name} (${enrichedComponents.length} компонентів)`,
     created_by: userId,
+    assembly_id: assembly.id, source: 'assembly',
   })
 
   // Оновити buy_price готового виробу

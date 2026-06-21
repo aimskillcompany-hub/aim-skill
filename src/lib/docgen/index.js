@@ -130,12 +130,25 @@ export async function createStockFromDoc(docId, docType, items, date, userId) {
     if (prodInfo?.product_type === 'service' || prodInfo?.product_type === 'expense') continue
 
     // Створити рух
+    const unitPrice = parseFloat(item.unitPrice) || null
+    const total = parseFloat(item.amount) || qty * (unitPrice || 0)
+
+    // Для OUT — FIFO cost, для IN — ціна закупки
+    let costPrice = null
+    if (dt.stockEffect === 'out') {
+      const { getFifoCost } = await import('../stockService')
+      costPrice = await getFifoCost(resolved.productId, qty)
+    } else if (dt.stockEffect === 'in') {
+      costPrice = unitPrice // для IN cost = ціна закупки
+    }
+
     await supabase.from('stock_movements').insert({
       product_id: resolved.productId,
-      type: dt.stockEffect, // 'in' або 'out'
+      type: dt.stockEffect,
       quantity: qty,
-      price: parseFloat(item.unitPrice) || null,
-      total: parseFloat(item.amount) || qty * (parseFloat(item.unitPrice) || 0),
+      price: unitPrice,
+      total,
+      cost_price: costPrice,
       date: date || new Date().toISOString().split('T')[0],
       description: `${dt.label}: ${item.name}`,
       source: 'document',
