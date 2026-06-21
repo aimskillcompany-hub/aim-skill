@@ -158,10 +158,10 @@ export default function Validation() {
 
   const pct = stats.total > 0 ? Math.round(stats.validated / stats.total * 100) : 0
 
-  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text2)' }}>Завантаження...</div>
-
   const [editForm, setEditForm] = useState({})
   const [editItems, setEditItems] = useState([])
+
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text2)' }}>Завантаження...</div>
 
   const openForEdit = (tx) => {
     setEditForm({
