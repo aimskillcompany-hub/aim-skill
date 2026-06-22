@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import { fmt, fmtInt } from '../lib/fmt'
+import { logAction } from '../lib/auditLog'
 
 export default function Validation() {
   const [txs, setTxs] = useState([])
@@ -212,9 +213,12 @@ export default function Validation() {
       }
     }
 
+    const netRounded = Math.round(amountNet * 100) / 100
+    const vatRounded = Math.round(vatAmount * 100) / 100
+    await logAction('bank_transaction', tx.id, 'validate', { amount_net: netRounded, vat_amount: vatRounded, pricesWithVat })
     await supabase.from('bank_transactions').update({
       is_validated: true,
-      amount_net: Math.round(amountNet * 100) / 100,
+      amount_net: netRounded,
       vat_amount: Math.round(vatAmount * 100) / 100,
     }).eq('id', tx.id)
 

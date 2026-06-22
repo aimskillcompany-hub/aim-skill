@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
+import { logAction } from '../lib/auditLog'
 import { extractDocumentMulti } from '../lib/ai'
 import Badge from './ui/Badge'
 import ContractorSelect from './ui/ContractorSelect'
@@ -450,6 +451,7 @@ export default function Registry({ user }) {
 
   const handleUpdate = async () => {
     setEditSaving(true)
+    await logAction('bank_transaction', editForm.id, 'update', { direction: editForm.direction, article: editForm.article, project_id: editForm.project_id })
     const { error } = await supabase.from('bank_transactions').update({
       direction: editForm.direction,
       article: editForm.article || null,

@@ -5,6 +5,7 @@ import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import ContractorSelect from './ui/ContractorSelect'
 import { upsertContractor } from '../lib/contractors'
 import { fmtInt as fmt } from '../lib/fmt'
+import { logAction } from '../lib/auditLog'
 
 const USE_PROXY = !import.meta.env.DEV
 const API_KEY = import.meta.env.VITE_ANTHROPIC_KEY
@@ -471,6 +472,7 @@ export default function Bank({ user }) {
     })
     const { error } = await supabase.from('bank_transactions').insert(toInsert)
     if (error) { alert('Помилка імпорту: ' + error.message); setImporting(false); return }
+    await logAction('bank_import', null, 'import', { count: toInsert.length, file: file?.name })
     setImporting(false)
     setParsed(null)
     setFile(null)
