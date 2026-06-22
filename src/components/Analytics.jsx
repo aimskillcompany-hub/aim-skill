@@ -11,29 +11,6 @@ import { fmtInt as fmt } from '../lib/fmt'
 
 const CASH_DIR = { income: 1, expense: -1, advance: -1, advance_return: 1, bank_to_cash: 1, cash_to_bank: -1 }
 
-// Розгортання планів: шаблони → конкретні місяці
-function getMonthRange(from, to) {
-  const months = []
-  let [fy, fm] = from.split('-').map(Number)
-  const [ty, tm] = to.split('-').map(Number)
-  while (fy < ty || (fy === ty && fm <= tm)) {
-    months.push(`${fy}-${String(fm).padStart(2, '0')}`)
-    fm++; if (fm > 12) { fm = 1; fy++ }
-  }
-  return months
-}
-function expandPlans(allPlans) {
-  const result = []
-  allPlans.forEach(p => {
-    if (p.is_template && p.template_from && p.template_to) {
-      getMonthRange(p.template_from, p.template_to).forEach(m => result.push({ ...p, year_month: m }))
-    } else if (p.year_month) {
-      result.push(p)
-    }
-  })
-  return result
-}
-
 export default function Analytics({ user, onPage }) {
   const [tab, setTab] = useState('overview')
   const [period, setPeriod] = useState('month') // month, quarter, year, custom
@@ -48,7 +25,6 @@ export default function Analytics({ user, onPage }) {
   const [creditors, setCreditors] = useState([])
   const [chartData, setChartData] = useState([])
   const [forecast, setForecast] = useState(null)
-  const [cashFc, setCashFc] = useState(null)
   const [loading, setLoading] = useState(true)
 
   // Period presets
@@ -226,49 +202,6 @@ export default function Analytics({ user, onPage }) {
     const monthsCount = Math.max(1, Math.ceil((Date.now() - threeMonthsAgo.getTime()) / (30 * 86400000)))
     const avgMonthlyNet = (recentIncome - recentExpense) / monthsCount
 
-    // ── Грошовий прогноз на основі бюджету (plans) + дебіторки/кредиторки ──
-    const now = new Date()
-    const { data: allPlans } = await supabase.from('plans').select('*')
-    // Плановий операційний нетто по місяцях (з бюджету, з розгортанням шаблонів)
-    const planNetByMonth = {}
-    expandPlans(allPlans || []).forEach(p => {
-      if (!p.year_month) return
-      const sign = p.direction === 'Доходи' ? 1 : p.direction === 'Витрати' ? -1 : 0
-      planNetByMonth[p.year_month] = (planNetByMonth[p.year_month] || 0) + sign * (parseFloat(p.amount) || 0)
-    })
-
-    // Очікуване погашення дебіторки/кредиторки по місяцях за aging.
-    // Свіжі (0-60 дн) — наступний місяць; старі (60+) — далі/під питанням.
-    const debtByMonth = [0, 0, 0], credByMonth = [0, 0, 0]
-    const spread = (aging, target) => {
-      if (!aging) return
-      target[0] += (aging['0-30'] || 0) + (aging['31-60'] || 0)
-      target[1] += (aging['61-90'] || 0)
-      target[2] += (aging['90+'] || 0)
-    }
-    debtList.forEach(d => spread(d.aging, debtByMonth))
-    creditList.forEach(c => spread(c.aging, credByMonth))
-
-    const monthNamesUk = ['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень']
-    const fcRows = []
-    let bal = currentBalance
-    for (let i = 1; i <= 3; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
-      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-      const idx = i - 1
-      const debtIn = debtByMonth[idx] || 0
-      const ordIn = i === 1 ? ordersIncome : 0
-      const credOut = credByMonth[idx] || 0
-      const ordOut = i === 1 ? ordersExpense : 0
-      const hasPlan = planNetByMonth[ym] !== undefined
-      const opNet = hasPlan ? planNetByMonth[ym] : Math.round(avgMonthlyNet)
-      const open = bal
-      const close = open + debtIn + ordIn - credOut - ordOut + opNet
-      fcRows.push({ ym, name: monthNamesUk[d.getMonth()], open, debtIn, ordIn, credOut, ordOut, opNet, hasPlan, close })
-      bal = close
-    }
-    setCashFc({ opening: currentBalance, bankBalance, cashBal, rows: fcRows })
-
     setLoading(false)
   }
 
@@ -278,9 +211,8 @@ export default function Analytics({ user, onPage }) {
   const TABS = [
     { id: 'overview', label: 'Огляд', icon: 'ti-chart-dots-3' },
     { id: 'pl', label: 'P&L', icon: 'ti-report-analytics' },
-    { id: 'budget', label: 'Бюджет', icon: 'ti-calendar-dollar' },
+    { id: 'budget', label: 'Бюджет і прогноз', icon: 'ti-calendar-dollar' },
     { id: 'cashflow', label: 'Грошовий потік', icon: 'ti-cash' },
-    { id: 'forecast', label: 'Прогноз', icon: 'ti-crystal-ball' },
     { id: 'debt', label: 'Заборгованість', icon: 'ti-scale' },
   ]
 
@@ -402,125 +334,12 @@ export default function Analytics({ user, onPage }) {
       {/* ═══ P&L ═══ */}
       {tab === 'pl' && <Reports initialTab="pl" />}
 
-      {/* ═══ БЮДЖЕТ (План P&L) ═══ */}
+      {/* ═══ БЮДЖЕТ І ПРОГНОЗ ═══ */}
       {tab === 'budget' && <Budget user={user} />}
 
       {/* ═══ ГРОШОВИЙ ПОТІК ═══ */}
       {tab === 'cashflow' && <Reports initialTab="cf" />}
 
-      {/* ═══ ПРОГНОЗ ═══ */}
-      {tab === 'forecast' && cashFc && (() => {
-        const balColor = n => n >= 0 ? 'var(--green)' : 'var(--red)'
-        const rows = cashFc.rows
-        const flowTd = (key, v, sign) => (
-          <td key={key} style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: v ? (sign > 0 ? 'var(--green)' : 'var(--red)') : 'var(--text3)' }}>
-            {v ? (sign > 0 ? '+' : '−') + fmt(v) : '—'}
-          </td>
-        )
-        const nowTd = <td style={{ textAlign: 'right', color: 'var(--text3)' }}>—</td>
-
-        return (
-          <div>
-            {stats.noArticle > 10 && (
-              <div style={{ background: 'var(--amber-bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: 'var(--amber)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <i className="ti ti-alert-triangle" style={{ fontSize: 16 }} />
-                Прогноз базується тільки на валідованих даних. У вас {stats.noArticle} транзакцій без статті — валідуйте їх для точнішого прогнозу.
-              </div>
-            )}
-
-            <div className="card" style={{ marginBottom: 16 }}>
-              <div className="card-title">Грошовий прогноз на 3 місяці</div>
-              <div className="tbl-wrap" style={{ marginBottom: 0 }}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th style={{ minWidth: 240 }}>Рух коштів</th>
-                      <th style={{ textAlign: 'right', minWidth: 110 }}>Зараз</th>
-                      {rows.map((r, i) => (
-                        <th key={r.ym} style={{ textAlign: 'right', minWidth: 110, background: i % 2 ? undefined : 'var(--surface2)' }}>{r.name}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {/* Залишок на початок */}
-                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ fontSize: 13, fontWeight: 500 }}>Залишок на початок</td>
-                      <td style={{ textAlign: 'right', fontWeight: 500, color: balColor(cashFc.opening), fontVariantNumeric: 'tabular-nums' }}>{fmt(cashFc.opening)}</td>
-                      {rows.map(r => (
-                        <td key={r.ym} style={{ textAlign: 'right', color: balColor(r.open), fontVariantNumeric: 'tabular-nums' }}>{fmt(r.open)}</td>
-                      ))}
-                    </tr>
-                    {/* Дебіторка */}
-                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ fontSize: 13 }}>+ Дебіторка<div style={{ fontSize: 10, color: 'var(--text3)' }}>нам винні — за строком боргу</div></td>
-                      {nowTd}
-                      {rows.map(r => flowTd(r.ym, r.debtIn, 1))}
-                    </tr>
-                    {/* Замовлення клієнтів */}
-                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ fontSize: 13 }}>+ Замовлення клієнтів<div style={{ fontSize: 10, color: 'var(--text3)' }}>підтверджені</div></td>
-                      {nowTd}
-                      {rows.map(r => flowTd(r.ym, r.ordIn, 1))}
-                    </tr>
-                    {/* Кредиторка */}
-                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ fontSize: 13 }}>− Кредиторка<div style={{ fontSize: 10, color: 'var(--text3)' }}>ми винні — за строком боргу</div></td>
-                      {nowTd}
-                      {rows.map(r => flowTd(r.ym, r.credOut, -1))}
-                    </tr>
-                    {/* Замовлення постачальникам */}
-                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ fontSize: 13 }}>− Замовлення постачальникам<div style={{ fontSize: 10, color: 'var(--text3)' }}>підтверджені закупки</div></td>
-                      {nowTd}
-                      {rows.map(r => flowTd(r.ym, r.ordOut, -1))}
-                    </tr>
-                    {/* Операційний потік */}
-                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ fontSize: 13 }}>± Операційний потік<div style={{ fontSize: 10, color: 'var(--text3)' }}>план з бюджету або середній тренд</div></td>
-                      {nowTd}
-                      {rows.map(r => (
-                        <td key={r.ym} style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: r.opNet >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                          {r.opNet ? (r.opNet > 0 ? '+' : '−') + fmt(r.opNet) : '—'}
-                          <div style={{ fontSize: 9, color: r.hasPlan ? 'var(--blue)' : 'var(--text3)' }}>{r.hasPlan ? 'план' : 'тренд'}</div>
-                        </td>
-                      ))}
-                    </tr>
-                    {/* Залишок на кінець */}
-                    <tr style={{ borderTop: '3px solid var(--border)', fontWeight: 700, fontSize: 14 }}>
-                      <td>= Залишок на кінець</td>
-                      <td style={{ textAlign: 'right', color: balColor(cashFc.opening), fontVariantNumeric: 'tabular-nums' }}>{fmt(cashFc.opening)}</td>
-                      {rows.map(r => (
-                        <td key={r.ym} style={{ textAlign: 'right', color: balColor(r.close), fontVariantNumeric: 'tabular-nums', background: r.close < 0 ? 'var(--red-bg)' : undefined }}>
-                          {fmt(r.close)}
-                          {r.close < 0 && <div style={{ fontSize: 10, color: 'var(--red)' }}>⚠ дефіцит</div>}
-                        </td>
-                      ))}
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 8, lineHeight: 1.5 }}>
-                <strong>Як читати:</strong> залишок на початок наступного місяця = залишок на кінець попереднього. Дебіторка/кредиторка рознесені за строком боргу (свіжі — найближчий місяць). Операційний потік береться з <b>Бюджету</b> (якщо є план на місяць), інакше — середній потік за 3 місяці.
-              </div>
-            </div>
-
-            {/* Перенесено: порівняння плану й факту тепер у вкладках «Бюджет» та «P&L → Порівняння» */}
-            <div className="card" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <i className="ti ti-arrows-diff" style={{ fontSize: 22, color: 'var(--blue)' }} />
-              <div style={{ flex: 1, minWidth: 220 }}>
-                <div style={{ fontWeight: 600, fontSize: 13 }}>Порівняння плану та факту переїхало</div>
-                <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>
-                  Вносьте бюджет у вкладці <b>Бюджет</b>, а звіряйте з фактом у <b>P&L → Порівняння</b>.
-                </div>
-              </div>
-              <button className="btn btn-sm btn-secondary" onClick={() => setTab('budget')} style={{ width: 'auto' }}>До бюджету</button>
-              <button className="btn btn-sm btn-primary" onClick={() => setTab('pl')} style={{ width: 'auto' }}>До P&L</button>
-            </div>
-
-          </div>
-        )
-      })()}
 
       {/* ═══ ЗАБОРГОВАНІСТЬ ═══ */}
       {tab === 'debt' && (
