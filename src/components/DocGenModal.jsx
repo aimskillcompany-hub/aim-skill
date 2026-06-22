@@ -69,7 +69,10 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
   }
 
   const addProductItem = (product) => {
-    const price = product.sell_price || product.buy_price || 0
+    const isIncoming = DOCUMENT_TYPES.find(t => t.key === docType)?.direction === 'incoming'
+    const price = isIncoming
+      ? (product.buy_price || product.sell_price || 0)
+      : (product.sell_price || product.buy_price || 0)
     const newItem = {
       name: product.name,
       quantity: 1,
