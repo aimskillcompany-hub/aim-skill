@@ -172,7 +172,10 @@ export default function Analytics({ user, onPage }) {
     setChartData(chart)
 
     // Cash Flow Forecast
-    const bankBalance = (allBank || []).reduce((s, t) => s + (t.amount || 0), 0)
+    // Баланс = сума доходів - сума витрат (не просто sum amount)
+    const bankIncome = (allTxs || []).filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+    const bankExpense = (allTxs || []).filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+    const bankBalance = bankIncome - bankExpense
     const cashBal = (cashTxs || []).reduce((s, t) => s + (CASH_DIR[t.type] || 0) * (t.amount || 0), 0)
     const currentBalance = bankBalance + cashBal
 
@@ -187,21 +190,31 @@ export default function Analytics({ user, onPage }) {
     const ordersIncome = activeOrders.filter(d => d.doc_type === 'salesOrder').reduce((s, d) => s + (parseFloat(d.total) || 0), 0)
     const ordersExpense = activeOrders.filter(d => d.doc_type === 'purchaseOrder').reduce((s, d) => s + (parseFloat(d.total) || 0), 0)
 
-    // Середньомісячний потік (за останні 3 місяці)
+    // Середньомісячний потік за останні 3 місяці з bankTxs (має дати)
     const threeMonthsAgo = new Date(); threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
-    const recentTxs = (allBank || []).filter(t => new Date(t.date) >= threeMonthsAgo)
-    const avgMonthlyNet = recentTxs.length > 0 ? recentTxs.reduce((s, t) => s + (t.amount || 0), 0) / 3 : 0
+    const threeMonthsStr = threeMonthsAgo.toISOString().split('T')[0]
+    const { data: recentBank } = await supabase.from('bank_transactions')
+      .select('amount, direction, date').eq('is_ignored', false).eq('is_validated', true)
+      .gte('date', threeMonthsStr)
+    const recentIncome = (recentBank || []).filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+    const recentExpense = (recentBank || []).filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
+    const monthsCount = Math.max(1, Math.ceil((Date.now() - threeMonthsAgo.getTime()) / (30 * 86400000)))
+    const avgMonthlyNet = (recentIncome - recentExpense) / monthsCount
 
+    // Прогноз: баланс + очікувані надходження - очікувані витрати + тренд
+    const netExpected = totalDebtors + ordersIncome - totalCreditors - ordersExpense
     setForecast({
       currentBalance,
+      bankBalance,
+      cashBal,
       debtors: totalDebtors,
       creditors: totalCreditors,
       ordersIncome,
       ordersExpense,
-      avgMonthlyNet,
-      month1: currentBalance + totalDebtors - totalCreditors + ordersIncome - ordersExpense,
-      month2: currentBalance + totalDebtors - totalCreditors + ordersIncome - ordersExpense + avgMonthlyNet,
-      month3: currentBalance + totalDebtors - totalCreditors + ordersIncome - ordersExpense + avgMonthlyNet * 2,
+      avgMonthlyNet: Math.round(avgMonthlyNet),
+      month1: Math.round(currentBalance + netExpected),
+      month2: Math.round(currentBalance + netExpected + avgMonthlyNet),
+      month3: Math.round(currentBalance + netExpected + avgMonthlyNet * 2),
     })
 
     setLoading(false)
@@ -353,14 +366,23 @@ export default function Analytics({ user, onPage }) {
               </p>
 
               {/* Current state */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
                 <div style={{ padding: 14, background: 'var(--surface2)', borderRadius: 10 }}>
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Поточний баланс (банк + каса)</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: balColor(f.currentBalance) }}>{fmt(f.currentBalance)} грн</div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Банк</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: balColor(f.bankBalance) }}>{fmt(f.bankBalance)} грн</div>
                 </div>
                 <div style={{ padding: 14, background: 'var(--surface2)', borderRadius: 10 }}>
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Сер. місячний потік (3 міс.)</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: balColor(f.avgMonthlyNet) }}>{fmtBal(f.avgMonthlyNet)} грн</div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Каса</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: balColor(f.cashBal) }}>{fmt(f.cashBal)} грн</div>
+                </div>
+                <div style={{ padding: 14, background: 'var(--surface2)', borderRadius: 10, borderLeft: '3px solid var(--blue)' }}>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Разом зараз</div>
+                  <div style={{ fontSize: 18, fontWeight: 700 }}>{fmt(f.currentBalance)} грн</div>
+                </div>
+                <div style={{ padding: 14, background: 'var(--surface2)', borderRadius: 10 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Сер. місячний потік</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: balColor(f.avgMonthlyNet) }}>{fmtBal(f.avgMonthlyNet)} грн</div>
+                  <div style={{ fontSize: 10, color: 'var(--text3)' }}>за останні 3 місяці</div>
                 </div>
               </div>
 
