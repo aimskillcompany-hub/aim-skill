@@ -16,6 +16,7 @@ const Contractors = lazy(() => import('./components/Contractors'))
 const Inventory = lazy(() => import('./components/Inventory'))
 const Assembly = lazy(() => import('./components/Assembly'))
 const Validation = lazy(() => import('./components/Validation'))
+const Orders = lazy(() => import('./components/Orders'))
 const TransactionModal = lazy(() => import('./components/TransactionModal'))
 const ArticlesSettings = lazy(() => import('./components/ArticlesSettings'))
 
@@ -444,6 +445,7 @@ export default function App() {
               <Route path="/contractors" element={<Contractors user={user} onNavigate={setPage} openContractorId={navParam} onParamConsumed={() => setNavParam(null)} />} />
               <Route path="/inventory" element={<Inventory user={user} />} />
               <Route path="/assembly" element={<Assembly user={user} />} />
+              <Route path="/orders" element={<Orders user={user} />} />
               <Route path="/validation" element={<Validation />} />
               <Route path="/settings" element={<Settings user={user} />} />
               <Route path="*" element={<Analytics user={user} onPage={navigate} />} />
