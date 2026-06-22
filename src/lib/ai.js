@@ -183,21 +183,10 @@ ${articles?.length ? articles.map(a => `- ${a.name} (${a.type})`).join('\n') : '
 
 // ── Розпізнати реквізити компанії з тексту ──
 export async function parseCompanyFromText(text) {
-  if (!API_KEY) throw new Error('API ключ не налаштовано')
+  if (!USE_PROXY && !API_KEY) throw new Error('API ключ не налаштовано')
   if (!text?.trim()) throw new Error('Вставте текст з реквізитами')
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': API_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1000,
-      system: `Ти розпізнаєш реквізити українських компаній з будь-якого тексту.
+  const systemPrompt = `Ти розпізнаєш реквізити українських компаній з будь-якого тексту.
 Текст може містити реквізити з документів, листів, сайтів, візиток тощо.
 Поверни ТІЛЬКИ валідний JSON без markdown:
 {
@@ -224,10 +213,18 @@ export async function parseCompanyFromText(text) {
 - Якщо є ІПН з 12 цифр — це платник ПДВ, is_vat_payer=true, vat_certificate = цей ІПН
 - Адресу завжди клади і в address і в legal_address
 - Директора/керівника клади в contact_person + contact_position
-- Якщо поле невідоме — null. НЕ вигадуй дані.`,
-      messages: [{ role: 'user', content: text.trim() }],
-    }),
-  })
+- Якщо поле невідоме — null. НЕ вигадуй дані.`
+
+  const requestBody = { model: 'claude-sonnet-4-6', max_tokens: 1000, system: systemPrompt, messages: [{ role: 'user', content: text.trim() }] }
+  let res
+  if (USE_PROXY) {
+    res = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requestBody) })
+  } else {
+    res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify(requestBody),
+    })
+  }
 
   const data = await res.json()
   if (data.error) throw new Error(data.error.message)

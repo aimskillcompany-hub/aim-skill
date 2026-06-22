@@ -11,8 +11,8 @@ let tokenExpiry = 0
 async function getToken() {
   if (cachedToken && Date.now() < tokenExpiry) return cachedToken
 
-  const email = localStorage.getItem('vkursi_email')
-  const password = localStorage.getItem('vkursi_password')
+  const email = sessionStorage.getItem('vkursi_email')
+  const password = sessionStorage.getItem('vkursi_password')
   if (!email || !password) throw new Error('Вкурсі: не налаштовано логін/пароль')
 
   const res = await fetch(PROXY, {
@@ -64,7 +64,7 @@ export async function fetchByEdrpou(edrpou) {
 
 // ── Пошук через API податкової (cabinet.tax.gov.ua) ──
 async function fetchFromEdr(code) {
-  const taxToken = localStorage.getItem('tax_api_token') || ''
+  const taxToken = sessionStorage.getItem('tax_api_token') || ''
   const res = await fetch('/api/edr', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -226,17 +226,17 @@ function parseBasicResponse(d) {
 // ── Налаштування ──
 export function getVkursiCredentials() {
   return {
-    email: localStorage.getItem('vkursi_email') || '',
-    password: localStorage.getItem('vkursi_password') || '',
+    email: sessionStorage.getItem('vkursi_email') || '',
+    password: sessionStorage.getItem('vkursi_password') || '',
   }
 }
 
 export function setVkursiCredentials(email, password) {
-  localStorage.setItem('vkursi_email', email)
-  localStorage.setItem('vkursi_password', password)
+  sessionStorage.setItem('vkursi_email', email)
+  sessionStorage.setItem('vkursi_password', password)
   cachedToken = null
 }
 
 export function isVkursiConfigured() {
-  return !!(localStorage.getItem('vkursi_email') && localStorage.getItem('vkursi_password'))
+  return !!(sessionStorage.getItem('vkursi_email') && sessionStorage.getItem('vkursi_password'))
 }

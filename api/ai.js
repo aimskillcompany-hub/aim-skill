@@ -1,9 +1,31 @@
 // Vercel serverless function — proxy for Anthropic API
 // Keeps API key on server, never exposed to browser
 
+// Simple in-memory rate limiting (per serverless instance)
+const rateMap = new Map()
+const RATE_LIMIT = 20 // requests per minute
+const RATE_WINDOW = 60000 // 1 minute
+
+function checkRateLimit(ip) {
+  const now = Date.now()
+  const entry = rateMap.get(ip)
+  if (!entry || now - entry.start > RATE_WINDOW) {
+    rateMap.set(ip, { start: now, count: 1 })
+    return true
+  }
+  entry.count++
+  return entry.count <= RATE_LIMIT
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
+  }
+
+  // Rate limiting
+  const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket?.remoteAddress || 'unknown'
+  if (!checkRateLimit(ip)) {
+    return res.status(429).json({ error: 'Забагато запитів. Спробуйте через хвилину.' })
   }
 
   const apiKey = process.env.VITE_ANTHROPIC_KEY
@@ -39,7 +61,7 @@ export default async function handler(req, res) {
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '10mb', // для PDF/зображень в base64
+      sizeLimit: '10mb',
     },
   },
 }

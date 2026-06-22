@@ -4,6 +4,7 @@ import { css, mobileCss } from './lib/styles'
 import Auth from './components/Auth'
 import Layout from './components/Layout'
 import Analytics from './components/Analytics'
+import ErrorBoundary from './components/ErrorBoundary'
 
 // Lazy load — ці компоненти завантажуються тільки при відкритті
 const DocumentUpload = lazy(() => import('./components/DocumentUpload'))
@@ -446,9 +447,11 @@ export default function App() {
     <>
       <style>{css}{mobileCss}</style>
       <Layout page={page} onPage={setPage} user={user}>
-        <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Завантаження...</div>}>
-          {pages[page] || pages.analytics}
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Завантаження...</div>}>
+            {pages[page] || pages.analytics}
+          </Suspense>
+        </ErrorBoundary>
       </Layout>
       {toast && (
         <div className={`toast toast-${toast.type}`}>{toast.msg}</div>
