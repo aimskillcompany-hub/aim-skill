@@ -573,7 +573,8 @@ export default function Contractors({ user, onNavigate, openContractorId, onPara
         <div className="tab-bar">
           {[
             { id:'info', label:'Реквізити', icon:'ti-file-info' },
-            { id:'docs', label:`Документи (${contractorDocs.length})`, icon:'ti-file-text' },
+            { id:'docs', label:`Документи (${contractorDocs.filter(d => !d.doc_type?.includes('Order')).length})`, icon:'ti-file-text' },
+            { id:'orders', label:`Замовлення (${contractorDocs.filter(d => d.doc_type?.includes('Order')).length})`, icon:'ti-shopping-cart' },
             { id:'balance', label:'Баланс', icon:'ti-scale' },
             { id:'txs', label:`Операції (${detailTxs.length})`, icon:'ti-list-details' },
             { id:'notes', label:'Нотатки', icon:'ti-notes' },
@@ -928,6 +929,55 @@ export default function Contractors({ user, onNavigate, openContractorId, onPara
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+
+        {/* ── Tab: Замовлення ── */}
+        {detailTab === 'orders' && (
+          <div>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+              <div style={{ fontSize:14, fontWeight:600 }}>Замовлення</div>
+              <button className="btn btn-sm btn-primary" onClick={() => { setEditingDoc({ doc_type: 'purchaseOrder' }); setShowDocGen(true) }}>
+                <i className="ti ti-plus" style={{ fontSize:13 }} /> Нове замовлення
+              </button>
+            </div>
+            {contractorDocs.filter(d => d.doc_type?.includes('Order')).length === 0 ? (
+              <div style={{ padding:24, textAlign:'center', color:'var(--text3)', fontSize:13 }}>Немає замовлень. Натисніть «Нове замовлення» щоб створити.</div>
+            ) : (
+              <div className="tbl-wrap">
+                <table>
+                  <thead><tr><th>Дата</th><th>Тип</th><th>Номер</th><th style={{ textAlign:'right' }}>Сума</th><th>Статус</th><th></th></tr></thead>
+                  <tbody>
+                    {contractorDocs.filter(d => d.doc_type?.includes('Order')).map(doc => {
+                      const sc = STATUS_COLORS[doc.status] || STATUS_COLORS.draft
+                      return (
+                        <tr key={doc.id} style={{ borderBottom:'1px solid var(--border)' }}>
+                          <td style={{ fontSize:13, color:'var(--text2)' }}>{doc.doc_date}</td>
+                          <td style={{ fontSize:13 }}>{getDocLabel(doc.doc_type)}</td>
+                          <td style={{ fontSize:13, fontWeight:500 }}>{doc.doc_number}</td>
+                          <td style={{ textAlign:'right', fontWeight:500, fontVariantNumeric:'tabular-nums' }}>{fmtDoc(doc.total)} грн</td>
+                          <td>
+                            <select style={{ fontSize:11, padding:'3px 8px', borderRadius:6, border:'1px solid var(--border)', background:sc.bg, color:sc.color, fontFamily:'inherit', cursor:'pointer' }}
+                              value={doc.status || 'draft'} onChange={async e => {
+                                await updateDocStatus(doc.id, e.target.value)
+                                loadContractorDocs(detail.id).then(docs => setContractorDocs(docs))
+                              }}>
+                              {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                            </select>
+                          </td>
+                          <td>
+                            <button style={{ background:'none', border:'none', cursor:'pointer', color:'var(--blue)', fontSize:14 }} aria-label="Редагувати"
+                              onClick={() => { setEditingDoc(doc); setShowDocGen(true) }}>
+                              <i className="ti ti-pencil" />
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 

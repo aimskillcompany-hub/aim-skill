@@ -14,6 +14,8 @@ export const DOCUMENT_TYPES = [
   { key: 'incomingWaybill', label: 'Прихідна накладна', prefix: 'ПН', icon: 'ti-package-import', template: waybill, direction: 'incoming', stockEffect: 'in' },
   { key: 'loanAgreement', label: 'Договір фін. допомоги', prefix: 'ДФД', icon: 'ti-cash', template: loanAgreement, direction: 'outgoing', isContract: true },
   { key: 'supplyAgreement', label: 'Договір поставки', prefix: 'ДП', icon: 'ti-truck', template: supplyAgreement, direction: 'outgoing', isContract: true },
+  { key: 'purchaseOrder', label: 'Замовлення постачальнику', prefix: 'ЗП', icon: 'ti-shopping-cart', template: invoice, direction: 'outgoing', isOrder: true },
+  { key: 'salesOrder', label: 'Замовлення від клієнта', prefix: 'ЗК', icon: 'ti-receipt', template: invoice, direction: 'incoming', isOrder: true },
 ]
 
 export function getDocType(key) {
@@ -27,13 +29,23 @@ export function getDocLabel(key) {
 export const STATUS_LABELS = {
   draft: 'Чернетка',
   sent: 'Відправлено',
+  confirmed: 'Підтверджено',
+  in_progress: 'В роботі',
+  shipped: 'Відвантажено',
+  delivered: 'Доставлено',
   paid: 'Оплачено',
+  completed: 'Завершено',
   cancelled: 'Скасовано',
 }
 
 export const STATUS_COLORS = {
   draft: { bg: 'var(--surface2)', color: 'var(--text3)' },
   sent: { bg: 'var(--blue-bg)', color: 'var(--blue)' },
+  confirmed: { bg: 'var(--blue-bg)', color: 'var(--blue)' },
+  in_progress: { bg: 'var(--amber-bg)', color: 'var(--amber)' },
+  shipped: { bg: 'var(--blue-bg)', color: 'var(--blue)' },
+  delivered: { bg: 'var(--green-bg)', color: 'var(--green)' },
   paid: { bg: 'var(--green-bg)', color: 'var(--green)' },
+  completed: { bg: 'var(--green-bg)', color: 'var(--green)' },
   cancelled: { bg: 'var(--red-bg)', color: 'var(--red)' },
 }
