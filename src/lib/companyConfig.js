@@ -1,5 +1,6 @@
 // Реквізити нашої компанії
-// Зберігаються в localStorage, редагуються в Налаштування → Реквізити
+// Зберігаються в Supabase (profiles.settings) з fallback на localStorage
+import { supabase } from './supabase'
 
 const DEFAULTS = {
   name: 'ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ "ЕЙМ СКІЛ"',
@@ -18,8 +19,9 @@ const DEFAULTS = {
 }
 
 const STORAGE_KEY = 'company_config'
+let _cached = null
 
-function load() {
+function loadLocal() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY)
     if (saved) return { ...DEFAULTS, ...JSON.parse(saved) }
@@ -27,16 +29,46 @@ function load() {
   return { ...DEFAULTS }
 }
 
-export let COMPANY = load()
+export let COMPANY = loadLocal()
 
-export function getCompany() {
-  return load()
+export async function getCompany() {
+  if (_cached) return _cached
+  // Try Supabase first
+  try {
+    const { data: user } = await supabase.auth.getUser()
+    if (user?.user?.id) {
+      const { data } = await supabase.from('profiles')
+        .select('settings').eq('id', user.user.id).maybeSingle()
+      if (data?.settings?.company) {
+        _cached = { ...DEFAULTS, ...data.settings.company }
+        COMPANY = _cached
+        // Sync to localStorage as backup
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(_cached))
+        return _cached
+      }
+    }
+  } catch {}
+  // Fallback to localStorage
+  _cached = loadLocal()
+  return _cached
 }
 
-export function saveCompany(data) {
+export async function saveCompany(data) {
   const merged = { ...DEFAULTS, ...data }
+  // Save to localStorage immediately
   localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
   COMPANY = merged
+  _cached = merged
+  // Try to save to Supabase
+  try {
+    const { data: user } = await supabase.auth.getUser()
+    if (user?.user?.id) {
+      const { data: profile } = await supabase.from('profiles')
+        .select('settings').eq('id', user.user.id).maybeSingle()
+      const settings = { ...(profile?.settings || {}), company: merged }
+      await supabase.from('profiles').update({ settings }).eq('id', user.user.id)
+    }
+  } catch {}
   return merged
 }
 

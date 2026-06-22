@@ -208,8 +208,8 @@ function Settings({ user }) {
     const p = sessionStorage.getItem('vkursi_password') || ''
     setVkEmail(e); setVkPass(p)
     setTaxToken(sessionStorage.getItem('tax_api_token') || '')
-    // Завантажити реквізити
-    import('./lib/companyConfig').then(m => setCompanyForm(m.getCompany()))
+    // Завантажити реквізити (async — спочатку Supabase, fallback localStorage)
+    import('./lib/companyConfig').then(async m => setCompanyForm(await m.getCompany()))
   }, [])
 
   const updateRole = async (id, role) => {
@@ -273,7 +273,7 @@ function Settings({ user }) {
           <div style={{ display:'flex', gap:8, marginTop:16, alignItems:'center' }}>
             <button className="btn btn-primary" onClick={async () => {
               const { saveCompany } = await import('./lib/companyConfig')
-              saveCompany(companyForm)
+              await saveCompany(companyForm)
               setCompanySaved(true); setTimeout(() => setCompanySaved(false), 3000)
             }}>Зберегти</button>
             {companySaved && <span style={{ fontSize:13, color:'var(--green)' }}>Збережено!</span>}
