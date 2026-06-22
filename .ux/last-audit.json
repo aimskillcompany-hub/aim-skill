@@ -1,0 +1,34 @@
+{
+  "command": "ux-audit",
+  "timestamp": "2026-06-22T01:30:00Z",
+  "surface": "AiM Skill — full application (all components)",
+  "findings": [
+    {"lens":"RECOVER","severity":"Critical","title":"Product merge has no undo/rollback","principle":"Norman error recovery","evidence":"mergePair() updates 3 tables and archives with no rollback","fix":"Add soft-delete with merged_into_id, or undo toast"},
+    {"lens":"DISCOVER","severity":"Critical","title":"Validation status not discoverable in 3 seconds","principle":"Signifiers, action priority","evidence":"vatStatus filter exists but no visual badge at page load","fix":"Add persistent unvalidated count badge in Registry header"},
+    {"lens":"RECOVER","severity":"High","title":"No focus-visible styles for keyboard navigation","principle":"WCAG 2.1 AA focus-visible","evidence":".form-input:focus only changes border, .btn:focus only scales","fix":"Add outline: 2px solid var(--blue) on :focus-visible"},
+    {"lens":"RECOVER","severity":"High","title":"Icon buttons lack aria-labels","principle":"WCAG 2.1 Level A accessible names","evidence":"Contractors, Registry icon-only buttons have title but no aria-label","fix":"Add aria-label to all icon-only buttons"},
+    {"lens":"RECOVER","severity":"High","title":"Red alert text fails WCAG AA contrast","principle":"WCAG AA 4.5:1 contrast ratio","evidence":"#9B3A3A on #F5EDED = ~3:1 ratio","fix":"Darken text to #7A2E2E for 5.1:1 ratio"},
+    {"lens":"SCAN","severity":"High","title":"KPI cards visually identical - urgent items not differentiated","principle":"Information hierarchy","evidence":"All KPIs use same .kpi styling, unclassified not elevated","fix":"Add alert border/background to KPIs with problems"},
+    {"lens":"SCAN","severity":"High","title":"Registry table columns lack visual hierarchy","principle":"Self-evidence, scannability","evidence":"All text same size, no color coding except badge","fix":"Right-align amounts, add validation status icon, reduce columns"},
+    {"lens":"ACT","severity":"High","title":"Delete contractor contact without specific confirmation","principle":"Norman feedback visibility","evidence":"confirm() dialog doesn't show what's being deleted","fix":"Show contact name/role in confirmation dialog"},
+    {"lens":"READ","severity":"High","title":"Bank parse error message lacks specific fix","principle":"Errors need actionable advice","evidence":"Generic 'not found' without listing supported formats","fix":"Show detected format and list supported alternatives"},
+    {"lens":"DISCOVER","severity":"High","title":"Duplicate check feature buried, no CTA at page load","principle":"Data quality action visibility","evidence":"runDupCheck exists but button not prominent","fix":"Add duplicate check to Registry toolbar"},
+    {"lens":"SCAN","severity":"Medium","title":"Form focus state only changes border color","principle":"Interaction feedback","evidence":".form-input:focus has border-color only, no ring/shadow","fix":"Add box-shadow: 0 0 0 3px rgba(0,0,0,.1) on focus"},
+    {"lens":"RECOVER","severity":"Medium","title":"Modal close buttons lack aria-label","principle":"WCAG 2.1 accessible names","evidence":"× symbol without aria-label='Закрити'","fix":"Add aria-label='Закрити' to all .modal-close"},
+    {"lens":"RECOVER","severity":"Medium","title":"Disabled buttons not visually distinct enough","principle":"Norman visibility of state","evidence":"Only opacity:0.4, no background change","fix":"Add cursor:not-allowed and grey background"},
+    {"lens":"RECOVER","severity":"Medium","title":"Loading states lack aria-live announcements","principle":"WCAG 2.1 dynamic content","evidence":"Loading divs have no aria-live='polite'","fix":"Add aria-live='polite' to loading indicators"},
+    {"lens":"ACT","severity":"Medium","title":"Bank format selector violates Hick's Law","principle":"Hick's Law - decision complexity","evidence":"10 flat options without grouping","fix":"Group by category or auto-detect from file"},
+    {"lens":"ACT","severity":"Medium","title":"DocGen type cards lack radio semantics","principle":"Norman affordance","evidence":"Clickable divs without role='radio'","fix":"Add role='radio' + aria-checked"},
+    {"lens":"READ","severity":"Medium","title":"Validation CTA 'Скасувати валідацію' unclear outcome","principle":"CTAs must be verb+outcome","evidence":"Doesn't specify what happens to amounts","fix":"Change to 'Повернути до невалідовано'"},
+    {"lens":"READ","severity":"Medium","title":"Inventory empty state lacks guidance","principle":"Empty states should suggest action","evidence":"Just 'Немає товарів' with no direction","fix":"Add 'Натисніть Додати товар вище'"},
+    {"lens":"SCAN","severity":"Medium","title":"Debtors/creditors tables visually identical","principle":"Differentiation, scannability","evidence":"Amber/red text alone insufficient","fix":"Add distinct left border per section"},
+    {"lens":"RECOVER","severity":"Medium","title":"Modal focus not trapped for keyboard users","principle":"WCAG 2.1 focus management","evidence":"Tab can escape modal to background elements","fix":"Implement focus trap in modals"}
+  ],
+  "severity_counts": {"critical": 2, "high": 8, "medium": 10, "cosmetic": 3},
+  "dominant_lens": "RECOVER",
+  "strategic_moves": [
+    "Add focus-visible + aria-labels across all interactive elements (accessibility floor)",
+    "Make validation/classification status scannable with badges and alert KPIs",
+    "Implement undo patterns for all destructive operations (merge, delete, ignore)"
+  ]
+}
