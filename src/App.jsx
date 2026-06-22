@@ -1,4 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import { css, mobileCss } from './lib/styles'
 import Auth from './components/Auth'
@@ -378,14 +379,12 @@ export default function App() {
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [page, setPage] = useState(() => {
-    const saved = sessionStorage.getItem('aim-page')
-    return saved || 'analytics'
-  })
+  const routerNavigate = useNavigate()
+  const location = useLocation()
+  const page = location.pathname.replace('/', '') || 'analytics'
+  const setPage = (p) => routerNavigate('/' + p)
   const [toast, setToast] = useState(null)
   const [navParam, setNavParam] = useState(null)
-
-  useEffect(() => { sessionStorage.setItem('aim-page', page) }, [page])
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -429,27 +428,26 @@ export default function App() {
     </>
   )
 
-  const pages = {
-    analytics: <Analytics user={user} onPage={navigate} />,
-    upload: <DocumentUpload user={user} onSaved={showToast} />,
-    registry: <Registry user={user} />,
-    bank: <Bank user={user} />,
-    cash: <Cash user={user} />,
-    contractors: <Contractors user={user} onNavigate={setPage} openContractorId={navParam} onParamConsumed={() => setNavParam(null)} />,
-    inventory: <Inventory user={user} />,
-    assembly: <Assembly user={user} />,
-    validation: <Validation />,
-    // planning: <Planning user={user} />,
-    settings: <Settings user={user} />,
-  }
-
   return (
     <>
       <style>{css}{mobileCss}</style>
       <Layout page={page} onPage={setPage} user={user}>
         <ErrorBoundary>
           <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Завантаження...</div>}>
-            {pages[page] || pages.analytics}
+            <Routes>
+              <Route path="/" element={<Analytics user={user} onPage={navigate} />} />
+              <Route path="/analytics" element={<Analytics user={user} onPage={navigate} />} />
+              <Route path="/upload" element={<DocumentUpload user={user} onSaved={showToast} />} />
+              <Route path="/registry" element={<Registry user={user} />} />
+              <Route path="/bank" element={<Bank user={user} />} />
+              <Route path="/cash" element={<Cash user={user} />} />
+              <Route path="/contractors" element={<Contractors user={user} onNavigate={setPage} openContractorId={navParam} onParamConsumed={() => setNavParam(null)} />} />
+              <Route path="/inventory" element={<Inventory user={user} />} />
+              <Route path="/assembly" element={<Assembly user={user} />} />
+              <Route path="/validation" element={<Validation />} />
+              <Route path="/settings" element={<Settings user={user} />} />
+              <Route path="*" element={<Analytics user={user} onPage={navigate} />} />
+            </Routes>
           </Suspense>
         </ErrorBoundary>
       </Layout>
