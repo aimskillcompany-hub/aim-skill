@@ -355,93 +355,108 @@ export default function Analytics({ user, onPage }) {
       {/* ═══ ПРОГНОЗ ═══ */}
       {tab === 'forecast' && forecast && (() => {
         const f = forecast
-        const fmtBal = n => (n >= 0 ? '+' : '') + fmt(n)
         const balColor = n => n >= 0 ? 'var(--green)' : 'var(--red)'
+        const today = new Date()
+        const monthNames = ['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень']
+        const m1 = monthNames[(today.getMonth() + 1) % 12]
+        const m2 = monthNames[(today.getMonth() + 2) % 12]
+        const m3 = monthNames[(today.getMonth() + 3) % 12]
+
+        // Рядки таблиці прогнозу
+        const rows = [
+          { label: 'Залишок на рахунку (банк)', type: 'balance', now: f.bankBalance },
+          { label: 'Залишок в касі', type: 'balance', now: f.cashBal },
+          { label: 'Дебіторка — очікувані надходження', type: 'income', now: f.debtors, note: 'нам винні контрагенти' },
+          { label: 'Замовлення від клієнтів', type: 'income', now: f.ordersIncome, note: 'підтверджені замовлення' },
+          { label: 'Кредиторка — потрібно оплатити', type: 'expense', now: f.creditors, note: 'ми винні контрагентам' },
+          { label: 'Замовлення постачальникам', type: 'expense', now: f.ordersExpense, note: 'підтверджені закупки' },
+          { label: 'Середній місячний потік (тренд)', type: 'trend', now: f.avgMonthlyNet, note: 'на основі останніх 3 місяців' },
+        ]
+
         return (
           <div>
-            <div className="card" style={{ marginBottom: 16 }}>
-              <div className="card-title">Прогноз грошового потоку</div>
-              <p style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 16 }}>
-                На основі поточного балансу, заборгованості, замовлень в роботі та середнього потоку за 3 місяці
-              </p>
-
-              {/* Current state */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
-                <div style={{ padding: 14, background: 'var(--surface2)', borderRadius: 10 }}>
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Банк</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: balColor(f.bankBalance) }}>{fmt(f.bankBalance)} грн</div>
-                </div>
-                <div style={{ padding: 14, background: 'var(--surface2)', borderRadius: 10 }}>
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Каса</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: balColor(f.cashBal) }}>{fmt(f.cashBal)} грн</div>
-                </div>
-                <div style={{ padding: 14, background: 'var(--surface2)', borderRadius: 10, borderLeft: '3px solid var(--blue)' }}>
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Разом зараз</div>
-                  <div style={{ fontSize: 18, fontWeight: 700 }}>{fmt(f.currentBalance)} грн</div>
-                </div>
-                <div style={{ padding: 14, background: 'var(--surface2)', borderRadius: 10 }}>
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Сер. місячний потік</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: balColor(f.avgMonthlyNet) }}>{fmtBal(f.avgMonthlyNet)} грн</div>
-                  <div style={{ fontSize: 10, color: 'var(--text3)' }}>за останні 3 місяці</div>
-                </div>
+            {/* Попередження якщо мало валідованих */}
+            {stats.noArticle > 10 && (
+              <div style={{ background: 'var(--amber-bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: 'var(--amber)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <i className="ti ti-alert-triangle" style={{ fontSize: 16 }} />
+                Прогноз базується тільки на валідованих даних. У вас {stats.noArticle} транзакцій без статті — валідуйте їх для точнішого прогнозу.
               </div>
+            )}
 
-              {/* Expected flows */}
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Очікувані рухи коштів</div>
-              <div className="tbl-wrap" style={{ marginBottom: 20 }}>
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div className="card-title">Фінансовий прогноз</div>
+
+              {/* Основна таблиця */}
+              <div className="tbl-wrap" style={{ marginBottom: 0 }}>
                 <table>
-                  <thead><tr><th>Джерело</th><th style={{ textAlign: 'right' }}>Надходження</th><th style={{ textAlign: 'right' }}>Витрати</th></tr></thead>
+                  <thead>
+                    <tr>
+                      <th style={{ minWidth: 250 }}>Показник</th>
+                      <th style={{ textAlign: 'right', minWidth: 120 }}>Зараз</th>
+                      <th style={{ textAlign: 'right', minWidth: 120, background: 'var(--surface2)' }}>{m1}</th>
+                      <th style={{ textAlign: 'right', minWidth: 120 }}>{m2}</th>
+                      <th style={{ textAlign: 'right', minWidth: 120, background: 'var(--surface2)' }}>{m3}</th>
+                    </tr>
+                  </thead>
                   <tbody>
-                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ fontSize: 13 }}>Дебіторка (нам винні)</td>
-                      <td style={{ textAlign: 'right', color: 'var(--green)', fontWeight: 500 }}>{f.debtors > 0 ? '+' + fmt(f.debtors) : '—'}</td>
-                      <td style={{ textAlign: 'right' }}>—</td>
-                    </tr>
-                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ fontSize: 13 }}>Кредиторка (ми винні)</td>
-                      <td style={{ textAlign: 'right' }}>—</td>
-                      <td style={{ textAlign: 'right', color: 'var(--red)', fontWeight: 500 }}>{f.creditors > 0 ? '-' + fmt(f.creditors) : '—'}</td>
-                    </tr>
-                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ fontSize: 13 }}>Замовлення від клієнтів (підтверджені)</td>
-                      <td style={{ textAlign: 'right', color: 'var(--green)', fontWeight: 500 }}>{f.ordersIncome > 0 ? '+' + fmt(f.ordersIncome) : '—'}</td>
-                      <td style={{ textAlign: 'right' }}>—</td>
-                    </tr>
-                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ fontSize: 13 }}>Замовлення постачальникам (підтверджені)</td>
-                      <td style={{ textAlign: 'right' }}>—</td>
-                      <td style={{ textAlign: 'right', color: 'var(--red)', fontWeight: 500 }}>{f.ordersExpense > 0 ? '-' + fmt(f.ordersExpense) : '—'}</td>
-                    </tr>
-                    <tr style={{ fontWeight: 600, borderTop: '2px solid var(--border)' }}>
-                      <td>Разом очікувані</td>
-                      <td style={{ textAlign: 'right', color: 'var(--green)' }}>+{fmt(f.debtors + f.ordersIncome)}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--red)' }}>-{fmt(f.creditors + f.ordersExpense)}</td>
+                    {rows.map((r, i) => {
+                      const val = r.now || 0
+                      const isIncome = r.type === 'income'
+                      const isExpense = r.type === 'expense'
+                      const isTrend = r.type === 'trend'
+                      const color = isIncome ? 'var(--green)' : isExpense ? 'var(--red)' : isTrend ? balColor(val) : 'var(--text)'
+                      const prefix = isIncome ? '+' : isExpense ? '-' : val > 0 ? '+' : ''
+                      // Для прогнозних місяців: борги/замовлення зникають в 1 міс, тренд додається помісячно
+                      const v1 = isTrend ? val : isIncome || isExpense ? 0 : r.type === 'balance' ? val : val
+                      const v2 = isTrend ? val : 0
+                      const v3 = isTrend ? val : 0
+                      return (
+                        <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ fontSize: 13 }}>
+                            {r.label}
+                            {r.note && <div style={{ fontSize: 10, color: 'var(--text3)' }}>{r.note}</div>}
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: 500, color, fontVariantNumeric: 'tabular-nums' }}>
+                            {val !== 0 ? prefix + fmt(Math.abs(val)) : '—'}
+                          </td>
+                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', background: 'var(--surface2)', color: 'var(--text2)' }}>
+                            {isTrend && val !== 0 ? prefix + fmt(Math.abs(val)) : '—'}
+                          </td>
+                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--text2)' }}>
+                            {isTrend && val !== 0 ? prefix + fmt(Math.abs(val)) : '—'}
+                          </td>
+                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', background: 'var(--surface2)', color: 'var(--text2)' }}>
+                            {isTrend && val !== 0 ? prefix + fmt(Math.abs(val)) : '—'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    {/* ПІДСУМОК */}
+                    <tr style={{ borderTop: '3px solid var(--border)', fontWeight: 700, fontSize: 14 }}>
+                      <td>Прогнозний баланс</td>
+                      <td style={{ textAlign: 'right', color: balColor(f.currentBalance), fontVariantNumeric: 'tabular-nums' }}>
+                        {fmt(f.currentBalance)} грн
+                      </td>
+                      <td style={{ textAlign: 'right', color: balColor(f.month1), fontVariantNumeric: 'tabular-nums', background: f.month1 < 0 ? 'var(--red-bg)' : 'var(--surface2)' }}>
+                        {fmt(f.month1)} грн
+                        {f.month1 < 0 && <div style={{ fontSize: 10, color: 'var(--red)' }}>⚠ дефіцит</div>}
+                      </td>
+                      <td style={{ textAlign: 'right', color: balColor(f.month2), fontVariantNumeric: 'tabular-nums', background: f.month2 < 0 ? 'var(--red-bg)' : undefined }}>
+                        {fmt(f.month2)} грн
+                        {f.month2 < 0 && <div style={{ fontSize: 10, color: 'var(--red)' }}>⚠ дефіцит</div>}
+                      </td>
+                      <td style={{ textAlign: 'right', color: balColor(f.month3), fontVariantNumeric: 'tabular-nums', background: f.month3 < 0 ? 'var(--red-bg)' : 'var(--surface2)' }}>
+                        {fmt(f.month3)} грн
+                        {f.month3 < 0 && <div style={{ fontSize: 10, color: 'var(--red)' }}>⚠ дефіцит</div>}
+                      </td>
                     </tr>
                   </tbody>
                 </table>
               </div>
 
-              {/* Forecast timeline */}
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Прогноз балансу</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-                {[
-                  { label: 'Через 1 місяць', value: f.month1, note: 'баланс + заборгованість + замовлення' },
-                  { label: 'Через 2 місяці', value: f.month2, note: '+ сер. місячний потік × 1' },
-                  { label: 'Через 3 місяці', value: f.month3, note: '+ сер. місячний потік × 2' },
-                ].map(p => (
-                  <div key={p.label} style={{
-                    padding: 16, borderRadius: 12, textAlign: 'center',
-                    background: p.value >= 0 ? 'var(--green-bg)' : 'var(--red-bg)',
-                    border: p.value < 0 ? '2px solid var(--red)' : '1px solid var(--border)',
-                  }}>
-                    <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 6 }}>{p.label}</div>
-                    <div style={{ fontSize: 24, fontWeight: 700, color: balColor(p.value), marginBottom: 4 }}>
-                      {fmt(p.value)} грн
-                    </div>
-                    {p.value < 0 && <div style={{ fontSize: 11, color: 'var(--red)', fontWeight: 600 }}>⚠ Дефіцит!</div>}
-                    <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>{p.note}</div>
-                  </div>
-                ))}
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 8, lineHeight: 1.5 }}>
+                <strong>Як читати:</strong> «Зараз» — фактичні дані. Наступні місяці: борги та замовлення реалізуються в 1-й місяць, далі додається середній місячний тренд.
+                Для точнішого прогнозу — валідуйте всі транзакції та ведіть замовлення.
               </div>
             </div>
           </div>
