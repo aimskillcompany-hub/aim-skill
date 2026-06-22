@@ -33,8 +33,9 @@ export async function generatePdf(docTypeKey, contractor, items, options) {
   const dt = getDocType(docTypeKey)
   if (!dt) throw new Error(`Невідомий тип документа: ${docTypeKey}`)
   const enriched = await enrichContractorSigner(contractor)
-  const seller = dt.direction === 'incoming' ? enriched : getCompany()
-  const buyer = dt.direction === 'incoming' ? getCompany() : enriched
+  const company = await getCompany()
+  const seller = dt.direction === 'incoming' ? enriched : company
+  const buyer = dt.direction === 'incoming' ? company : enriched
   const docDef = dt.template.pdf(seller, buyer, cleanItems(items), options)
   const fileName = `${dt.label}_${options.docNumber}_${options.docDate}.pdf`
   downloadPdf(docDef, fileName)
@@ -45,8 +46,9 @@ export async function generateXlsx(docTypeKey, contractor, items, options) {
   const dt = getDocType(docTypeKey)
   if (!dt) throw new Error(`Невідомий тип документа: ${docTypeKey}`)
   const enriched = await enrichContractorSigner(contractor)
-  const seller = dt.direction === 'incoming' ? enriched : getCompany()
-  const buyer = dt.direction === 'incoming' ? getCompany() : enriched
+  const company = await getCompany()
+  const seller = dt.direction === 'incoming' ? enriched : company
+  const buyer = dt.direction === 'incoming' ? company : enriched
   const wb = dt.template.xlsx(seller, buyer, cleanItems(items), options)
   const fileName = `${dt.label}_${options.docNumber}_${options.docDate}.xlsx`
   downloadXlsx(wb, fileName)
