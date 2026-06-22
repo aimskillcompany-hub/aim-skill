@@ -322,21 +322,23 @@ export default function Orders({ user }) {
 
               {/* Action buttons */}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => {
+                <button className="btn btn-primary" style={{ flex: 1 }} onClick={async () => {
+                  const { data: c } = await supabase.from('contractors').select('*').eq('id', selected.contractor_id).single()
                   setDocGenInit({
                     doc_type: isPurchase ? 'incomingWaybill' : 'waybill',
                     items, _fromOrder: selected.doc_number, _parentDocId: selected.id,
-                    contractor_id: selected.contractor_id,
+                    contractor_id: selected.contractor_id, _contractor: c,
                   })
                   setShowDocGen(true)
                 }}>
                   <i className="ti ti-truck-delivery" style={{ fontSize: 14 }} />
                   {isPurchase ? 'Створити прихідну накладну' : 'Створити видаткову накладну'}
                 </button>
-                <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => {
+                <button className="btn btn-secondary" style={{ flex: 1 }} onClick={async () => {
+                  const { data: c } = await supabase.from('contractors').select('*').eq('id', selected.contractor_id).single()
                   setDocGenInit({
                     doc_type: 'invoice', items, _fromOrder: selected.doc_number, _parentDocId: selected.id,
-                    contractor_id: selected.contractor_id,
+                    contractor_id: selected.contractor_id, _contractor: c,
                   })
                   setShowDocGen(true)
                 }}>
@@ -350,10 +352,10 @@ export default function Orders({ user }) {
       })()}
 
       {/* DocGenModal */}
-      {showDocGen && docGenInit && (
+      {showDocGen && docGenInit && docGenInit._contractor && (
         <Suspense fallback={null}>
           <DocGenModal
-            contractor={{ id: docGenInit.contractor_id, name: selected?.contractor_name }}
+            contractor={docGenInit._contractor}
             userId={user?.id}
             editDoc={{ ...docGenInit, id: null, doc_number: '' }}
             onClose={() => { setShowDocGen(false); setDocGenInit(null) }}
