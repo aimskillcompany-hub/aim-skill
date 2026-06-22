@@ -466,9 +466,9 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
                     <th style={{ textAlign: 'left', padding: '6px 8px', minWidth: 180 }}>Назва</th>
                     <th style={{ padding: '6px 4px', width: 60 }}>К-сть</th>
                     <th style={{ padding: '6px 4px', width: 50 }}>Од.</th>
-                    <th style={{ padding: '6px 4px', width: 90 }}>Ціна</th>
+                    <th style={{ padding: '6px 4px', width: 90 }}>Ціна без ПДВ</th>
                     <th style={{ padding: '6px 4px', width: 50 }}>ПДВ%</th>
-                    <th style={{ padding: '6px 4px', width: 90 }}>Сума</th>
+                    <th style={{ padding: '6px 4px', width: 90 }}>Сума без ПДВ</th>
                     <th style={{ width: 30 }}></th>
                   </tr>
                 </thead>
@@ -523,6 +523,24 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
                 </tbody>
               </table>
             </div>
+
+            {/* Підсумок — завжди показуємо 3 рядки */}
+            {items.some(it => it.name) && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 8, padding: '10px 12px', background: 'var(--surface2)', borderRadius: 8, fontSize: 13 }}>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>Без ПДВ</div>
+                  <div style={{ fontWeight: 600 }}>{formatMoney(totals.subtotal)} грн</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>ПДВ</div>
+                  <div style={{ fontWeight: 600, color: 'var(--text2)' }}>{formatMoney(totals.vatAmount)} грн</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>Разом з ПДВ</div>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>{formatMoney(totals.total)} грн</div>
+                </div>
+              </div>
+            )}
 
             </>}
 
