@@ -43,6 +43,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
   const [searchText, setSearchText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [uploadedFiles, setUploadedFiles] = useState([])
+  const [priceMode, setPriceMode] = useState('net') // 'net' = без ПДВ, 'gross' = з ПДВ
 
   // Завантажити товари зі складу + договори контрагента
   useEffect(() => {
@@ -96,13 +97,22 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
     ? products.filter(p => p.name.toLowerCase().includes(searchText.toLowerCase())).slice(0, 8)
     : products.slice(0, 8)
 
+  // unitPrice в items = завжди без ПДВ (net)
+  // priceMode = 'net' → вводимо без ПДВ, 'gross' → вводимо з ПДВ, конвертуємо
   const updateItem = (idx, field, value) => {
     setItems(prev => prev.map((it, i) => {
       if (i !== idx) return it
       const updated = { ...it, [field]: value }
-      if (field === 'quantity' || field === 'unitPrice') {
+      if (field === 'quantity' || field === 'unitPrice' || field === 'vatRate') {
+        let netPrice = parseFloat(field === 'unitPrice' ? value : it.unitPrice) || 0
+        // Якщо режим "з ПДВ" — конвертуємо введену ціну в нетто
+        if (priceMode === 'gross' && field === 'unitPrice') {
+          const rate = parseFloat(it.vatRate) || 0
+          netPrice = rate > 0 ? netPrice / (1 + rate / 100) : netPrice
+          updated.unitPrice = Math.round(netPrice * 100) / 100
+        }
         const qty = parseFloat(field === 'quantity' ? value : it.quantity) || 0
-        const price = parseFloat(field === 'unitPrice' ? value : it.unitPrice) || 0
+        const price = parseFloat(updated.unitPrice) || 0
         updated.amount = (qty * price).toFixed(2)
       }
       return updated
@@ -466,7 +476,13 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
                     <th style={{ textAlign: 'left', padding: '6px 8px', minWidth: 180 }}>Назва</th>
                     <th style={{ padding: '6px 4px', width: 60 }}>К-сть</th>
                     <th style={{ padding: '6px 4px', width: 50 }}>Од.</th>
-                    <th style={{ padding: '6px 4px', width: 90 }}>Ціна без ПДВ</th>
+                    <th style={{ padding: '6px 4px', width: 90 }}>
+                      Ціна
+                      <div style={{ display: 'flex', gap: 2, marginTop: 2 }}>
+                        <button onClick={() => setPriceMode('net')} style={{ fontSize: 9, padding: '1px 4px', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit', background: priceMode === 'net' ? 'var(--text)' : 'var(--surface)', color: priceMode === 'net' ? '#fff' : 'var(--text3)' }}>без ПДВ</button>
+                        <button onClick={() => setPriceMode('gross')} style={{ fontSize: 9, padding: '1px 4px', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit', background: priceMode === 'gross' ? 'var(--text)' : 'var(--surface)', color: priceMode === 'gross' ? '#fff' : 'var(--text3)' }}>з ПДВ</button>
+                      </div>
+                    </th>
                     <th style={{ padding: '6px 4px', width: 50 }}>ПДВ%</th>
                     <th style={{ padding: '6px 4px', width: 90 }}>Сума без ПДВ</th>
                     <th style={{ width: 30 }}></th>
@@ -501,8 +517,14 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
                           value={it.unit} onChange={e => updateItem(i, 'unit', e.target.value)} />
                       </td>
                       <td style={{ padding: '4px 2px' }}>
-                        <input type="number" className="form-input" style={{ height: 32, fontSize: 12, textAlign: 'right' }}
-                          value={it.unitPrice} onChange={e => updateItem(i, 'unitPrice', e.target.value)} placeholder="0.00" />
+                        {priceMode === 'net' ? (
+                          <input type="number" className="form-input" style={{ height: 32, fontSize: 12, textAlign: 'right' }}
+                            value={it.unitPrice} onChange={e => updateItem(i, 'unitPrice', e.target.value)} placeholder="0.00" />
+                        ) : (
+                          <input type="number" className="form-input" style={{ height: 32, fontSize: 12, textAlign: 'right' }}
+                            value={Math.round((parseFloat(it.unitPrice) || 0) * (1 + (parseFloat(it.vatRate) || 0) / 100) * 100) / 100 || ''}
+                            onChange={e => updateItem(i, 'unitPrice', e.target.value)} placeholder="0.00" />
+                        )}
                       </td>
                       <td style={{ padding: '4px 2px' }}>
                         <select className="form-input" style={{ height: 32, fontSize: 12, padding: '2px 4px' }}
