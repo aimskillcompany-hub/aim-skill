@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { processDocumentItems, migrateProductAliases, mergeProductDuplicates, backfillCostPrices } from '../lib/stockService'
 import MovementFixer from './MovementFixer'
 import ProductDetail from './ProductDetail'
+import Stocktake from './Stocktake'
 import { fmt, fmtInt } from '../lib/fmt'
 
 const EMPTY_PRODUCT = { name:'', sku:'', uktzed:'', manufacturer:'', category:'', unit:'шт', buy_price:'', sell_price:'', min_stock:'0', notes:'' }
@@ -25,6 +26,7 @@ export default function Inventory({ user }) {
   const [filterType, setFilterType] = useState('goods')
   const [showServiceMenu, setShowServiceMenu] = useState(false)
   const [showFixer, setShowFixer] = useState(false)
+  const [showStocktake, setShowStocktake] = useState(false)
   const [checkedIds, setCheckedIds] = useState(new Set())
   const [bulkSaving, setBulkSaving] = useState(false)
 
@@ -547,6 +549,9 @@ export default function Inventory({ user }) {
               </div>
             )}
           </div>
+          <button className="btn btn-secondary" onClick={() => setShowStocktake(true)} style={{ width:'auto' }}>
+            <i className="ti ti-clipboard-check" style={{ fontSize:15 }} /> Інвентаризація
+          </button>
           <button className="btn btn-primary" onClick={openAdd} style={{ width:'auto' }}>
             <i className="ti ti-plus" style={{ fontSize:15 }} /> Додати товар
           </button>
@@ -733,6 +738,14 @@ export default function Inventory({ user }) {
       </div>
 
       {showForm && renderForm()}
+
+      {showStocktake && (
+        <div className="modal-bg" onClick={e => e.target === e.currentTarget && setShowStocktake(false)}>
+          <div className="modal modal-xl" style={{ maxWidth: 900 }}>
+            <Stocktake userId={user?.id} onClose={() => { setShowStocktake(false); loadAll() }} />
+          </div>
+        </div>
+      )}
 
       {/* ── Виправлення невідповідностей ── */}
       {showFixer && (
