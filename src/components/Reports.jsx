@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx'
 import { supabase } from '../lib/supabase'
 import { fetchArticles, groupByType, TYPE_LABELS, PL_SIGN } from '../lib/articles'
 import PlTable, { buildPlData } from './PlTable'
+import PlCompare from './PlCompare'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend, AreaChart, Area, Cell, PieChart, Pie,
@@ -117,6 +118,7 @@ export default function Reports({ initialTab }) {
   const [rptTo, setRptTo]         = useState('')
   const [rawTxs, setRawTxs]       = useState([])
   const [compareMode, setCompareMode] = useState(false)
+  const [plMode, setPlMode] = useState('fact') // fact | plan | compare
   const [cfMonthly, setCfMonthly]   = useState([])
   const [filterProject, setFilterProject] = useState('')
   const [filterContractor, setFilterContractor] = useState('')
@@ -697,21 +699,31 @@ export default function Reports({ initialTab }) {
       {(!initialTab || initialTab === 'pl') &&
       (() => {
         const curMonth = currentMonth()
-        const allDisplayMonths = [
-          ...months,
-          ...planMonths.filter(m => !months.includes(m))
-        ]
-        const isPlan = m => m > curMonth
         const isCurrent = m => m === curMonth
 
-        // Build plan section totals
-        const planSectionTotals = {}
-        ARTICLE_TYPE_ORDER.forEach(type => {
-          planSectionTotals[type] = {}
-          allDisplayMonths.forEach(m => {
-            planSectionTotals[type][m] = (byType[type] || []).reduce((s, name) => s + (planData[name]?.[m] || 0), 0)
+        // Дані плану (з таблиці plans), згруповані як фактичний P&L
+        const planArt = {}
+        Object.keys(planData).forEach(name => {
+          planArt[name] = {}
+          Object.keys(planData[name]).forEach(m => {
+            const v = planData[name][m]
+            if (v) planArt[name][m] = { sum: Math.abs(v), txs: [] }
           })
         })
+        const planMonthsAll = [...new Set(Object.values(planData).flatMap(d => Object.keys(d)))].sort()
+        const planPlData = buildPlData(articles, planArt, planMonthsAll)
+        const compareMonths = [...new Set([...months, ...planMonthsAll])].sort()
+
+        // Вибір даних за режимом
+        const dispMonths = plMode === 'plan' ? planMonthsAll : months
+        const srcArt = plMode === 'plan' ? planArt : artData
+        const srcPl = plMode === 'plan' ? planPlData : plData
+
+        const PL_MODES = [
+          { id: 'fact', label: 'Факт', icon: 'ti-check' },
+          { id: 'plan', label: 'План', icon: 'ti-calendar-dollar' },
+          { id: 'compare', label: 'Порівняння', icon: 'ti-arrows-diff' },
+        ]
 
         const exportToExcel = () => {
           if (!months.length) return
@@ -750,241 +762,83 @@ export default function Reports({ initialTab }) {
         return (
       <div className="card" style={{ padding:'18px 0', overflowX:'auto' }}>
         <div style={{ padding:'0 18px 12px', fontSize:13, fontWeight:600, color:'var(--text2)', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-          P&L по місяцях
-          <span style={{ fontSize:11, fontWeight:400, color:'var(--text3)', background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:6, padding:'2px 8px' }}>
-            натисніть на суму для деталізації
-          </span>
-          {planMonths.length > 0 && (
-            <span style={{ fontSize:11, fontWeight:400, color:'#8B6914', background:'#FEF9EF', border:'1px dashed #D4A843', borderRadius:6, padding:'2px 8px', display:'flex', alignItems:'center', gap:4 }}>
-              <i className="ti ti-calendar-stats" style={{ fontSize:12 }} />
-              {planMonths.length} планових місяців
+          {/* Перемикач режимів: Факт / План / Порівняння */}
+          <div style={{ display:'flex', border:'1px solid var(--border)', borderRadius:8, overflow:'hidden' }}>
+            {PL_MODES.map(mode => (
+              <button key={mode.id} onClick={() => setPlMode(mode.id)} style={{
+                padding:'8px 14px', border:'none', cursor:'pointer', fontSize:13, fontWeight:500,
+                fontFamily:'inherit', display:'flex', alignItems:'center', gap:5,
+                background: plMode===mode.id ? 'var(--blue)' : 'var(--surface)',
+                color: plMode===mode.id ? '#fff' : 'var(--text2)',
+              }}>
+                <i className={`ti ${mode.icon}`} style={{ fontSize:14 }} />{mode.label}
+              </button>
+            ))}
+          </div>
+          {plMode === 'fact' && (
+            <span style={{ fontSize:11, fontWeight:400, color:'var(--text3)', background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:6, padding:'2px 8px' }}>
+              натисніть на суму для деталізації
             </span>
           )}
-          <button className="btn btn-sm btn-secondary" onClick={exportToExcel} style={{ width:'auto', height:40 }}>
-            <i className="ti ti-download" style={{ fontSize:14 }} />
-            Excel
-          </button>
+          {plMode === 'plan' && (
+            <span style={{ fontSize:11, fontWeight:400, color:'#8B6914', background:'#FEF9EF', border:'1px dashed #D4A843', borderRadius:6, padding:'2px 8px' }}>
+              планові дані — редагуються у вкладці «Бюджет»
+            </span>
+          )}
+          {plMode === 'compare' && (
+            <span style={{ fontSize:11, fontWeight:400, color:'var(--text3)' }}>
+              план з бюджету проти фактичного P&L за весь період
+            </span>
+          )}
+          {plMode === 'fact' && (
+            <button className="btn btn-sm btn-secondary" onClick={exportToExcel} style={{ width:'auto', height:40, marginLeft:'auto' }}>
+              <i className="ti ti-download" style={{ fontSize:14 }} />
+              Excel
+            </button>
+          )}
         </div>
+
+        {plMode === 'compare' ? (
+          <PlCompare articles={articles} artData={artData} planData={planData} months={compareMonths} />
+        ) : dispMonths.length === 0 ? (
+          <div className="empty" style={{ padding:'30px 18px' }}>
+            <p>{plMode === 'plan' ? 'Немає планових даних. Заповніть бюджет у вкладці «Бюджет».' : 'Немає даних.'}</p>
+          </div>
+        ) : (
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5, minWidth:500 }}>
           <thead>
             <tr>
               <th style={{ textAlign:'left', padding:'8px 18px', background:'var(--surface2)', borderBottom:'1px solid var(--border)', fontWeight:500, color:'var(--text2)', minWidth:200, position:'sticky', left:0, zIndex:1 }}>
                 Стаття
               </th>
-              {allDisplayMonths.map(m => (
+              {dispMonths.map(m => (
                 <th key={m} style={{
                   padding:'8px 12px',
-                  background: isPlan(m) ? '#FEF9EF' : isCurrent(m) ? '#EFF4FF' : 'var(--surface2)',
+                  background: isCurrent(m) ? '#EFF4FF' : 'var(--surface2)',
                   borderBottom:'1px solid var(--border)',
-                  borderLeft: isPlan(m) && !isPlan(allDisplayMonths[allDisplayMonths.indexOf(m)-1]) ? '2px dashed #D4A843' : undefined,
                   textAlign:'right', fontWeight:500,
-                  color: isPlan(m) ? '#8B6914' : isCurrent(m) ? 'var(--blue)' : 'var(--text2)',
+                  color: isCurrent(m) ? 'var(--blue)' : 'var(--text2)',
                   whiteSpace:'nowrap',
                 }}>
                   {m}
-                  {isPlan(m) && <div style={{ fontSize:9, fontWeight:400, color:'#6B6B6B', letterSpacing:'.5px' }}>ПЛАН</div>}
                   {isCurrent(m) && <div style={{ fontSize:9, fontWeight:400, color:'#6B6B6B', letterSpacing:'.5px' }}>ЗАРАЗ</div>}
                 </th>
               ))}
               <th style={{ padding:'8px 12px', background:'#EFF4FF', borderBottom:'1px solid var(--border)', textAlign:'right', fontWeight:700, color:'var(--blue)', whiteSpace:'nowrap', borderLeft:'2px solid #E2E8F0' }}>
-                ФАКТ
+                РАЗОМ
               </th>
-              {planMonths.length > 0 && (
-                <th style={{ padding:'8px 12px', background:'#EFF5EF', borderBottom:'1px solid var(--border)', textAlign:'right', fontWeight:700, color:'#4A7C59', whiteSpace:'nowrap' }}>
-                  ПРОГНОЗ
-                </th>
-              )}
             </tr>
           </thead>
           <PlTable
-            artData={artData}
-            months={allDisplayMonths}
-            plData={plData}
+            artData={srcArt}
+            months={dispMonths}
+            plData={srcPl}
             isCurrent={isCurrent}
-            isPlan={isPlan}
-            planData={planData}
-            onCellClick={handleCellClick}
-            onSectionClick={handleSectionClick}
+            onCellClick={plMode === 'plan' ? undefined : handleCellClick}
+            onSectionClick={plMode === 'plan' ? undefined : handleSectionClick}
           />
-          {false && <tbody>
-            {ARTICLE_TYPE_ORDER.map(type => {
-              const rows = byType[type] || []
-              if (rows.length === 0) return null
-              const secTotal = months.reduce((s,m) => s+(sectionTotals[type][m]||0), 0)
-              if (secTotal === 0 && rows.every(name => !artData[name])) return null
-
-              return (
-                <>
-                  {/* Section header */}
-                  <tr key={`sec-${type}`}>
-                    <td colSpan={months.length + 2} style={{ padding:'10px 18px 4px', fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.6px', color:'var(--text3)', background:'var(--surface2)', borderTop:'1px solid var(--border)' }}>
-                      {SECTION_LABELS[type]}
-                    </td>
-                  </tr>
-
-                  {/* Article rows */}
-                  {rows.map(artName => {
-                    const rowTotal = months.reduce((s,m) => s+(artData[artName]?.[m]?.sum||0), 0)
-                    const hasAnyPlan = allDisplayMonths.some(m => isPlan(m) && planData[artName]?.[m])
-                    if (rowTotal === 0 && !artData[artName] && !hasAnyPlan) return null
-                    return (
-                      <tr key={artName} style={{ borderBottom:'1px solid #F0F2F5' }}
-                        onMouseEnter={e => e.currentTarget.style.background='var(--surface2)'}
-                        onMouseLeave={e => e.currentTarget.style.background=''}
-                      >
-                        <td style={{ padding:'7px 18px 7px 28px', fontSize:13, color:'var(--text)', position:'sticky', left:0, background:'var(--surface)', zIndex:1 }}>
-                          {artName}
-                        </td>
-                        {allDisplayMonths.map(m => {
-                          if (isPlan(m)) {
-                            const pv = planData[artName]?.[m] || 0
-                            return (
-                              <td key={m} style={{
-                                padding:'7px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums',
-                                color: pv === 0 ? 'var(--text3)' : pv > 0 ? '#4A7C59' : '#9B3A3A',
-                                fontStyle:'italic', fontSize:12.5,
-                                background:'#FEF9EF',
-                                borderLeft: !isPlan(allDisplayMonths[allDisplayMonths.indexOf(m)-1]) ? '2px dashed #D4A843' : undefined,
-                              }}>
-                                {pv === 0 ? '—' : fmtS(pv)}
-                              </td>
-                            )
-                          }
-                          const raw = artData[artName]?.[m]?.sum || 0
-                          const v = (SECTION_SIGN[type] || 1) * raw
-                          return (
-                            <td key={m}
-                              style={{ ...cellStyle(v, false, true), background: isCurrent(m)?'#EFF4FF':'' }}
-                              onClick={() => handleCellClick(artName, m)}
-                              title={v !== 0 ? 'Натисніть для деталізації' : undefined}
-                              onMouseEnter={e => { if(v!==0) e.currentTarget.style.background='#EFF4FF' }}
-                              onMouseLeave={e => e.currentTarget.style.background= isCurrent(m)?'#EFF4FF':''}
-                            >
-                              {fmtS(v)}
-                            </td>
-                          )
-                        })}
-                        {(() => {
-                          const sign = SECTION_SIGN[type] || 1
-                          const factTotal = sign * months.reduce((s,m) => s+(artData[artName]?.[m]?.sum||0), 0)
-                          const planTotal = sign * allDisplayMonths.filter(m=>isPlan(m)).reduce((s,m) => s+(planData[artName]?.[m]||0), 0)
-                          const forecast = factTotal + planTotal
-                          return (<>
-                            <td style={{ ...cellStyle(factTotal, true), background:'#EFF4FF', cursor: factTotal!==0?'pointer':'default', borderLeft:'2px solid #E2E8F0' }}>
-                              {fmtS(factTotal)}
-                            </td>
-                            <td style={{ ...cellStyle(forecast, true), background: forecast===factTotal?'#F0F2F5':'#EFF5EF', fontStyle: planTotal!==0?'italic':'' }}>
-                              {forecast===0?'—':fmtS(forecast)}
-                            </td>
-                          </>)
-                        })()}
-                      </tr>
-                    )
-                  })}
-
-                  {/* Section total */}
-                  <tr key={`total-${type}`} style={{ borderTop:'2px solid var(--border)', borderBottom:'1px solid var(--border)' }}>
-                    <td style={{ padding:'8px 18px', fontWeight:700, fontSize:13, color:'var(--text2)', background:'var(--surface2)', position:'sticky', left:0 }}>
-                      Разом {SECTION_LABELS[type].toLowerCase()}
-                    </td>
-                    {allDisplayMonths.map(m => {
-                      if (isPlan(m)) {
-                        const pv = planSectionTotals[type][m] || 0
-                        return (
-                          <td key={m} style={{
-                            padding:'8px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums',
-                            color: pv===0?'var(--text3)':pv>0?'#4A7C59':'#9B3A3A',
-                            fontWeight:700, fontStyle:'italic', fontSize:12.5,
-                            background:'#F0F2F5',
-                            borderLeft: !isPlan(allDisplayMonths[allDisplayMonths.indexOf(m)-1]) ? '2px dashed #E2E8F0' : undefined,
-                          }}>
-                            {pv===0?'—':fmtS(pv)}
-                          </td>
-                        )
-                      }
-                      const raw = sectionTotals[type][m] || 0
-                      const v = (SECTION_SIGN[type] || 1) * raw
-                      return (
-                        <td key={m}
-                          style={{ ...cellStyle(v, true, true), background: isCurrent(m)?'#EFF4FF':'var(--surface2)' }}
-                          onClick={() => handleSectionClick(type, m)}
-                          title={v!==0?'Натисніть для деталізації':undefined}
-                          onMouseEnter={e => { if(v!==0) e.currentTarget.style.background='#EFF4FF' }}
-                          onMouseLeave={e => e.currentTarget.style.background= isCurrent(m)?'#EFF4FF':'var(--surface2)'}
-                        >
-                          {fmtS(v)}
-                        </td>
-                      )
-                    })}
-                    {(() => {
-                      const sign = SECTION_SIGN[type] || 1
-                      const factT = sign * (sectionTotals[type]._total || 0)
-                      const planT = sign * allDisplayMonths.filter(m=>isPlan(m)).reduce((s,m) => s+(planSectionTotals[type][m]||0), 0)
-                      const forecastT = factT + planT
-                      return (<>
-                        <td style={{ ...cellStyle(factT, true), background:'#EFF4FF', borderLeft:'2px solid #E2E8F0' }}>
-                          {fmtS(factT)}
-                        </td>
-                        <td style={{ ...cellStyle(forecastT, true), background: planT!==0?'#EFF5EF':'#F0F2F5', fontStyle: planT!==0?'italic':'' }}>
-                          {forecastT===0?'—':fmtS(forecastT)}
-                        </td>
-                      </>)
-                    })()}
-                  </tr>
-                </>
-              )
-            })}
-
-            {/* Net result row */}
-            <tr style={{ borderTop:'2px solid var(--border)' }}>
-              <td style={{ padding:'10px 18px', fontWeight:700, fontSize:14, background:'var(--surface2)', position:'sticky', left:0 }}>
-                ЧИСТИЙ РЕЗУЛЬТАТ
-              </td>
-              {allDisplayMonths.map(m => {
-                if (isPlan(m)) {
-                  const pv = Object.values(planData).reduce((s,d) => s+(d[m]||0), 0)
-                  return (
-                    <td key={m} style={{
-                      padding:'10px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums',
-                      color: pv===0?'var(--text3)':pv>0?'#4A7C59':'#9B3A3A',
-                      fontWeight:700, fontStyle:'italic', fontSize:13,
-                      background:'#F0F2F5',
-                      borderLeft: !isPlan(allDisplayMonths[allDisplayMonths.indexOf(m)-1]) ? '2px dashed #E2E8F0' : undefined,
-                    }}>
-                      {pv===0?'—':fmtS(pv)}
-                    </td>
-                  )
-                }
-                const v = ARTICLE_TYPE_ORDER.reduce((s, type) => s + (SECTION_SIGN[type] || 1) * (sectionTotals[type]?.[m] || 0), 0)
-                return (
-                  <td key={m}
-                    style={{ ...cellStyle(v, true, true), background: isCurrent(m)?'#EFF4FF':'var(--surface2)', fontSize:13 }}
-                    onClick={() => handleTotalClick(m)}
-                    title={v!==0?'Натисніть для деталізації':undefined}
-                    onMouseEnter={e => { if(v!==0) e.currentTarget.style.background='#EFF4FF' }}
-                    onMouseLeave={e => e.currentTarget.style.background= isCurrent(m)?'#EFF4FF':'var(--surface2)'}
-                  >
-                    {fmtS(v)}
-                  </td>
-                )
-              })}
-              {(() => {
-                const planNetTotal = allDisplayMonths.filter(m=>isPlan(m)).reduce((s,m) => {
-                  return s + Object.values(planData).reduce((ps,d) => ps+(d[m]||0), 0)
-                }, 0)
-                const forecastNet = totNet + planNetTotal
-                return (<>
-                  <td style={{ ...cellStyle(totNet, true), background:'#EFF4FF', fontSize:13, borderLeft:'2px solid #E2E8F0' }}>
-                    {fmtS(totNet)}
-                  </td>
-                  <td style={{ ...cellStyle(forecastNet, true), background: planNetTotal!==0?'#EFF5EF':'#F0F2F5', fontSize:13, fontStyle: planNetTotal!==0?'italic':'' }}>
-                    {forecastNet===0?'—':fmtS(forecastNet)}
-                  </td>
-                </>)
-              })()}
-            </tr>
-          </tbody>}
         </table>
+        )}
       </div>
         )
       })()}

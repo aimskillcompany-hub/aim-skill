@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import Reports from './Reports'
+import Budget from './Budget'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend,
@@ -260,6 +261,7 @@ export default function Analytics({ user, onPage }) {
   const TABS = [
     { id: 'overview', label: 'Огляд', icon: 'ti-chart-dots-3' },
     { id: 'pl', label: 'P&L', icon: 'ti-report-analytics' },
+    { id: 'budget', label: 'Бюджет', icon: 'ti-calendar-dollar' },
     { id: 'cashflow', label: 'Грошовий потік', icon: 'ti-cash' },
     { id: 'forecast', label: 'Прогноз', icon: 'ti-crystal-ball' },
     { id: 'debt', label: 'Заборгованість', icon: 'ti-scale' },
@@ -383,6 +385,9 @@ export default function Analytics({ user, onPage }) {
       {/* ═══ P&L ═══ */}
       {tab === 'pl' && <Reports initialTab="pl" />}
 
+      {/* ═══ БЮДЖЕТ (План P&L) ═══ */}
+      {tab === 'budget' && <Budget user={user} />}
+
       {/* ═══ ГРОШОВИЙ ПОТІК ═══ */}
       {tab === 'cashflow' && <Reports initialTab="cf" />}
 
@@ -493,96 +498,19 @@ export default function Analytics({ user, onPage }) {
               </div>
             </div>
 
-            {/* ПЛАН vs ФАКТ */}
-            {planFact && (() => {
-              const monthLabels = { '01':'Січ','02':'Лют','03':'Бер','04':'Кві','05':'Тра','06':'Чер','07':'Лип','08':'Сер','09':'Вер','10':'Жов','11':'Лис','12':'Гру' }
-              const mLabel = m => monthLabels[m.split('-')[1]] + ' ' + m.split('-')[0]
-              const currentMonth = new Date().toISOString().substring(0, 7)
-
-              return (
-                <div className="card" style={{ marginBottom: 16 }}>
-                  <div className="card-title">План vs Факт</div>
-
-                  {planFact.months.map(month => {
-                    const rows = planFact.data.filter(r => r.month === month)
-                    if (rows.length === 0) return null
-                    const isPast = month < currentMonth
-                    const isCurrent = month === currentMonth
-
-                    // Розділити на доходи і витрати
-                    const incomeRows = rows.filter(r => r.direction === 'Доходи')
-                    const expenseRows = rows.filter(r => r.direction === 'Витрати')
-                    const otherRows = rows.filter(r => r.direction !== 'Доходи' && r.direction !== 'Витрати')
-
-                    const totalPlanInc = incomeRows.reduce((s, r) => s + r.plan, 0)
-                    const totalFactInc = incomeRows.reduce((s, r) => s + r.fact, 0)
-                    const totalPlanExp = expenseRows.reduce((s, r) => s + r.plan, 0)
-                    const totalFactExp = expenseRows.reduce((s, r) => s + r.fact, 0)
-                    const totalPlan = totalPlanInc - totalPlanExp
-                    const totalFact = totalFactInc - totalFactExp
-
-                    const renderRows = (list, color) => list.map((r, i) => {
-                      const diff = r.fact - r.plan
-                      const pct = r.plan > 0 ? Math.round(r.fact / r.plan * 100) : r.fact > 0 ? 999 : 0
-                      return (
-                        <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
-                          <td style={{ fontSize: 12, paddingLeft: 20 }}>
-                            {r.article || 'Без статті'}
-                            {r.planItems?.filter(Boolean).length > 0 && <div style={{ fontSize: 10, color: 'var(--text3)' }}>{r.planItems.filter(Boolean).join('; ').substring(0, 60)}</div>}
-                          </td>
-                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: r.plan > 0 ? color : 'var(--text3)' }}>{r.plan > 0 ? fmt(r.plan) : '—'}</td>
-                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 500, color: r.fact > 0 ? color : 'var(--text3)' }}>{r.fact > 0 ? fmt(r.fact) : '—'}</td>
-                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12, color: diff > 0 ? 'var(--green)' : diff < 0 ? 'var(--red)' : 'var(--text3)' }}>
-                            {r.plan > 0 || r.fact > 0 ? (diff >= 0 ? '+' : '') + fmt(diff) : '—'}
-                          </td>
-                          <td style={{ textAlign: 'right', fontSize: 11 }}>
-                            {r.plan > 0 && (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
-                                <div style={{ width: 40, height: 6, background: 'var(--surface2)', borderRadius: 3, overflow: 'hidden' }}>
-                                  <div style={{ width: Math.min(pct, 100) + '%', height: '100%', background: pct >= 90 ? 'var(--green)' : pct >= 50 ? 'var(--amber)' : 'var(--red)', borderRadius: 3 }} />
-                                </div>
-                                <span style={{ color: pct >= 90 ? 'var(--green)' : pct >= 50 ? 'var(--amber)' : 'var(--red)', fontWeight: 500 }}>{pct}%</span>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })
-
-                    return (
-                      <div key={month} style={{ marginBottom: 16 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                          <span style={{ fontSize: 14, fontWeight: 600 }}>{mLabel(month)}</span>
-                          {isPast && <span style={{ fontSize: 10, padding: '1px 8px', borderRadius: 6, background: 'var(--surface2)', color: 'var(--text3)' }}>минулий</span>}
-                          {isCurrent && <span style={{ fontSize: 10, padding: '1px 8px', borderRadius: 6, background: 'var(--blue-bg)', color: 'var(--blue)' }}>поточний</span>}
-                        </div>
-                        <div className="tbl-wrap">
-                          <table>
-                            <thead>
-                              <tr><th>Стаття</th><th style={{ textAlign: 'right' }}>План</th><th style={{ textAlign: 'right' }}>Факт</th><th style={{ textAlign: 'right' }}>Різниця</th><th style={{ textAlign: 'right', width: 80 }}>%</th></tr>
-                            </thead>
-                            <tbody>
-                              {incomeRows.length > 0 && <tr style={{ background: 'var(--green-bg)' }}><td colSpan={5} style={{ fontSize: 11, fontWeight: 600, color: 'var(--green)' }}>ДОХОДИ</td></tr>}
-                              {renderRows(incomeRows, 'var(--green)')}
-                              {expenseRows.length > 0 && <tr style={{ background: 'var(--red-bg)' }}><td colSpan={5} style={{ fontSize: 11, fontWeight: 600, color: 'var(--red)' }}>ВИТРАТИ</td></tr>}
-                              {renderRows(expenseRows, 'var(--red)')}
-                              {otherRows.length > 0 && renderRows(otherRows, 'var(--text2)')}
-                              <tr style={{ borderTop: '3px solid var(--border)', fontWeight: 700 }}>
-                                <td>Результат</td>
-                                <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{totalPlan >= 0 ? '+' : ''}{fmt(totalPlan)}</td>
-                                <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: totalFact >= 0 ? 'var(--green)' : 'var(--red)' }}>{totalFact >= 0 ? '+' : ''}{fmt(totalFact)}</td>
-                                <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: totalFact - totalPlan >= 0 ? 'var(--green)' : 'var(--red)' }}>{totalFact - totalPlan >= 0 ? '+' : ''}{fmt(totalFact - totalPlan)}</td>
-                                <td></td>
-                              </tr>
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )
-                  })}
+            {/* Перенесено: порівняння плану й факту тепер у вкладках «Бюджет» та «P&L → Порівняння» */}
+            <div className="card" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <i className="ti ti-arrows-diff" style={{ fontSize: 22, color: 'var(--blue)' }} />
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>Порівняння плану та факту переїхало</div>
+                <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>
+                  Вносьте бюджет у вкладці <b>Бюджет</b>, а звіряйте з фактом у <b>P&L → Порівняння</b>.
                 </div>
-              )
-            })()}
+              </div>
+              <button className="btn btn-sm btn-secondary" onClick={() => setTab('budget')} style={{ width: 'auto' }}>До бюджету</button>
+              <button className="btn btn-sm btn-primary" onClick={() => setTab('pl')} style={{ width: 'auto' }}>До P&L</button>
+            </div>
+
           </div>
         )
       })()}
