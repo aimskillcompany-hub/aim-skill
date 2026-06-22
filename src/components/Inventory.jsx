@@ -6,7 +6,7 @@ import ProductDetail from './ProductDetail'
 import Stocktake from './Stocktake'
 import { fmt, fmtInt } from '../lib/fmt'
 
-const EMPTY_PRODUCT = { name:'', sku:'', uktzed:'', manufacturer:'', category:'', unit:'шт', buy_price:'', sell_price:'', min_stock:'0', notes:'' }
+const EMPTY_PRODUCT = { name:'', sku:'', uktzed:'', manufacturer:'', category:'', unit:'шт', buy_price:'', sell_price:'', min_stock:'0', notes:'', _priceMode:'net' }
 
 export default function Inventory({ user }) {
   const [products, setProducts] = useState([])
@@ -240,11 +240,17 @@ export default function Inventory({ user }) {
   const handleSave = async () => {
     if (!form.name) return
     setSaving(true)
+    // Якщо ціни введені з ПДВ — конвертуємо в нетто перед збереженням
+    const isGross = form._priceMode === 'gross'
+    const rawBuy = parseFloat(form.buy_price) || null
+    const rawSell = parseFloat(form.sell_price) || null
     const payload = {
       name: form.name, sku: form.sku || null, uktzed: form.uktzed || null,
       manufacturer: form.manufacturer || null, category: form.category || null,
-      unit: form.unit || 'шт', buy_price: parseFloat(form.buy_price) || null,
-      sell_price: parseFloat(form.sell_price) || null, min_stock: parseFloat(form.min_stock) || 0,
+      unit: form.unit || 'шт',
+      buy_price: rawBuy && isGross ? Math.round(rawBuy / 1.2 * 100) / 100 : rawBuy,
+      sell_price: rawSell && isGross ? Math.round(rawSell / 1.2 * 100) / 100 : rawSell,
+      min_stock: parseFloat(form.min_stock) || 0,
       notes: form.notes || null, created_by: user?.id,
     }
     if (editId) {
@@ -498,8 +504,25 @@ export default function Inventory({ user }) {
             <div className="form-group"><label>Категорія</label><input className="form-input" value={form.category} onChange={setF('category')} placeholder="Електроніка" /></div>
             <div className="form-group"><label>Одиниця виміру</label><input className="form-input" value={form.unit} onChange={setF('unit')} placeholder="шт" /></div>
             <div className="form-group"><label>Мін. залишок</label><input type="number" className="form-input" value={form.min_stock} onChange={setF('min_stock')} /></div>
-            <div className="form-group"><label>Ціна закупки, грн</label><input type="number" className="form-input" value={form.buy_price} onChange={setF('buy_price')} placeholder="0.00" /></div>
-            <div className="form-group"><label>Ціна продажу, грн</label><input type="number" className="form-input" value={form.sell_price} onChange={setF('sell_price')} placeholder="0.00" /></div>
+            <div className="form-group full" style={{ marginBottom: 4 }}>
+              <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+                <span style={{ fontSize:12, color:'var(--text2)' }}>Ціни вказані:</span>
+                <button onClick={() => setForm(f => ({...f, _priceMode: 'net'}))} style={{ fontSize:11, padding:'2px 8px', borderRadius:6, border:'1px solid var(--border)', cursor:'pointer', fontFamily:'inherit', background: (form._priceMode||'net')==='net'?'var(--text)':'var(--surface)', color: (form._priceMode||'net')==='net'?'#fff':'var(--text3)' }}>без ПДВ</button>
+                <button onClick={() => setForm(f => ({...f, _priceMode: 'gross'}))} style={{ fontSize:11, padding:'2px 8px', borderRadius:6, border:'1px solid var(--border)', cursor:'pointer', fontFamily:'inherit', background: form._priceMode==='gross'?'var(--text)':'var(--surface)', color: form._priceMode==='gross'?'#fff':'var(--text3)' }}>з ПДВ 20%</button>
+              </div>
+            </div>
+            <div className="form-group">
+              <label>Ціна закупки, грн {(form._priceMode||'net')==='net'?'(без ПДВ)':'(з ПДВ)'}</label>
+              <input type="number" className="form-input" value={form.buy_price} onChange={setF('buy_price')} placeholder="0.00" />
+              {form.buy_price && (form._priceMode||'net')!=='net' && <div style={{ fontSize:11, color:'var(--text3)', marginTop:2 }}>без ПДВ: {fmtInt(parseFloat(form.buy_price)/1.2)} грн</div>}
+              {form.buy_price && (form._priceMode||'net')==='net' && <div style={{ fontSize:11, color:'var(--text3)', marginTop:2 }}>з ПДВ: {fmtInt(parseFloat(form.buy_price)*1.2)} грн</div>}
+            </div>
+            <div className="form-group">
+              <label>Ціна продажу, грн {(form._priceMode||'net')==='net'?'(без ПДВ)':'(з ПДВ)'}</label>
+              <input type="number" className="form-input" value={form.sell_price} onChange={setF('sell_price')} placeholder="0.00" />
+              {form.sell_price && (form._priceMode||'net')!=='net' && <div style={{ fontSize:11, color:'var(--text3)', marginTop:2 }}>без ПДВ: {fmtInt(parseFloat(form.sell_price)/1.2)} грн</div>}
+              {form.sell_price && (form._priceMode||'net')==='net' && <div style={{ fontSize:11, color:'var(--text3)', marginTop:2 }}>з ПДВ: {fmtInt(parseFloat(form.sell_price)*1.2)} грн</div>}
+            </div>
             <div className="form-group full"><label>Нотатки</label><textarea className="form-input" rows={2} value={form.notes} onChange={setF('notes')} /></div>
           </div>
           <div className="btn-row">
