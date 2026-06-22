@@ -23,6 +23,7 @@ export default function Analytics({ user, onPage }) {
   const [debtors, setDebtors] = useState([])
   const [creditors, setCreditors] = useState([])
   const [chartData, setChartData] = useState([])
+  const [forecast, setForecast] = useState(null)
   const [loading, setLoading] = useState(true)
 
   // Period presets
@@ -170,6 +171,39 @@ export default function Analytics({ user, onPage }) {
     chart.forEach(m => { m.net = m.revenue - m.expenses })
     setChartData(chart)
 
+    // Cash Flow Forecast
+    const bankBalance = (allBank || []).reduce((s, t) => s + (t.amount || 0), 0)
+    const cashBal = (cashTxs || []).reduce((s, t) => s + (CASH_DIR[t.type] || 0) * (t.amount || 0), 0)
+    const currentBalance = bankBalance + cashBal
+
+    const totalDebtors = debtList.reduce((s, d) => s + d.amount, 0)
+    const totalCreditors = creditList.reduce((s, d) => s + d.amount, 0)
+
+    // Замовлення в роботі (confirmed/in_progress)
+    const activeOrders = allDocs.filter(d =>
+      (d.doc_type === 'purchaseOrder' || d.doc_type === 'salesOrder') &&
+      ['confirmed', 'in_progress'].includes(d.status)
+    )
+    const ordersIncome = activeOrders.filter(d => d.doc_type === 'salesOrder').reduce((s, d) => s + (parseFloat(d.total) || 0), 0)
+    const ordersExpense = activeOrders.filter(d => d.doc_type === 'purchaseOrder').reduce((s, d) => s + (parseFloat(d.total) || 0), 0)
+
+    // Середньомісячний потік (за останні 3 місяці)
+    const threeMonthsAgo = new Date(); threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
+    const recentTxs = (allBank || []).filter(t => new Date(t.date) >= threeMonthsAgo)
+    const avgMonthlyNet = recentTxs.length > 0 ? recentTxs.reduce((s, t) => s + (t.amount || 0), 0) / 3 : 0
+
+    setForecast({
+      currentBalance,
+      debtors: totalDebtors,
+      creditors: totalCreditors,
+      ordersIncome,
+      ordersExpense,
+      avgMonthlyNet,
+      month1: currentBalance + totalDebtors - totalCreditors + ordersIncome - ordersExpense,
+      month2: currentBalance + totalDebtors - totalCreditors + ordersIncome - ordersExpense + avgMonthlyNet,
+      month3: currentBalance + totalDebtors - totalCreditors + ordersIncome - ordersExpense + avgMonthlyNet * 2,
+    })
+
     setLoading(false)
   }
 
@@ -180,6 +214,7 @@ export default function Analytics({ user, onPage }) {
     { id: 'overview', label: 'Огляд', icon: 'ti-chart-dots-3' },
     { id: 'pl', label: 'P&L', icon: 'ti-report-analytics' },
     { id: 'cashflow', label: 'Грошовий потік', icon: 'ti-cash' },
+    { id: 'forecast', label: 'Прогноз', icon: 'ti-crystal-ball' },
     { id: 'debt', label: 'Заборгованість', icon: 'ti-scale' },
   ]
 
@@ -303,6 +338,93 @@ export default function Analytics({ user, onPage }) {
 
       {/* ═══ ГРОШОВИЙ ПОТІК ═══ */}
       {tab === 'cashflow' && <Reports initialTab="cf" />}
+
+      {/* ═══ ПРОГНОЗ ═══ */}
+      {tab === 'forecast' && forecast && (() => {
+        const f = forecast
+        const fmtBal = n => (n >= 0 ? '+' : '') + fmt(n)
+        const balColor = n => n >= 0 ? 'var(--green)' : 'var(--red)'
+        return (
+          <div>
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div className="card-title">Прогноз грошового потоку</div>
+              <p style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 16 }}>
+                На основі поточного балансу, заборгованості, замовлень в роботі та середнього потоку за 3 місяці
+              </p>
+
+              {/* Current state */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+                <div style={{ padding: 14, background: 'var(--surface2)', borderRadius: 10 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Поточний баланс (банк + каса)</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: balColor(f.currentBalance) }}>{fmt(f.currentBalance)} грн</div>
+                </div>
+                <div style={{ padding: 14, background: 'var(--surface2)', borderRadius: 10 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Сер. місячний потік (3 міс.)</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: balColor(f.avgMonthlyNet) }}>{fmtBal(f.avgMonthlyNet)} грн</div>
+                </div>
+              </div>
+
+              {/* Expected flows */}
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Очікувані рухи коштів</div>
+              <div className="tbl-wrap" style={{ marginBottom: 20 }}>
+                <table>
+                  <thead><tr><th>Джерело</th><th style={{ textAlign: 'right' }}>Надходження</th><th style={{ textAlign: 'right' }}>Витрати</th></tr></thead>
+                  <tbody>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ fontSize: 13 }}>Дебіторка (нам винні)</td>
+                      <td style={{ textAlign: 'right', color: 'var(--green)', fontWeight: 500 }}>{f.debtors > 0 ? '+' + fmt(f.debtors) : '—'}</td>
+                      <td style={{ textAlign: 'right' }}>—</td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ fontSize: 13 }}>Кредиторка (ми винні)</td>
+                      <td style={{ textAlign: 'right' }}>—</td>
+                      <td style={{ textAlign: 'right', color: 'var(--red)', fontWeight: 500 }}>{f.creditors > 0 ? '-' + fmt(f.creditors) : '—'}</td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ fontSize: 13 }}>Замовлення від клієнтів (підтверджені)</td>
+                      <td style={{ textAlign: 'right', color: 'var(--green)', fontWeight: 500 }}>{f.ordersIncome > 0 ? '+' + fmt(f.ordersIncome) : '—'}</td>
+                      <td style={{ textAlign: 'right' }}>—</td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ fontSize: 13 }}>Замовлення постачальникам (підтверджені)</td>
+                      <td style={{ textAlign: 'right' }}>—</td>
+                      <td style={{ textAlign: 'right', color: 'var(--red)', fontWeight: 500 }}>{f.ordersExpense > 0 ? '-' + fmt(f.ordersExpense) : '—'}</td>
+                    </tr>
+                    <tr style={{ fontWeight: 600, borderTop: '2px solid var(--border)' }}>
+                      <td>Разом очікувані</td>
+                      <td style={{ textAlign: 'right', color: 'var(--green)' }}>+{fmt(f.debtors + f.ordersIncome)}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--red)' }}>-{fmt(f.creditors + f.ordersExpense)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Forecast timeline */}
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Прогноз балансу</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                {[
+                  { label: 'Через 1 місяць', value: f.month1, note: 'баланс + заборгованість + замовлення' },
+                  { label: 'Через 2 місяці', value: f.month2, note: '+ сер. місячний потік × 1' },
+                  { label: 'Через 3 місяці', value: f.month3, note: '+ сер. місячний потік × 2' },
+                ].map(p => (
+                  <div key={p.label} style={{
+                    padding: 16, borderRadius: 12, textAlign: 'center',
+                    background: p.value >= 0 ? 'var(--green-bg)' : 'var(--red-bg)',
+                    border: p.value < 0 ? '2px solid var(--red)' : '1px solid var(--border)',
+                  }}>
+                    <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 6 }}>{p.label}</div>
+                    <div style={{ fontSize: 24, fontWeight: 700, color: balColor(p.value), marginBottom: 4 }}>
+                      {fmt(p.value)} грн
+                    </div>
+                    {p.value < 0 && <div style={{ fontSize: 11, color: 'var(--red)', fontWeight: 600 }}>⚠ Дефіцит!</div>}
+                    <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>{p.note}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ═══ ЗАБОРГОВАНІСТЬ ═══ */}
       {tab === 'debt' && (
