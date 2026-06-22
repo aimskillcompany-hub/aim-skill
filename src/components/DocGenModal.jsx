@@ -11,7 +11,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
   const isEdit = !!editDoc && !!editDoc.id
   const isFromInvoice = !!editDoc?._fromInvoice
   const [parentDocId] = useState(editDoc?._parentDocId || null)
-  const [step, setStep] = useState(isEdit ? 2 : 1)
+  const [step, setStep] = useState(isEdit || editDoc?.doc_type ? 2 : 1)
   const [docType, setDocType] = useState(editDoc?.doc_type || null)
   const [docNumber, setDocNumber] = useState(editDoc?.doc_number || '')
   const [docDate, setDocDate] = useState(editDoc?.doc_date || today())

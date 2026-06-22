@@ -324,6 +324,8 @@ export default function Orders({ user }) {
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button className="btn btn-primary" style={{ flex: 1 }} onClick={async () => {
                   const { data: c } = await supabase.from('contractors').select('*').eq('id', selected.contractor_id).single()
+                  if (!c) { alert('Контрагент не знайдений'); return }
+                  setSelected(null)
                   setDocGenInit({
                     doc_type: isPurchase ? 'incomingWaybill' : 'waybill',
                     items, _fromOrder: selected.doc_number, _parentDocId: selected.id,
@@ -336,6 +338,8 @@ export default function Orders({ user }) {
                 </button>
                 <button className="btn btn-secondary" style={{ flex: 1 }} onClick={async () => {
                   const { data: c } = await supabase.from('contractors').select('*').eq('id', selected.contractor_id).single()
+                  if (!c) { alert('Контрагент не знайдений'); return }
+                  setSelected(null)
                   setDocGenInit({
                     doc_type: 'invoice', items, _fromOrder: selected.doc_number, _parentDocId: selected.id,
                     contractor_id: selected.contractor_id, _contractor: c,
