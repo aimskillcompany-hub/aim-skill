@@ -24,6 +24,7 @@ export default function Analytics({ user, onPage }) {
   const [creditors, setCreditors] = useState([])
   const [chartData, setChartData] = useState([])
   const [forecast, setForecast] = useState(null)
+  const [planFact, setPlanFact] = useState(null)
   const [loading, setLoading] = useState(true)
 
   // Period presets
@@ -216,6 +217,39 @@ export default function Analytics({ user, onPage }) {
       month2: Math.round(currentBalance + netExpected + avgMonthlyNet),
       month3: Math.round(currentBalance + netExpected + avgMonthlyNet * 2),
     })
+
+    // Plan vs Fact
+    const now = new Date()
+    const months = []
+    for (let i = -1; i <= 2; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
+      months.push(d.toISOString().substring(0, 7)) // YYYY-MM
+    }
+    const { data: plans } = await supabase.from('plans').select('*')
+      .in('year_month', months).order('year_month')
+    // Факт — валідовані банківські транзакції по тих же місяцях
+    const { data: factTxs } = await supabase.from('bank_transactions')
+      .select('amount, direction, article, date')
+      .eq('is_ignored', false).eq('is_validated', true)
+      .gte('date', months[0] + '-01').lte('date', months[months.length - 1] + '-31')
+
+    // Групуємо план і факт по місяць + напрям + стаття
+    const pfMap = {} // key = "YYYY-MM|direction|article"
+    ;(plans || []).forEach(p => {
+      const key = `${p.year_month}|${p.direction}|${p.article}`
+      if (!pfMap[key]) pfMap[key] = { month: p.year_month, direction: p.direction, article: p.article, plan: 0, fact: 0, planItems: [] }
+      pfMap[key].plan += parseFloat(p.amount) || 0
+      pfMap[key].planItems.push(p.description)
+    })
+    ;(factTxs || []).forEach(t => {
+      const m = t.date?.substring(0, 7)
+      const key = `${m}|${t.direction}|${t.article}`
+      if (!pfMap[key]) pfMap[key] = { month: m, direction: t.direction, article: t.article || 'Без статті', plan: 0, fact: 0, planItems: [] }
+      pfMap[key].fact += Math.abs(t.amount || 0)
+    })
+
+    const pfData = Object.values(pfMap).sort((a, b) => a.month.localeCompare(b.month) || a.direction.localeCompare(b.direction) || (a.article || '').localeCompare(b.article || ''))
+    setPlanFact({ months, data: pfData })
 
     setLoading(false)
   }
@@ -456,9 +490,99 @@ export default function Analytics({ user, onPage }) {
 
               <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 8, lineHeight: 1.5 }}>
                 <strong>Як читати:</strong> «Зараз» — фактичні дані. Наступні місяці: борги та замовлення реалізуються в 1-й місяць, далі додається середній місячний тренд.
-                Для точнішого прогнозу — валідуйте всі транзакції та ведіть замовлення.
               </div>
             </div>
+
+            {/* ПЛАН vs ФАКТ */}
+            {planFact && (() => {
+              const monthLabels = { '01':'Січ','02':'Лют','03':'Бер','04':'Кві','05':'Тра','06':'Чер','07':'Лип','08':'Сер','09':'Вер','10':'Жов','11':'Лис','12':'Гру' }
+              const mLabel = m => monthLabels[m.split('-')[1]] + ' ' + m.split('-')[0]
+              const currentMonth = new Date().toISOString().substring(0, 7)
+
+              return (
+                <div className="card" style={{ marginBottom: 16 }}>
+                  <div className="card-title">План vs Факт</div>
+
+                  {planFact.months.map(month => {
+                    const rows = planFact.data.filter(r => r.month === month)
+                    if (rows.length === 0) return null
+                    const isPast = month < currentMonth
+                    const isCurrent = month === currentMonth
+
+                    // Розділити на доходи і витрати
+                    const incomeRows = rows.filter(r => r.direction === 'Доходи')
+                    const expenseRows = rows.filter(r => r.direction === 'Витрати')
+                    const otherRows = rows.filter(r => r.direction !== 'Доходи' && r.direction !== 'Витрати')
+
+                    const totalPlanInc = incomeRows.reduce((s, r) => s + r.plan, 0)
+                    const totalFactInc = incomeRows.reduce((s, r) => s + r.fact, 0)
+                    const totalPlanExp = expenseRows.reduce((s, r) => s + r.plan, 0)
+                    const totalFactExp = expenseRows.reduce((s, r) => s + r.fact, 0)
+                    const totalPlan = totalPlanInc - totalPlanExp
+                    const totalFact = totalFactInc - totalFactExp
+
+                    const renderRows = (list, color) => list.map((r, i) => {
+                      const diff = r.fact - r.plan
+                      const pct = r.plan > 0 ? Math.round(r.fact / r.plan * 100) : r.fact > 0 ? 999 : 0
+                      return (
+                        <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ fontSize: 12, paddingLeft: 20 }}>
+                            {r.article || 'Без статті'}
+                            {r.planItems?.filter(Boolean).length > 0 && <div style={{ fontSize: 10, color: 'var(--text3)' }}>{r.planItems.filter(Boolean).join('; ').substring(0, 60)}</div>}
+                          </td>
+                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: r.plan > 0 ? color : 'var(--text3)' }}>{r.plan > 0 ? fmt(r.plan) : '—'}</td>
+                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 500, color: r.fact > 0 ? color : 'var(--text3)' }}>{r.fact > 0 ? fmt(r.fact) : '—'}</td>
+                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12, color: diff > 0 ? 'var(--green)' : diff < 0 ? 'var(--red)' : 'var(--text3)' }}>
+                            {r.plan > 0 || r.fact > 0 ? (diff >= 0 ? '+' : '') + fmt(diff) : '—'}
+                          </td>
+                          <td style={{ textAlign: 'right', fontSize: 11 }}>
+                            {r.plan > 0 && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+                                <div style={{ width: 40, height: 6, background: 'var(--surface2)', borderRadius: 3, overflow: 'hidden' }}>
+                                  <div style={{ width: Math.min(pct, 100) + '%', height: '100%', background: pct >= 90 ? 'var(--green)' : pct >= 50 ? 'var(--amber)' : 'var(--red)', borderRadius: 3 }} />
+                                </div>
+                                <span style={{ color: pct >= 90 ? 'var(--green)' : pct >= 50 ? 'var(--amber)' : 'var(--red)', fontWeight: 500 }}>{pct}%</span>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })
+
+                    return (
+                      <div key={month} style={{ marginBottom: 16 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                          <span style={{ fontSize: 14, fontWeight: 600 }}>{mLabel(month)}</span>
+                          {isPast && <span style={{ fontSize: 10, padding: '1px 8px', borderRadius: 6, background: 'var(--surface2)', color: 'var(--text3)' }}>минулий</span>}
+                          {isCurrent && <span style={{ fontSize: 10, padding: '1px 8px', borderRadius: 6, background: 'var(--blue-bg)', color: 'var(--blue)' }}>поточний</span>}
+                        </div>
+                        <div className="tbl-wrap">
+                          <table>
+                            <thead>
+                              <tr><th>Стаття</th><th style={{ textAlign: 'right' }}>План</th><th style={{ textAlign: 'right' }}>Факт</th><th style={{ textAlign: 'right' }}>Різниця</th><th style={{ textAlign: 'right', width: 80 }}>%</th></tr>
+                            </thead>
+                            <tbody>
+                              {incomeRows.length > 0 && <tr style={{ background: 'var(--green-bg)' }}><td colSpan={5} style={{ fontSize: 11, fontWeight: 600, color: 'var(--green)' }}>ДОХОДИ</td></tr>}
+                              {renderRows(incomeRows, 'var(--green)')}
+                              {expenseRows.length > 0 && <tr style={{ background: 'var(--red-bg)' }}><td colSpan={5} style={{ fontSize: 11, fontWeight: 600, color: 'var(--red)' }}>ВИТРАТИ</td></tr>}
+                              {renderRows(expenseRows, 'var(--red)')}
+                              {otherRows.length > 0 && renderRows(otherRows, 'var(--text2)')}
+                              <tr style={{ borderTop: '3px solid var(--border)', fontWeight: 700 }}>
+                                <td>Результат</td>
+                                <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{totalPlan >= 0 ? '+' : ''}{fmt(totalPlan)}</td>
+                                <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: totalFact >= 0 ? 'var(--green)' : 'var(--red)' }}>{totalFact >= 0 ? '+' : ''}{fmt(totalFact)}</td>
+                                <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: totalFact - totalPlan >= 0 ? 'var(--green)' : 'var(--red)' }}>{totalFact - totalPlan >= 0 ? '+' : ''}{fmt(totalFact - totalPlan)}</td>
+                                <td></td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
           </div>
         )
       })()}
