@@ -48,7 +48,7 @@ export default function Analytics({ user, onPage }) {
     const [{ data: bankTxs }, { data: cashTxs }, { data: docs }, { data: contractors }, { data: items }, { data: contrs }] = await Promise.all([
       supabase.from('bank_transactions').select('id, amount, amount_net, vat_amount, direction, date, article, contractor_id').eq('is_ignored', false).eq('is_validated', true).gte('date', from).lte('date', to),
       supabase.from('cash_transactions').select('amount, type'),
-      supabase.from('generated_docs').select('doc_type, total, status, contractor_id, contractor_name, bank_transaction_id'),
+      supabase.from('generated_docs').select('doc_type, doc_date, total, status, contractor_id, contractor_name, bank_transaction_id'),
       supabase.from('bank_transactions').select('amount, direction, contractor_id').eq('is_ignored', false).eq('is_validated', true),
       supabase.from('transaction_items').select('bank_transaction_id, amount, vat_rate'),
       supabase.from('contractors').select('id, is_vat_payer').eq('status', 'active'),
@@ -110,26 +110,38 @@ export default function Analytics({ user, onPage }) {
     const allDocs = docs || []
     const allTxs = contractors || []
 
-    // Групуємо по contractor_id — неоплачені документи (без bank_transaction_id)
+    // Групуємо по contractor_id — неоплачені документи з aging
+    const today = new Date()
     const contMap = {}
+    const agingBucket = (docDate) => {
+      if (!docDate) return '120+'
+      const days = Math.floor((today - new Date(docDate)) / 86400000)
+      if (days <= 30) return '0-30'
+      if (days <= 60) return '31-60'
+      if (days <= 90) return '61-90'
+      return '90+'
+    }
+    const emptyAging = () => ({ '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 })
+
     allDocs.forEach(d => {
       if (!d.contractor_id || d.status === 'cancelled') return
-      if (!contMap[d.contractor_id]) contMap[d.contractor_id] = { name: d.contractor_name, unpaidOut: 0, unpaidIn: 0, totalOut: 0, totalIn: 0 }
+      if (!contMap[d.contractor_id]) contMap[d.contractor_id] = { name: d.contractor_name, unpaidOut: 0, unpaidIn: 0, totalOut: 0, totalIn: 0, agingOut: emptyAging(), agingIn: emptyAging() }
       const amt = parseFloat(d.total) || 0
+      const bucket = agingBucket(d.doc_date)
       if (['waybill', 'serviceAct'].includes(d.doc_type)) {
         contMap[d.contractor_id].totalOut += amt
-        if (!d.bank_transaction_id) contMap[d.contractor_id].unpaidOut += amt
+        if (!d.bank_transaction_id) { contMap[d.contractor_id].unpaidOut += amt; contMap[d.contractor_id].agingOut[bucket] += amt }
       }
       if (d.doc_type === 'incomingWaybill') {
         contMap[d.contractor_id].totalIn += amt
-        if (!d.bank_transaction_id) contMap[d.contractor_id].unpaidIn += amt
+        if (!d.bank_transaction_id) { contMap[d.contractor_id].unpaidIn += amt; contMap[d.contractor_id].agingIn[bucket] += amt }
       }
     })
 
     const debtList = [], creditList = []
     Object.entries(contMap).forEach(([id, c]) => {
-      if (c.unpaidOut > 100) debtList.push({ id, name: c.name, amount: c.unpaidOut, docs: c.totalOut, paid: c.totalOut - c.unpaidOut })
-      if (c.unpaidIn > 100) creditList.push({ id, name: c.name, amount: c.unpaidIn, docs: c.totalIn, paid: c.totalIn - c.unpaidIn })
+      if (c.unpaidOut > 100) debtList.push({ id, name: c.name, amount: c.unpaidOut, docs: c.totalOut, paid: c.totalOut - c.unpaidOut, aging: c.agingOut })
+      if (c.unpaidIn > 100) creditList.push({ id, name: c.name, amount: c.unpaidIn, docs: c.totalIn, paid: c.totalIn - c.unpaidIn, aging: c.agingIn })
     })
     setDebtors(debtList.sort((a, b) => b.amount - a.amount))
     setCreditors(creditList.sort((a, b) => b.amount - a.amount))
@@ -295,75 +307,49 @@ export default function Analytics({ user, onPage }) {
       {/* ═══ ЗАБОРГОВАНІСТЬ ═══ */}
       {tab === 'debt' && (
         <div>
-          {debtors.length > 0 && (
-            <div className="card" style={{ marginBottom: 16 }}>
-              <div className="card-title" style={{ color: 'var(--amber)' }}>Дебіторська заборгованість (нам винні)</div>
+          {[
+            { data: debtors, title: 'Дебіторська заборгованість (нам винні)', color: 'var(--amber)', total: totalDebt, docLabel: 'Відвантажено' },
+            { data: creditors, title: 'Кредиторська заборгованість (ми винні)', color: 'var(--red)', total: totalCredit, docLabel: 'Отримано' },
+          ].filter(g => g.data.length > 0).map(g => (
+            <div key={g.title} className="card" style={{ marginBottom: 16 }}>
+              <div className="card-title" style={{ color: g.color }}>{g.title}</div>
               <div className="tbl-wrap">
                 <table>
                   <thead>
                     <tr>
                       <th>Контрагент</th>
-                      <th style={{ textAlign: 'right' }}>Відвантажено</th>
-                      <th style={{ textAlign: 'right' }}>Оплачено</th>
                       <th style={{ textAlign: 'right' }}>Борг</th>
+                      <th style={{ textAlign: 'right', fontSize: 11 }}>0-30 дн</th>
+                      <th style={{ textAlign: 'right', fontSize: 11 }}>31-60 дн</th>
+                      <th style={{ textAlign: 'right', fontSize: 11 }}>61-90 дн</th>
+                      <th style={{ textAlign: 'right', fontSize: 11, color: 'var(--red)' }}>90+ дн</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {debtors.map(d => (
+                    {g.data.map(d => (
                       <tr key={d.id} style={{ cursor: 'pointer', borderBottom: '1px solid var(--border)' }}
                         onClick={() => onPage?.('contractors', d.id)}>
                         <td style={{ fontWeight: 500 }}>{d.name}</td>
-                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(d.docs)} грн</td>
-                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--green)' }}>{fmt(d.paid)} грн</td>
-                        <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--amber)', fontVariantNumeric: 'tabular-nums' }}>{fmt(d.amount)} грн</td>
+                        <td style={{ textAlign: 'right', fontWeight: 600, color: g.color, fontVariantNumeric: 'tabular-nums' }}>{fmt(d.amount)}</td>
+                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--text2)' }}>{d.aging?.['0-30'] > 0 ? fmt(d.aging['0-30']) : '—'}</td>
+                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--text2)' }}>{d.aging?.['31-60'] > 0 ? fmt(d.aging['31-60']) : '—'}</td>
+                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--amber)' }}>{d.aging?.['61-90'] > 0 ? fmt(d.aging['61-90']) : '—'}</td>
+                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--red)', fontWeight: d.aging?.['90+'] > 0 ? 600 : 400 }}>{d.aging?.['90+'] > 0 ? fmt(d.aging['90+']) : '—'}</td>
                       </tr>
                     ))}
                     <tr style={{ fontWeight: 600, borderTop: '2px solid var(--border)' }}>
                       <td>Разом</td>
-                      <td style={{ textAlign: 'right' }}>{fmt(debtors.reduce((s, d) => s + d.docs, 0))} грн</td>
-                      <td style={{ textAlign: 'right', color: 'var(--green)' }}>{fmt(debtors.reduce((s, d) => s + d.paid, 0))} грн</td>
-                      <td style={{ textAlign: 'right', color: 'var(--amber)' }}>{fmt(totalDebt)} грн</td>
+                      <td style={{ textAlign: 'right', color: g.color }}>{fmt(g.total)}</td>
+                      <td style={{ textAlign: 'right' }}>{fmt(g.data.reduce((s, d) => s + (d.aging?.['0-30'] || 0), 0))}</td>
+                      <td style={{ textAlign: 'right' }}>{fmt(g.data.reduce((s, d) => s + (d.aging?.['31-60'] || 0), 0))}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--amber)' }}>{fmt(g.data.reduce((s, d) => s + (d.aging?.['61-90'] || 0), 0))}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--red)' }}>{fmt(g.data.reduce((s, d) => s + (d.aging?.['90+'] || 0), 0))}</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
             </div>
-          )}
-
-          {creditors.length > 0 && (
-            <div className="card" style={{ marginBottom: 16 }}>
-              <div className="card-title" style={{ color: 'var(--red)' }}>Кредиторська заборгованість (ми винні)</div>
-              <div className="tbl-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Контрагент</th>
-                      <th style={{ textAlign: 'right' }}>Отримано</th>
-                      <th style={{ textAlign: 'right' }}>Оплачено</th>
-                      <th style={{ textAlign: 'right' }}>Борг</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {creditors.map(d => (
-                      <tr key={d.id} style={{ cursor: 'pointer', borderBottom: '1px solid var(--border)' }}
-                        onClick={() => onPage?.('contractors', d.id)}>
-                        <td style={{ fontWeight: 500 }}>{d.name}</td>
-                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(d.docs)} грн</td>
-                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--green)' }}>{fmt(d.paid)} грн</td>
-                        <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--red)', fontVariantNumeric: 'tabular-nums' }}>{fmt(d.amount)} грн</td>
-                      </tr>
-                    ))}
-                    <tr style={{ fontWeight: 600, borderTop: '2px solid var(--border)' }}>
-                      <td>Разом</td>
-                      <td style={{ textAlign: 'right' }}>{fmt(creditors.reduce((s, d) => s + d.docs, 0))} грн</td>
-                      <td style={{ textAlign: 'right', color: 'var(--green)' }}>{fmt(creditors.reduce((s, d) => s + d.paid, 0))} грн</td>
-                      <td style={{ textAlign: 'right', color: 'var(--red)' }}>{fmt(totalCredit)} грн</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+          ))}
 
           {debtors.length === 0 && creditors.length === 0 && (
             <div className="card">
