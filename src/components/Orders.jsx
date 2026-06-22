@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { supabase } from '../lib/supabase'
 import { fmtInt as fmt } from '../lib/fmt'
 import { STATUS_LABELS, STATUS_COLORS, getDocLabel, DOCUMENT_TYPES } from '../lib/docgen'
+
+const DocGenModal = lazy(() => import('./DocGenModal'))
 
 const KANBAN_COLUMNS = [
   { id: 'draft', label: 'Чернетка', icon: 'ti-file-text' },
@@ -21,6 +23,9 @@ export default function Orders({ user }) {
   const [filter, setFilter] = useState('active') // active | all | cancelled
   const [search, setSearch] = useState('')
   const [dragItem, setDragItem] = useState(null)
+  const [selected, setSelected] = useState(null)
+  const [showDocGen, setShowDocGen] = useState(false)
+  const [docGenInit, setDocGenInit] = useState(null)
 
   useEffect(() => { loadOrders() }, [])
 
@@ -164,9 +169,10 @@ export default function Orders({ user }) {
                       <div key={order.id}
                         draggable
                         onDragStart={e => handleDragStart(e, order)}
+                        onClick={() => setSelected(order)}
                         style={{
                           background: 'var(--surface)', borderRadius: 10, padding: '10px 12px',
-                          border: '1px solid var(--border)', cursor: 'grab',
+                          border: selected?.id === order.id ? '2px solid var(--blue)' : '1px solid var(--border)', cursor: 'pointer',
                           borderLeft: `3px solid ${isPurchase ? 'var(--red)' : 'var(--green)'}`,
                           transition: 'box-shadow .15s',
                         }}
@@ -238,7 +244,7 @@ export default function Orders({ user }) {
                 const isPurchase = o.doc_type === 'purchaseOrder'
                 const sc = STATUS_COLORS[o.status] || STATUS_COLORS.draft
                 return (
-                  <tr key={o.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <tr key={o.id} style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }} onClick={() => setSelected(o)}>
                     <td style={{ fontSize: 13, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{o.doc_date}</td>
                     <td>
                       <span style={{
@@ -264,6 +270,96 @@ export default function Orders({ user }) {
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Order detail panel */}
+      {selected && (() => {
+        const items = typeof selected.items === 'string' ? JSON.parse(selected.items) : (selected.items || [])
+        const isPurchase = selected.doc_type === 'purchaseOrder'
+        const sc = STATUS_COLORS[selected.status] || STATUS_COLORS.draft
+        return (
+          <div className="modal-bg" onClick={e => e.target === e.currentTarget && setSelected(null)}>
+            <div className="modal" style={{ maxWidth: 700 }}>
+              <div className="modal-header">
+                <h2>{getDocLabel(selected.doc_type)} №{selected.doc_number}</h2>
+                <button className="modal-close" onClick={() => setSelected(null)} aria-label="Закрити">×</button>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16, fontSize: 13 }}>
+                <div><span style={{ color: 'var(--text3)' }}>Контрагент:</span> <strong>{selected.contractor_name}</strong></div>
+                <div><span style={{ color: 'var(--text3)' }}>Дата:</span> <strong>{selected.doc_date}</strong></div>
+                <div><span style={{ color: 'var(--text3)' }}>Тип:</span> <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 500, background: isPurchase ? 'var(--red-bg)' : 'var(--green-bg)', color: isPurchase ? 'var(--red)' : 'var(--green)' }}>{isPurchase ? 'Закупка' : 'Продаж'}</span></div>
+                <div><span style={{ color: 'var(--text3)' }}>Статус:</span> <select style={{ fontSize: 12, padding: '3px 8px', borderRadius: 6, border: '1px solid var(--border)', background: sc.bg, color: sc.color, fontFamily: 'inherit', cursor: 'pointer', marginLeft: 4 }}
+                  value={selected.status || 'draft'} onChange={e => { updateStatus(selected.id, e.target.value); setSelected(s => ({...s, status: e.target.value})) }}>
+                  {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select></div>
+              </div>
+
+              {/* Items table */}
+              {items.length > 0 && (
+                <div className="tbl-wrap" style={{ marginBottom: 16 }}>
+                  <table>
+                    <thead><tr><th>Назва</th><th style={{ textAlign: 'right' }}>К-сть</th><th style={{ textAlign: 'right' }}>Ціна</th><th style={{ textAlign: 'right' }}>Сума</th></tr></thead>
+                    <tbody>
+                      {items.map((it, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ fontSize: 13 }}>{it.name}</td>
+                          <td style={{ textAlign: 'right', fontSize: 13 }}>{it.quantity} {it.unit || 'шт'}</td>
+                          <td style={{ textAlign: 'right', fontSize: 13 }}>{fmt(it.unitPrice)} грн</td>
+                          <td style={{ textAlign: 'right', fontWeight: 500, fontSize: 13 }}>{fmt(it.amount || it.quantity * it.unitPrice)} грн</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div style={{ fontSize: 16, fontWeight: 700, textAlign: 'right', marginBottom: 16 }}>
+                Разом: {fmt(selected.total)} грн
+              </div>
+
+              {selected.notes && <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 16, padding: '8px 12px', background: 'var(--surface2)', borderRadius: 8 }}>{selected.notes}</div>}
+
+              {/* Action buttons */}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => {
+                  setDocGenInit({
+                    doc_type: isPurchase ? 'incomingWaybill' : 'waybill',
+                    items, _fromOrder: selected.doc_number, _parentDocId: selected.id,
+                    contractor_id: selected.contractor_id,
+                  })
+                  setShowDocGen(true)
+                }}>
+                  <i className="ti ti-truck-delivery" style={{ fontSize: 14 }} />
+                  {isPurchase ? 'Створити прихідну накладну' : 'Створити видаткову накладну'}
+                </button>
+                <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => {
+                  setDocGenInit({
+                    doc_type: 'invoice', items, _fromOrder: selected.doc_number, _parentDocId: selected.id,
+                    contractor_id: selected.contractor_id,
+                  })
+                  setShowDocGen(true)
+                }}>
+                  <i className="ti ti-file-invoice" style={{ fontSize: 14 }} />
+                  Створити рахунок
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* DocGenModal */}
+      {showDocGen && docGenInit && (
+        <Suspense fallback={null}>
+          <DocGenModal
+            contractor={{ id: docGenInit.contractor_id, name: selected?.contractor_name }}
+            userId={user?.id}
+            editDoc={{ ...docGenInit, id: null, doc_number: '' }}
+            onClose={() => { setShowDocGen(false); setDocGenInit(null) }}
+            onSaved={() => { setShowDocGen(false); setDocGenInit(null); setSelected(null); loadOrders() }}
+          />
+        </Suspense>
       )}
     </div>
   )
