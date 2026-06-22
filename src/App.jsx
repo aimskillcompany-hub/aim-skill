@@ -199,8 +199,6 @@ function Settings({ user }) {
   const [vkEmail, setVkEmail] = useState('')
   const [vkPass, setVkPass] = useState('')
   const [vkSaved, setVkSaved] = useState(false)
-  const [taxToken, setTaxToken] = useState('')
-  const [taxSaved, setTaxSaved] = useState(false)
   const [companyForm, setCompanyForm] = useState({})
   const [companySaved, setCompanySaved] = useState(false)
 
@@ -209,7 +207,6 @@ function Settings({ user }) {
     const e = sessionStorage.getItem('vkursi_email') || ''
     const p = sessionStorage.getItem('vkursi_password') || ''
     setVkEmail(e); setVkPass(p)
-    setTaxToken(sessionStorage.getItem('tax_api_token') || '')
     // Завантажити реквізити (async — спочатку Supabase, fallback localStorage)
     import('./lib/companyConfig').then(async m => setCompanyForm(await m.getCompany()))
   }, [])
@@ -319,30 +316,6 @@ function Settings({ user }) {
       )}
 
       {tab === 'integrations' && (<>
-        <div className="card" style={{ marginBottom: 16 }}>
-          <div style={{ fontWeight:600, fontSize:15, marginBottom:16, display:'flex', alignItems:'center', gap:8 }}>
-            <i className="ti ti-receipt-tax" style={{ fontSize:18, color:'var(--green)' }} />
-            Електронний кабінет ДПС — дані про контрагентів
-          </div>
-          <p style={{ fontSize:13, color:'var(--text2)', marginBottom:16 }}>
-            Безкоштовний API податкової для перевірки контрагентів за ЄДРПОУ (назва, адреса, ПДВ).
-            Отримайте токен у <a href="https://cabinet.tax.gov.ua" target="_blank" rel="noreferrer" style={{ color:'var(--blue)' }}>Електронному кабінеті</a> → Налаштування → Токени відкритої частини.
-          </p>
-          <div className="form-grid">
-            <div className="form-group full">
-              <label>Токен API податкової</label>
-              <input className="form-input" value={taxToken} onChange={e => setTaxToken(e.target.value)} placeholder="Вставте токен з Електронного кабінету ДПС" />
-            </div>
-          </div>
-          <div style={{ display:'flex', gap:8, marginTop:12, alignItems:'center' }}>
-            <button className="btn btn-primary" onClick={() => {
-              sessionStorage.setItem('tax_api_token', taxToken)
-              setTaxSaved(true); setTimeout(() => setTaxSaved(false), 3000)
-            }} disabled={!taxToken}>Зберегти</button>
-            {taxSaved && <span style={{ fontSize:13, color:'var(--green)' }}>Збережено!</span>}
-          </div>
-        </div>
-
         <div className="card">
           <div style={{ fontWeight:600, fontSize:15, marginBottom:16, display:'flex', alignItems:'center', gap:8 }}>
             <i className="ti ti-building" style={{ fontSize:18, color:'var(--blue)' }} />

@@ -1,0 +1,383 @@
+// AiM Skill — Database Schema
+// Generated: 2026-06-19
+// Open at: https://dbdiagram.io/d
+
+// ═══════════════════════════════════════════
+// СИСТЕМА
+// ═══════════════════════════════════════════
+
+Table profiles [note: 'Користувачі системи (синхронізовано з Supabase Auth)'] {
+  id uuid [pk, note: 'ID = auth.uid()']
+  email text [note: 'Email користувача']
+  full_name text [note: 'Повне імʼя']
+  role text [default: 'viewer', note: 'admin / accountant / manager / viewer']
+  created_at timestamptz [default: `now()`]
+}
+
+Table articles [note: 'Статті доходів та витрат для P&L'] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  name text [not null, note: 'Назва статті (унікальна)']
+  type text [not null, note: 'income / expense / transfer']
+  is_active boolean [default: true]
+  sort_order integer [default: 0]
+  pl_level text [default: 'none', note: 'revenue / cogs / opex / other_income / below_line / transfer / none']
+  created_at timestamptz [default: `now()`]
+}
+
+// ═══════════════════════════════════════════
+// КОНТРАГЕНТИ
+// ═══════════════════════════════════════════
+
+Table contractors [note: 'Реєстр контрагентів (клієнти, постачальники)'] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  name text [not null, note: 'Повна юридична назва']
+  short_name text [note: 'Скорочена назва (ТОВ/АТ + назва)']
+  edrpou text [note: 'Код ЄДРПОУ (8 цифр) або РНОКПП (10 цифр)']
+  type text [default: 'other', note: 'client / supplier / other']
+  legal_form text [note: 'ТОВ / АТ / ФОП / ПП']
+  tax_system text [note: 'Загальна / Спрощена гр.1-4']
+  is_vat_payer boolean [default: false]
+  vat_certificate text [note: 'Номер свідоцтва ПДВ (= ІПН 12 цифр)']
+  email text
+  phone text
+  phone2 text
+  contact_person text [note: 'ЗАСТАРІЛЕ — замінити на contractor_contacts']
+  contact_position text [note: 'ЗАСТАРІЛЕ — замінити на contractor_contacts']
+  website text
+  address text [note: 'ДУБЛЮЄТЬСЯ з legal_address']
+  legal_address text [note: 'Юридична адреса']
+  actual_address text [note: 'Фактична адреса']
+  delivery_address text [note: 'Адреса доставки (для документів)']
+  city text
+  region text
+  postal_code text
+  iban text
+  bank_name text
+  mfo text
+  currency text [default: 'UAH']
+  default_article text [note: 'Стаття за замовчуванням (текст, не FK)']
+  default_direction text [note: 'Напрям за замовчуванням']
+  notes text
+  status text [default: 'active', note: 'active / archived']
+  total_income numeric [default: 0, note: 'КЕШОВАНЕ — синхронізується з bank_transactions']
+  total_expense numeric [default: 0, note: 'КЕШОВАНЕ — синхронізується з bank_transactions']
+  operations_count integer [default: 0, note: 'КЕШОВАНЕ']
+  last_operation_date date [note: 'КЕШОВАНЕ']
+  ipn text [note: 'Індивідуальний податковий номер']
+  registration_date date [note: 'Дата реєстрації (з Vkursi)']
+  primary_kved text [note: 'Основний КВЕД (з Vkursi)']
+  director text [note: 'ЗАСТАРІЛЕ — замінити на contractor_contacts.is_signer']
+  director_position text [note: 'ЗАСТАРІЛЕ — замінити на contractor_contacts']
+  founders text [note: 'Засновники (текст, з Vkursi)']
+  capital numeric [note: 'Статутний капітал (з Vkursi)']
+  state text [note: 'Стан реєстрації (з Vkursi)']
+  court_cases_count integer [note: 'Судових справ (з Vkursi)']
+  enforcement_count integer [note: 'Виконавчих проваджень (з Vkursi)']
+  express_score jsonb [note: 'Express Score (з Vkursi)']
+  vkursi_data jsonb [note: 'Сирі дані Vkursi (керівники, КВЕДи, філії)']
+  vkursi_updated_at timestamptz [note: 'Дата останнього оновлення з Vkursi']
+  created_by uuid [ref: > profiles.id]
+  created_at timestamptz [default: `now()`]
+}
+
+Table contractor_contacts [note: 'Контактні особи контрагента (кілька на одного)'] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  contractor_id uuid [not null, ref: > contractors.id]
+  name text [not null, note: 'ПІБ']
+  position text [note: 'Посада']
+  phone text
+  email text
+  is_signer boolean [default: false, note: 'Підставляти в документи як підписанта']
+  notes text
+  created_at timestamptz [default: `now()`]
+}
+
+Table contractor_contracts [note: 'Договори з контрагентами'] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  contractor_id uuid [not null, ref: > contractors.id]
+  number text [not null, note: 'Номер договору']
+  date date [note: 'Дата договору']
+  subject text [note: 'Предмет договору']
+  status text [default: 'active', note: 'active / completed / cancelled']
+  notes text
+  created_at timestamptz [default: `now()`]
+}
+
+// ═══════════════════════════════════════════
+// ФІНАНСИ
+// ═══════════════════════════════════════════
+
+Table transactions [note: 'ЗАСТАРІЛЕ — замінено на bank_transactions. Не використовується в UI.'] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  project_id uuid [ref: > projects.id]
+  date date [not null]
+  contractor text [not null, note: 'ДУБЛЮЄТЬСЯ — текст замість FK']
+  edrpou text [note: 'ДУБЛЮЄТЬСЯ з contractors.edrpou']
+  doc_type text
+  doc_number text
+  amount numeric [not null]
+  vat_amount numeric [default: 0]
+  amount_no_vat numeric
+  direction text [not null, note: 'Доходи / Витрати / ПФД / Інше']
+  article text [note: 'Стаття (текст, не FK до articles)']
+  description text
+  contractor_id uuid [ref: > contractors.id]
+  created_by uuid [ref: > profiles.id]
+  created_at timestamptz [default: `now()`]
+}
+
+Table bank_transactions [note: 'Банківські операції — ОСНОВНА ТАБЛИЦЯ фінансів'] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  bank_name text [note: 'Назва банку']
+  account text [note: 'Номер рахунку']
+  date date [not null]
+  amount numeric [not null, note: 'Знак визначає direction']
+  counterparty text [note: 'ДУБЛЮЄТЬСЯ з contractors.name']
+  description text [note: 'Призначення платежу']
+  reference text [note: 'Унікальний ідентифікатор з банку']
+  direction text [note: 'Доходи / Витрати / ПФД / Інше']
+  article text [note: 'Стаття (текст, не FK до articles)']
+  edrpou text [note: 'ДУБЛЮЄТЬСЯ з contractors.edrpou']
+  doc_type text [note: 'Тип первинного документа']
+  doc_number text [note: 'Номер первинного документа']
+  is_matched boolean [default: false]
+  is_ignored boolean [default: false]
+  is_verified boolean [default: false]
+  matched_transaction_id uuid [ref: > transactions.id, note: 'ЗАСТАРІЛЕ — звʼязок зі старою таблицею']
+  contractor_id uuid [ref: > contractors.id]
+  project_id uuid [ref: > projects.id]
+  imported_by uuid [ref: > profiles.id]
+  imported_at timestamptz [default: `now()`]
+}
+
+Table transaction_items [note: 'Позиції (рядки) транзакцій — товари/послуги'] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  transaction_id uuid [ref: > transactions.id, note: 'ЗАСТАРІЛЕ — звʼязок зі старою таблицею']
+  bank_transaction_id uuid [ref: > bank_transactions.id, note: 'Основний FK']
+  name text [not null, note: 'Назва товару/послуги']
+  quantity numeric
+  unit text
+  unit_price numeric
+  amount numeric
+  vat_rate numeric [default: 20, note: '20 / 7 / 0']
+  product_id uuid [note: 'FK до products (не enforced в БД)']
+  project_id uuid [ref: > projects.id]
+  created_at timestamptz [default: `now()`]
+}
+
+Table cash_transactions [note: 'Касові операції (готівка)'] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  date date [not null]
+  amount numeric [not null]
+  type text [not null, note: 'income / expense / advance_out / advance_return']
+  article text [note: 'Стаття (текст, не FK)']
+  description text
+  counterparty text [note: 'ДУБЛЮЄТЬСЯ з contractors.name']
+  advance_person text [note: 'Підзвітна особа']
+  advance_deadline date
+  advance_parent_id uuid [ref: > cash_transactions.id, note: 'Батьківська авансова операція']
+  contractor_id uuid [ref: > contractors.id]
+  project_id uuid [ref: > projects.id]
+  created_by uuid [ref: > profiles.id]
+  created_at timestamptz [default: `now()`]
+}
+
+// ═══════════════════════════════════════════
+// ДОКУМЕНТИ
+// ═══════════════════════════════════════════
+
+Table documents [note: 'Завантажені файли документів (PDF, фото)'] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  transaction_id uuid [ref: > transactions.id, note: 'ЗАСТАРІЛЕ']
+  bank_transaction_id uuid [ref: > bank_transactions.id, note: 'Основний FK']
+  cash_transaction_id uuid [ref: > cash_transactions.id]
+  project_id uuid [ref: > projects.id]
+  file_name text [not null]
+  file_path text [not null, note: 'Шлях у Supabase Storage']
+  file_type text [note: 'MIME type']
+  file_size bigint
+  doc_role text [default: 'incoming', note: 'incoming / outgoing']
+  uploaded_by uuid [ref: > profiles.id]
+  created_at timestamptz [default: `now()`]
+}
+
+Table generated_docs [note: 'Згенеровані документи (рахунки, накладні, акти)'] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  doc_type text [not null, note: 'invoice / waybill / serviceAct / incomingWaybill']
+  doc_number text [not null, note: 'Авто-нумерація: РФ-0001, ВН-0001, АКТ-0001, ПН-0001']
+  doc_date date [not null, default: `CURRENT_DATE`]
+  status text [default: 'draft', note: 'draft / sent / paid / cancelled']
+  contractor_id uuid [ref: > contractors.id]
+  contractor_name text [note: 'ДУБЛЮЄТЬСЯ з contractors.name (для швидкого доступу)']
+  bank_transaction_id uuid [ref: > bank_transactions.id, note: 'Привʼязка до оплати']
+  parent_doc_id uuid [ref: > generated_docs.id, note: 'Ланцюжок: рахунок → видаткова']
+  items jsonb [not null, default: '[]', note: 'Позиції [{name, quantity, unit, unitPrice, amount, vatRate}]']
+  subtotal numeric
+  vat_amount numeric
+  total numeric
+  notes text
+  contract_num text [note: 'Номер договору (текст, не FK до contractor_contracts)']
+  contract_date date [note: 'Дата договору']
+  payment_due text [note: 'Термін оплати (тільки для рахунків)']
+  city text [default: 'м. Київ']
+  created_by uuid [ref: > profiles.id]
+  created_at timestamptz [default: `now()`]
+}
+
+// ═══════════════════════════════════════════
+// СКЛАД
+// ═══════════════════════════════════════════
+
+Table products [note: 'Товари, послуги, витратні матеріали'] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  name text [not null]
+  sku text [note: 'Артикул']
+  category text
+  unit text [default: 'шт']
+  buy_price numeric [note: 'Остання ціна закупки']
+  sell_price numeric [note: 'Ціна продажу']
+  min_stock numeric [default: 0, note: 'Мінімальний залишок для сповіщення']
+  current_stock numeric [default: 0, note: 'ЗАСТАРІЛЕ — використовувати VIEW product_stock.computed_stock']
+  status text [default: 'active', note: 'active / archived']
+  product_type text [default: 'goods', note: 'goods / service / expense']
+  is_verified boolean [default: false, note: 'Перевірено вручну']
+  uktzed text [note: 'Код УКТЗЕД']
+  manufacturer text [note: 'Виробник']
+  notes text
+  created_by uuid [ref: > profiles.id]
+  created_at timestamptz [default: `now()`]
+}
+
+Table product_aliases [note: 'Альтернативні назви продуктів (для AI-матчінгу)'] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  product_id uuid [not null, ref: > products.id]
+  alias text [not null, note: 'Альтернативна назва']
+  normalized text [not null, unique, note: 'Нормалізована (відсортовані слова, lowercase)']
+  created_at timestamptz [default: `now()`]
+}
+
+Table stock_movements [note: 'Складські рухи (прихід/видача)'] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  product_id uuid [not null, ref: > products.id]
+  type text [not null, note: 'in / out']
+  quantity numeric [not null]
+  price numeric [note: 'Ціна за одиницю']
+  total numeric [note: 'Загальна сума']
+  cost_price numeric [note: 'FIFO собівартість (для OUT рухів)']
+  bank_transaction_id uuid [ref: > bank_transactions.id, note: 'Може бути null для документів з відсрочкою']
+  transaction_item_id uuid [ref: > transaction_items.id]
+  document_id uuid [ref: > documents.id]
+  date date [not null]
+  description text
+  source text [note: 'manual / auto / document / sync']
+  is_verified boolean [default: false]
+  created_by uuid [ref: > profiles.id]
+  created_at timestamptz [default: `now()`]
+}
+
+Table bundle_items [note: 'Компоненти бандлів/комплектів (не використовується активно)'] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  product_id uuid [not null, ref: > products.id, note: 'Готовий виріб']
+  component_id uuid [not null, ref: > products.id, note: 'Компонент']
+  quantity numeric [not null, default: 1]
+  created_at timestamptz [default: `now()`]
+}
+
+Table assemblies [note: 'Складські збірки (комплектація з компонентів)'] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  name text [not null, note: 'Назва готового виробу']
+  result_product_id uuid [ref: > products.id, note: 'FK до готового продукту']
+  quantity numeric [not null, default: 1]
+  total_cost numeric [note: 'Загальна собівартість збірки']
+  notes text
+  assembled_at date [not null, default: `CURRENT_DATE`]
+  created_by uuid [ref: > profiles.id]
+  created_at timestamptz [default: `now()`]
+}
+
+Table assembly_items [note: 'Компоненти збірки'] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  assembly_id uuid [not null, ref: > assemblies.id]
+  product_id uuid [not null, ref: > products.id]
+  quantity numeric [not null]
+  cost_price numeric [note: 'FIFO собівартість компонента']
+  total numeric
+  created_at timestamptz [default: `now()`]
+}
+
+// ═══════════════════════════════════════════
+// ПРОЄКТИ ТА ПЛАНУВАННЯ
+// ═══════════════════════════════════════════
+
+Table projects [note: 'Проєкти (для групування операцій)'] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  name text [not null]
+  description text
+  status text [default: 'active', note: 'active / completed / archived']
+  budget numeric
+  contractor text [note: 'ДУБЛЮЄТЬСЯ — текст замість FK']
+  edrpou text [note: 'ДУБЛЮЄТЬСЯ з contractors.edrpou']
+  start_date date
+  project_id_display text [note: 'Відображуваний номер проєкту']
+  seq_number integer [note: 'Порядковий номер']
+  created_by uuid [ref: > profiles.id]
+  created_at timestamptz [default: `now()`]
+}
+
+Table plans [note: 'Бюджетне планування (план-факт)'] {
+  id uuid [pk, default: `gen_random_uuid()`]
+  year_month text [note: 'Формат: 2026-01']
+  direction text [not null, note: 'Доходи / Витрати']
+  article text [note: 'Стаття (текст, не FK)']
+  amount numeric [not null]
+  description text
+  contractor text [note: 'ДУБЛЮЄТЬСЯ — текст замість FK']
+  planned_date date
+  is_template boolean [default: false]
+  template_from text
+  template_to text
+  project_id uuid [ref: > projects.id]
+  created_by uuid [ref: > profiles.id]
+  created_at timestamptz [default: `now()`]
+}
+
+// ═══════════════════════════════════════════
+// ГРУПИ ТАБЛИЦЬ
+// ═══════════════════════════════════════════
+
+TableGroup "Система" {
+  profiles
+  articles
+}
+
+TableGroup "Контрагенти" {
+  contractors
+  contractor_contacts
+  contractor_contracts
+}
+
+TableGroup "Фінанси" {
+  bank_transactions
+  transaction_items
+  cash_transactions
+  transactions
+}
+
+TableGroup "Документи" {
+  documents
+  generated_docs
+}
+
+TableGroup "Склад" {
+  products
+  product_aliases
+  stock_movements
+  bundle_items
+  assemblies
+  assembly_items
+}
+
+TableGroup "Проєкти" {
+  projects
+  plans
+}

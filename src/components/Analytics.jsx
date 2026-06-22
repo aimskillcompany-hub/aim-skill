@@ -24,7 +24,6 @@ export default function Analytics({ user, onPage }) {
   const [debtors, setDebtors] = useState([])
   const [creditors, setCreditors] = useState([])
   const [chartData, setChartData] = useState([])
-  const [forecast, setForecast] = useState(null)
   const [loading, setLoading] = useState(true)
 
   // Period presets
@@ -47,11 +46,10 @@ export default function Analytics({ user, onPage }) {
 
   const loadOverview = async () => {
     setLoading(true)
-    const [{ data: bankTxs }, { data: cashTxs }, { data: docs }, { data: contractors }, { data: items }, { data: contrs }] = await Promise.all([
+    const [{ data: bankTxs }, { data: cashTxs }, { data: docs }, { data: items }, { data: contrs }] = await Promise.all([
       supabase.from('bank_transactions').select('id, amount, amount_net, vat_amount, direction, date, article, contractor_id').eq('is_ignored', false).eq('is_validated', true).gte('date', from).lte('date', to),
       supabase.from('cash_transactions').select('amount, type'),
       supabase.from('generated_docs').select('doc_type, doc_date, total, status, contractor_id, contractor_name, bank_transaction_id'),
-      supabase.from('bank_transactions').select('amount, direction, contractor_id').eq('is_ignored', false).eq('is_validated', true),
       supabase.from('transaction_items').select('bank_transaction_id, amount, vat_rate'),
       supabase.from('contractors').select('id, is_vat_payer').eq('status', 'active'),
     ])
@@ -110,7 +108,6 @@ export default function Analytics({ user, onPage }) {
 
     // Дебіторка / Кредиторка по контрагентах
     const allDocs = docs || []
-    const allTxs = contractors || []
 
     // Групуємо по contractor_id — неоплачені документи з aging
     const today = new Date()
@@ -172,35 +169,6 @@ export default function Analytics({ user, onPage }) {
     chart.forEach(m => { m.net = m.revenue - m.expenses })
     setChartData(chart)
 
-    // Cash Flow Forecast
-    // Баланс = сума доходів - сума витрат (не просто sum amount)
-    const bankIncome = (allTxs || []).filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
-    const bankExpense = (allTxs || []).filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
-    const bankBalance = bankIncome - bankExpense
-    const cashBal = (cashTxs || []).reduce((s, t) => s + (CASH_DIR[t.type] || 0) * (t.amount || 0), 0)
-    const currentBalance = bankBalance + cashBal
-
-    const totalDebtors = debtList.reduce((s, d) => s + d.amount, 0)
-    const totalCreditors = creditList.reduce((s, d) => s + d.amount, 0)
-
-    // Замовлення в роботі (confirmed/in_progress)
-    const activeOrders = allDocs.filter(d =>
-      (d.doc_type === 'purchaseOrder' || d.doc_type === 'salesOrder') &&
-      ['confirmed', 'in_progress'].includes(d.status)
-    )
-    const ordersIncome = activeOrders.filter(d => d.doc_type === 'salesOrder').reduce((s, d) => s + (parseFloat(d.total) || 0), 0)
-    const ordersExpense = activeOrders.filter(d => d.doc_type === 'purchaseOrder').reduce((s, d) => s + (parseFloat(d.total) || 0), 0)
-
-    // Середньомісячний потік за останні 3 місяці з bankTxs (має дати)
-    const threeMonthsAgo = new Date(); threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
-    const threeMonthsStr = threeMonthsAgo.toISOString().split('T')[0]
-    const { data: recentBank } = await supabase.from('bank_transactions')
-      .select('amount, direction, date').eq('is_ignored', false).eq('is_validated', true)
-      .gte('date', threeMonthsStr)
-    const recentIncome = (recentBank || []).filter(t => t.direction === 'Доходи').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
-    const recentExpense = (recentBank || []).filter(t => t.direction === 'Витрати').reduce((s, t) => s + Math.abs(t.amount || 0), 0)
-    const monthsCount = Math.max(1, Math.ceil((Date.now() - threeMonthsAgo.getTime()) / (30 * 86400000)))
-    const avgMonthlyNet = (recentIncome - recentExpense) / monthsCount
 
     setLoading(false)
   }
@@ -212,7 +180,6 @@ export default function Analytics({ user, onPage }) {
     { id: 'overview', label: 'Огляд', icon: 'ti-chart-dots-3' },
     { id: 'pl', label: 'P&L', icon: 'ti-report-analytics' },
     { id: 'budget', label: 'Бюджет і прогноз', icon: 'ti-calendar-dollar' },
-    { id: 'cashflow', label: 'Грошовий потік', icon: 'ti-cash' },
     { id: 'debt', label: 'Заборгованість', icon: 'ti-scale' },
   ]
 
@@ -338,7 +305,6 @@ export default function Analytics({ user, onPage }) {
       {tab === 'budget' && <Budget user={user} />}
 
       {/* ═══ ГРОШОВИЙ ПОТІК ═══ */}
-      {tab === 'cashflow' && <Reports initialTab="cf" />}
 
 
       {/* ═══ ЗАБОРГОВАНІСТЬ ═══ */}
