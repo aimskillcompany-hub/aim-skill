@@ -33,7 +33,7 @@ export default function Documents() {
   const load = async () => {
     setLoading(true)
     const { data } = await supabase.from('documents')
-      .select('id, type, file_name, amount, vat_amount, is_signed, direction, created_at, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)')
+      .select('id, type, doc_number, file_name, amount, vat_amount, is_signed, direction, created_at, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)')
       .order('created_at', { ascending: false }).limit(500)
     setRows(data || [])
     setLoading(false)
@@ -78,11 +78,12 @@ export default function Documents() {
         {loading ? <p style={{ color: 'var(--text3)' }}>Завантаження…</p> : (
           <div className="tbl-wrap" style={{ border: 'none' }}>
             <table>
-              <thead><tr><th>Тип</th><th>Контрагент</th><th>Файл</th><th style={{ textAlign: 'right' }}>Сума</th><th>ПДВ</th><th>Підпис</th><th>Дата</th><th></th></tr></thead>
+              <thead><tr><th>Тип</th><th>№</th><th>Контрагент</th><th>Файл</th><th style={{ textAlign: 'right' }}>Сума</th><th>ПДВ</th><th>Підпис</th><th>Дата</th><th></th></tr></thead>
               <tbody>
                 {filtered.map(d => (
                   <tr key={d.id}>
                     <td style={{ fontSize: 13 }}>{getDocType(d.type)?.label || d.type || '—'}</td>
+                    <td style={{ fontSize: 13, color: 'var(--text2)' }}>{d.doc_number || '—'}</td>
                     <td><div className="trunc">{d.contractors?.name || '—'}</div></td>
                     <td><div className="trunc" style={{ color: 'var(--text2)', fontSize: 12 }} title={d.file_name}>{d.file_name || '—'}</div></td>
                     <td style={{ textAlign: 'right' }}>{d.amount ? fmt(d.amount) : '—'}</td>
@@ -96,7 +97,7 @@ export default function Documents() {
                     </td>
                   </tr>
                 ))}
-                {filtered.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Документів немає</td></tr>}
+                {filtered.length === 0 && <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Документів немає</td></tr>}
               </tbody>
             </table>
           </div>
@@ -146,6 +147,7 @@ function OcrModal({ user, existingDoc, onClose, onSaved }) {
       setForm({
         type: defType,
         file_name: existingDoc?.file_name || arr[0]?.name || '',
+        doc_number: existingDoc?.doc_number || data.docNumber || '',
         contractor_id: m?.contractor.id || null,
         contractorName: m?.contractor.name || data.contractor || '',
         edrpou: data.edrpou || '',
@@ -165,7 +167,7 @@ function OcrModal({ user, existingDoc, onClose, onSaved }) {
       // Існуючий документ — лише оновлюємо метадані (без повторного завантаження
       // файлу і без створення складських рухів, щоб не дублювати).
       if (existingDoc) {
-        const { error } = await supabase.from('documents').update({
+        const { data, error } = await supabase.from('documents').update({
           type: form.type,
           contractor_id: form.contractor_id || null,
           amount: Number(form.amount) || null,
@@ -173,9 +175,11 @@ function OcrModal({ user, existingDoc, onClose, onSaved }) {
           direction: dirFromType(form.type),
           is_signed: form.is_signed,
           file_name: form.file_name?.trim() || existingDoc.file_name,
+          doc_number: form.doc_number?.trim() || null,
           ocr_data: form,
-        }).eq('id', existingDoc.id)
+        }).eq('id', existingDoc.id).select('id')
         if (error) throw error
+        if (!data?.length) throw new Error('Документ не оновлено (немає прав UPDATE). Запусти migrations/004 у Supabase.')
         onSaved(); return
       }
       // Новий документ — завантажити оригінал у Storage
@@ -189,6 +193,7 @@ function OcrModal({ user, existingDoc, onClose, onSaved }) {
       }
       const { data: doc, error } = await supabase.from('documents').insert({
         type: form.type,
+        doc_number: form.doc_number?.trim() || null,
         contractor_id: form.contractor_id || null,
         amount: Number(form.amount) || null,
         vat_amount: Number(form.vat_amount) || 0,
@@ -252,6 +257,7 @@ function OcrModal({ user, existingDoc, onClose, onSaved }) {
         {form && (
           <div className="form-grid">
             <div className="form-group full"><label>Назва файлу</label><input className="form-input" value={form.file_name || ''} onChange={e => setForm(f => ({ ...f, file_name: e.target.value }))} /></div>
+            <div className="form-group"><label>Номер документа</label><input className="form-input" value={form.doc_number || ''} onChange={e => setForm(f => ({ ...f, doc_number: e.target.value }))} /></div>
             <div className="form-group"><label>Тип документа</label>
               <select className="form-input" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
                 {DOCUMENT_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
