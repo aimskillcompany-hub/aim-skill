@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **⚠️ НА ПОЧАТКУ КОЖНОЇ НОВОЇ СЕСІЇ читай [CONTEXT.md](./CONTEXT.md)** — там актуальний стан системи: завершені фази, відкриті задачі, прийняті архітектурні рішення (не переробляти) і відомі баги. **Оновлюй CONTEXT.md після кожної завершеної задачі.**
+>
+> Примітка: розділ "Architecture" нижче описує стару систему до переписування v2. Актуальна архітектура — в CONTEXT.md.
+
 ## Project Overview
 
 AiM Skill is a Ukrainian-language management accounting (управлінський облік) web application for ТОВ "ЕЙМ СКІЛ" (EDRPOU 45505924). It handles document scanning via Claude API, transaction tracking, project management, bank reconciliation, cash management, and P&L reporting.
