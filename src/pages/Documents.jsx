@@ -118,9 +118,19 @@ function OcrModal({ user, existingDoc, onClose, onSaved }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [form, setForm] = useState(null) // extracted
+  const [previewUrl, setPreviewUrl] = useState(null)
+  const [previewType, setPreviewType] = useState('image') // image | pdf
 
   // Існуючий документ — одразу качаємо файл зі Storage і розпізнаємо
   useEffect(() => { if (existingDoc) recognizeExisting() }, [])
+  // Звільняємо blob-URL прев'ю
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }, [previewUrl])
+
+  const makePreview = (blob, name = '', type = '') => {
+    const ext = (name.split('.').pop() || '').toLowerCase()
+    setPreviewType(type.includes('pdf') || ext === 'pdf' ? 'pdf' : 'image')
+    setPreviewUrl(URL.createObjectURL(blob))
+  }
 
   const recognizeExisting = async () => {
     setBusy(true); setError(null)
@@ -137,6 +147,7 @@ function OcrModal({ user, existingDoc, onClose, onSaved }) {
   const runOcr = async (fileList) => {
     const arr = Array.from(fileList)
     setFiles(arr); setBusy(true); setError(null)
+    if (arr[0]) makePreview(arr[0], arr[0].name, arr[0].type)
     try {
       const articles = await fetchArticles()
       const data = await extractDocumentMulti(arr, articles)
@@ -229,7 +240,7 @@ function OcrModal({ user, existingDoc, onClose, onSaved }) {
 
   return (
     <div className="modal-bg" onClick={onClose}>
-      <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: form ? 1080 : 600, width: '95vw' }}>
         <div className="modal-header"><h2>{existingDoc ? 'Розпізнати документ' : 'Завантажити документ (OCR)'}</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
 
         {existingDoc && (
@@ -254,45 +265,62 @@ function OcrModal({ user, existingDoc, onClose, onSaved }) {
           </div>
         )}
 
+        {!form && error && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 12 }}>{error}</div>}
+
         {form && (
-          <div className="form-grid">
-            <div className="form-group full"><label>Назва файлу</label><input className="form-input" value={form.file_name || ''} onChange={e => setForm(f => ({ ...f, file_name: e.target.value }))} /></div>
-            <div className="form-group"><label>Номер документа</label><input className="form-input" value={form.doc_number || ''} onChange={e => setForm(f => ({ ...f, doc_number: e.target.value }))} /></div>
-            <div className="form-group"><label>Тип документа</label>
-              <select className="form-input" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
-                {DOCUMENT_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
-              </select>
-            </div>
-            <div className="form-group"><label>Контрагент {form.edrpou && `(ЄДРПОУ ${form.edrpou})`}</label>
-              <ContractorSelect value={form.contractorName} placeholder="Контрагент"
-                onChange={(v) => setForm(f => ({ ...f, contractorName: v }))}
-                onContractorSelect={(c) => setForm(f => ({ ...f, contractor_id: c.id, contractorName: c.name }))} />
-            </div>
-            <div className="form-group"><label>Сума</label><input className="form-input" type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} /></div>
-            <div className="form-group"><label>ПДВ</label><input className="form-input" type="number" value={form.vat_amount} onChange={e => setForm(f => ({ ...f, vat_amount: e.target.value }))} /></div>
-            <div className="form-group"><label>Дата</label><input className="form-input" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} /></div>
-            <div className="form-group"><label>Підписаний</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 44 }}>
-                <input type="checkbox" checked={form.is_signed} onChange={e => setForm(f => ({ ...f, is_signed: e.target.checked }))} style={{ width: 18, height: 18 }} />
-                <span style={{ fontSize: 14, color: 'var(--text2)' }}>{form.is_signed ? 'Так' : 'Ні'}</span>
+          <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            {/* Прев'ю оригіналу — щоб звірити розпізнане */}
+            {previewUrl && (
+              <div style={{ flex: '1 1 400px', minWidth: 280 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 6 }}>Оригінал документа</div>
+                {previewType === 'pdf'
+                  ? <iframe src={previewUrl} title="Документ" style={{ width: '100%', height: '70vh', border: '1px solid var(--border)', borderRadius: 8 }} />
+                  : <img src={previewUrl} alt="Документ" style={{ width: '100%', maxHeight: '70vh', objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 8, display: 'block' }} />}
+                <a href={previewUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: 'var(--blue)', display: 'inline-block', marginTop: 6 }}>Відкрити в новій вкладці ↗</a>
+              </div>
+            )}
+
+            {/* Розпізнані поля */}
+            <div style={{ flex: '1 1 360px', minWidth: 280 }}>
+              <div className="form-grid">
+                <div className="form-group full"><label>Назва файлу</label><input className="form-input" value={form.file_name || ''} onChange={e => setForm(f => ({ ...f, file_name: e.target.value }))} /></div>
+                <div className="form-group"><label>Номер документа</label><input className="form-input" value={form.doc_number || ''} onChange={e => setForm(f => ({ ...f, doc_number: e.target.value }))} /></div>
+                <div className="form-group"><label>Тип документа</label>
+                  <select className="form-input" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
+                    {DOCUMENT_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div className="form-group full"><label>Контрагент {form.edrpou && `(ЄДРПОУ ${form.edrpou})`}</label>
+                  <ContractorSelect value={form.contractorName} placeholder="Контрагент"
+                    onChange={(v) => setForm(f => ({ ...f, contractorName: v }))}
+                    onContractorSelect={(c) => setForm(f => ({ ...f, contractor_id: c.id, contractorName: c.name }))} />
+                </div>
+                <div className="form-group"><label>Сума</label><input className="form-input" type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} /></div>
+                <div className="form-group"><label>ПДВ</label><input className="form-input" type="number" value={form.vat_amount} onChange={e => setForm(f => ({ ...f, vat_amount: e.target.value }))} /></div>
+                <div className="form-group"><label>Дата</label><input className="form-input" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} /></div>
+                <div className="form-group"><label>Підписаний</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 44 }}>
+                    <input type="checkbox" checked={form.is_signed} onChange={e => setForm(f => ({ ...f, is_signed: e.target.checked }))} style={{ width: 18, height: 18 }} />
+                    <span style={{ fontSize: 14, color: 'var(--text2)' }}>{form.is_signed ? 'Так' : 'Ні'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {getDocType(form.type)?.stockEffect && (form.items || []).length > 0 && (
+                <div style={{ background: 'var(--blue-bg, #EFF4FF)', borderRadius: 8, padding: '10px 14px', marginTop: 12, fontSize: 13, color: 'var(--text2)' }}>
+                  <i className="ti ti-package" /> {form.items.length} позицій → {getDocType(form.type).stockEffect === 'in' ? 'оприбуткування на склад' : 'списання зі складу за FIFO'} при збереженні.
+                </div>
+              )}
+
+              {error && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 12 }}>{error}</div>}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+                {existingDoc
+                  ? <button className="btn" onClick={() => { setForm(null); recognizeExisting() }} disabled={busy}>Розпізнати знову</button>
+                  : <button className="btn" onClick={() => setForm(null)}>Інший файл</button>}
+                <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? '…' : 'Зберегти документ'}</button>
               </div>
             </div>
-          </div>
-        )}
-
-        {form && getDocType(form.type)?.stockEffect && (form.items || []).length > 0 && (
-          <div style={{ background: 'var(--blue-bg, #EFF4FF)', borderRadius: 8, padding: '10px 14px', marginTop: 12, fontSize: 13, color: 'var(--text2)' }}>
-            <i className="ti ti-package" /> {form.items.length} позицій → {getDocType(form.type).stockEffect === 'in' ? 'оприбуткування на склад' : 'списання зі складу за FIFO'} при збереженні.
-          </div>
-        )}
-
-        {error && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 12 }}>{error}</div>}
-        {form && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-            {existingDoc
-              ? <button className="btn" onClick={() => { setForm(null); recognizeExisting() }} disabled={busy}>Розпізнати знову</button>
-              : <button className="btn" onClick={() => setForm(null)}>Інший файл</button>}
-            <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? '…' : 'Зберегти документ'}</button>
           </div>
         )}
       </div>
