@@ -54,7 +54,9 @@ export default async function handler(req, res) {
     const lock = await client.getMailboxLock('INBOX')
     try {
       const uids = await client.search({ seen: false }, { uid: true })
-      const batch = (uids || []).slice(0, BATCH)
+      // Найновіші першими: беремо останні BATCH UID (найбільші) і йдемо від нових до старих.
+      // Так свіжі накладні ловляться одразу, а великий беклог старих листів не чіпається.
+      const batch = (uids || []).slice(-BATCH).reverse()
       for (const uid of batch) {
         summary.checked++
         try {
