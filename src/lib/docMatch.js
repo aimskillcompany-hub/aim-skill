@@ -19,7 +19,7 @@ export function matchScore(tx, doc, outstanding) {
   const txAmt = Math.abs(Number(tx.amount) || 0)
   const out = outstanding != null ? outstanding : Math.abs(Number(doc.amount) || 0)
   const amtDiff = Math.abs(txAmt - out)
-  const amountClose = out > 0 && amtDiff <= Math.max(1, txAmt * 0.01) // ±1% або 1 грн
+  const amountClose = out > 0 && amtDiff <= Math.max(0.01, txAmt * 0.005) // ±0.5%
   const docDate = doc.doc_date || doc.created_at
   const daysDiff = docDate && tx.date ? Math.abs((new Date(tx.date) - new Date(docDate)) / 864e5) : 999
   const dateClose = daysDiff <= DATE_TOLERANCE_DAYS
