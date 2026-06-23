@@ -258,6 +258,15 @@ function OcrModal({ user, existingDoc, autoOcr = true, onClose, onSaved }) {
     setBusy(false)
   }
 
+  const del = async () => {
+    if (!confirm('Видалити цей документ? Дію не можна скасувати.')) return
+    setBusy(true); setError(null)
+    const { error } = await supabase.from('documents').delete().eq('id', existingDoc.id)
+    setBusy(false)
+    if (error) { setError(error.message); return }
+    onSaved()
+  }
+
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: form ? 1080 : 600, width: '95vw' }}>
@@ -334,11 +343,16 @@ function OcrModal({ user, existingDoc, autoOcr = true, onClose, onSaved }) {
 
               {error && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 12 }}>{error}</div>}
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-                {existingDoc
-                  ? <button className="btn" onClick={() => { setForm(null); recognizeExisting(true) }} disabled={busy}><i className="ti ti-scan" /> {autoOcr ? 'Розпізнати знову' : 'Розпізнати'}</button>
-                  : <button className="btn" onClick={() => setForm(null)}>Інший файл</button>}
-                <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? '…' : 'Зберегти документ'}</button>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+                <div>
+                  {existingDoc && <button className="btn" onClick={del} disabled={busy} style={{ color: 'var(--red)' }}><i className="ti ti-trash" /> Видалити</button>}
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {existingDoc
+                    ? <button className="btn" onClick={() => { setForm(null); recognizeExisting(true) }} disabled={busy}><i className="ti ti-scan" /> {autoOcr ? 'Розпізнати знову' : 'Розпізнати'}</button>
+                    : <button className="btn" onClick={() => setForm(null)}>Інший файл</button>}
+                  <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? '…' : 'Зберегти документ'}</button>
+                </div>
               </div>
             </div>
           </div>
