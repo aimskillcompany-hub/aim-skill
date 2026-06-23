@@ -89,7 +89,8 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
         contractor_id: m?.contractor.id || null,
         contractorName: m?.contractor.name || data.contractor || '',
         edrpou: data.edrpou || '',
-        amount: data.amount ?? data.amountNoVat ?? '',
+        // Повна сума З ПДВ (банк платить gross; борг = повна сума)
+        amount: data.totalAmount ?? (data.amountNoVat != null ? Number(data.amountNoVat) + Number(data.vatAmount || 0) : (data.amount ?? '')),
         vat_amount: data.vatAmount ?? 0,
         date: data.date || existingDoc?.doc_date || new Date().toISOString().split('T')[0],
         is_signed: existingDoc?.is_signed || false,
@@ -227,8 +228,8 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
                     onChange={(v) => setForm(f => ({ ...f, contractorName: v }))}
                     onContractorSelect={(c) => setForm(f => ({ ...f, contractor_id: c.id, contractorName: c.name }))} />
                 </div>
-                <div className="form-group"><label>Сума</label><input className="form-input" type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} /></div>
-                <div className="form-group"><label>ПДВ</label><input className="form-input" type="number" value={form.vat_amount} onChange={e => setForm(f => ({ ...f, vat_amount: e.target.value }))} /></div>
+                <div className="form-group"><label>Сума (з ПДВ)</label><input className="form-input" type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} /></div>
+                <div className="form-group"><label>у т.ч. ПДВ</label><input className="form-input" type="number" value={form.vat_amount} onChange={e => setForm(f => ({ ...f, vat_amount: e.target.value }))} /></div>
                 <div className="form-group"><label>Дата</label><input className="form-input" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} /></div>
                 <div className="form-group"><label>Підписаний</label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 44 }}>
