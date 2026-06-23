@@ -62,7 +62,7 @@ export default function Layout() {
 
   const Footer = () => (
     <div className="sidebar-footer">
-      <div style={{ marginBottom: 6, color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13 }}>{user?.email}</div>
+      <div className="ellip" title={user?.email} style={{ marginBottom: 6, color: 'var(--text2)', fontSize: 13 }}>{user?.email}</div>
       <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.5px', fontWeight: 500 }}>{role}</div>
       <span style={{ cursor: 'pointer', color: 'var(--text2)', fontSize: 13, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6, padding: '8px 0' }} onClick={handleLogout}>
         <i className="ti ti-logout" style={{ fontSize: 16 }} />Вийти

@@ -39,8 +39,8 @@ export default function Gantt({ orders, onOpen }) {
           return (
             <div key={o.id} onClick={() => onOpen(o.id)} style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
               <div style={{ width: 180, flexShrink: 0, paddingRight: 10 }}>
-                <div className="trunc" style={{ fontSize: 13, fontWeight: 500 }}>{o.order_number || o.id.slice(0, 6)} · {o.clientName}</div>
-                <div style={{ fontSize: 11, color: 'var(--text3)' }}>{ORDER_TYPES[o.type]} · {statusLabel(o)}</div>
+                <div className="ellip" style={{ fontSize: 13, fontWeight: 500 }} title={`${o.order_number || o.id.slice(0, 6)} · ${o.clientName}`}>{o.order_number || o.id.slice(0, 6)} · {o.clientName}</div>
+                <div className="ellip" style={{ fontSize: 11, color: 'var(--text3)' }} title={`${ORDER_TYPES[o.type]} · ${statusLabel(o)}`}>{ORDER_TYPES[o.type]} · {statusLabel(o)}</div>
               </div>
               <div style={{ position: 'relative', flex: 1, height: 30 }}>
                 {/* бар оплати */}

@@ -176,11 +176,15 @@ export const css = `
   .tbl-wrap tbody tr { border-bottom: 1px solid var(--bg); transition: background .1s; }
   .tbl-wrap tbody tr:last-child { border-bottom: none; }
   .tbl-wrap tbody tr:hover { background: var(--bg); }
-  .tbl-wrap tbody td { padding: 14px 16px; vertical-align: middle; }
+  .tbl-wrap tbody td { padding: 14px 16px; vertical-align: top; }
   .amt-pos { color: var(--green); font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .amt-neg { color: var(--red); font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .amt-zero { color: var(--text3); }
-  .trunc { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Текст не обрізається: повний текст з переносом на новий рядок.
+     Довгі нерозривні токени (SKU/IBAN) переносяться, щоб не ламати верстку.
+     Для вузьких фіксованих колонок використовуй .ellip + атрибут title. */
+  .trunc { overflow-wrap: anywhere; word-break: break-word; }
+  .ellip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* ═══ BADGES ═══ */
   .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: var(--radius-sm); font-size: 12px; font-weight: 400; }
@@ -431,7 +435,6 @@ export const mobileCss = `
     .tbl-wrap { border-radius: var(--radius-lg); max-width: 100%; }
     .tbl-wrap table { min-width: 500px; }
     .tbl-wrap td, .tbl-wrap th { padding: 10px 12px; font-size: 13px; }
-    .trunc { max-width: 120px; }
 
     .modal-bg { padding: 0; align-items: flex-end; }
     .modal, .modal.modal-lg, .modal.modal-xl {
