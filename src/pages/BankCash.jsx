@@ -5,6 +5,7 @@ import { fmt, fmtInt } from '../lib/fmt'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import { parseStatement } from '../lib/statements'
 import { classifyBatch, classifyTransaction, resetClassifyCache } from '../lib/autoClassify'
+import { getContractorMatcher } from '../lib/contractorMatch'
 import { getAccountBalances } from '../lib/accounts'
 import ContractorSelect from '../components/ui/ContractorSelect'
 
@@ -73,7 +74,16 @@ function TransactionsTab({ accounts, onChange }) {
     if (status === 'unconfirmed') qb = qb.eq('is_validated', false)
     if (acc !== 'all') qb = qb.eq('account_id', acc)
     const { data } = await qb
-    setRows(data || [])
+    const list = data || []
+    // Авто-матч контрагента для непідтверджених без прив'язки (при відкритті списку)
+    const matcher = await getContractorMatcher()
+    list.forEach(r => {
+      if (!r.is_validated && !r.contractor_id) {
+        const m = matcher(r)
+        if (m) { r.contractor_id = m.contractor.id; r._cname = m.contractor.name; r._matchedBy = m.by }
+      }
+    })
+    setRows(list)
     setLoading(false)
   }
   useEffect(() => { fetchArticles().then(setArticles) }, [])
@@ -84,10 +94,20 @@ function TransactionsTab({ accounts, onChange }) {
   // авто-класифікація видимих непідтверджених
   const autoFill = async () => {
     resetClassifyCache()
+    const matcher = await getContractorMatcher()
     const updated = await Promise.all(rows.map(async r => {
       if (r.is_validated) return r
       const s = await classifyTransaction(r)
-      return { ...r, direction: r.direction || s.direction, article: r.article || s.article, contractor_id: r.contractor_id || s.contractor_id, _suggested: true }
+      const m = matcher(r)
+      const contractor_id = m?.contractor.id || r.contractor_id || s.contractor_id || null
+      return {
+        ...r,
+        direction: r.direction || s.direction,
+        article: r.article || s.article,
+        contractor_id,
+        _cname: m?.contractor.name || r._cname,
+        _suggested: true,
+      }
     }))
     setRows(updated)
   }
@@ -255,6 +275,12 @@ function ImportTab({ accounts, onDone }) {
       const txs = await parseStatement(file)
       if (!txs.length) throw new Error('Не вдалося розпізнати транзакції у файлі')
       const classified = await classifyBatch(txs)
+      // Авто-матч контрагента по ЄДРПОУ/назві (пріоритетніше за класифікатор)
+      const matcher = await getContractorMatcher()
+      classified.forEach(t => {
+        const m = matcher(t)
+        if (m) { t._auto = { ...t._auto, contractor_id: m.contractor.id }; t._matchName = m.contractor.name }
+      })
       setParsed(classified)
     } catch (e) { setError(e.message) }
     setBusy(false)
@@ -314,7 +340,7 @@ function ImportTab({ accounts, onDone }) {
                 {parsed.map((t, i) => (
                   <tr key={i}>
                     <td style={{ fontSize: 12 }}>{t.date}</td>
-                    <td><div className="trunc">{t.counterparty || t.description}</div></td>
+                    <td><div className="trunc">{t._matchName || t.counterparty || t.description}{t._matchName && <i className="ti ti-link" style={{ color: 'var(--green)', marginLeft: 4 }} title="Знайдено контрагента" />}</div></td>
                     <td className={t.amount >= 0 ? 'amt-pos' : 'amt-neg'} style={{ textAlign: 'right' }}>{fmt(t.amount)}</td>
                     <td style={{ fontSize: 12, color: 'var(--text2)' }}>{t._auto?.article || '—'} {t._auto?.confidence === 'high' && <i className="ti ti-circle-check" style={{ color: 'var(--green)' }} />}</td>
                   </tr>
