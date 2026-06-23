@@ -91,6 +91,8 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 - **Текст не обрізається** ніде (перенос; вузькі місця — ellipsis+title).
 - **Авто-повтор OCR/виписок** на перевантаженні Claude API (529/429).
 - **Редагування назви файлу** у формі OCR/розпізнавання (оновлює `documents.file_name`).
+- **Номер документа** (`documents.doc_number`) — поле у формі OCR (префіл з OCR) + колонка «№» у реєстрі.
+- **Фікс:** додано UPDATE-RLS політику на `documents` (її не було → «Розпізнати» тихо не зберігалось). Save кидає помилку, якщо UPDATE зачепив 0 рядків.
 
 ---
 
@@ -148,6 +150,7 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `001_phase1_schema.sql` | Базова additive-схема | ✅ застосовано |
 | `002_cutover.sql` | Каса→банк, backfill сум документів | частково (каса домігровано вручну; backfill сум документів — ні) |
 | `003_account_opening_balance.sql` | Колонки початкового залишку | ✅ застосовано |
+| `004_documents_update_and_docnumber.sql` | UPDATE-RLS на documents + doc_number | ✅ застосовано |
 | `validate.mjs` | Перевірка цілісності (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 
 ---
