@@ -10,6 +10,10 @@ import { getAccountBalances } from '../lib/accounts'
 import { getDocType } from '../lib/docgen'
 import { matchScore, confidentMatch } from '../lib/docMatch'
 import ContractorSelect from '../components/ui/ContractorSelect'
+import DocModal from '../components/DocModal'
+
+// поля документа для DocModal
+const DOC_FIELDS = 'id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)'
 
 const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД']
 
@@ -68,6 +72,7 @@ function TransactionsTab({ accounts, onChange }) {
   const [acc, setAcc] = useState('all')
   const [linkTx, setLinkTx] = useState(null)
   const [editTx, setEditTx] = useState(null)
+  const [openDoc, setOpenDoc] = useState(null)
   const [linkMsg, setLinkMsg] = useState(null)
   const [linking, setLinking] = useState(false)
 
@@ -88,6 +93,15 @@ function TransactionsTab({ accounts, onChange }) {
         if (m) { r.contractor_id = m.contractor.id; r._cname = m.contractor.name; r._matchedBy = m.by }
       }
     })
+    // прив'язані документи по кожній транзакції
+    const ids = list.map(r => r.id)
+    if (ids.length) {
+      const { data: tds } = await supabase.from('transaction_documents')
+        .select(`transaction_id, documents(${DOC_FIELDS})`).in('transaction_id', ids)
+      const byTx = {}
+      ;(tds || []).forEach(t => { if (t.documents) (byTx[t.transaction_id] ||= []).push(t.documents) })
+      list.forEach(r => { r._docs = byTx[r.id] || [] })
+    }
     setRows(list)
     setLoading(false)
   }
@@ -180,7 +194,7 @@ function TransactionsTab({ accounts, onChange }) {
       <div className="card">
         <div className="tbl-wrap" style={{ border: 'none' }}>
           <table>
-            <thead><tr><th>Дата</th><th>Контрагент</th><th style={{ textAlign: 'right' }}>Сума</th><th>Напрям</th><th>Стаття</th><th></th></tr></thead>
+            <thead><tr><th>Дата</th><th>Контрагент</th><th style={{ textAlign: 'right' }}>Сума</th><th>Напрям</th><th>Стаття</th><th>Документ</th><th></th></tr></thead>
             <tbody>
               {rows.map(r => (
                 <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setEditTx(r)}>
@@ -192,6 +206,13 @@ function TransactionsTab({ accounts, onChange }) {
                   <td className={r.amount >= 0 ? 'amt-pos' : 'amt-neg'} style={{ textAlign: 'right', fontWeight: 600 }}>{r.amount >= 0 ? '+' : ''}{fmt(r.amount)}</td>
                   <td style={{ fontSize: 13 }}>{r.direction || <span style={{ color: 'var(--red)' }}>—</span>}</td>
                   <td style={{ fontSize: 12, color: 'var(--text2)' }}><div className="trunc">{r.article || '—'}</div></td>
+                  <td style={{ fontSize: 12 }}>
+                    {r._docs?.length
+                      ? <a onClick={(e) => { e.stopPropagation(); setOpenDoc(r._docs[0]) }} style={{ color: 'var(--blue)', cursor: 'pointer' }} title={r._docs.map(d => getDocLabel(d)).join('\n')}>
+                          <i className="ti ti-file-check" /> {getDocType(r._docs[0].type)?.label || 'документ'}{r._docs.length > 1 ? ` +${r._docs.length - 1}` : ''}
+                        </a>
+                      : <span style={{ color: 'var(--text3)' }}>не прив'язано</span>}
+                  </td>
                   <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                     {r.is_validated
                       ? <span style={{ color: 'var(--green)', marginRight: 8 }} title="Підтверджено"><i className="ti ti-check" /></span>
@@ -200,20 +221,21 @@ function TransactionsTab({ accounts, onChange }) {
                   </td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Немає транзакцій</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Немає транзакцій</td></tr>}
             </tbody>
           </table>
         </div>
       </div>
 
-      {editTx && <TxModal tx={editTx} grouped={grouped} onClose={() => setEditTx(null)} onSaved={() => { setEditTx(null); load(); onChange() }} onLink={() => { setLinkTx(editTx); setEditTx(null) }} />}
-      {linkTx && <TxLinkModal tx={linkTx} onClose={() => setLinkTx(null)} onSaved={() => setLinkTx(null)} />}
+      {editTx && <TxModal tx={editTx} grouped={grouped} onClose={() => setEditTx(null)} onSaved={() => { setEditTx(null); load(); onChange() }} onLink={() => { setLinkTx(editTx); setEditTx(null) }} onOpenDoc={(d) => { setOpenDoc(d); setEditTx(null) }} />}
+      {linkTx && <TxLinkModal tx={linkTx} onClose={() => setLinkTx(null)} onSaved={() => { setLinkTx(null); load() }} />}
+      {openDoc && <DocModal existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => { setOpenDoc(null); load() }} />}
     </div>
   )
 }
 
 // ───────── Модалка транзакції: класифікація / підтвердження / ігнор / прив'язка ─────────
-function TxModal({ tx, grouped, onClose, onSaved, onLink }) {
+function TxModal({ tx, grouped, onClose, onSaved, onLink, onOpenDoc }) {
   const [f, setF] = useState({ contractor_id: tx.contractor_id || null, cname: tx._cname || tx.counterparty || '', direction: tx.direction || '', article: tx.article || '' })
   const [busy, setBusy] = useState(false)
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
@@ -239,6 +261,17 @@ function TxModal({ tx, grouped, onClose, onSaved, onLink }) {
           <div className={tx.amount >= 0 ? 'amt-pos' : 'amt-neg'} style={{ fontSize: 20, fontWeight: 700 }}>{tx.amount >= 0 ? '+' : ''}{fmt(tx.amount)} грн</div>
         </div>
         {tx.description && tx.counterparty && <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 14 }}>{tx.description}</div>}
+
+        {/* Прив'язані документи */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 6 }}>Документи</div>
+          {tx._docs?.length ? tx._docs.map(d => (
+            <div key={d.id} onClick={() => onOpenDoc(d)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 13 }}>
+              <span style={{ color: 'var(--blue)' }}><i className="ti ti-file-check" /> {getDocLabel(d)}</span>
+              <span style={{ color: 'var(--text2)', whiteSpace: 'nowrap' }}>{d.amount ? fmt(d.amount) + ' грн' : ''} <i className="ti ti-external-link" style={{ fontSize: 12 }} /></span>
+            </div>
+          )) : <div style={{ fontSize: 13, color: 'var(--text3)' }}>Документ не прив'язано. <a onClick={onLink} style={{ color: 'var(--blue)', cursor: 'pointer' }}>Прив'язати</a></div>}
+        </div>
 
         <div className="form-grid">
           <div className="form-group full"><label>Контрагент</label>
