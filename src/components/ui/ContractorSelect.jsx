@@ -77,7 +77,7 @@ export default function ContractorSelect({ value, onChange, onContractorSelect, 
                 onMouseLeave={e => e.currentTarget.style.background = ''}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontWeight: 500, overflowWrap: 'anywhere' }} title={c.name}>
                     {c.short_name || c.name}
                   </div>
                   {c.edrpou && <div style={{ fontSize: 12, color: 'var(--text3)' }}>ЄДРПОУ: {c.edrpou}</div>}
