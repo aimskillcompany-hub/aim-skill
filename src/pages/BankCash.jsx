@@ -5,6 +5,7 @@ import { fmt, fmtInt } from '../lib/fmt'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import { parseStatement } from '../lib/statements'
 import { classifyBatch, classifyTransaction, resetClassifyCache } from '../lib/autoClassify'
+import { getAccountBalances } from '../lib/accounts'
 import ContractorSelect from '../components/ui/ContractorSelect'
 
 const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД']
@@ -12,30 +13,25 @@ const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД']
 export default function BankCash() {
   const [tab, setTab] = useState('transactions')
   const [accounts, setAccounts] = useState([])
-  const [balances, setBalances] = useState({})
 
-  const loadAccounts = async () => {
-    const [{ data: accs }, { data: txs }] = await Promise.all([
-      supabase.from('accounts').select('*').order('sort_order'),
-      supabase.from('bank_transactions').select('account_id, amount').eq('is_ignored', false).eq('is_validated', true),
-    ])
-    const bal = {}
-    ;(txs || []).forEach(t => { if (t.account_id) bal[t.account_id] = (bal[t.account_id] || 0) + (Number(t.amount) || 0) })
-    setAccounts(accs || []); setBalances(bal)
-  }
+  const loadAccounts = async () => { setAccounts(await getAccountBalances()) }
   useEffect(() => { loadAccounts() }, [])
 
   return (
     <div>
       <div className="page-header"><h1>Банк / Каса</h1></div>
 
-      {/* Рахунки з балансами */}
+      {/* Рахунки: Залишок (головний) + Надходження / Витрати за період */}
       <div className="kpi-grid" style={{ marginBottom: 18 }}>
         {accounts.map(a => (
           <div className="kpi" key={a.id}>
             <div className="kpi-label"><i className={`ti ${a.type === 'cash' ? 'ti-cash' : 'ti-building-bank'}`} style={{ marginRight: 6 }} />{a.name}</div>
-            <div className="kpi-value" style={{ color: (balances[a.id] || 0) >= 0 ? 'var(--green)' : 'var(--red)' }}>
-              {fmtInt(balances[a.id] || 0)} <span style={{ fontSize: 14, color: 'var(--text3)' }}>грн</span>
+            <div className="kpi-value" style={{ color: a.balance >= 0 ? 'var(--green)' : 'var(--red)' }}>
+              {fmtInt(a.balance)} <span style={{ fontSize: 14, color: 'var(--text3)' }}>грн</span>
+            </div>
+            <div style={{ display: 'flex', gap: 14, marginTop: 8, fontSize: 12 }}>
+              <span style={{ color: 'var(--green)' }}><i className="ti ti-arrow-down-left" /> {fmtInt(a.inflow)}</span>
+              <span style={{ color: 'var(--red)' }}><i className="ti ti-arrow-up-right" /> {fmtInt(a.outflow)}</span>
             </div>
           </div>
         ))}

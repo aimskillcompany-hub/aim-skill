@@ -150,7 +150,9 @@ function ArticlesTab() {
 function AccountsTab() {
   const [rows, setRows] = useState([])
   const [add, setAdd] = useState(null)
-  const load = () => supabase.from('accounts').select('*').order('sort_order').then(({ data }) => setRows(data || []))
+  const [edits, setEdits] = useState({}) // id → { opening_balance, opening_balance_date }
+  const [savedId, setSavedId] = useState(null)
+  const load = () => supabase.from('accounts').select('*').order('sort_order').then(({ data }) => { setRows(data || []); setEdits({}) })
   useEffect(() => { load() }, [])
   const toggle = async (a) => { await supabase.from('accounts').update({ is_active: !a.is_active }).eq('id', a.id); load() }
   const create = async () => {
@@ -158,12 +160,22 @@ function AccountsTab() {
     await supabase.from('accounts').insert({ name: add.name.trim(), type: add.type, bank_name: add.bank_name || null, sort_order: rows.length + 1 })
     setAdd(null); load()
   }
+  const setEdit = (id, field, value) => setEdits(e => ({ ...e, [id]: { ...e[id], [field]: value } }))
+  const saveOpening = async (a) => {
+    const e = edits[a.id] || {}
+    await supabase.from('accounts').update({
+      opening_balance: Number(e.opening_balance ?? a.opening_balance) || 0,
+      opening_balance_date: (e.opening_balance_date ?? a.opening_balance_date) || null,
+    }).eq('id', a.id)
+    setSavedId(a.id); setTimeout(() => setSavedId(null), 2000); load()
+  }
   return (
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
         <div className="card-title" style={{ marginBottom: 0 }}>Рахунки (банк + каса)</div>
         {!add && <button className="btn btn-primary" onClick={() => setAdd({ name: '', type: 'bank', bank_name: '' })}><i className="ti ti-plus" /> Додати</button>}
       </div>
+      <p style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 14 }}>Початковий залишок — стартова сума на рахунку станом на вказану дату. Реальний залишок = початковий + рухи від цієї дати.</p>
       {add && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div className="form-group" style={{ flex: '1 1 160px' }}><label>Назва</label><input className="form-input" value={add.name} onChange={e => setAdd(a => ({ ...a, name: e.target.value }))} /></div>
@@ -174,10 +186,16 @@ function AccountsTab() {
         </div>
       )}
       <div className="tbl-wrap" style={{ border: 'none' }}>
-        <table><thead><tr><th>Назва</th><th>Тип</th><th>Банк</th><th>Статус</th></tr></thead>
+        <table><thead><tr><th>Назва</th><th>Тип</th><th>Початк. залишок</th><th>Станом на</th><th>Статус</th><th></th></tr></thead>
           <tbody>{rows.map(a => (
-            <tr key={a.id}><td style={{ fontWeight: 500 }}>{a.name}</td><td>{a.type === 'cash' ? 'Каса' : 'Банк'}</td><td style={{ color: 'var(--text2)' }}>{a.bank_name || '—'}</td>
-              <td><button className="btn" onClick={() => toggle(a)} style={{ color: a.is_active ? 'var(--green)' : 'var(--text3)' }}>{a.is_active ? 'Активний' : 'Вимкнено'}</button></td></tr>
+            <tr key={a.id}>
+              <td style={{ fontWeight: 500 }}>{a.name}</td>
+              <td>{a.type === 'cash' ? 'Каса' : 'Банк'}</td>
+              <td><input className="form-input" type="number" value={edits[a.id]?.opening_balance ?? a.opening_balance ?? 0} onChange={e => setEdit(a.id, 'opening_balance', e.target.value)} style={{ width: 130, textAlign: 'right' }} /></td>
+              <td><input className="form-input" type="date" value={edits[a.id]?.opening_balance_date ?? a.opening_balance_date ?? ''} onChange={e => setEdit(a.id, 'opening_balance_date', e.target.value)} style={{ width: 150 }} /></td>
+              <td><button className="btn" onClick={() => toggle(a)} style={{ color: a.is_active ? 'var(--green)' : 'var(--text3)' }}>{a.is_active ? 'Активний' : 'Вимкнено'}</button></td>
+              <td><button className="btn btn-primary" onClick={() => saveOpening(a)} style={{ padding: '4px 10px' }}>{savedId === a.id ? '✓' : 'Зберегти'}</button></td>
+            </tr>
           ))}</tbody>
         </table>
       </div>

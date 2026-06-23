@@ -2,6 +2,7 @@
 // Принципи ТЗ: у P&L лише is_validated транзакції; борги = документи − прив'язані транзакції.
 import { supabase } from './supabase'
 import { PL_ORDER, PL_LABELS, PL_SIGN } from './articles'
+import { getAccountBalances } from './accounts'
 
 const pad = n => String(n).padStart(2, '0')
 const monthEnd = (y, m) => new Date(y, m, 0).getDate()
@@ -103,11 +104,10 @@ export async function dashboardStats(year) {
   const mFrom = monthStart.toISOString().split('T')[0]
   const yFrom = `${year}-01-01`
 
-  const [{ data: monthTxs }, { data: yearTxs }, { data: accs }, { data: balTxs }, aging] = await Promise.all([
+  const [{ data: monthTxs }, { data: yearTxs }, balances, aging] = await Promise.all([
     supabase.from('bank_transactions').select('amount, direction').eq('is_validated', true).eq('is_ignored', false).gte('date', mFrom),
     supabase.from('bank_transactions').select('amount, direction, date, counterparty, contractor_id').eq('is_validated', true).eq('is_ignored', false).gte('date', yFrom),
-    supabase.from('accounts').select('id, name'),
-    supabase.from('bank_transactions').select('account_id, amount').eq('is_validated', true).eq('is_ignored', false),
+    getAccountBalances(),
     computeAging(),
   ])
 
@@ -123,9 +123,9 @@ export async function dashboardStats(year) {
     else if (t.direction === 'Витрати') series[m].Витрати += Math.abs(Number(t.amount) || 0)
   })
 
-  // баланси рахунків
-  const bal = {}; (balTxs || []).forEach(t => { if (t.account_id) bal[t.account_id] = (bal[t.account_id] || 0) + (Number(t.amount) || 0) })
-  const accounts = (accs || []).map(a => ({ name: a.name, balance: bal[a.id] || 0 }))
+  // баланси рахунків (спільний хелпер: усі неігноровані + початковий залишок)
+  const accounts = balances.map(b => ({ name: b.name, balance: b.balance }))
+  const totalBalance = balances.reduce((s, b) => s + b.balance, 0)
 
   // топ клієнтів по доходах за рік
   const byClient = {}
@@ -138,6 +138,6 @@ export async function dashboardStats(year) {
   return {
     revenue, expenses, profit: revenue - expenses,
     receivable: aging.receivable.total, payable: aging.payable.total,
-    accounts, series, topClients,
+    accounts, totalBalance, series, topClients,
   }
 }

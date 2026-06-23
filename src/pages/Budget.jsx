@@ -4,6 +4,7 @@ import { useUser } from '../lib/auth'
 import { fmtInt } from '../lib/fmt'
 import { fetchArticles, groupByType } from '../lib/articles'
 import { computeAging } from '../lib/pl'
+import { getAccountBalances } from '../lib/accounts'
 
 const NOW = new Date()
 const YEARS = [NOW.getFullYear(), NOW.getFullYear() + 1, NOW.getFullYear() - 1]
@@ -105,23 +106,27 @@ function Forecast({ planIncome, planExpense }) {
     Promise.all([
       computeAging(),
       supabase.from('orders').select('total, status').neq('status', 'closed'),
-    ]).then(([aging, { data: orders }]) => {
+      getAccountBalances(),
+    ]).then(([aging, { data: orders }, balances]) => {
       const activeOrders = (orders || []).reduce((s, o) => s + (Number(o.total) || 0), 0)
-      setExtra({ receivable: aging.receivable.total, payable: aging.payable.total, activeOrders })
+      const currentBalance = balances.reduce((s, b) => s + b.balance, 0)
+      setExtra({ receivable: aging.receivable.total, payable: aging.payable.total, activeOrders, currentBalance })
     })
   }, [])
 
   const inflow = planIncome + (extra?.receivable || 0) + (extra?.activeOrders || 0)
   const outflow = planExpense + (extra?.payable || 0)
   const net = inflow - outflow
+  const projected = (extra?.currentBalance || 0) + net
 
   return (
     <div className="card" style={{ marginBottom: 18 }}>
       <div className="card-title">Грошовий прогноз</div>
       <div className="kpi-grid">
+        <div className="kpi"><div className="kpi-label">Поточний залишок</div><div className="kpi-value" style={{ fontSize: 22 }}>{fmtInt(extra?.currentBalance || 0)}</div><div className="kpi-sub">по всіх рахунках</div></div>
         <div className="kpi"><div className="kpi-label">Очікувані надходження</div><div className="kpi-value" style={{ color: 'var(--green)', fontSize: 22 }}>{fmtInt(inflow)}</div><div className="kpi-sub">план {fmtInt(planIncome)} + дебіторка {fmtInt(extra?.receivable || 0)} + замовлення {fmtInt(extra?.activeOrders || 0)}</div></div>
         <div className="kpi"><div className="kpi-label">Очікувані витрати</div><div className="kpi-value" style={{ color: 'var(--red)', fontSize: 22 }}>{fmtInt(outflow)}</div><div className="kpi-sub">план {fmtInt(planExpense)} + кредиторка {fmtInt(extra?.payable || 0)}</div></div>
-        <div className="kpi"><div className="kpi-label">Чистий прогноз</div><div className="kpi-value" style={{ color: net >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 22 }}>{net >= 0 ? '+' : ''}{fmtInt(net)}</div></div>
+        <div className="kpi"><div className="kpi-label">Прогнозований залишок</div><div className="kpi-value" style={{ color: projected >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 22 }}>{fmtInt(projected)}</div><div className="kpi-sub">поточний {net >= 0 ? '+' : '−'} {fmtInt(Math.abs(net))}</div></div>
       </div>
     </div>
   )
