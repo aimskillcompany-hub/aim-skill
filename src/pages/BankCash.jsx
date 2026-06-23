@@ -7,6 +7,7 @@ import { parseStatement } from '../lib/statements'
 import { classifyBatch, classifyTransaction, resetClassifyCache } from '../lib/autoClassify'
 import { getContractorMatcher } from '../lib/contractorMatch'
 import { getAccountBalances } from '../lib/accounts'
+import { getDocType } from '../lib/docgen'
 import ContractorSelect from '../components/ui/ContractorSelect'
 
 const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД']
@@ -256,7 +257,7 @@ function TxLinkModal({ tx, onClose }) {
     </div>
   )
 }
-const getDocLabel = (d) => d ? `${d.type || 'документ'}${d.file_name ? ' · ' + d.file_name : ''}` : '—'
+const getDocLabel = (d) => d ? `${getDocType(d.type)?.label || d.type || 'документ'}${d.file_name ? ' · ' + d.file_name : ''}` : '—'
 
 // ───────── Імпорт виписки ─────────
 function ImportTab({ accounts, onDone }) {
