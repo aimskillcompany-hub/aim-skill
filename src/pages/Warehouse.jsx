@@ -3,6 +3,11 @@ import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { fmt, fmtInt } from '../lib/fmt'
 import { assembleProduct } from '../lib/stockService'
+import { getDocType } from '../lib/docgen'
+import DocModal from '../components/DocModal'
+
+// поля документа-джерела, потрібні для модалки DocModal
+const DOC_EMBED = 'documents(id, type, doc_number, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name))'
 
 export default function Warehouse() {
   const [tab, setTab] = useState('stock')
@@ -91,11 +96,13 @@ function StockTab() {
 }
 
 function ProductModal({ product, onClose }) {
+  const { user } = useUser()
   const [aliases, setAliases] = useState([])
   const [movs, setMovs] = useState([])
+  const [openDoc, setOpenDoc] = useState(null)
   useEffect(() => {
     supabase.from('product_aliases').select('alias').eq('product_id', product.id).then(({ data }) => setAliases(data || []))
-    supabase.from('stock_movements').select('id, type, quantity, cost_price, date, description').eq('product_id', product.id).order('date', { ascending: false }).limit(50).then(({ data }) => setMovs(data || []))
+    supabase.from('stock_movements').select(`id, type, quantity, cost_price, date, description, document_id, ${DOC_EMBED}`).eq('product_id', product.id).order('date', { ascending: false }).limit(50).then(({ data }) => setMovs(data || []))
   }, [product.id])
   return (
     <div className="modal-bg" onClick={onClose}>
@@ -114,23 +121,29 @@ function ProductModal({ product, onClose }) {
         )}
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 6 }}>Рухи</div>
         <div className="tbl-wrap" style={{ border: 'none', maxHeight: 300, overflowY: 'auto' }}>
-          <table><thead><tr><th>Дата</th><th>Тип</th><th style={{ textAlign: 'right' }}>К-сть</th><th style={{ textAlign: 'right' }}>Собівартість</th><th>Опис</th></tr></thead>
-            <tbody>{movs.map(m => <tr key={m.id}><td style={{ fontSize: 12 }}>{m.date}</td><td>{m.type === 'in' ? 'Прихід' : m.type === 'out' ? 'Видаток' : m.type}</td><td style={{ textAlign: 'right' }}>{fmt(m.quantity)}</td><td style={{ textAlign: 'right' }}>{m.cost_price ? fmt(m.cost_price) : '—'}</td><td><div className="trunc">{m.description}</div></td></tr>)}</tbody>
+          <table><thead><tr><th>Дата</th><th>Тип</th><th style={{ textAlign: 'right' }}>К-сть</th><th style={{ textAlign: 'right' }}>Собівартість</th><th>Опис</th><th>Документ</th></tr></thead>
+            <tbody>{movs.map(m => <tr key={m.id}><td style={{ fontSize: 12 }}>{m.date}</td><td>{m.type === 'in' ? 'Прихід' : m.type === 'out' ? 'Видаток' : m.type}</td><td style={{ textAlign: 'right' }}>{fmt(m.quantity)}</td><td style={{ textAlign: 'right' }}>{m.cost_price ? fmt(m.cost_price) : '—'}</td><td><div className="trunc">{m.description}</div></td>
+              <td>{m.documents
+                ? <a onClick={() => setOpenDoc(m.documents)} style={{ color: 'var(--blue)', cursor: 'pointer', fontSize: 12 }}><i className="ti ti-file" /> {getDocType(m.documents.type)?.label || 'документ'}</a>
+                : <span style={{ color: 'var(--text3)', fontSize: 12 }}>—</span>}</td></tr>)}</tbody>
           </table>
         </div>
       </div>
+      {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />}
     </div>
   )
 }
 
 // ───────── Рухи ─────────
 function MovementsTab() {
+  const { user } = useUser()
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [type, setType] = useState('all')
+  const [openDoc, setOpenDoc] = useState(null)
   useEffect(() => {
     setLoading(true)
-    let qb = supabase.from('stock_movements').select('id, type, quantity, cost_price, total, date, description, source, products(name)').order('date', { ascending: false }).limit(500)
+    let qb = supabase.from('stock_movements').select(`id, type, quantity, cost_price, total, date, description, source, document_id, products(name), ${DOC_EMBED}`).order('date', { ascending: false }).limit(500)
     if (type !== 'all') qb = qb.eq('type', type)
     qb.then(({ data }) => { setRows(data || []); setLoading(false) })
   }, [type])
@@ -154,7 +167,11 @@ function MovementsTab() {
                     <td><span style={{ color: m.type === 'in' ? 'var(--green)' : 'var(--red)', fontSize: 12, fontWeight: 600 }}>{m.type === 'in' ? 'Прихід' : m.type === 'out' ? 'Видаток' : m.type}</span></td>
                     <td style={{ textAlign: 'right' }}>{fmt(m.quantity)}</td>
                     <td style={{ textAlign: 'right' }}>{m.cost_price ? fmt(m.cost_price) : '—'}</td>
-                    <td style={{ fontSize: 12, color: 'var(--text3)' }}>{m.source || '—'}</td>
+                    <td style={{ fontSize: 12 }}>
+                      {m.documents
+                        ? <a onClick={() => setOpenDoc(m.documents)} style={{ color: 'var(--blue)', cursor: 'pointer' }} title={m.documents.file_name}><i className="ti ti-file" /> {getDocType(m.documents.type)?.label || 'документ'}</a>
+                        : <span style={{ color: 'var(--text3)' }}>{m.source || '—'}</span>}
+                    </td>
                   </tr>
                 ))}
                 {rows.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Рухів немає</td></tr>}
@@ -163,6 +180,7 @@ function MovementsTab() {
           </div>
         )}
       </div>
+      {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />}
     </div>
   )
 }
