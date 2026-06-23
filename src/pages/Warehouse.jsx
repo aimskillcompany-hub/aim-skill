@@ -151,7 +151,7 @@ function ProductModal({ product, onClose }) {
         </div>
       </div>
       {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />}
-      {linkMov && <DocPickerModal title="Прив'язати документ до руху" onClose={() => setLinkMov(null)} onPick={linkDoc} />}
+      {linkMov && <DocPickerModal title="Прив'язати документ до руху" match={{ date: linkMov.date }} onClose={() => setLinkMov(null)} onPick={linkDoc} />}
     </div>
   )
 }
@@ -222,37 +222,55 @@ function MovementsTab() {
         )}
       </div>
       {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />}
-      {linkMov && <DocPickerModal title="Прив'язати документ до руху" onClose={() => setLinkMov(null)} onPick={linkDoc} />}
+      {linkMov && <DocPickerModal title="Прив'язати документ до руху" match={{ date: linkMov.date }} onClose={() => setLinkMov(null)} onPick={linkDoc} />}
     </div>
   )
 }
 
-// ───────── Вибір документа для прив'язки ─────────
-function DocPickerModal({ title, onClose, onPick }) {
+// ───────── Вибір документа для прив'язки (рекомендація за датою руху) ─────────
+function DocPickerModal({ title, match, onClose, onPick }) {
   const [q, setQ] = useState('')
   const [docs, setDocs] = useState([])
+  const movDate = match?.date || null
   useEffect(() => {
     const t = setTimeout(async () => {
-      let qb = supabase.from('documents').select('id, type, file_name, amount, doc_date, contractors(name)').order('created_at', { ascending: false }).limit(50)
+      let qb = supabase.from('documents').select('id, type, file_name, amount, doc_date, created_at, contractors(name)').limit(120)
       const term = q.trim()
-      if (term) { const e = term.replace(/[%,()]/g, ' '); qb = qb.or(`file_name.ilike.%${e}%,doc_number.ilike.%${e}%`) }
+      if (term) { const e = term.replace(/[%,()]/g, ' '); qb = qb.or(`file_name.ilike.%${e}%,doc_number.ilike.%${e}%`).order('created_at', { ascending: false }) }
+      else if (movDate) { const d = new Date(movDate); const lo = new Date(d - 45 * 864e5).toISOString().slice(0, 10); const hi = new Date(+d + 45 * 864e5).toISOString().slice(0, 10); qb = qb.gte('doc_date', lo).lte('doc_date', hi).order('doc_date', { ascending: false }) }
+      else qb = qb.order('created_at', { ascending: false }).limit(50)
       const { data } = await qb
       setDocs(data || [])
     }, q ? 300 : 0)
     return () => clearTimeout(t)
-  }, [q])
+  }, [q, movDate])
+
+  const ranked = useMemo(() => {
+    const md = movDate ? new Date(movDate) : null
+    return docs.map(d => {
+      const dd = d.doc_date || null
+      const days = md && dd ? Math.round(Math.abs((md - new Date(dd)) / 864e5)) : null
+      return { d, days, rec: days != null && days <= 15 }
+    }).sort((a, b) => (a.days ?? 9999) - (b.days ?? 9999))
+  }, [docs, movDate])
+
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
         <div className="modal-header"><h2>{title || 'Оберіть документ'}</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
+        {movDate && <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 8 }}>Дата руху: <b>{movDate}</b> — рекомендовано документи з близькою датою.</div>}
         <input className="form-input" placeholder="Пошук за назвою або номером…" value={q} onChange={e => setQ(e.target.value)} style={{ marginBottom: 10 }} autoFocus />
         <div style={{ maxHeight: 360, overflowY: 'auto' }}>
-          {docs.length === 0 && <p style={{ color: 'var(--text3)', fontSize: 13 }}>Нічого не знайдено.</p>}
-          {docs.map(d => (
-            <div key={d.id} onClick={() => onPick(d.id)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 13 }}>
+          {ranked.length === 0 && <p style={{ color: 'var(--text3)', fontSize: 13 }}>Нічого не знайдено.</p>}
+          {ranked.map(({ d, days, rec }) => (
+            <div key={d.id} onClick={() => onPick(d.id)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 13, background: rec ? 'var(--green-bg)' : undefined }}>
               <div style={{ flex: 1 }}>
                 <div className="trunc">{getDocType(d.type)?.label || d.type || 'документ'}{d.file_name ? ` · ${d.file_name}` : ''}</div>
-                <div style={{ fontSize: 11, color: 'var(--text3)' }}>{d.contractors?.name || ''} {d.doc_date ? `· ${d.doc_date}` : ''}</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)', display: 'flex', gap: 6, alignItems: 'center' }}>
+                  {d.contractors?.name || ''} {d.doc_date ? `· ${d.doc_date}` : ''}
+                  {rec && <span style={{ background: 'var(--green-bg)', color: 'var(--green)', borderRadius: 6, padding: '1px 7px', fontWeight: 600 }}>рекомендовано · дата ±{days}дн</span>}
+                  {!rec && days != null && <span style={{ color: 'var(--text3)' }}>±{days}дн</span>}
+                </div>
               </div>
               <span style={{ color: 'var(--text2)', whiteSpace: 'nowrap' }}>{d.amount ? fmt(d.amount) + ' грн' : ''}</span>
             </div>
