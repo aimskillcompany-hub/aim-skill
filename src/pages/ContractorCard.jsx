@@ -5,6 +5,8 @@ import { useUser } from '../lib/auth'
 import { fmt, fmtInt } from '../lib/fmt'
 import { getContractorBalance } from '../lib/debts'
 import { fetchByEdrpou, isVkursiConfigured } from '../lib/vkursi'
+import { getDocType } from '../lib/docgen'
+import DocModal from '../components/DocModal'
 
 const TABS = [
   { id: 'details', label: 'Реквізити', icon: 'ti-id-badge-2' },
@@ -238,21 +240,31 @@ function OrdersTab({ id }) {
 
 // ───────────────────────── Документи ─────────────────────────
 function DocumentsTab({ id }) {
+  const { user } = useUser()
   const [rows, setRows] = useState(null)
-  useEffect(() => {
-    supabase.from('documents').select('id, type, file_name, amount, is_signed, created_at, direction').eq('contractor_id', id).order('created_at', { ascending: false })
-      .then(({ data }) => setRows(data || []))
-  }, [id])
+  const [openDoc, setOpenDoc] = useState(null)
+  const load = () => supabase.from('documents')
+    .select('id, type, doc_number, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)')
+    .eq('contractor_id', id).order('created_at', { ascending: false })
+    .then(({ data }) => setRows(data || []))
+  useEffect(() => { load() }, [id])
   if (rows == null) return <Loading />
   if (!rows.length) return <Empty text="Документів немає." />
   return (
-    <Table head={['Тип', 'Файл', 'Сума', 'Підписано', 'Дата']}>
-      {rows.map(d => (
-        <tr key={d.id}><td>{d.type || d.direction || '—'}</td><td><div className="trunc">{d.file_name || '—'}</div></td>
-          <td style={{ textAlign: 'right' }}>{d.amount ? fmt(d.amount) : '—'}</td>
-          <td>{d.is_signed ? '✓' : '—'}</td><td>{(d.created_at || '').slice(0, 10)}</td></tr>
-      ))}
-    </Table>
+    <>
+      <Table head={['Тип', '№', 'Файл', 'Сума', 'Підписано', 'Дата']}>
+        {rows.map(d => (
+          <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => setOpenDoc(d)}>
+            <td>{getDocType(d.type)?.label || d.type || '—'}</td>
+            <td style={{ color: 'var(--text2)', fontSize: 12 }}>{d.doc_number || '—'}</td>
+            <td><div className="trunc">{d.file_name || '—'}</div></td>
+            <td style={{ textAlign: 'right' }}>{d.amount ? fmt(d.amount) : '—'}</td>
+            <td>{d.is_signed ? '✓' : '—'}</td><td>{(d.created_at || '').slice(0, 10)}</td>
+          </tr>
+        ))}
+      </Table>
+      {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => { setOpenDoc(null); load() }} />}
+    </>
   )
 }
 

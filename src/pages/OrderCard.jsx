@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useUser } from '../lib/auth'
 import { fmt } from '../lib/fmt'
+import { getDocType } from '../lib/docgen'
+import DocModal from '../components/DocModal'
 import {
   ORDER_TYPES, TYPE_COLORS, flowFor, stepFor, statusLabel, nextActionLabel,
   nextStatus, isOpen, needsAction, proposalOverdue,
@@ -203,16 +206,32 @@ const PROP_STATUS = { draft: 'Чернетка', sent: 'Надіслано', acc
 
 // ───────── Документи ─────────
 function DocumentsTab({ o }) {
+  const { user } = useUser()
   const [rows, setRows] = useState(null)
-  useEffect(() => {
-    supabase.from('documents').select('id, type, file_name, amount, is_signed, created_at').eq('order_id', o.id).order('created_at', { ascending: false })
-      .then(({ data }) => setRows(data || []))
-  }, [o.id])
+  const [openDoc, setOpenDoc] = useState(null)
+  const load = () => supabase.from('documents')
+    .select('id, type, doc_number, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)')
+    .eq('order_id', o.id).order('created_at', { ascending: false })
+    .then(({ data }) => setRows(data || []))
+  useEffect(() => { load() }, [o.id])
   if (rows == null) return <Loading />
-  if (!rows.length) return <Empty text="Документів до замовлення немає. Прив'язка/генерація — модуль Документів (Фаза 5)." />
-  return <Table head={['Тип', 'Файл', 'Сума', 'Підписано', 'Дата']}>
-    {rows.map(d => <tr key={d.id}><td>{d.type || '—'}</td><td><div className="trunc">{d.file_name}</div></td><td style={{ textAlign: 'right' }}>{d.amount ? fmt(d.amount) : '—'}</td><td>{d.is_signed ? '✓' : '—'}</td><td>{(d.created_at || '').slice(0, 10)}</td></tr>)}
-  </Table>
+  if (!rows.length) return <Empty text="Документів до замовлення немає. Прив'язка/генерація — модуль Документів." />
+  return (
+    <>
+      <Table head={['Тип', '№', 'Файл', 'Сума', 'Підписано', 'Дата']}>
+        {rows.map(d => (
+          <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => setOpenDoc(d)}>
+            <td>{getDocType(d.type)?.label || d.type || '—'}</td>
+            <td style={{ color: 'var(--text2)', fontSize: 12 }}>{d.doc_number || '—'}</td>
+            <td><div className="trunc">{d.file_name}</div></td>
+            <td style={{ textAlign: 'right' }}>{d.amount ? fmt(d.amount) : '—'}</td>
+            <td>{d.is_signed ? '✓' : '—'}</td><td>{(d.created_at || '').slice(0, 10)}</td>
+          </tr>
+        ))}
+      </Table>
+      {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => { setOpenDoc(null); load() }} />}
+    </>
+  )
 }
 
 // ───────── Субзамовлення ─────────
