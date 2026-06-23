@@ -6,6 +6,7 @@ import { DOCUMENT_TYPES, getDocType } from '../lib/docgen'
 import ContractorSelect from '../components/ui/ContractorSelect'
 import DocGenModal from '../components/DocGenModal'
 import DocModal from '../components/DocModal'
+import { useSort, SortTh } from '../components/Sort'
 
 // Документ без метаданих — потребує розпізнавання
 const isIncomplete = (d) => !d.type || d.amount == null || !d.contractor_id
@@ -43,6 +44,15 @@ export default function Documents() {
     })
   }, [rows, q, typeFilter, signedFilter])
 
+  const { sort, onSort, sorted } = useSort('date', 'desc')
+  const view = sorted(filtered, {
+    type: d => getDocType(d.type)?.label || d.type || '',
+    contractor: d => d.contractors?.name || '',
+    date: d => d.doc_date || d.created_at || '',
+    amount: d => Number(d.amount) || 0,
+    vat_amount: d => Number(d.vat_amount) || 0,
+  })
+
   return (
     <div>
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -70,9 +80,19 @@ export default function Documents() {
         {loading ? <p style={{ color: 'var(--text3)' }}>Завантаження…</p> : (
           <div className="tbl-wrap" style={{ border: 'none' }}>
             <table>
-              <thead><tr><th>Тип</th><th>№</th><th>Контрагент</th><th>Файл</th><th style={{ textAlign: 'right' }}>Сума</th><th>ПДВ</th><th>Підпис</th><th>Дата</th><th></th></tr></thead>
+              <thead><tr>
+                <SortTh label="Тип" k="type" sort={sort} onSort={onSort} />
+                <SortTh label="№" k="doc_number" sort={sort} onSort={onSort} />
+                <SortTh label="Контрагент" k="contractor" sort={sort} onSort={onSort} />
+                <SortTh label="Файл" k="file_name" sort={sort} onSort={onSort} />
+                <SortTh label="Сума" k="amount" sort={sort} onSort={onSort} align="right" />
+                <SortTh label="ПДВ" k="vat_amount" sort={sort} onSort={onSort} />
+                <SortTh label="Підпис" k="is_signed" sort={sort} onSort={onSort} />
+                <SortTh label="Дата" k="date" sort={sort} onSort={onSort} />
+                <th></th>
+              </tr></thead>
               <tbody>
-                {filtered.map(d => (
+                {view.map(d => (
                   <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => setOpenDoc({ doc: d, autoOcr: false })}>
                     <td style={{ fontSize: 13 }}>{getDocType(d.type)?.label || d.type || '—'}</td>
                     <td style={{ fontSize: 13, color: 'var(--text2)' }}>{d.doc_number || '—'}</td>
@@ -89,7 +109,7 @@ export default function Documents() {
                     </td>
                   </tr>
                 ))}
-                {filtered.length === 0 && <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Документів немає</td></tr>}
+                {view.length === 0 && <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Документів немає</td></tr>}
               </tbody>
             </table>
           </div>

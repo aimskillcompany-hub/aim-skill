@@ -5,6 +5,7 @@ import { fmt, fmtInt } from '../lib/fmt'
 import { assembleProduct } from '../lib/stockService'
 import { getDocType } from '../lib/docgen'
 import DocModal from '../components/DocModal'
+import { useSort, SortTh } from '../components/Sort'
 
 // поля документа-джерела, потрібні для модалки DocModal
 const DOC_EMBED = 'documents(id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name))'
@@ -59,6 +60,12 @@ function StockTab() {
   }, [rows, q, onlyStock])
 
   const totalValue = useMemo(() => filtered.reduce((s, r) => s + (Number(r.computed_stock) || 0) * (Number(r.buy_price) || 0), 0), [filtered])
+  const { sort, onSort, sorted } = useSort('name', 'asc')
+  const view = sorted(filtered, {
+    computed_stock: r => Number(r.computed_stock) || 0,
+    buy_price: r => Number(r.buy_price) || 0,
+    sell_price: r => Number(r.sell_price) || 0,
+  })
 
   if (loading) return <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
   return (
@@ -71,9 +78,15 @@ function StockTab() {
       <div className="card">
         <div className="tbl-wrap" style={{ border: 'none' }}>
           <table>
-            <thead><tr><th>Товар</th><th>Артикул</th><th style={{ textAlign: 'right' }}>Залишок</th><th style={{ textAlign: 'right' }}>Закупівля</th><th style={{ textAlign: 'right' }}>Продаж</th></tr></thead>
+            <thead><tr>
+              <SortTh label="Товар" k="name" sort={sort} onSort={onSort} />
+              <SortTh label="Артикул" k="sku" sort={sort} onSort={onSort} />
+              <SortTh label="Залишок" k="computed_stock" sort={sort} onSort={onSort} align="right" />
+              <SortTh label="Закупівля" k="buy_price" sort={sort} onSort={onSort} align="right" />
+              <SortTh label="Продаж" k="sell_price" sort={sort} onSort={onSort} align="right" />
+            </tr></thead>
             <tbody>
-              {filtered.map(r => {
+              {view.map(r => {
                 const stock = Number(r.computed_stock) || 0
                 return (
                   <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setDetail(r)}>
@@ -85,7 +98,7 @@ function StockTab() {
                   </tr>
                 )
               })}
-              {filtered.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Нічого не знайдено</td></tr>}
+              {view.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Нічого не знайдено</td></tr>}
             </tbody>
           </table>
         </div>
@@ -147,6 +160,12 @@ function MovementsTab() {
     if (type !== 'all') qb = qb.eq('type', type)
     qb.then(({ data }) => { setRows(data || []); setLoading(false) })
   }, [type])
+  const { sort, onSort, sorted } = useSort('date', 'desc')
+  const view = sorted(rows, {
+    product: m => m.products?.name || '',
+    quantity: m => Number(m.quantity) || 0,
+    cost_price: m => Number(m.cost_price) || 0,
+  })
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
@@ -158,9 +177,16 @@ function MovementsTab() {
         {loading ? <p style={{ color: 'var(--text3)' }}>Завантаження…</p> : (
           <div className="tbl-wrap" style={{ border: 'none' }}>
             <table>
-              <thead><tr><th>Дата</th><th>Товар</th><th>Тип</th><th style={{ textAlign: 'right' }}>К-сть</th><th style={{ textAlign: 'right' }}>Собівартість</th><th>Джерело</th></tr></thead>
+              <thead><tr>
+                <SortTh label="Дата" k="date" sort={sort} onSort={onSort} />
+                <SortTh label="Товар" k="product" sort={sort} onSort={onSort} />
+                <SortTh label="Тип" k="type" sort={sort} onSort={onSort} />
+                <SortTh label="К-сть" k="quantity" sort={sort} onSort={onSort} align="right" />
+                <SortTh label="Собівартість" k="cost_price" sort={sort} onSort={onSort} align="right" />
+                <th>Джерело</th>
+              </tr></thead>
               <tbody>
-                {rows.map(m => (
+                {view.map(m => (
                   <tr key={m.id}>
                     <td style={{ fontSize: 12, color: 'var(--text2)' }}>{m.date}</td>
                     <td><div className="trunc">{m.products?.name || '—'}</div></td>
@@ -174,7 +200,7 @@ function MovementsTab() {
                     </td>
                   </tr>
                 ))}
-                {rows.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Рухів немає</td></tr>}
+                {view.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Рухів немає</td></tr>}
               </tbody>
             </table>
           </div>

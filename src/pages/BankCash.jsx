@@ -11,6 +11,7 @@ import { getDocType } from '../lib/docgen'
 import { matchScore, confidentMatch } from '../lib/docMatch'
 import ContractorSelect from '../components/ui/ContractorSelect'
 import DocModal from '../components/DocModal'
+import { useSort, SortTh } from '../components/Sort'
 
 // поля документа для DocModal
 const DOC_FIELDS = 'id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)'
@@ -70,6 +71,7 @@ function TransactionsTab({ accounts, onChange }) {
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState('unconfirmed') // unconfirmed | all
   const [acc, setAcc] = useState('all')
+  const [q, setQ] = useState('')
   const [linkTx, setLinkTx] = useState(null)
   const [editTx, setEditTx] = useState(null)
   const [openDoc, setOpenDoc] = useState(null)
@@ -83,6 +85,11 @@ function TransactionsTab({ accounts, onChange }) {
       .eq('is_ignored', false).order('date', { ascending: false }).limit(500)
     if (status === 'unconfirmed') qb = qb.eq('is_validated', false)
     if (acc !== 'all') qb = qb.eq('account_id', acc)
+    const term = q.trim()
+    if (term) {
+      const esc = term.replace(/[%,()]/g, ' ')
+      qb = qb.or(`counterparty.ilike.%${esc}%,edrpou.ilike.%${esc}%,description.ilike.%${esc}%`)
+    }
     const { data } = await qb
     const list = data || []
     // Авто-матч контрагента для непідтверджених без прив'язки (при відкритті списку)
@@ -106,9 +113,15 @@ function TransactionsTab({ accounts, onChange }) {
     setLoading(false)
   }
   useEffect(() => { fetchArticles().then(setArticles) }, [])
-  useEffect(() => { load() }, [status, acc])
+  useEffect(() => { const t = setTimeout(load, q ? 350 : 0); return () => clearTimeout(t) }, [status, acc, q])
 
   const grouped = useMemo(() => groupByType(articles), [articles])
+  const { sort, onSort, sorted } = useSort('date', 'desc')
+  const view = sorted(rows, {
+    counterparty: r => r.counterparty || '',
+    amount: r => Number(r.amount) || 0,
+    doc: r => r._docs?.[0] ? (getDocType(r._docs[0].type)?.label || r._docs[0].type) : '',
+  })
 
   // авто-класифікація видимих непідтверджених
   const autoFill = async () => {
@@ -177,7 +190,8 @@ function TransactionsTab({ accounts, onChange }) {
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        <select className="form-input" value={status} onChange={e => setStatus(e.target.value)} style={{ width: 200 }}>
+        <input className="form-input" placeholder="Пошук: контрагент або ЄДРПОУ…" value={q} onChange={e => setQ(e.target.value)} style={{ flex: '1 1 240px', maxWidth: 340 }} />
+        <select className="form-input" value={status} onChange={e => setStatus(e.target.value)} style={{ width: 180 }}>
           <option value="unconfirmed">Непідтверджені</option>
           <option value="all">Всі</option>
         </select>
@@ -194,9 +208,17 @@ function TransactionsTab({ accounts, onChange }) {
       <div className="card">
         <div className="tbl-wrap" style={{ border: 'none' }}>
           <table>
-            <thead><tr><th>Дата</th><th>Контрагент</th><th style={{ textAlign: 'right' }}>Сума</th><th>Напрям</th><th>Стаття</th><th>Документ</th><th></th></tr></thead>
+            <thead><tr>
+              <SortTh label="Дата" k="date" sort={sort} onSort={onSort} />
+              <SortTh label="Контрагент" k="counterparty" sort={sort} onSort={onSort} />
+              <SortTh label="Сума" k="amount" sort={sort} onSort={onSort} align="right" />
+              <SortTh label="Напрям" k="direction" sort={sort} onSort={onSort} />
+              <SortTh label="Стаття" k="article" sort={sort} onSort={onSort} />
+              <SortTh label="Документ" k="doc" sort={sort} onSort={onSort} />
+              <th></th>
+            </tr></thead>
             <tbody>
-              {rows.map(r => (
+              {view.map(r => (
                 <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setEditTx(r)}>
                   <td style={{ fontSize: 12, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{r.date}</td>
                   <td>
@@ -221,7 +243,7 @@ function TransactionsTab({ accounts, onChange }) {
                   </td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Немає транзакцій</td></tr>}
+              {view.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Немає транзакцій</td></tr>}
             </tbody>
           </table>
         </div>

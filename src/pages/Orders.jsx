@@ -8,6 +8,7 @@ import {
   proposalOverdue, paymentOverdue,
 } from '../lib/orders'
 import Gantt from '../components/Gantt'
+import { useSort, SortTh } from '../components/Sort'
 
 export default function Orders() {
   const navigate = useNavigate()
@@ -63,6 +64,15 @@ export default function Orders() {
     }
   }, [orders])
 
+  const { sort, onSort, sorted } = useSort('order_number', 'asc')
+  const sortedOrders = sorted(filtered, {
+    order_number: o => o.order_number || '',
+    client: o => o.clientName || '',
+    type: o => ORDER_TYPES[o.type] || '',
+    status: o => statusLabel(o),
+    total: o => Number(o.total) || 0,
+  })
+
   const FILTERS = [
     ['all', 'Всі'], ['action', 'Потребують дії'], ['overdue', 'Прострочено'],
     ['trade', 'Торгівля'], ['service', 'Послуги'], ['agent', 'Агент'],
@@ -105,11 +115,15 @@ export default function Orders() {
           <div className="tbl-wrap" style={{ border: 'none' }}>
             <table>
               <thead><tr>
-                <th>№</th><th>Клієнт</th><th>Тип</th><th>Статус</th><th>Наступна дія</th>
-                <th style={{ textAlign: 'right' }}>Сума</th>
+                <SortTh label="№" k="order_number" sort={sort} onSort={onSort} />
+                <SortTh label="Клієнт" k="client" sort={sort} onSort={onSort} />
+                <SortTh label="Тип" k="type" sort={sort} onSort={onSort} />
+                <SortTh label="Статус" k="status" sort={sort} onSort={onSort} />
+                <th>Наступна дія</th>
+                <SortTh label="Сума" k="total" sort={sort} onSort={onSort} align="right" />
               </tr></thead>
               <tbody>
-                {filtered.map(o => (
+                {sortedOrders.map(o => (
                   <tr key={o.id} style={{ cursor: 'pointer', background: o.overdue ? 'var(--red-bg)' : undefined }} onClick={() => navigate(`/orders/${o.id}`)}>
                     <td style={{ fontWeight: 500 }}>{o.order_number || o.id.slice(0, 6)}</td>
                     <td><div className="trunc">{o.clientName}</div></td>
@@ -121,7 +135,7 @@ export default function Orders() {
                     <td style={{ textAlign: 'right' }}>{fmt(o.total)}</td>
                   </tr>
                 ))}
-                {filtered.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 28 }}>Замовлень немає</td></tr>}
+                {sortedOrders.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 28 }}>Замовлень немає</td></tr>}
               </tbody>
             </table>
           </div>

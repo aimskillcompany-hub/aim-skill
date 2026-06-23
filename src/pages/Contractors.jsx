@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { fmtInt } from '../lib/fmt'
 import { normalizeName } from '../lib/contractors'
+import { useSort, SortTh } from '../components/Sort'
 
 export default function Contractors() {
   const { user } = useUser()
@@ -40,6 +41,14 @@ export default function Contractors() {
     supplier: list.filter(c => c.is_supplier).length,
   }), [list])
 
+  const { sort, onSort, sorted } = useSort('total_income', 'desc')
+  const view = sorted(filtered, {
+    total_income: c => Number(c.total_income) || 0,
+    total_expense: c => Number(c.total_expense) || 0,
+    operations_count: c => Number(c.operations_count) || 0,
+    last_operation_date: c => c.last_operation_date || '',
+  })
+
   return (
     <div>
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -73,17 +82,17 @@ export default function Contractors() {
             <table>
               <thead>
                 <tr>
-                  <th>Контрагент</th>
-                  <th>ЄДРПОУ</th>
+                  <SortTh label="Контрагент" k="name" sort={sort} onSort={onSort} />
+                  <SortTh label="ЄДРПОУ" k="edrpou" sort={sort} onSort={onSort} />
                   <th>Тип</th>
-                  <th style={{ textAlign: 'right' }}>Дохід</th>
-                  <th style={{ textAlign: 'right' }}>Витрати</th>
-                  <th style={{ textAlign: 'right' }}>Операцій</th>
-                  <th>Остання</th>
+                  <SortTh label="Дохід" k="total_income" sort={sort} onSort={onSort} align="right" />
+                  <SortTh label="Витрати" k="total_expense" sort={sort} onSort={onSort} align="right" />
+                  <SortTh label="Операцій" k="operations_count" sort={sort} onSort={onSort} align="right" />
+                  <SortTh label="Остання" k="last_operation_date" sort={sort} onSort={onSort} />
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(c => (
+                {view.map(c => (
                   <tr key={c.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/contractors/${c.id}`)}>
                     <td><div className="trunc" style={{ fontWeight: 500 }}>{c.name}</div></td>
                     <td style={{ color: 'var(--text2)', fontSize: 12 }}>{c.edrpou || '—'}</td>
@@ -100,7 +109,7 @@ export default function Contractors() {
                     <td style={{ color: 'var(--text2)', fontSize: 12 }}>{c.last_operation_date || '—'}</td>
                   </tr>
                 ))}
-                {filtered.length === 0 && (
+                {view.length === 0 && (
                   <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Нічого не знайдено</td></tr>
                 )}
               </tbody>
