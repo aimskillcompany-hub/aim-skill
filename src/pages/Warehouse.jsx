@@ -115,10 +115,16 @@ function ProductModal({ product, onClose }) {
   const [aliases, setAliases] = useState([])
   const [movs, setMovs] = useState([])
   const [openDoc, setOpenDoc] = useState(null)
+  const [linkMov, setLinkMov] = useState(null)
+  const loadMovs = () => supabase.from('stock_movements').select(`id, type, quantity, cost_price, date, description, source, document_id, ${DOC_EMBED}`).eq('product_id', product.id).order('date', { ascending: false }).limit(50).then(({ data }) => setMovs(data || []))
   useEffect(() => {
     supabase.from('product_aliases').select('alias').eq('product_id', product.id).then(({ data }) => setAliases(data || []))
-    supabase.from('stock_movements').select(`id, type, quantity, cost_price, date, description, source, document_id, ${DOC_EMBED}`).eq('product_id', product.id).order('date', { ascending: false }).limit(50).then(({ data }) => setMovs(data || []))
+    loadMovs()
   }, [product.id])
+  const linkDoc = async (docId) => {
+    await supabase.from('stock_movements').update({ document_id: docId, source: 'document' }).eq('id', linkMov.id)
+    setLinkMov(null); loadMovs()
+  }
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
@@ -140,11 +146,12 @@ function ProductModal({ product, onClose }) {
             <tbody>{movs.map(m => <tr key={m.id}><td style={{ fontSize: 12 }}>{m.date}</td><td>{m.type === 'in' ? 'Прихід' : m.type === 'out' ? 'Видаток' : m.type}</td><td style={{ textAlign: 'right' }}>{fmt(m.quantity)}</td><td style={{ textAlign: 'right' }}>{m.cost_price ? fmt(m.cost_price) : '—'}</td><td><div className="trunc">{m.description}</div></td>
               <td>{m.documents
                 ? <a onClick={() => setOpenDoc(m.documents)} style={{ color: 'var(--blue)', cursor: 'pointer', fontSize: 12 }}><i className="ti ti-file" /> {getDocType(m.documents.type)?.label || 'документ'}</a>
-                : <span style={{ color: 'var(--text3)', fontSize: 12 }}>{srcLabel(m.source)}</span>}</td></tr>)}</tbody>
+                : <span style={{ color: 'var(--text3)', fontSize: 12 }}>{srcLabel(m.source)} <button className="btn" onClick={() => setLinkMov(m)} title="Прив'язати документ" style={{ padding: '0 6px' }}><i className="ti ti-link" /></button></span>}</td></tr>)}</tbody>
           </table>
         </div>
       </div>
       {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />}
+      {linkMov && <DocPickerModal title="Прив'язати документ до руху" onClose={() => setLinkMov(null)} onPick={linkDoc} />}
     </div>
   )
 }
@@ -156,12 +163,18 @@ function MovementsTab() {
   const [loading, setLoading] = useState(true)
   const [type, setType] = useState('all')
   const [openDoc, setOpenDoc] = useState(null)
-  useEffect(() => {
+  const [linkMov, setLinkMov] = useState(null)
+  const load = () => {
     setLoading(true)
     let qb = supabase.from('stock_movements').select(`id, type, quantity, cost_price, total, date, description, source, document_id, products(name), ${DOC_EMBED}`).order('date', { ascending: false }).limit(500)
     if (type !== 'all') qb = qb.eq('type', type)
     qb.then(({ data }) => { setRows(data || []); setLoading(false) })
-  }, [type])
+  }
+  useEffect(() => { load() }, [type])
+  const linkDoc = async (docId) => {
+    await supabase.from('stock_movements').update({ document_id: docId, source: 'document' }).eq('id', linkMov.id)
+    setLinkMov(null); load()
+  }
   const { sort, onSort, sorted } = useSort('date', 'desc')
   const view = sorted(rows, {
     product: m => m.products?.name || '',
@@ -198,7 +211,7 @@ function MovementsTab() {
                     <td style={{ fontSize: 12 }}>
                       {m.documents
                         ? <a onClick={() => setOpenDoc(m.documents)} style={{ color: 'var(--blue)', cursor: 'pointer' }} title={m.documents.file_name}><i className="ti ti-file" /> {getDocType(m.documents.type)?.label || 'документ'}</a>
-                        : <span style={{ color: 'var(--text3)' }}>{srcLabel(m.source)}</span>}
+                        : <span style={{ color: 'var(--text3)' }}>{srcLabel(m.source)} <button className="btn" onClick={() => setLinkMov(m)} title="Прив'язати документ" style={{ padding: '0 6px', marginLeft: 4 }}><i className="ti ti-link" /></button></span>}
                     </td>
                   </tr>
                 ))}
@@ -209,6 +222,43 @@ function MovementsTab() {
         )}
       </div>
       {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />}
+      {linkMov && <DocPickerModal title="Прив'язати документ до руху" onClose={() => setLinkMov(null)} onPick={linkDoc} />}
+    </div>
+  )
+}
+
+// ───────── Вибір документа для прив'язки ─────────
+function DocPickerModal({ title, onClose, onPick }) {
+  const [q, setQ] = useState('')
+  const [docs, setDocs] = useState([])
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      let qb = supabase.from('documents').select('id, type, file_name, amount, doc_date, contractors(name)').order('created_at', { ascending: false }).limit(50)
+      const term = q.trim()
+      if (term) { const e = term.replace(/[%,()]/g, ' '); qb = qb.or(`file_name.ilike.%${e}%,doc_number.ilike.%${e}%`) }
+      const { data } = await qb
+      setDocs(data || [])
+    }, q ? 300 : 0)
+    return () => clearTimeout(t)
+  }, [q])
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
+        <div className="modal-header"><h2>{title || 'Оберіть документ'}</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
+        <input className="form-input" placeholder="Пошук за назвою або номером…" value={q} onChange={e => setQ(e.target.value)} style={{ marginBottom: 10 }} autoFocus />
+        <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+          {docs.length === 0 && <p style={{ color: 'var(--text3)', fontSize: 13 }}>Нічого не знайдено.</p>}
+          {docs.map(d => (
+            <div key={d.id} onClick={() => onPick(d.id)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 13 }}>
+              <div style={{ flex: 1 }}>
+                <div className="trunc">{getDocType(d.type)?.label || d.type || 'документ'}{d.file_name ? ` · ${d.file_name}` : ''}</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>{d.contractors?.name || ''} {d.doc_date ? `· ${d.doc_date}` : ''}</div>
+              </div>
+              <span style={{ color: 'var(--text2)', whiteSpace: 'nowrap' }}>{d.amount ? fmt(d.amount) + ' грн' : ''}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
