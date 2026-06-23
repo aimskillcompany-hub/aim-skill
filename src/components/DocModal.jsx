@@ -6,6 +6,7 @@ import { getContractorMatcher } from '../lib/contractorMatch'
 import { resolveProduct, createStockMovement } from '../lib/stockService'
 import { DOCUMENT_TYPES, getDocType } from '../lib/docgen'
 import ContractorSelect from './ui/ContractorSelect'
+import MailSendModal from './MailSendModal'
 
 export const dirFromType = (key) => {
   const t = getDocType(key)
@@ -30,6 +31,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
   const [form, setForm] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
   const [previewType, setPreviewType] = useState('image')
+  const [showMail, setShowMail] = useState(false)
 
   useEffect(() => { if (existingDoc) recognizeExisting(autoOcr) }, [])
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }, [previewUrl])
@@ -175,6 +177,8 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
   }
 
   return (
+    <>
+    {showMail && <MailSendModal document={{ ...existingDoc, type: form?.type || existingDoc?.type, doc_number: form?.doc_number ?? existingDoc?.doc_number }} onClose={() => setShowMail(false)} />}
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: form ? 1080 : 600, width: '95vw' }}>
         <div className="modal-header"><h2>{existingDoc ? (autoOcr ? 'Розпізнати документ' : 'Документ') : 'Завантажити документ (OCR)'}</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
@@ -248,8 +252,9 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
               {error && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 12 }}>{error}</div>}
 
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
-                <div>
+                <div style={{ display: 'flex', gap: 8 }}>
                   {existingDoc && <button className="btn" onClick={del} disabled={busy} style={{ color: 'var(--red)' }}><i className="ti ti-trash" /> Видалити</button>}
+                  {existingDoc && <button className="btn" onClick={() => setShowMail(true)} disabled={busy}><i className="ti ti-send" /> Надіслати email</button>}
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   {existingDoc
@@ -263,5 +268,6 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
         )}
       </div>
     </div>
+    </>
   )
 }

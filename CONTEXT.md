@@ -108,6 +108,11 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 - **Дата документа** (`documents.doc_date`, міграція 005) — окреме поле (раніше показувався created_at, дата з форми не зберігалась). Реєстр/вкладки показують doc_date.
 - **Спільна модалка документа** (`components/DocModal.jsx`) — переюзана в Документах, картці контрагента і картці замовлення. У вкладках «Документи» тип показується мітками (не сирим ключем), клік по рядку відкриває перегляд з прев'ю/редагуванням/видаленням.
 - **Прев'ю документа** у формі OCR/розпізнавання (двоколонкова: файл зліва, поля справа). Клік по рядку реєстру → той самий екран у режимі перегляду (прев'ю + збережені поля, без авто-OCR; кнопки «Розпізнати»/«Зберегти»).
+- **Інтеграція корпоративної пошти (Hostinger IMAP/SMTP)** — серверні ендпоінти в `api/` (патерн `api/ai.js`):
+  - **Вхідні (`api/mail-poll.js`):** забирає вкладення (PDF/фото) з непрочитаних листів INBOX → Storage → рядки `documents` (`source='email'`) → best-effort серверний OCR (`ocrFromAttachments` у `api/_lib.js`, дзеркалить `extractDocumentMulti`) + авто-матч контрагента за ЄДРПОУ/назвою. Дедуплікація за Message-ID у `processed_emails`, лист помічається прочитаним. Тригери: кнопка «Перевірити пошту» в Документах, Vercel Cron (раз/добу, `vercel.json`), або зовнішній пінгувач (Bearer `CRON_SECRET`).
+  - **Вихідні (`api/mail-send.js`):** SMTP через `nodemailer`, надсилання документа клієнту з вкладенням зі Storage. UI — `components/MailSendModal.jsx`, кнопка «Надіслати email» у `DocModal` (префіл адреси з `contractor_contacts.email`). Журнал у `mail_log`.
+  - Авторизація: браузер шле Supabase access_token (Bearer), сервер валідує через `verifyUser`; cron — через `CRON_SECRET`. Серверні операції — service-role клієнт (`getAdmin`).
+  - Залежності: `imapflow`, `nodemailer`, `mailparser` (тільки серверні, у frontend-бандл не потрапляють).
 
 ---
 
@@ -118,6 +123,12 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 - [ ] Класифікувати **32 невалідовані транзакції** (Банк/Каса → Непідтверджені) — для точності P&L (на баланс не впливає).
 - [x] ~~Розпізнати мігровані документи~~ — масове розпізнавання виконано (143 OK, 154/157 з типом+сумою). Тип береться з OCR docType (`typeFromOcr`). Лишилось: 3 завеликі файли (>~4.5МБ — ліміт Vercel-проксі) + ~10 з незнайденим контрагентом (переважно «Управління ООН…»).
 - [ ] Протестувати на реальних файлах: імпорт виписки ПУМБ/Mono, генерацію PDF.
+
+### Пошта (щоб запрацювала інтеграція)
+- [ ] Запустити **`migrations/006_mail_integration.sql`** у Supabase Dashboard (таблиці `processed_emails`, `mail_log`, колонка `documents.source`).
+- [ ] Додати **env у Vercel:** `MAIL_USER`, `MAIL_PASS` (скринька Hostinger), `SUPABASE_SERVICE_KEY` (service-role), `CRON_SECRET` (довільний секрет для cron). Опц.: `MAIL_IMAP_HOST/PORT`, `MAIL_SMTP_HOST/PORT`, `MAIL_FROM` (дефолти — Hostinger imap/smtp.hostinger.com).
+- [ ] Перевірити надсилання (кнопка «Надіслати email» у документі) і прийом (кнопка «Перевірити пошту»).
+- [ ] (Опц.) Зовнішній пінгувач (cron-job.org) на `POST /api/mail-poll` з заголовком `Authorization: Bearer <CRON_SECRET>` для частішого опитування (Hobby cron — раз/добу).
 
 ### Технічні (код/інфра)
 - [ ] Перевірити, що **політика Storage** дозволяє authenticated download (інакше «Розпізнати» дасть помилку доступу до файлу).
@@ -167,6 +178,8 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `002_cutover.sql` | Каса→банк, backfill сум документів | частково (каса домігровано вручну; backfill сум документів — ні) |
 | `003_account_opening_balance.sql` | Колонки початкового залишку | ✅ застосовано |
 | `004_documents_update_and_docnumber.sql` | UPDATE-RLS на documents + doc_number | ✅ застосовано |
+| `005_document_date.sql` | Колонка `documents.doc_date` | ✅ застосовано |
+| `006_mail_integration.sql` | Пошта: `processed_emails`, `mail_log`, `documents.source` | ⏳ запустити вручну |
 | `validate.mjs` | Перевірка цілісності (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 
 ---

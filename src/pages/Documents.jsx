@@ -22,6 +22,22 @@ export default function Documents() {
   const [genContractor, setGenContractor] = useState(null)
   const [pickGen, setPickGen] = useState(false)
   const [openDoc, setOpenDoc] = useState(null) // { doc, autoOcr }
+  const [mailBusy, setMailBusy] = useState(false)
+  const [mailMsg, setMailMsg] = useState(null)
+
+  const checkMail = async () => {
+    setMailBusy(true); setMailMsg(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/mail-poll', { method: 'POST', headers: { Authorization: `Bearer ${session?.access_token}` } })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || `Помилка ${res.status}`)
+      const s = data.summary || {}
+      setMailMsg({ ok: true, text: `Перевірено листів: ${s.checked || 0} · нових: ${s.newEmails || 0} · документів: ${s.docs || 0}${s.errors?.length ? ` · помилок: ${s.errors.length}` : ''}` })
+      if (s.docs) load()
+    } catch (e) { setMailMsg({ ok: false, text: e.message }) }
+    setMailBusy(false)
+  }
 
   const load = async () => {
     setLoading(true)
@@ -58,10 +74,20 @@ export default function Documents() {
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <h1>Документи</h1>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn" onClick={checkMail} disabled={mailBusy}><i className="ti ti-mail-down" /> {mailBusy ? 'Перевірка…' : 'Перевірити пошту'}</button>
           <button className="btn" onClick={() => setShowOcr(true)}><i className="ti ti-scan" /> Завантажити скан (OCR)</button>
           <button className="btn btn-primary" onClick={() => setPickGen(true)}><i className="ti ti-file-plus" /> Згенерувати</button>
         </div>
       </div>
+
+      {mailMsg && (
+        <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 8, fontSize: 13,
+          background: mailMsg.ok ? 'var(--blue-bg, #EFF4FF)' : 'rgba(220,38,38,0.08)',
+          color: mailMsg.ok ? 'var(--text2)' : 'var(--red)' }}>
+          <i className={`ti ${mailMsg.ok ? 'ti-mail-check' : 'ti-alert-triangle'}`} /> {mailMsg.text}
+          <button onClick={() => setMailMsg(null)} style={{ float: 'right', background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}><i className="ti ti-x" /></button>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         <input className="form-input" placeholder="Пошук…" value={q} onChange={e => setQ(e.target.value)} style={{ flex: '1 1 220px', maxWidth: 320 }} />

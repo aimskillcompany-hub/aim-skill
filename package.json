@@ -10,6 +10,9 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
+    "imapflow": "^1.4.2",
+    "mailparser": "^3.9.11",
+    "nodemailer": "^9.0.1",
     "pdfmake": "^0.3.11",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
