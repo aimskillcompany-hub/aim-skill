@@ -244,7 +244,7 @@ function DocumentsTab({ id }) {
   const [rows, setRows] = useState(null)
   const [openDoc, setOpenDoc] = useState(null)
   const load = () => supabase.from('documents')
-    .select('id, type, doc_number, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)')
+    .select('id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)')
     .eq('contractor_id', id).order('created_at', { ascending: false })
     .then(({ data }) => setRows(data || []))
   useEffect(() => { load() }, [id])
@@ -259,7 +259,7 @@ function DocumentsTab({ id }) {
             <td style={{ color: 'var(--text2)', fontSize: 12 }}>{d.doc_number || '—'}</td>
             <td><div className="trunc">{d.file_name || '—'}</div></td>
             <td style={{ textAlign: 'right' }}>{d.amount ? fmt(d.amount) : '—'}</td>
-            <td>{d.is_signed ? '✓' : '—'}</td><td>{(d.created_at || '').slice(0, 10)}</td>
+            <td>{d.is_signed ? '✓' : '—'}</td><td>{(d.doc_date || d.created_at || '').slice(0, 10)}</td>
           </tr>
         ))}
       </Table>

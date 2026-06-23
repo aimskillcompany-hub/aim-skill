@@ -62,7 +62,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
           edrpou: '',
           amount: d.amount ?? '',
           vat_amount: d.vat_amount ?? 0,
-          date: (d.created_at || '').slice(0, 10),
+          date: d.doc_date || (d.created_at || '').slice(0, 10),
           is_signed: d.is_signed || false,
           items: [],
         })
@@ -91,7 +91,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
         edrpou: data.edrpou || '',
         amount: data.amount ?? data.amountNoVat ?? '',
         vat_amount: data.vatAmount ?? 0,
-        date: data.date || new Date().toISOString().split('T')[0],
+        date: data.date || existingDoc?.doc_date || new Date().toISOString().split('T')[0],
         is_signed: existingDoc?.is_signed || false,
         items: data.items || [],
       })
@@ -112,6 +112,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
           is_signed: form.is_signed,
           file_name: form.file_name?.trim() || existingDoc.file_name,
           doc_number: form.doc_number?.trim() || null,
+          doc_date: form.date || null,
           ocr_data: form,
         }).eq('id', existingDoc.id).select('id')
         if (error) throw error
@@ -129,6 +130,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
       const { data: doc, error } = await supabase.from('documents').insert({
         type: form.type,
         doc_number: form.doc_number?.trim() || null,
+        doc_date: form.date || null,
         contractor_id: form.contractor_id || null,
         amount: Number(form.amount) || null,
         vat_amount: Number(form.vat_amount) || 0,

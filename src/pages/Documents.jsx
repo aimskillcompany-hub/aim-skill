@@ -25,7 +25,7 @@ export default function Documents() {
   const load = async () => {
     setLoading(true)
     const { data } = await supabase.from('documents')
-      .select('id, type, doc_number, file_name, amount, vat_amount, is_signed, direction, created_at, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)')
+      .select('id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, direction, created_at, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)')
       .order('created_at', { ascending: false }).limit(500)
     setRows(data || [])
     setLoading(false)
@@ -81,7 +81,7 @@ export default function Documents() {
                     <td style={{ textAlign: 'right' }}>{d.amount ? fmt(d.amount) : '—'}</td>
                     <td style={{ color: 'var(--text2)', fontSize: 12 }}>{d.vat_amount ? fmt(d.vat_amount) : '—'}</td>
                     <td>{d.is_signed ? <span style={{ color: 'var(--green)' }}><i className="ti ti-check" /></span> : <span style={{ color: 'var(--text3)' }}>—</span>}</td>
-                    <td style={{ fontSize: 12, color: 'var(--text2)' }}>{(d.created_at || '').slice(0, 10)}</td>
+                    <td style={{ fontSize: 12, color: 'var(--text2)' }}>{(d.doc_date || d.created_at || '').slice(0, 10)}</td>
                     <td style={{ textAlign: 'right' }}>
                       {isIncomplete(d) && (d.storage_path || d.file_path) && (
                         <button className="btn" onClick={(e) => { e.stopPropagation(); setOpenDoc({ doc: d, autoOcr: true }) }} title="Розпізнати метадані з файлу через OCR" style={{ whiteSpace: 'nowrap' }}><i className="ti ti-scan" /> Розпізнати</button>

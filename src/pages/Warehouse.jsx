@@ -7,7 +7,7 @@ import { getDocType } from '../lib/docgen'
 import DocModal from '../components/DocModal'
 
 // поля документа-джерела, потрібні для модалки DocModal
-const DOC_EMBED = 'documents(id, type, doc_number, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name))'
+const DOC_EMBED = 'documents(id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name))'
 
 export default function Warehouse() {
   const [tab, setTab] = useState('stock')
