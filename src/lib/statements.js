@@ -1,9 +1,7 @@
 // Парсинг банківських виписок: ПУМБ / Monobank (SheetJS) + Claude-fallback для PDF/невідомих.
 // Винесено зі старого Bank.jsx для переюзу новою сторінкою Банк/Каса.
 import * as XLSX from 'xlsx'
-
-const USE_PROXY = !import.meta.env.DEV
-const API_KEY = import.meta.env.VITE_ANTHROPIC_KEY
+import { callClaude } from './ai'
 
 async function readXlsx(file) {
   const buf = await file.arrayBuffer()
@@ -135,15 +133,7 @@ async function parseWithClaude(content, fileName, isPDF = false) {
       ] }]
     : [{ role: 'user', content: `Банківська виписка (${fileName}):\n\n${content.substring(0, 28000)}` }]
   const body = { model: 'claude-sonnet-4-6', max_tokens: 4096, system: PARSE_PROMPT, messages }
-  const res = USE_PROXY
-    ? await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-    : await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-        body: JSON.stringify(body),
-      })
-  const data = await res.json()
-  if (data.error) throw new Error(data.error.message)
+  const data = await callClaude(body) // авто-повтор на overloaded/rate-limit
   const txt = data.content?.find(b => b.type === 'text')?.text || '[]'
   return JSON.parse(txt.replace(/```json|```/g, '').trim())
 }

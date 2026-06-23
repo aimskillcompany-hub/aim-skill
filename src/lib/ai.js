@@ -2,6 +2,32 @@
 const USE_PROXY = !import.meta.env.DEV // В dev режимі fallback на прямий доступ
 const API_KEY = import.meta.env.VITE_ANTHROPIC_KEY
 
+// Виклик Claude з авто-повтором на тимчасових помилках (overloaded 529 / rate limit 429 / 503).
+export async function callClaude(requestBody, { retries = 4 } = {}) {
+  let lastErr
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const res = USE_PROXY
+      ? await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requestBody) })
+      : await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+          body: JSON.stringify(requestBody),
+        })
+    let data = null
+    try { data = await res.json() } catch {}
+    if (res.ok && data && !data.error) return data
+
+    const errType = data?.error?.type || ''
+    const msg = data?.error?.message || `HTTP ${res.status}`
+    const transient = [429, 500, 502, 503, 529].includes(res.status) ||
+      /overload|rate.?limit/i.test(errType) || /overload|rate.?limit/i.test(msg)
+    lastErr = new Error(/overload/i.test(msg) ? 'Сервери Claude перевантажені. Зачекайте і спробуйте ще раз.' : msg)
+    if (!transient || attempt === retries) throw lastErr
+    await new Promise(r => setTimeout(r, 1200 * 2 ** attempt + Math.random() * 400)) // 1.2s, 2.4s, 4.8s, 9.6s
+  }
+  throw lastErr
+}
+
 // Конвертуємо HEIC/HEIF → JPEG через canvas
 async function normalizeImage(file) {
   const isHeic = ['image/heic', 'image/heif'].includes(file.type.toLowerCase()) ||
@@ -137,30 +163,7 @@ ${articles?.length ? articles.map(a => `- ${a.name} (${a.type})`).join('\n') : '
     messages: [{ role: 'user', content: contentBlocks }],
   }
 
-  let res
-  if (USE_PROXY) {
-    // Production: через серверний proxy (ключ на сервері)
-    res = await fetch('/api/ai', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-    })
-  } else {
-    // Dev: прямий доступ (для локальної розробки)
-    res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': API_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify(requestBody),
-    })
-  }
-
-  const data = await res.json()
-  if (data.error) throw new Error(data.error.message)
+  const data = await callClaude(requestBody)
   const text = data.content?.find(b => b.type === 'text')?.text || ''
 
   // Очищаємо відповідь від markdown та зайвого тексту
