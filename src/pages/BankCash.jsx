@@ -337,6 +337,7 @@ function TxModal({ tx, grouped, onClose, onSaved, onLink, onOpenDoc }) {
 function TxLinkModal({ tx, onClose }) {
   const [docs, setDocs] = useState([])
   const [linked, setLinked] = useState([])
+  const [cov, setCov] = useState({}) // document_id → вже покрито з усіх транзакцій
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -349,15 +350,25 @@ function TxLinkModal({ tx, onClose }) {
     if (tx.contractor_id) qb = qb.eq('contractor_id', tx.contractor_id)
     const { data } = await qb
     setDocs(data || [])
+    // покриття кандидатів з УСІХ транзакцій (для коректного залишку при частковій оплаті)
+    const ids = (data || []).map(d => d.id)
+    if (ids.length) {
+      const { data: allTd } = await supabase.from('transaction_documents').select('document_id, amount').in('document_id', ids)
+      const m = {}; (allTd || []).forEach(t => { m[t.document_id] = (m[t.document_id] || 0) + Math.abs(Number(t.amount) || 0) })
+      setCov(m)
+    }
   }
   useEffect(() => { load() }, [tx.id])
 
   const linkedIds = new Set(linked.map(l => l.document_id))
   const remaining = Math.abs(Number(tx.amount) || 0) - linked.reduce((s, l) => s + (Number(l.amount) || 0), 0)
+  const outstandingOf = (doc) => Math.abs(Number(doc.amount) || 0) - (cov[doc.id] || 0)
 
   const attach = async (doc) => {
     setBusy(true)
-    const cover = Math.min(Math.abs(remaining) || Math.abs(doc.amount) || 0, Math.abs(doc.amount) || Math.abs(remaining) || 0) || Math.abs(tx.amount)
+    const txRemaining = Math.abs(remaining) > 0.01 ? Math.abs(remaining) : Math.abs(Number(tx.amount) || 0)
+    const docOut = outstandingOf(doc)
+    const cover = Math.round(Math.min(txRemaining, docOut > 0.01 ? docOut : Math.abs(Number(doc.amount) || 0)) * 100) / 100
     await supabase.from('transaction_documents').insert({ transaction_id: tx.id, document_id: doc.id, amount: cover })
     setBusy(false); load()
   }
@@ -370,7 +381,7 @@ function TxLinkModal({ tx, onClose }) {
       if (!t) return true
       return (d.file_name || '').toLowerCase().includes(t) || (getDocType(d.type)?.label || d.type || '').toLowerCase().includes(t)
     })
-    .map(d => ({ doc: d, ...matchScore(tx, d) }))
+    .map(d => ({ doc: d, ...matchScore(tx, d, outstandingOf(d)) }))
     .sort((a, b) => b.score - a.score)
 
   return (
@@ -409,7 +420,10 @@ function TxLinkModal({ tx, onClose }) {
                     {!dateClose && Number.isFinite(daysDiff) && daysDiff < 900 && <span style={badge('var(--surface2)', 'var(--text3)')}>{daysDiff}дн</span>}
                   </div>
                 </div>
-                <span style={{ color: 'var(--text2)' }}>{d.amount ? fmt(d.amount) + ' грн' : '—'}</span>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ color: 'var(--text2)' }}>{d.amount ? fmt(d.amount) + ' грн' : '—'}</div>
+                  {(cov[d.id] || 0) > 0.01 && <div style={{ fontSize: 11, color: outstandingOf(d) > 0.01 ? '#D97706' : 'var(--green)' }}>залишок {fmt(outstandingOf(d))}</div>}
+                </div>
                 <button className="btn btn-primary" onClick={() => attach(d)} disabled={busy} style={{ padding: '4px 10px' }}><i className="ti ti-link" /> Прив'язати</button>
               </div>
             )
