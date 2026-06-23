@@ -262,7 +262,7 @@ export async function getFifoCost(productId, quantity) {
 // ── Створити складський рух (ідемпотентно) ──
 export async function createStockMovement({
   productId, type, quantity, price, total,
-  bankTransactionId, transactionItemId, date, description, userId
+  bankTransactionId, transactionItemId, documentId, orderId, supplierOrderId, date, description, userId
 }) {
   if (!productId || !quantity || quantity <= 0) return null
   // Не створювати сироти без bank_transaction (крім ручних рухів та документів)
@@ -297,9 +297,12 @@ export async function createStockMovement({
     cost_price: costPrice,
     bank_transaction_id: bankTransactionId || null,
     transaction_item_id: transactionItemId || null,
+    document_id: documentId || null,
+    order_id: orderId || null,
+    supplier_order_id: supplierOrderId || null,
     date: date || new Date().toISOString().split('T')[0],
     description: description || null,
-    source: bankTransactionId ? 'auto' : 'manual',
+    source: bankTransactionId ? 'auto' : documentId ? 'document' : 'manual',
     created_by: userId,
   }).select('id').single()
 
