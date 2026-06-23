@@ -12,6 +12,15 @@ export const dirFromType = (key) => {
   return t?.direction === 'incoming' ? 'payable' : 'receivable'
 }
 
+// Тип документа з розпізнаного OCR (docType + напрям), а не лише з напряму
+export const typeFromOcr = (docType, docRole) => {
+  const t = (docType || '').trim().toLowerCase()
+  if (t.startsWith('акт')) return 'serviceAct'            // «Акт …» (не плутати з «фАКТура»)
+  if (t.includes('рахунок')) return 'invoice'             // рахунок / рахунок-фактура
+  if (t.includes('накладна')) return docRole === 'outgoing' ? 'waybill' : 'incomingWaybill'
+  return docRole === 'outgoing' ? 'waybill' : 'incomingWaybill'
+}
+
 // Універсальна модалка документа: завантаження+OCR (новий), розпізнавання (existingDoc+autoOcr),
 // перегляд/редагування/видалення (existingDoc, autoOcr=false). Прев'ю файлу зліва, поля справа.
 export default function DocModal({ user, existingDoc, autoOcr = true, onClose, onSaved }) {
@@ -71,7 +80,8 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
       const data = await extractDocumentMulti(arr, articles)
       const matcher = await getContractorMatcher()
       const m = matcher({ counterparty: data.contractor, edrpou: data.edrpou, description: existingDoc?.file_name })
-      const defType = existingDoc?.type || (existingDoc?.doc_role === 'outgoing' ? 'waybill' : existingDoc ? 'incomingWaybill' : 'invoice')
+      const docRole = data.docRole || existingDoc?.doc_role || 'incoming'
+      const defType = typeFromOcr(data.docType, docRole)
       setForm({
         type: defType,
         file_name: existingDoc?.file_name || arr[0]?.name || '',
