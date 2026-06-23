@@ -124,11 +124,14 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 - [x] ~~Розпізнати мігровані документи~~ — масове розпізнавання виконано (143 OK, 154/157 з типом+сумою). Тип береться з OCR docType (`typeFromOcr`). Лишилось: 3 завеликі файли (>~4.5МБ — ліміт Vercel-проксі) + ~10 з незнайденим контрагентом (переважно «Управління ООН…»).
 - [ ] Протестувати на реальних файлах: імпорт виписки ПУМБ/Mono, генерацію PDF.
 
-### Пошта (щоб запрацювала інтеграція)
-- [ ] Запустити **`migrations/006_mail_integration.sql`** у Supabase Dashboard (таблиці `processed_emails`, `mail_log`, колонка `documents.source`).
-- [ ] Додати **env у Vercel:** `MAIL_USER`, `MAIL_PASS` (скринька Hostinger), `SUPABASE_SERVICE_KEY` (service-role), `CRON_SECRET` (довільний секрет для cron). Опц.: `MAIL_IMAP_HOST/PORT`, `MAIL_SMTP_HOST/PORT`, `MAIL_FROM` (дефолти — Hostinger imap/smtp.hostinger.com).
-- [ ] Перевірити надсилання (кнопка «Надіслати email» у документі) і прийом (кнопка «Перевірити пошту»).
-- [ ] (Опц.) Зовнішній пінгувач (cron-job.org) на `POST /api/mail-poll` з заголовком `Authorization: Bearer <CRON_SECRET>` для частішого опитування (Hobby cron — раз/добу).
+### Пошта (LIVE — задеплоєно й базово протестовано 2026-06-24)
+- [x] ~~Міграція 006~~ — застосовано (`processed_emails`, `mail_log`, `documents.source`).
+- [x] ~~Env у Vercel~~ — додано `MAIL_USER`=office@aim-skill.com, `MAIL_PASS`, `SUPABASE_SERVICE_KEY` (новий формат `sb_secret_…`), `CRON_SECRET`.
+- [x] ~~Прогін прийому~~ — `/api/mail-poll` повернув 200, IMAP-конект OK, 6 листів оброблено без помилок (docs=0 — ті листи без вкладень).
+- [ ] Перевірити **створення документа** з реального листа з PDF/фото-накладною (надіслати тест → прогін → очікувати docs≥1, ocrOk≥1).
+- [ ] Перевірити **надсилання** (кнопка «Надіслати email» у документі — потребує сесії в браузері).
+- [ ] (Опц.) Зовнішній пінгувач (cron-job.org) на `POST /api/mail-poll`, заголовок `Authorization: Bearer <CRON_SECRET>` — для частішого опитування (Hobby cron = раз/добу о 07:00 UTC).
+- **Поведінка прийому:** обробляє **найновіші** непрочитані першими (`slice(-BATCH).reverse()`, BATCH=6) — свіжі накладні ловляться одразу, беклог старих листів (на момент запуску ~2926 непрочитаних) не чіпається.
 
 ### Технічні (код/інфра)
 - [ ] Перевірити, що **політика Storage** дозволяє authenticated download (інакше «Розпізнати» дасть помилку доступу до файлу).
