@@ -3,6 +3,7 @@
 import { supabase } from './supabase'
 import { PL_ORDER, PL_LABELS, PL_SIGN } from './articles'
 import { getAccountBalances } from './accounts'
+import { countsAsDebt } from './debts'
 
 const pad = n => String(n).padStart(2, '0')
 const monthEnd = (y, m) => new Date(y, m, 0).getDate()
@@ -64,7 +65,7 @@ const BUCKETS = [['0-7', 0, 7], ['8-14', 8, 14], ['15-30', 15, 30], ['30+', 31, 
 export async function computeAging() {
   const today = new Date()
   const [{ data: docs }, { data: tdocs }, { data: contractors }] = await Promise.all([
-    supabase.from('documents').select('id, contractor_id, amount, direction, created_at').not('amount', 'is', null).not('direction', 'is', null),
+    supabase.from('documents').select('id, contractor_id, amount, direction, type, doc_date, created_at').not('amount', 'is', null).not('direction', 'is', null),
     supabase.from('transaction_documents').select('document_id, amount'),
     supabase.from('contractors').select('id, name'),
   ])
@@ -75,9 +76,10 @@ export async function computeAging() {
   const recv = make(), pay = make()
 
   ;(docs || []).forEach(d => {
+    if (!countsAsDebt(d.type)) return // рахунок/замовлення не створюють борг (захист від подвоєння)
     const outstanding = (Math.abs(Number(d.amount) || 0)) - (paidByDoc[d.id] || 0)
     if (outstanding <= 0.5) return
-    const ageDays = Math.floor((today - new Date(d.created_at)) / 864e5)
+    const ageDays = Math.floor((today - new Date(d.doc_date || d.created_at)) / 864e5)
     const bucket = BUCKETS.find(b => ageDays >= b[1] && ageDays <= b[2])?.[0] || '30+'
     const tgt = d.direction === 'receivable' ? recv : d.direction === 'payable' ? pay : null
     if (!tgt) return
