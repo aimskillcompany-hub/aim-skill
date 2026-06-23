@@ -67,6 +67,7 @@ function TransactionsTab({ accounts, onChange }) {
   const [status, setStatus] = useState('unconfirmed') // unconfirmed | all
   const [acc, setAcc] = useState('all')
   const [linkTx, setLinkTx] = useState(null)
+  const [editTx, setEditTx] = useState(null)
   const [linkMsg, setLinkMsg] = useState(null)
   const [linking, setLinking] = useState(false)
 
@@ -156,17 +157,6 @@ function TransactionsTab({ accounts, onChange }) {
     setLinking(false)
   }
 
-  const patch = (id, p) => setRows(rs => rs.map(r => r.id === id ? { ...r, ...p } : r))
-
-  const validate = async (r) => {
-    const article = articles.find(a => a.name === r.article)
-    await supabase.from('bank_transactions').update({
-      direction: r.direction, article: r.article || null, article_id: article?.id || null,
-      contractor_id: r.contractor_id || null, is_validated: true,
-    }).eq('id', r.id)
-    load(); onChange()
-  }
-  const ignore = async (r) => { await supabase.from('bank_transactions').update({ is_ignored: true }).eq('id', r.id); load(); onChange() }
 
   if (loading) return <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
 
@@ -188,43 +178,102 @@ function TransactionsTab({ accounts, onChange }) {
       {linkMsg && <div style={{ background: 'var(--green-bg)', color: 'var(--green)', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 13 }}>{linkMsg}</div>}
 
       <div className="card">
-        {rows.length === 0 ? <p style={{ color: 'var(--text3)', textAlign: 'center', padding: 20 }}>Немає транзакцій</p> : rows.map(r => (
-          <div key={r.id} style={{ padding: '12px 0', borderBottom: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', marginBottom: r.is_validated ? 0 : 8 }}>
-              <span style={{ fontSize: 12, color: 'var(--text3)', width: 84 }}>{r.date}</span>
-              <span style={{ flex: 1, fontWeight: 500 }} className="trunc">{r.counterparty || r.description || '—'}</span>
-              <span className={r.amount >= 0 ? 'amt-pos' : 'amt-neg'} style={{ fontWeight: 600 }}>{r.amount >= 0 ? '+' : ''}{fmt(r.amount)}</span>
-              {r.is_validated && <span style={{ fontSize: 11, color: 'var(--green)' }}><i className="ti ti-check" /> {r.direction}{r.article ? ` · ${r.article}` : ''}</span>}
-              <button className="btn" onClick={() => setLinkTx(r)} title="Прив'язати до документа/замовлення" style={{ padding: '2px 8px' }}><i className="ti ti-link" /></button>
-            </div>
-            {!r.is_validated && (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', paddingLeft: 94 }}>
-                <div style={{ width: 200 }}>
-                  <ContractorSelect value={r._cname || ''} placeholder="Контрагент"
-                    onChange={(v) => patch(r.id, { _cname: v })}
-                    onContractorSelect={(c) => patch(r.id, { contractor_id: c.id, _cname: c.name })} />
-                </div>
-                <select className="form-input" value={r.direction || ''} onChange={e => patch(r.id, { direction: e.target.value })} style={{ width: 120 }}>
-                  <option value="">Напрям</option>
-                  {DIRECTIONS.map(d => <option key={d} value={d}>{d}</option>)}
-                </select>
-                <select className="form-input" value={r.article || ''} onChange={e => patch(r.id, { article: e.target.value })} style={{ width: 220 }}>
-                  <option value="">Стаття</option>
-                  {Object.entries(grouped).map(([type, arts]) => (
-                    <optgroup key={type} label={TYPE_LABELS[type] || type}>
-                      {arts.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
-                    </optgroup>
-                  ))}
-                </select>
-                <button className="btn btn-primary" onClick={() => validate(r)} disabled={!r.direction}><i className="ti ti-check" /> Підтвердити</button>
-                <button className="btn" onClick={() => ignore(r)} title="Ігнорувати"><i className="ti ti-eye-off" /></button>
-              </div>
-            )}
-          </div>
-        ))}
+        <div className="tbl-wrap" style={{ border: 'none' }}>
+          <table>
+            <thead><tr><th>Дата</th><th>Контрагент</th><th style={{ textAlign: 'right' }}>Сума</th><th>Напрям</th><th>Стаття</th><th></th></tr></thead>
+            <tbody>
+              {rows.map(r => (
+                <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setEditTx(r)}>
+                  <td style={{ fontSize: 12, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{r.date}</td>
+                  <td>
+                    <div className="trunc" style={{ fontWeight: 500 }}>{r.counterparty || '—'}</div>
+                    {r.description && <div className="trunc" style={{ fontSize: 11, color: 'var(--text3)' }}>{r.description}</div>}
+                  </td>
+                  <td className={r.amount >= 0 ? 'amt-pos' : 'amt-neg'} style={{ textAlign: 'right', fontWeight: 600 }}>{r.amount >= 0 ? '+' : ''}{fmt(r.amount)}</td>
+                  <td style={{ fontSize: 13 }}>{r.direction || <span style={{ color: 'var(--red)' }}>—</span>}</td>
+                  <td style={{ fontSize: 12, color: 'var(--text2)' }}><div className="trunc">{r.article || '—'}</div></td>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    {r.is_validated
+                      ? <span style={{ color: 'var(--green)', marginRight: 8 }} title="Підтверджено"><i className="ti ti-check" /></span>
+                      : <span style={{ color: '#D97706', marginRight: 8 }} title="Потребує підтвердження">●</span>}
+                    <button className="btn" onClick={(e) => { e.stopPropagation(); setLinkTx(r) }} title="Прив'язати документ" style={{ padding: '2px 8px' }}><i className="ti ti-link" /></button>
+                  </td>
+                </tr>
+              ))}
+              {rows.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Немає транзакцій</td></tr>}
+            </tbody>
+          </table>
+        </div>
       </div>
 
+      {editTx && <TxModal tx={editTx} grouped={grouped} onClose={() => setEditTx(null)} onSaved={() => { setEditTx(null); load(); onChange() }} onLink={() => { setLinkTx(editTx); setEditTx(null) }} />}
       {linkTx && <TxLinkModal tx={linkTx} onClose={() => setLinkTx(null)} onSaved={() => setLinkTx(null)} />}
+    </div>
+  )
+}
+
+// ───────── Модалка транзакції: класифікація / підтвердження / ігнор / прив'язка ─────────
+function TxModal({ tx, grouped, onClose, onSaved, onLink }) {
+  const [f, setF] = useState({ contractor_id: tx.contractor_id || null, cname: tx._cname || tx.counterparty || '', direction: tx.direction || '', article: tx.article || '' })
+  const [busy, setBusy] = useState(false)
+  const set = (k, v) => setF(s => ({ ...s, [k]: v }))
+
+  const persist = async (validate) => {
+    setBusy(true)
+    const arts = Object.values(grouped).flat()
+    const article = arts.find(a => a.name === f.article)
+    await supabase.from('bank_transactions').update({
+      direction: f.direction || null, article: f.article || null, article_id: article?.id || null,
+      contractor_id: f.contractor_id || null, ...(validate ? { is_validated: true } : {}),
+    }).eq('id', tx.id)
+    setBusy(false); onSaved()
+  }
+  const ignore = async () => { setBusy(true); await supabase.from('bank_transactions').update({ is_ignored: true }).eq('id', tx.id); setBusy(false); onSaved() }
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+        <div className="modal-header"><h2>Транзакція</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14, gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 13, color: 'var(--text2)' }}>{tx.date} · {tx.counterparty || tx.description}</div>
+          <div className={tx.amount >= 0 ? 'amt-pos' : 'amt-neg'} style={{ fontSize: 20, fontWeight: 700 }}>{tx.amount >= 0 ? '+' : ''}{fmt(tx.amount)} грн</div>
+        </div>
+        {tx.description && tx.counterparty && <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 14 }}>{tx.description}</div>}
+
+        <div className="form-grid">
+          <div className="form-group full"><label>Контрагент</label>
+            <ContractorSelect value={f.cname} placeholder="Контрагент"
+              onChange={(v) => set('cname', v)}
+              onContractorSelect={(c) => setF(s => ({ ...s, contractor_id: c.id, cname: c.name }))} />
+          </div>
+          <div className="form-group"><label>Напрям</label>
+            <select className="form-input" value={f.direction} onChange={e => set('direction', e.target.value)}>
+              <option value="">—</option>{DIRECTIONS.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div className="form-group"><label>Стаття</label>
+            <select className="form-input" value={f.article} onChange={e => set('article', e.target.value)}>
+              <option value="">—</option>
+              {Object.entries(grouped).map(([type, arts]) => (
+                <optgroup key={type} label={TYPE_LABELS[type] || type}>
+                  {arts.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 18, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn" onClick={ignore} disabled={busy} style={{ color: 'var(--text3)' }}><i className="ti ti-eye-off" /> Ігнорувати</button>
+            <button className="btn" onClick={onLink}><i className="ti ti-link" /> Документи</button>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn" onClick={() => persist(false)} disabled={busy}>Зберегти</button>
+            <button className="btn btn-primary" onClick={() => persist(true)} disabled={busy || !f.direction}><i className="ti ti-check" /> Підтвердити</button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
