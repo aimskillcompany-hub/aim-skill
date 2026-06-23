@@ -145,6 +145,7 @@ function OcrModal({ user, existingDoc, onClose, onSaved }) {
       const defType = existingDoc?.type || (existingDoc?.doc_role === 'outgoing' ? 'waybill' : existingDoc ? 'incomingWaybill' : 'invoice')
       setForm({
         type: defType,
+        file_name: existingDoc?.file_name || arr[0]?.name || '',
         contractor_id: m?.contractor.id || null,
         contractorName: m?.contractor.name || data.contractor || '',
         edrpou: data.edrpou || '',
@@ -171,6 +172,7 @@ function OcrModal({ user, existingDoc, onClose, onSaved }) {
           vat_amount: Number(form.vat_amount) || 0,
           direction: dirFromType(form.type),
           is_signed: form.is_signed,
+          file_name: form.file_name?.trim() || existingDoc.file_name,
           ocr_data: form,
         }).eq('id', existingDoc.id)
         if (error) throw error
@@ -183,7 +185,7 @@ function OcrModal({ user, existingDoc, onClose, onSaved }) {
         const path = `${Date.now()}_${f.name}`.replace(/[^\w.\-/]/g, '_')
         const { error: upErr } = await supabase.storage.from('documents').upload(path, f, { upsert: false })
         if (upErr && !upErr.message.includes('exists')) throw upErr
-        storage_path = path; file_name = f.name; file_type = f.type
+        storage_path = path; file_name = form.file_name?.trim() || f.name; file_type = f.type
       }
       const { data: doc, error } = await supabase.from('documents').insert({
         type: form.type,
@@ -249,6 +251,7 @@ function OcrModal({ user, existingDoc, onClose, onSaved }) {
 
         {form && (
           <div className="form-grid">
+            <div className="form-group full"><label>Назва файлу</label><input className="form-input" value={form.file_name || ''} onChange={e => setForm(f => ({ ...f, file_name: e.target.value }))} /></div>
             <div className="form-group"><label>Тип документа</label>
               <select className="form-input" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
                 {DOCUMENT_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
