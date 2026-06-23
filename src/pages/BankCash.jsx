@@ -8,6 +8,7 @@ import { classifyBatch, classifyTransaction, resetClassifyCache } from '../lib/a
 import { getContractorMatcher } from '../lib/contractorMatch'
 import { getAccountBalances } from '../lib/accounts'
 import { getDocType } from '../lib/docgen'
+import { matchScore, confidentMatch } from '../lib/docMatch'
 import ContractorSelect from '../components/ui/ContractorSelect'
 
 const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД']
@@ -66,6 +67,8 @@ function TransactionsTab({ accounts, onChange }) {
   const [status, setStatus] = useState('unconfirmed') // unconfirmed | all
   const [acc, setAcc] = useState('all')
   const [linkTx, setLinkTx] = useState(null)
+  const [linkMsg, setLinkMsg] = useState(null)
+  const [linking, setLinking] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -113,6 +116,46 @@ function TransactionsTab({ accounts, onChange }) {
     setRows(updated)
   }
 
+  // Масова авто-прив'язка: контрагент + сума (±1%) + дата (±15 днів), єдиний впевнений збіг
+  const autoLink = async () => {
+    setLinking(true); setLinkMsg(null)
+    try {
+      const [{ data: txs }, { data: docs }, { data: tdocs }] = await Promise.all([
+        supabase.from('bank_transactions').select('id, amount, date, direction, contractor_id').eq('is_ignored', false).not('contractor_id', 'is', null),
+        supabase.from('documents').select('id, contractor_id, amount, direction, type, doc_date, created_at').not('amount', 'is', null).not('contractor_id', 'is', null),
+        supabase.from('transaction_documents').select('transaction_id, document_id, amount'),
+      ])
+      const covByDoc = {}, covByTx = {}
+      ;(tdocs || []).forEach(t => {
+        covByDoc[t.document_id] = (covByDoc[t.document_id] || 0) + Math.abs(Number(t.amount) || 0)
+        covByTx[t.transaction_id] = (covByTx[t.transaction_id] || 0) + Math.abs(Number(t.amount) || 0)
+      })
+      const docsByContractor = {}
+      ;(docs || []).forEach(d => { (docsByContractor[d.contractor_id] ||= []).push(d) })
+
+      const inserts = []
+      for (const t of (txs || [])) {
+        const uncovered = Math.abs(Number(t.amount) || 0) - (covByTx[t.id] || 0)
+        if (uncovered <= 0.5) continue
+        const cand = confidentMatch(t, docsByContractor[t.contractor_id] || [], covByDoc)
+        if (!cand) continue
+        const amt = Math.min(uncovered, cand.outstanding)
+        inserts.push({ transaction_id: t.id, document_id: cand.doc.id, amount: amt })
+        covByDoc[cand.doc.id] = (covByDoc[cand.doc.id] || 0) + amt // не лінкувати той самий документ двічі
+        covByTx[t.id] = (covByTx[t.id] || 0) + amt
+      }
+      let linked = 0
+      for (let i = 0; i < inserts.length; i += 100) {
+        const chunk = inserts.slice(i, i + 100)
+        const { error } = await supabase.from('transaction_documents').upsert(chunk, { onConflict: 'transaction_id,document_id', ignoreDuplicates: true })
+        if (!error) linked += chunk.length
+      }
+      setLinkMsg(`Прив'язано ${linked} ${inserts.length !== linked ? `(зі спроб ${inserts.length})` : ''}. Решта — без впевненого збігу, прив'яжи вручну.`)
+      load(); onChange()
+    } catch (e) { setLinkMsg('Помилка: ' + e.message) }
+    setLinking(false)
+  }
+
   const patch = (id, p) => setRows(rs => rs.map(r => r.id === id ? { ...r, ...p } : r))
 
   const validate = async (r) => {
@@ -139,8 +182,10 @@ function TransactionsTab({ accounts, onChange }) {
           {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
         </select>
         {status === 'unconfirmed' && rows.length > 0 && <button className="btn" onClick={autoFill}><i className="ti ti-wand" /> Авто-класифікація</button>}
+        <button className="btn" onClick={autoLink} disabled={linking} title="Прив'язати документи за контрагентом + сумою + датою (±15 днів)"><i className="ti ti-link" /> {linking ? 'Прив\'язую…' : 'Авто-прив\'язка'}</button>
         <span style={{ marginLeft: 'auto', color: 'var(--text3)', fontSize: 13 }}>{rows.length} транзакцій</span>
       </div>
+      {linkMsg && <div style={{ background: 'var(--green-bg)', color: 'var(--green)', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 13 }}>{linkMsg}</div>}
 
       <div className="card">
         {rows.length === 0 ? <p style={{ color: 'var(--text3)', textAlign: 'center', padding: 20 }}>Немає транзакцій</p> : rows.map(r => (
@@ -196,7 +241,7 @@ function TxLinkModal({ tx, onClose }) {
       .select('id, amount, document_id, documents(id, type, file_name, amount, order_id)')
       .eq('transaction_id', tx.id)
     setLinked(tdocs || [])
-    let qb = supabase.from('documents').select('id, type, file_name, amount, contractor_id, order_id').order('created_at', { ascending: false }).limit(50)
+    let qb = supabase.from('documents').select('id, type, file_name, amount, contractor_id, order_id, direction, doc_date, created_at').order('created_at', { ascending: false }).limit(100)
     if (tx.contractor_id) qb = qb.eq('contractor_id', tx.contractor_id)
     const { data } = await qb
     setDocs(data || [])
@@ -214,12 +259,15 @@ function TxLinkModal({ tx, onClose }) {
   }
   const detach = async (l) => { await supabase.from('transaction_documents').delete().eq('id', l.id); load() }
 
-  const filtered = docs.filter(d => {
-    if (linkedIds.has(d.id)) return false
-    const t = q.trim().toLowerCase()
-    if (!t) return true
-    return (d.file_name || '').toLowerCase().includes(t) || (d.type || '').toLowerCase().includes(t)
-  })
+  const scored = docs
+    .filter(d => !linkedIds.has(d.id))
+    .filter(d => {
+      const t = q.trim().toLowerCase()
+      if (!t) return true
+      return (d.file_name || '').toLowerCase().includes(t) || (getDocType(d.type)?.label || d.type || '').toLowerCase().includes(t)
+    })
+    .map(d => ({ doc: d, ...matchScore(tx, d) }))
+    .sort((a, b) => b.score - a.score)
 
   return (
     <div className="modal-bg" onClick={onClose}>
@@ -243,21 +291,32 @@ function TxLinkModal({ tx, onClose }) {
         )}
 
         <input className="form-input" placeholder="Пошук документа…" value={q} onChange={e => setQ(e.target.value)} style={{ marginBottom: 10 }} />
-        <div style={{ maxHeight: 280, overflowY: 'auto' }}>
-          {filtered.length === 0 && <p style={{ color: 'var(--text3)', fontSize: 13 }}>Немає документів для прив'язки{tx.contractor_id ? ' по цьому контрагенту' : ''}.</p>}
-          {filtered.map(d => (
-            <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
-              <span style={{ flex: 1 }}>{getDocLabel(d)}</span>
-              <span style={{ color: 'var(--text2)' }}>{d.amount ? fmt(d.amount) + ' грн' : '—'}</span>
-              <button className="btn btn-primary" onClick={() => attach(d)} disabled={busy} style={{ padding: '4px 10px' }}><i className="ti ti-link" /> Прив'язати</button>
-            </div>
-          ))}
+        <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+          {scored.length === 0 && <p style={{ color: 'var(--text3)', fontSize: 13 }}>Немає документів для прив'язки{tx.contractor_id ? ' по цьому контрагенту' : ''}.</p>}
+          {scored.map(({ doc: d, amountClose, dateClose, daysDiff }) => {
+            const best = amountClose && dateClose
+            return (
+              <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 13, background: best ? 'var(--green-bg)' : undefined }}>
+                <div style={{ flex: 1 }}>
+                  <div>{getDocLabel(d)}</div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 3 }}>
+                    {amountClose && <span style={badge('var(--green-bg)', 'var(--green)')}>сума ✓</span>}
+                    {dateClose && <span style={badge('var(--green-bg)', 'var(--green)')}>дата ±{daysDiff}дн</span>}
+                    {!dateClose && Number.isFinite(daysDiff) && daysDiff < 900 && <span style={badge('var(--surface2)', 'var(--text3)')}>{daysDiff}дн</span>}
+                  </div>
+                </div>
+                <span style={{ color: 'var(--text2)' }}>{d.amount ? fmt(d.amount) + ' грн' : '—'}</span>
+                <button className="btn btn-primary" onClick={() => attach(d)} disabled={busy} style={{ padding: '4px 10px' }}><i className="ti ti-link" /> Прив'язати</button>
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>
   )
 }
 const getDocLabel = (d) => d ? `${getDocType(d.type)?.label || d.type || 'документ'}${d.file_name ? ' · ' + d.file_name : ''}` : '—'
+const badge = (bg, color) => ({ background: bg, color, borderRadius: 6, padding: '1px 7px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' })
 
 // ───────── Імпорт виписки ─────────
 function ImportTab({ accounts, onDone }) {
