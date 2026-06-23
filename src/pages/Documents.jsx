@@ -261,9 +261,10 @@ function OcrModal({ user, existingDoc, autoOcr = true, onClose, onSaved }) {
   const del = async () => {
     if (!confirm('Видалити цей документ? Дію не можна скасувати.')) return
     setBusy(true); setError(null)
-    const { error } = await supabase.from('documents').delete().eq('id', existingDoc.id)
+    const { data, error } = await supabase.from('documents').delete().eq('id', existingDoc.id).select('id')
     setBusy(false)
     if (error) { setError(error.message); return }
+    if (!data?.length) { setError('Документ не видалено (недостатньо прав). Видалення доступне ролям admin/accountant.'); return }
     onSaved()
   }
 
