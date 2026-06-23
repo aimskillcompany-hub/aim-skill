@@ -9,6 +9,8 @@ import { useSort, SortTh } from '../components/Sort'
 
 // поля документа-джерела, потрібні для модалки DocModal
 const DOC_EMBED = 'documents(id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name))'
+const SRC_LABEL = { document: 'з документа', manual: 'вручну', assembly: 'збірка', auto: 'авто' }
+const srcLabel = (s) => SRC_LABEL[s] || s || '—'
 
 export default function Warehouse() {
   const [tab, setTab] = useState('stock')
@@ -115,7 +117,7 @@ function ProductModal({ product, onClose }) {
   const [openDoc, setOpenDoc] = useState(null)
   useEffect(() => {
     supabase.from('product_aliases').select('alias').eq('product_id', product.id).then(({ data }) => setAliases(data || []))
-    supabase.from('stock_movements').select(`id, type, quantity, cost_price, date, description, document_id, ${DOC_EMBED}`).eq('product_id', product.id).order('date', { ascending: false }).limit(50).then(({ data }) => setMovs(data || []))
+    supabase.from('stock_movements').select(`id, type, quantity, cost_price, date, description, source, document_id, ${DOC_EMBED}`).eq('product_id', product.id).order('date', { ascending: false }).limit(50).then(({ data }) => setMovs(data || []))
   }, [product.id])
   return (
     <div className="modal-bg" onClick={onClose}>
@@ -138,7 +140,7 @@ function ProductModal({ product, onClose }) {
             <tbody>{movs.map(m => <tr key={m.id}><td style={{ fontSize: 12 }}>{m.date}</td><td>{m.type === 'in' ? 'Прихід' : m.type === 'out' ? 'Видаток' : m.type}</td><td style={{ textAlign: 'right' }}>{fmt(m.quantity)}</td><td style={{ textAlign: 'right' }}>{m.cost_price ? fmt(m.cost_price) : '—'}</td><td><div className="trunc">{m.description}</div></td>
               <td>{m.documents
                 ? <a onClick={() => setOpenDoc(m.documents)} style={{ color: 'var(--blue)', cursor: 'pointer', fontSize: 12 }}><i className="ti ti-file" /> {getDocType(m.documents.type)?.label || 'документ'}</a>
-                : <span style={{ color: 'var(--text3)', fontSize: 12 }}>—</span>}</td></tr>)}</tbody>
+                : <span style={{ color: 'var(--text3)', fontSize: 12 }}>{srcLabel(m.source)}</span>}</td></tr>)}</tbody>
           </table>
         </div>
       </div>
@@ -196,7 +198,7 @@ function MovementsTab() {
                     <td style={{ fontSize: 12 }}>
                       {m.documents
                         ? <a onClick={() => setOpenDoc(m.documents)} style={{ color: 'var(--blue)', cursor: 'pointer' }} title={m.documents.file_name}><i className="ti ti-file" /> {getDocType(m.documents.type)?.label || 'документ'}</a>
-                        : <span style={{ color: 'var(--text3)' }}>{m.source || '—'}</span>}
+                        : <span style={{ color: 'var(--text3)' }}>{srcLabel(m.source)}</span>}
                     </td>
                   </tr>
                 ))}
