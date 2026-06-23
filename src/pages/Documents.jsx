@@ -4,6 +4,7 @@ import { useUser } from '../lib/auth'
 import { fmt } from '../lib/fmt'
 import { extractDocumentMulti } from '../lib/ai'
 import { fetchArticles } from '../lib/articles'
+import { getContractorMatcher } from '../lib/contractorMatch'
 import { resolveProduct, createStockMovement } from '../lib/stockService'
 import { DOCUMENT_TYPES, getDocType } from '../lib/docgen'
 import ContractorSelect from '../components/ui/ContractorSelect'
@@ -13,6 +14,9 @@ const dirFromType = (key) => {
   const t = getDocType(key)
   return t?.direction === 'incoming' ? 'payable' : 'receivable'
 }
+
+// Документ без метаданих — потребує розпізнавання
+const isIncomplete = (d) => !d.type || d.amount == null || !d.contractor_id
 
 export default function Documents() {
   const { user } = useUser()
@@ -24,11 +28,12 @@ export default function Documents() {
   const [showOcr, setShowOcr] = useState(false)
   const [genContractor, setGenContractor] = useState(null)
   const [pickGen, setPickGen] = useState(false)
+  const [recognizeDoc, setRecognizeDoc] = useState(null)
 
   const load = async () => {
     setLoading(true)
     const { data } = await supabase.from('documents')
-      .select('id, type, file_name, amount, vat_amount, is_signed, direction, created_at, contractors(name)')
+      .select('id, type, file_name, amount, vat_amount, is_signed, direction, created_at, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)')
       .order('created_at', { ascending: false }).limit(500)
     setRows(data || [])
     setLoading(false)
@@ -73,20 +78,25 @@ export default function Documents() {
         {loading ? <p style={{ color: 'var(--text3)' }}>Завантаження…</p> : (
           <div className="tbl-wrap" style={{ border: 'none' }}>
             <table>
-              <thead><tr><th>Тип</th><th>Контрагент</th><th>Файл</th><th style={{ textAlign: 'right' }}>Сума</th><th>ПДВ</th><th>Підпис</th><th>Дата</th></tr></thead>
+              <thead><tr><th>Тип</th><th>Контрагент</th><th>Файл</th><th style={{ textAlign: 'right' }}>Сума</th><th>ПДВ</th><th>Підпис</th><th>Дата</th><th></th></tr></thead>
               <tbody>
                 {filtered.map(d => (
                   <tr key={d.id}>
                     <td style={{ fontSize: 13 }}>{getDocType(d.type)?.label || d.type || '—'}</td>
                     <td><div className="trunc">{d.contractors?.name || '—'}</div></td>
-                    <td><div className="trunc" style={{ color: 'var(--text2)', fontSize: 12 }}>{d.file_name || '—'}</div></td>
+                    <td><div className="trunc" style={{ color: 'var(--text2)', fontSize: 12 }} title={d.file_name}>{d.file_name || '—'}</div></td>
                     <td style={{ textAlign: 'right' }}>{d.amount ? fmt(d.amount) : '—'}</td>
                     <td style={{ color: 'var(--text2)', fontSize: 12 }}>{d.vat_amount ? fmt(d.vat_amount) : '—'}</td>
                     <td>{d.is_signed ? <span style={{ color: 'var(--green)' }}><i className="ti ti-check" /></span> : <span style={{ color: 'var(--text3)' }}>—</span>}</td>
                     <td style={{ fontSize: 12, color: 'var(--text2)' }}>{(d.created_at || '').slice(0, 10)}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      {isIncomplete(d) && (d.storage_path || d.file_path) && (
+                        <button className="btn" onClick={() => setRecognizeDoc(d)} title="Розпізнати метадані з файлу через OCR" style={{ whiteSpace: 'nowrap' }}><i className="ti ti-scan" /> Розпізнати</button>
+                      )}
+                    </td>
                   </tr>
                 ))}
-                {filtered.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Документів немає</td></tr>}
+                {filtered.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Документів немає</td></tr>}
               </tbody>
             </table>
           </div>
@@ -94,18 +104,34 @@ export default function Documents() {
       </div>
 
       {showOcr && <OcrModal user={user} onClose={() => setShowOcr(false)} onSaved={() => { setShowOcr(false); load() }} />}
+      {recognizeDoc && <OcrModal user={user} existingDoc={recognizeDoc} onClose={() => setRecognizeDoc(null)} onSaved={() => { setRecognizeDoc(null); load() }} />}
       {pickGen && <PickContractorModal onClose={() => setPickGen(false)} onPick={(c) => { setPickGen(false); setGenContractor(c) }} />}
       {genContractor && <DocGenModal contractor={genContractor} userId={user?.id} onClose={() => setGenContractor(null)} onSaved={() => { setGenContractor(null); load() }} />}
     </div>
   )
 }
 
-// ───────── OCR завантаження ─────────
-function OcrModal({ user, onClose, onSaved }) {
+// ───────── OCR завантаження / розпізнавання існуючого ─────────
+function OcrModal({ user, existingDoc, onClose, onSaved }) {
   const [files, setFiles] = useState([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [form, setForm] = useState(null) // extracted
+
+  // Існуючий документ — одразу качаємо файл зі Storage і розпізнаємо
+  useEffect(() => { if (existingDoc) recognizeExisting() }, [])
+
+  const recognizeExisting = async () => {
+    setBusy(true); setError(null)
+    try {
+      const path = existingDoc.storage_path || existingDoc.file_path
+      if (!path) throw new Error('У документа немає файлу у сховищі')
+      const { data: blob, error: dlErr } = await supabase.storage.from('documents').download(path)
+      if (dlErr) throw dlErr
+      const file = new File([blob], existingDoc.file_name || 'document', { type: existingDoc.file_type || blob.type })
+      await runOcr([file])
+    } catch (e) { setError('Не вдалося отримати файл зі сховища: ' + e.message); setBusy(false) }
+  }
 
   const runOcr = async (fileList) => {
     const arr = Array.from(fileList)
@@ -113,14 +139,19 @@ function OcrModal({ user, onClose, onSaved }) {
     try {
       const articles = await fetchArticles()
       const data = await extractDocumentMulti(arr, articles)
+      // авто-матч контрагента по ЄДРПОУ/назві з OCR + назви файлу
+      const matcher = await getContractorMatcher()
+      const m = matcher({ counterparty: data.contractor, edrpou: data.edrpou, description: existingDoc?.file_name })
+      const defType = existingDoc?.type || (existingDoc?.doc_role === 'outgoing' ? 'waybill' : existingDoc ? 'incomingWaybill' : 'invoice')
       setForm({
-        type: 'invoice',
-        contractor_id: null, contractorName: data.contractor || '',
+        type: defType,
+        contractor_id: m?.contractor.id || null,
+        contractorName: m?.contractor.name || data.contractor || '',
         edrpou: data.edrpou || '',
         amount: data.amount ?? data.amountNoVat ?? '',
         vat_amount: data.vatAmount ?? 0,
         date: data.date || new Date().toISOString().split('T')[0],
-        is_signed: false,
+        is_signed: existingDoc?.is_signed || false,
         items: data.items || [],
       })
     } catch (e) { setError(e.message) }
@@ -130,7 +161,22 @@ function OcrModal({ user, onClose, onSaved }) {
   const save = async () => {
     setBusy(true); setError(null)
     try {
-      // завантажити оригінал у Storage
+      // Існуючий документ — лише оновлюємо метадані (без повторного завантаження
+      // файлу і без створення складських рухів, щоб не дублювати).
+      if (existingDoc) {
+        const { error } = await supabase.from('documents').update({
+          type: form.type,
+          contractor_id: form.contractor_id || null,
+          amount: Number(form.amount) || null,
+          vat_amount: Number(form.vat_amount) || 0,
+          direction: dirFromType(form.type),
+          is_signed: form.is_signed,
+          ocr_data: form,
+        }).eq('id', existingDoc.id)
+        if (error) throw error
+        onSaved(); return
+      }
+      // Новий документ — завантажити оригінал у Storage
       let storage_path = null, file_name = null, file_type = null
       if (files[0]) {
         const f = files[0]
@@ -177,15 +223,28 @@ function OcrModal({ user, onClose, onSaved }) {
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
-        <div className="modal-header"><h2>Завантажити документ (OCR)</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
+        <div className="modal-header"><h2>{existingDoc ? 'Розпізнати документ' : 'Завантажити документ (OCR)'}</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
 
-        {!form && (
+        {existingDoc && (
+          <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 12 }} title={existingDoc.file_name}>
+            <i className="ti ti-file" /> {existingDoc.file_name}
+          </div>
+        )}
+
+        {/* Новий документ: вибір файлу. Існуючий: показуємо стан розпізнавання. */}
+        {!form && !existingDoc && (
           <label style={{ display: 'block', border: '2px dashed var(--border)', borderRadius: 12, padding: 32, textAlign: 'center', cursor: 'pointer' }}>
             <i className="ti ti-scan" style={{ fontSize: 40, color: 'var(--blue)', display: 'block', marginBottom: 10 }} />
             <div style={{ fontWeight: 600 }}>{busy ? 'Розпізнавання…' : 'Оберіть скан або фото'}</div>
             <div style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 4 }}>PDF, JPG, PNG · Claude OCR</div>
             <input type="file" multiple accept="image/*,.pdf,.heic" style={{ display: 'none' }} onChange={e => runOcr(e.target.files)} disabled={busy} />
           </label>
+        )}
+        {!form && existingDoc && !error && (
+          <div style={{ textAlign: 'center', padding: 28, color: 'var(--text2)' }}>
+            <i className="ti ti-loader-2" style={{ fontSize: 32, color: 'var(--blue)' }} />
+            <div style={{ marginTop: 10 }}>Завантаження файлу і розпізнавання…</div>
+          </div>
         )}
 
         {form && (
@@ -221,7 +280,9 @@ function OcrModal({ user, onClose, onSaved }) {
         {error && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 12 }}>{error}</div>}
         {form && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-            <button className="btn" onClick={() => setForm(null)}>Інший файл</button>
+            {existingDoc
+              ? <button className="btn" onClick={() => { setForm(null); recognizeExisting() }} disabled={busy}>Розпізнати знову</button>
+              : <button className="btn" onClick={() => setForm(null)}>Інший файл</button>}
             <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? '…' : 'Зберегти документ'}</button>
           </div>
         )}
