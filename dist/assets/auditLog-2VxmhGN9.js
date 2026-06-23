@@ -1,1 +1,0 @@
-import{s as l}from"./index-D8YlVXA2.js";let t=null;async function s(){if(t!==null)return t;const{error:i}=await l.from("audit_log").select("id").limit(0);return t=!i,t}async function o(i,r,a,n=null,e=null){if(await s())try{await l.from("audit_log").insert({entity_type:i,entity_id:String(r),action:a,changes:n?JSON.stringify(n):null,user_id:e})}catch{}}export{o as l};
