@@ -108,11 +108,12 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 - **Дата документа** (`documents.doc_date`, міграція 005) — окреме поле (раніше показувався created_at, дата з форми не зберігалась). Реєстр/вкладки показують doc_date.
 - **Спільна модалка документа** (`components/DocModal.jsx`) — переюзана в Документах, картці контрагента і картці замовлення. У вкладках «Документи» тип показується мітками (не сирим ключем), клік по рядку відкриває перегляд з прев'ю/редагуванням/видаленням.
 - **Прев'ю документа** у формі OCR/розпізнавання (двоколонкова: файл зліва, поля справа). Клік по рядку реєстру → той самий екран у режимі перегляду (прев'ю + збережені поля, без авто-OCR; кнопки «Розпізнати»/«Зберегти»).
-- **Інтеграція корпоративної пошти (Hostinger IMAP/SMTP)** — серверні ендпоінти в `api/` (патерн `api/ai.js`):
-  - **Вхідні (`api/mail-poll.js`):** забирає вкладення (PDF/фото) з непрочитаних листів INBOX → Storage → рядки `documents` (`source='email'`) → best-effort серверний OCR (`ocrFromAttachments` у `api/_lib.js`, дзеркалить `extractDocumentMulti`) + авто-матч контрагента за ЄДРПОУ/назвою. Дедуплікація за Message-ID у `processed_emails`, лист помічається прочитаним. Тригери: кнопка «Перевірити пошту» в Документах, Vercel Cron (раз/добу, `vercel.json`), або зовнішній пінгувач (Bearer `CRON_SECRET`).
-  - **Вихідні (`api/mail-send.js`):** SMTP через `nodemailer`, надсилання документа клієнту з вкладенням зі Storage. UI — `components/MailSendModal.jsx`, кнопка «Надіслати email» у `DocModal` (префіл адреси з `contractor_contacts.email`). Журнал у `mail_log`.
-  - Авторизація: браузер шле Supabase access_token (Bearer), сервер валідує через `verifyUser`; cron — через `CRON_SECRET`. Серверні операції — service-role клієнт (`getAdmin`).
-  - Залежності: `imapflow`, `nodemailer`, `mailparser` (тільки серверні, у frontend-бандл не потрапляють).
+- **Інтеграція корпоративної пошти (Hostinger IMAP/SMTP)** — серверні ендпоінти в `api/` (патерн `api/ai.js`), залежності `imapflow`/`nodemailer`/`mailparser` (лише серверні). **Концепція (фінальна):** окремий розділ **«Пошта»** — вхідні листи НЕ створюють документи автоматично; заявка створюється з листа окремою дією.
+  - **Розділ «Пошта» (`pages/Mail.jsx`, маршрут `/mail`, 9-й розділ навігації):** список усіх листів (вхідні/вихідні, незалежно від вкладень), перегляд листа (тіло в sandbox-iframe, вкладення через signed URL), кнопка **«Створити заявку»**.
+  - **Синхронізація (`api/mail-sync.js`):** INBOX (`in`) + Sent (`out`, папка шукається за specialUse/назвою) за **останні 10 днів**, вкладення → Storage (`email/<msgid>/`), рядки `emails`. **Документів не створює, листи прочитаними НЕ помічає.** Дедуплікація за Message-ID. Батч `MAX_NEW=40`/запуск (truncated→натиснути ще). Тригери: кнопка «Синхронізувати», Cron (раз/добу), пінгувач (`CRON_SECRET`).
+  - **Заявка з листа (`api/order-from-email.js`):** AI (`extractOrderFromEmail` у `_lib.js`) читає текст листа + вкладення → визначає тип (trade/service/agent), контрагента, суму, позиції, опис → створює `orders` (status `new`, `order_number`=padded count+1); контрагента матчить або **створює** (is_client + contact email); вкладення → `documents` (`source='email'`, OCR до 3 шт) + `order_documents`; `emails.order_id` = нова заявка.
+  - **Вихідні (`api/mail-send.js`):** SMTP `nodemailer`, надсилання документа клієнту з вкладенням; кнопка «Надіслати email» у `DocModal` (`components/MailSendModal.jsx`, префіл з `contractor_contacts.email`); пише в `mail_log` + `emails` (direction out, видно в «Пошті»). **Надсилання лишається з розділу Документи** (не з «Пошти»).
+  - Авторизація: браузер → Supabase access_token (Bearer, `verifyUser`); cron → `CRON_SECRET`. Серверні операції — service-role (`getAdmin`).
 
 ---
 
@@ -124,14 +125,14 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 - [x] ~~Розпізнати мігровані документи~~ — масове розпізнавання виконано (143 OK, 154/157 з типом+сумою). Тип береться з OCR docType (`typeFromOcr`). Лишилось: 3 завеликі файли (>~4.5МБ — ліміт Vercel-проксі) + ~10 з незнайденим контрагентом (переважно «Управління ООН…»).
 - [ ] Протестувати на реальних файлах: імпорт виписки ПУМБ/Mono, генерацію PDF.
 
-### Пошта (LIVE — задеплоєно й базово протестовано 2026-06-24)
-- [x] ~~Міграція 006~~ — застосовано (`processed_emails`, `mail_log`, `documents.source`).
-- [x] ~~Env у Vercel~~ — додано `MAIL_USER`=office@aim-skill.com, `MAIL_PASS`, `SUPABASE_SERVICE_KEY` (новий формат `sb_secret_…`), `CRON_SECRET`.
-- [x] ~~Прогін прийому~~ — `/api/mail-poll` повернув 200, IMAP-конект OK, 6 листів оброблено без помилок (docs=0 — ті листи без вкладень).
-- [ ] Перевірити **створення документа** з реального листа з PDF/фото-накладною (надіслати тест → прогін → очікувати docs≥1, ocrOk≥1).
-- [ ] Перевірити **надсилання** (кнопка «Надіслати email» у документі — потребує сесії в браузері).
-- [ ] (Опц.) Зовнішній пінгувач (cron-job.org) на `POST /api/mail-poll`, заголовок `Authorization: Bearer <CRON_SECRET>` — для частішого опитування (Hobby cron = раз/добу о 07:00 UTC).
-- **Поведінка прийому:** обробляє **найновіші** непрочитані першими (`slice(-BATCH).reverse()`, BATCH=6) — свіжі накладні ловляться одразу, беклог старих листів (на момент запуску ~2926 непрочитаних) не чіпається.
+### Пошта (LIVE; переархітектовано на розділ «Пошта» 2026-06-24)
+- [x] ~~Міграція 006~~ — застосовано (`mail_log`, `documents.source`; `processed_emails` більше не використовується).
+- [x] ~~Env у Vercel~~ — `MAIL_USER`=office@aim-skill.com, `MAIL_PASS`, `SUPABASE_SERVICE_KEY` (`sb_secret_…`), `CRON_SECRET`.
+- [ ] **Запустити `migrations/007_mail_section.sql`** у Supabase Dashboard (таблиця `emails`) — БЕЗ цього розділ «Пошта» не працюватиме.
+- [ ] Після деплою: відкрити **Пошта → «Синхронізувати»** (підтягне 10 днів; великий обсяг — натиснути кілька разів, поки `newEmails`=0).
+- [ ] Перевірити **«Створити заявку»** на листі (AI → замовлення + документи).
+- [ ] Перевірити **надсилання** (кнопка «Надіслати email» у документі) — має зʼявитись і в «Пошті» (вихідний).
+- [ ] (Опц.) Зовнішній пінгувач (cron-job.org) на `POST /api/mail-sync`, заголовок `Authorization: Bearer <CRON_SECRET>`.
 
 ### Технічні (код/інфра)
 - [ ] Перевірити, що **політика Storage** дозволяє authenticated download (інакше «Розпізнати» дасть помилку доступу до файлу).
@@ -182,7 +183,8 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `003_account_opening_balance.sql` | Колонки початкового залишку | ✅ застосовано |
 | `004_documents_update_and_docnumber.sql` | UPDATE-RLS на documents + doc_number | ✅ застосовано |
 | `005_document_date.sql` | Колонка `documents.doc_date` | ✅ застосовано |
-| `006_mail_integration.sql` | Пошта: `processed_emails`, `mail_log`, `documents.source` | ⏳ запустити вручну |
+| `006_mail_integration.sql` | Пошта: `processed_emails`, `mail_log`, `documents.source` | ✅ застосовано |
+| `007_mail_section.sql` | Розділ «Пошта»: таблиця `emails` | ⏳ запустити вручну |
 | `validate.mjs` | Перевірка цілісності (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 
 ---

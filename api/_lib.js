@@ -110,6 +110,71 @@ export async function ocrFromAttachments(attachments, articles) {
   return JSON.parse(text)
 }
 
+// ── AI: сформувати заявку (замовлення) з листа + вкладень ──
+export async function extractOrderFromEmail({ subject, from, bodyText }, attachments, articles) {
+  const apiKey = process.env.VITE_ANTHROPIC_KEY || process.env.ANTHROPIC_KEY
+  if (!apiKey) throw new Error('ANTHROPIC_KEY не налаштовано')
+
+  const content = []
+  for (const a of (attachments || [])) {
+    const b64 = a.content.toString('base64')
+    if (a.contentType === 'application/pdf' || /\.pdf$/i.test(a.filename || '')) {
+      content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } })
+    } else if ((a.contentType || '').startsWith('image/')) {
+      const mt = SUPPORTED_IMG.includes(a.contentType) ? a.contentType : 'image/jpeg'
+      content.push({ type: 'image', source: { type: 'base64', media_type: mt, data: b64 } })
+    }
+  }
+  content.push({ type: 'text', text:
+`Лист від: ${from || '?'}
+Тема: ${subject || '?'}
+
+Текст листа:
+${(bodyText || '').slice(0, 6000)}
+
+На основі листа і вкладень сформуй максимально повну заявку (замовлення). Поверни JSON.` })
+
+  const systemPrompt = `Ти асистент відділу продажів ТОВ "ЕЙМ СКІЛ" (ЄДРПОУ 45505924). Аналізуй лист клієнта та вкладені документи і формуй заявку (замовлення).
+
+Три напрямки замовлень:
+- "trade" — торгівля комп'ютерною технікою (клієнт хоче купити товар/обладнання).
+- "service" — послуги/роботи (налаштування, ремонт, разові послуги).
+- "agent" — агентська/посередницька угода (комісія за зведення клієнта з партнером).
+
+СТАТТІ ОБЛІКУ (довідково):
+${articles?.length ? articles.map(a => `- ${a.name} (${a.type})`).join('\n') : '(немає)'}
+
+Поверни ТІЛЬКИ валідний JSON без markdown:
+{
+  "type": "trade|service|agent",
+  "contractor": "назва компанії-клієнта (НЕ ЕЙМ СКІЛ) або ПІБ",
+  "edrpou": "ЄДРПОУ/ІПН клієнта або null",
+  "contractorEmail": "email клієнта або null",
+  "contractorPhone": "телефон або null",
+  "total": сумарна_вартість_число_або_0,
+  "currency": "UAH",
+  "description": "короткий опис заявки (1 рядок)",
+  "summary": "детальний опис: що саме клієнт хоче, умови, терміни, важливі деталі",
+  "items": [
+    { "name": "товар/послуга", "sku": "артикул або null", "quantity": число_або_null, "unit": "шт|компл|послуга|null", "unitPrice": число_або_null, "amount": число_або_null }
+  ]
+}
+Суми позитивні. Якщо поле невідоме — null. items може бути порожнім, якщо в листі немає конкретики.`
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 2500, system: systemPrompt, messages: [{ role: 'user', content }] }),
+  })
+  const data = await res.json()
+  if (data.error) throw new Error(data.error.message)
+  let text = data.content?.find(b => b.type === 'text')?.text || ''
+  text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+  const m = text.match(/\{[\s\S]*\}/)
+  if (m) text = m[0]
+  return JSON.parse(text)
+}
+
 // Тип документа з OCR (дзеркалить typeFromOcr у DocModal.jsx)
 export function typeFromOcr(docType, docRole) {
   const t = (docType || '').trim().toLowerCase()

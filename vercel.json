@@ -4,6 +4,6 @@
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [
-    { "path": "/api/mail-poll", "schedule": "0 7 * * *" }
+    { "path": "/api/mail-sync", "schedule": "0 7 * * *" }
   ]
 }

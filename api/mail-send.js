@@ -21,11 +21,12 @@ export default async function handler(req, res) {
 
     const admin = getAdmin()
     const attachments = []
+    const attMeta = []
     let contractorId = null
 
     if (documentId) {
       const { data: doc, error } = await admin.from('documents')
-        .select('id, contractor_id, file_name, storage_path, file_path').eq('id', documentId).single()
+        .select('id, contractor_id, file_name, file_type, storage_path, file_path').eq('id', documentId).single()
       if (error) throw new Error('Документ не знайдено: ' + error.message)
       contractorId = doc.contractor_id || null
       const path = doc.storage_path || doc.file_path
@@ -34,6 +35,7 @@ export default async function handler(req, res) {
         if (dlErr) throw new Error('Не вдалося завантажити файл: ' + dlErr.message)
         const buf = Buffer.from(await blob.arrayBuffer())
         attachments.push({ filename: doc.file_name || 'document', content: buf })
+        attMeta.push({ filename: doc.file_name || 'document', contentType: doc.file_type || null, size: buf.length, storage_path: path })
       }
     }
 
@@ -42,7 +44,7 @@ export default async function handler(req, res) {
       auth: { user: cfg.smtp.auth.user, pass: cfg.smtp.auth.pass },
     })
 
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: cfg.from, to, cc: cc || undefined, subject,
       text: text || undefined,
       html: html || (text ? undefined : `<p>${(subject || '').replace(/</g, '&lt;')}</p>`),
@@ -54,6 +56,16 @@ export default async function handler(req, res) {
       document_id: documentId || null, contractor_id: contractorId,
       status: 'sent', sent_by: user.id,
     })
+
+    // Запис у «Пошту» (вихідний)
+    await admin.from('emails').insert({
+      message_id: info?.messageId || `out-${Date.now()}-${Math.round(Math.random() * 1e6)}`,
+      folder: 'Sent', direction: 'out',
+      from_addr: cfg.from, to_addr: to, cc_addr: cc || null, subject,
+      body_text: text || null, body_html: html || null,
+      email_date: new Date().toISOString(),
+      has_attachments: attMeta.length > 0, attachments: attMeta, is_read: true,
+    }).then(() => {}, () => {}) // не блокуємо відповідь, якщо таблиці emails ще немає
 
     res.status(200).json({ ok: true })
   } catch (err) {
