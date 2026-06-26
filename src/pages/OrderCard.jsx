@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { fmt } from '../lib/fmt'
-import { getDocType } from '../lib/docgen'
+import { getDocType, generatePdf } from '../lib/docgen'
 import { resolveProduct } from '../lib/stockService'
 import DocModal from '../components/DocModal'
 import ProductSelect from '../components/ui/ProductSelect'
@@ -366,6 +366,21 @@ function ProposalsTab({ o, onChange }) {
   }
   const setStatus = async (p, status) => { await supabase.from('commercial_proposals').update({ status }).eq('id', p.id); load() }
 
+  // Сформувати PDF комерційної пропозиції
+  const [genId, setGenId] = useState(null)
+  const downloadPdf = async (p) => {
+    setGenId(p.id)
+    try {
+      const { data: c } = await supabase.from('contractors').select('*').eq('id', o.client_id).single()
+      const items = (p.items || []).map(it => ({ name: it.name, quantity: Number(it.qty) || 0, unit: 'шт', unitPrice: Number(it.price) || 0, vatRate: 0 }))
+      const today = new Date().toISOString().slice(0, 10)
+      await generatePdf('commercialProposal', c || { name: o.contractors?.name }, items, {
+        docNumber: `КП-${o.order_number || o.id.slice(0, 6)}-v${p.version}`, docDate: today,
+      })
+    } catch (e) { alert('Помилка формування: ' + e.message) }
+    setGenId(null)
+  }
+
   return (
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -403,6 +418,7 @@ function ProposalsTab({ o, onChange }) {
             <div style={{ fontSize: 12, color: 'var(--text3)' }}>{(p.items || []).length} позицій{p.sent_at ? ` · надіслано ${p.sent_at.slice(0, 10)}` : ''}</div>
           </div>
           <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 6, background: 'var(--surface2)', color: 'var(--text2)' }}>{PROP_STATUS[p.status] || p.status}</span>
+          <button className="btn" onClick={() => downloadPdf(p)} disabled={genId === p.id} title="Сформувати PDF"><i className="ti ti-file-download" /> {genId === p.id ? '…' : 'PDF'}</button>
           {p.status === 'draft' && <button className="btn btn-primary" onClick={() => send(p)}>Надіслати</button>}
           {p.status === 'sent' && <>
             <button className="btn" onClick={() => setStatus(p, 'accepted')}>Прийнято</button>
