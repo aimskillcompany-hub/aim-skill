@@ -1,7 +1,7 @@
 // ── Document Generation Public API ──
 import { getCompany } from '../companyConfig'
 import { getDocType } from './templates/registry'
-import { downloadPdf, getPdfBlob } from './pdfBuilder'
+import { downloadPdf, openPdf, getPdfBlob } from './pdfBuilder'
 import { downloadXlsx } from './xlsxBuilder'
 import { calcTotals } from './formatUtils'
 import { supabase } from '../supabase'
@@ -70,6 +70,18 @@ export async function generateOrderDoc(docTypeKey, contractor, items, options, {
     file_name: fileName, storage_path: path, direction: dt.direction === 'incoming' ? 'payable' : 'receivable',
   })
   if (insErr) throw insErr
+}
+
+// ── Перегляд PDF у новій вкладці (без збереження) ──
+export async function previewPdf(docTypeKey, contractor, items, options) {
+  const dt = getDocType(docTypeKey)
+  if (!dt) throw new Error(`Невідомий тип документа: ${docTypeKey}`)
+  const enriched = await enrichContractorSigner(contractor)
+  const company = await getCompany()
+  const seller = dt.direction === 'incoming' ? enriched : company
+  const buyer = dt.direction === 'incoming' ? company : enriched
+  const docDef = dt.template.pdf(seller, buyer, cleanItems(items), options)
+  openPdf(docDef)
 }
 
 // ── Генерація та завантаження Excel ──
