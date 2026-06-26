@@ -13,6 +13,7 @@ const Contractors = lazy(() => import('./pages/Contractors'))
 const ContractorCard = lazy(() => import('./pages/ContractorCard'))
 const BankCash = lazy(() => import('./pages/BankCash'))
 const Warehouse = lazy(() => import('./pages/Warehouse'))
+const PriceLists = lazy(() => import('./pages/PriceLists'))
 const Documents = lazy(() => import('./pages/Documents'))
 const Mail = lazy(() => import('./pages/Mail'))
 const Analytics = lazy(() => import('./pages/Analytics'))
@@ -37,6 +38,7 @@ export default function App() {
               <Route path="/contractors/:id" element={<ContractorCard />} />
               <Route path="/bank" element={<BankCash />} />
               <Route path="/inventory" element={<Warehouse />} />
+              <Route path="/prices" element={<PriceLists />} />
               <Route path="/documents" element={<Documents />} />
               <Route path="/mail" element={<Mail />} />
               <Route path="/analytics" element={<Analytics />} />

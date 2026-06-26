@@ -1,0 +1,123 @@
+import * as XLSX from 'xlsx'
+import { supabase } from './supabase'
+
+// Прайс-листи постачальників — довідковий шар, ОКРЕМО від складу.
+// Excel читається в браузері, рядки пишуться в supplier_prices.
+
+// Поля, які мапимо на колонки Excel (індекси)
+export const FIELDS = [
+  { key: 'name', label: 'Найменування', required: true },
+  { key: 'sku', label: 'Артикул / Код' },
+  { key: 'brand', label: 'Виробник / Бренд' },
+  { key: 'category', label: 'Категорія' },
+  { key: 'unit', label: 'Одиниця' },
+  { key: 'price', label: 'Ціна закупівлі' },
+  { key: 'retail_price', label: 'Ціна продажу (роздріб)' },
+  { key: 'in_stock', label: 'Наявність' },
+]
+
+// Ключові слова для авто-визначення колонок за заголовком
+const HINTS = {
+  name: /найменув|назва|товар|опис|product|name/i,
+  sku: /код|артикул|sku|partnumber|p\/n|part/i,
+  brand: /виробник|бренд|brand|manufact|vendor/i,
+  category: /^категор/i,
+  unit: /одиниц|вимір|unit|^од\.?$/i,
+  price: /собівар|закуп|опт|cost|dealer.*грн/i,
+  retail_price: /роздріб|retail|продаж|rrp/i,
+  in_stock: /кіл-ть|кільк|наявн|залиш|stock|qty|склад|avail/i,
+}
+
+// Парсинг файлу → масив рядків (AoA), row[0] = заголовки
+export async function parsePriceFile(file) {
+  const buf = await file.arrayBuffer()
+  const wb = XLSX.read(new Uint8Array(buf), { type: 'array', codepage: 1251, cellText: true, cellDates: false })
+  const ws = wb.Sheets[wb.SheetNames[0]]
+  return XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' })
+}
+
+// Авто-мапінг колонок за рядком заголовків (повертає { field: colIndex })
+export function guessMapping(headers = []) {
+  const map = {}
+  const used = new Set()
+  for (const f of FIELDS) {
+    const hint = HINTS[f.key]
+    if (!hint) continue
+    const idx = headers.findIndex((h, i) => !used.has(i) && hint.test(String(h || '')))
+    if (idx >= 0) { map[f.key] = idx; used.add(idx) }
+  }
+  return map
+}
+
+const decode = (s) => String(s || '')
+  .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+  .replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim()
+
+export function num(v) {
+  if (v == null || v === '') return null
+  const s = String(v).replace(/\s/g, '').replace(',', '.').replace(/[^0-9.\-]/g, '')
+  const n = parseFloat(s)
+  return isFinite(n) ? n : null
+}
+
+// Імпорт: заміщує попередній прайс цього постачальника новим набором рядків.
+// onProgress(done, total) — для індикатора.
+export async function importPriceList({ supplierId, fileName, map, headerRow, rows, userId }, onProgress) {
+  const dataRows = rows.slice(headerRow + 1)
+  const col = (r, key) => (map[key] != null ? r[map[key]] : undefined)
+
+  const prepared = dataRows.map(r => ({
+    name: decode(col(r, 'name')),
+    sku: map.sku != null ? decode(col(r, 'sku')) || null : null,
+    brand: map.brand != null ? decode(col(r, 'brand')) || null : null,
+    category: map.category != null ? decode(col(r, 'category')) || null : null,
+    unit: map.unit != null ? decode(col(r, 'unit')) || null : null,
+    price: map.price != null ? num(col(r, 'price')) : null,
+    retail_price: map.retail_price != null ? num(col(r, 'retail_price')) : null,
+    in_stock: map.in_stock != null ? decode(col(r, 'in_stock')) || null : null,
+  })).filter(r => r.name)
+
+  // 1. Новий запис імпорту
+  const { data: pl, error: plErr } = await supabase.from('supplier_price_lists').insert({
+    supplier_id: supplierId, file_name: fileName, column_map: { ...map, headerRow }, imported_by: userId || null,
+  }).select('id').single()
+  if (plErr) throw plErr
+
+  // 2. Прибрати попередні прайси цього постачальника (cascade зніме їхні рядки)
+  await supabase.from('supplier_price_lists').delete().eq('supplier_id', supplierId).neq('id', pl.id)
+
+  // 3. Вставити рядки чанками
+  const CHUNK = 1000
+  let done = 0
+  for (let i = 0; i < prepared.length; i += CHUNK) {
+    const batch = prepared.slice(i, i + CHUNK).map(r => ({ ...r, price_list_id: pl.id, supplier_id: supplierId }))
+    const { error } = await supabase.from('supplier_prices').insert(batch)
+    if (error) throw error
+    done += batch.length
+    onProgress?.(done, prepared.length)
+  }
+
+  await supabase.from('supplier_price_lists').update({ rows_count: prepared.length }).eq('id', pl.id)
+  return { count: prepared.length }
+}
+
+// Останній імпорт по кожному постачальнику (для прев'ю стану + переюзу мапінгу)
+export async function loadPriceListMeta() {
+  const { data } = await supabase.from('supplier_price_lists')
+    .select('id, supplier_id, file_name, rows_count, column_map, imported_at, contractors(name)')
+    .order('imported_at', { ascending: false })
+  return data || []
+}
+
+// Пошук по всіх прайсах (за назвою/артикулом), відсортовано за ціною
+export async function searchPrices(q, { limit = 80 } = {}) {
+  const term = q.trim()
+  if (!term) return []
+  const esc = term.replace(/[%,]/g, ' ')
+  const { data } = await supabase.from('supplier_prices')
+    .select('id, sku, name, brand, category, unit, price, retail_price, in_stock, contractors(name)')
+    .or(`name.ilike.%${esc}%,sku.ilike.%${esc}%`)
+    .order('price', { ascending: true, nullsFirst: false })
+    .limit(limit)
+  return data || []
+}

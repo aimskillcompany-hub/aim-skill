@@ -3,12 +3,13 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 
-// Навігація per ТЗ 5.1 — 9 розділів
+// Навігація per ТЗ 5.1 — 10 розділів
 const NAV = [
   { to: '/orders',      label: 'Замовлення',   icon: 'ti-shopping-cart',  section: 'Облік' },
   { to: '/contractors', label: 'Контрагенти',  icon: 'ti-users' },
   { to: '/bank',        label: 'Банк / Каса',  icon: 'ti-building-bank' },
   { to: '/inventory',   label: 'Склад',        icon: 'ti-package' },
+  { to: '/prices',      label: 'Прайси',       icon: 'ti-tag' },
   { to: '/documents',   label: 'Документи',    icon: 'ti-files' },
   { to: '/mail',        label: 'Пошта',        icon: 'ti-mail' },
   { to: '/analytics',   label: 'Аналітика',    icon: 'ti-chart-dots-3',   section: 'Аналіз' },
