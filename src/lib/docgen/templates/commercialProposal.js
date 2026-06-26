@@ -9,6 +9,21 @@ const G1 = '#3A3A3C'
 const G2 = '#8E8E93'
 const G3 = '#C7C7CC'
 const G4 = '#E5E5EA'
+const LIME = '#C7F33C'   // фірмовий акцент (мінімально)
+const GREEN = '#4A7C59'
+const TAGLINE = 'Комплексні ІТ-рішення та обладнання для бізнесу'
+const ADVANTAGES = [
+  'Офіційний партнер провідних брендів',
+  'Гарантія та сервісна підтримка',
+  'Індивідуальні умови та ціни під проєкт',
+  'Швидка поставка й супровід замовлення',
+]
+
+function addDays(dateStr, days) {
+  const d = new Date(dateStr)
+  d.setDate(d.getDate() + (Number(days) || 14))
+  return d.toISOString().slice(0, 10)
+}
 
 function itm(it, i) {
   const q = parseFloat(it.quantity) || 0, p = parseFloat(it.unitPrice) || 0
@@ -45,21 +60,53 @@ export function pdf(company, contractor, items, options) {
             {
               stack: [
                 { text: docNumber, fontSize: 6, bold: true, color: G2 },
-                { text: 'Сформовано в корпоративній системі AiM Skill', fontSize: 5.5, color: G3, margin: [0, 1, 0, 0] },
-                { text: '073 700 77 58  ·  office@aim-skill.com.ua  ·  www.aim-skill.com.ua', fontSize: 5.5, color: G3, margin: [0, 1, 0, 0] },
+                { text: 'Сформовано в корпоративній системі AiM Skill  ·  073 700 77 58  ·  office@aim-skill.com.ua  ·  www.aim-skill.com.ua', fontSize: 5.5, color: G3, margin: [0, 1, 0, 0] },
               ],
               width: '*', margin: [0, 3, 0, 0],
             },
-            { image: LOGO_BASE64, width: 52, alignment: 'right' },
           ],
         },
       ],
     }),
 
     content: [
-      sectionTitle('КОМЕРЦІЙНА ПРОПОЗИЦІЯ'),
-      { text: `від ${formatDateLong(docDate)}`, fontSize: 9, color: G1, margin: [0, 0, 0, 2] },
-      { text: `№ ${docNumber}`, fontSize: 24, bold: true, color: BLACK, margin: [0, 0, 0, 12] },
+      // ═══ ШАПКА: лого + слоган ═══
+      {
+        columns: [
+          { image: LOGO_BASE64, width: 78, margin: [0, 2, 0, 0] },
+          {
+            width: '*',
+            stack: [
+              { text: company.shortName || company.name, fontSize: 11, bold: true, color: BLACK, alignment: 'right' },
+              { text: TAGLINE, fontSize: 8, color: G2, alignment: 'right', margin: [0, 2, 0, 0] },
+              { text: `${company.phone || ''}  ·  ${company.email || ''}`, fontSize: 7.5, color: G2, alignment: 'right', margin: [0, 2, 0, 0] },
+            ],
+          },
+        ],
+        margin: [0, 0, 0, 8],
+      },
+      { canvas: [{ type: 'rect', x: 0, y: 0, w: 515, h: 3, color: LIME }], margin: [0, 0, 0, 14] },
+
+      // ═══ НАЗВА + БЕЙДЖ ТЕРМІНУ ═══
+      {
+        columns: [
+          {
+            width: '*',
+            stack: [
+              sectionTitle('КОМЕРЦІЙНА ПРОПОЗИЦІЯ'),
+              { text: `від ${formatDateLong(docDate)}`, fontSize: 9, color: G1, margin: [0, 0, 0, 2] },
+              { text: `№ ${docNumber}`, fontSize: 24, bold: true, color: BLACK },
+            ],
+          },
+          {
+            width: 'auto',
+            table: { body: [[{ text: `Дійсна до ${formatDate(addDays(docDate, validityDays))}`, fontSize: 8.5, bold: true, color: BLACK, fillColor: LIME, margin: [10, 6, 10, 6] }]] },
+            layout: 'noBorders',
+            margin: [0, 6, 0, 0],
+          },
+        ],
+        margin: [0, 0, 0, 12],
+      },
 
       {
         columns: [
@@ -142,12 +189,49 @@ export function pdf(company, contractor, items, options) {
         ],
       },
 
-      { text: '', margin: [0, 6] },
-      { text: `Пропозиція дійсна ${validityDays || 14} днів з дати формування.`, fontSize: 8.5, color: G2 },
-      notes ? { text: notes, fontSize: 8.5, color: G1, margin: [0, 6, 0, 0], lineHeight: 1.4 } : {},
+      notes ? { text: notes, fontSize: 8.5, color: G1, margin: [0, 8, 0, 0], lineHeight: 1.4 } : {},
 
-      { text: '', margin: [0, 12] },
-      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: G4 }], margin: [0, 0, 0, 6] },
+      // ═══ ЧОМУ МИ ═══
+      { text: '', margin: [0, 8] },
+      sectionTitle('ЧОМУ AIM SKILL'),
+      {
+        columns: ADVANTAGES.map(a => ({
+          width: '25%',
+          stack: [
+            { canvas: [{ type: 'rect', x: 0, y: 0, w: 18, h: 3, color: LIME }], margin: [0, 0, 0, 5] },
+            { text: a, fontSize: 8, color: G1, lineHeight: 1.3 },
+          ],
+          margin: [0, 0, 8, 0],
+        })),
+        margin: [0, 0, 0, 4],
+      },
+
+      // ═══ ЗАКЛИК + КОНТАКТИ ═══
+      { text: '', margin: [0, 8] },
+      {
+        table: {
+          widths: ['*'],
+          body: [[{
+            border: [false, false, false, false],
+            fillColor: '#FAFAFA',
+            margin: [14, 12, 14, 12],
+            stack: [
+              { text: 'Готові обговорити деталі чи оформити замовлення?', fontSize: 10, bold: true, color: BLACK },
+              { text: `Зв'яжіться з нами — підберемо оптимальне рішення під ваш бюджет.`, fontSize: 8.5, color: G1, margin: [0, 3, 0, 6] },
+              { text: [
+                { text: company.phone || '', bold: true, color: BLACK },
+                { text: company.phone ? '   ·   ' : '', color: G3 },
+                { text: company.email || '', color: GREEN },
+                { text: '   ·   www.aim-skill.com.ua', color: G2 },
+              ], fontSize: 9 },
+            ],
+          }]],
+        },
+        layout: { defaultBorder: false },
+      },
+
+      // ═══ ПІДПИС ═══
+      { text: '', margin: [0, 10] },
       {
         width: '48%',
         stack: [
