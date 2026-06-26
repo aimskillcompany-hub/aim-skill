@@ -200,19 +200,21 @@ function ItemsTab({ o, onChange }) {
   const [saved, setSaved] = useState(false)
   const [showPicker, setShowPicker] = useState(false)
 
-  const load = () => supabase.from('order_items').select('*').eq('order_id', o.id).order('created_at')
-    .then(({ data }) => setRows((data || []).map(r => ({ ...r }))))
+  const load = () => supabase.from('order_items').select('*, contractors(name)').eq('order_id', o.id).order('created_at')
+    .then(({ data }) => setRows((data || []).map(r => ({ ...r, supplier_name: r.contractors?.name || null }))))
   useEffect(() => { load() }, [o.id])
 
   const setRow = (i, patch) => setRows(rs => rs.map((r, j) => j === i ? { ...r, ...patch } : r))
-  const addRow = () => setRows(rs => [...rs, { product_id: null, name: '', unit: 'шт', qty: 1, cost_price: 0, unit_price: 0 }])
-  // Підстановка позиції з прайсу: закупівля = ціна прайсу, продаж = роздріб (редагована)
+  const addRow = () => setRows(rs => [...rs, { product_id: null, name: '', unit: 'шт', qty: 1, cost_price: 0, unit_price: 0, supplier_id: null, supplier_name: null }])
+  // Підстановка позиції з прайсу: закупівля = ціна прайсу, продаж = роздріб (редагована),
+  // запам'ятовуємо постачальника (для авто-формування субзамовлень)
   const addFromPrice = (p) => {
     setShowPicker(false)
     setRows(rs => [...rs, {
       product_id: null, name: p.name, unit: p.unit || 'шт', qty: 1,
       cost_price: p.price || 0,
       unit_price: (p.retail_price > 0 ? p.retail_price : p.price) || 0,
+      supplier_id: p.supplier_id || null, supplier_name: p.contractors?.name || null,
     }])
   }
   const removeRow = (i) => setRows(rs => rs.filter((_, j) => j !== i))
@@ -236,7 +238,7 @@ function ItemsTab({ o, onChange }) {
       resolved.push({
         order_id: o.id, product_id, name: r.name.trim(), unit: r.unit || 'шт',
         qty: Number(r.qty) || 0, cost_price: Number(r.cost_price) || 0,
-        unit_price: Number(r.unit_price) || 0, total: rowTotal(r),
+        unit_price: Number(r.unit_price) || 0, total: rowTotal(r), supplier_id: r.supplier_id || null,
       })
     }
     // Замінюємо повний набір позицій замовлення
@@ -290,9 +292,11 @@ function ItemsTab({ o, onChange }) {
               onChange={(name) => setRow(i, { name, product_id: null })}
               onSelect={(p) => p._new
                 ? setRow(i, { name: p.name, product_id: null })
-                : setRow(i, { name: p.name, product_id: p.id, unit: p.unit || 'шт', cost_price: r.cost_price || p.buy_price || 0, unit_price: r.unit_price || p.sell_price || 0 })}
+                : setRow(i, { name: p.name, product_id: p.id, unit: p.unit || 'шт', cost_price: r.cost_price || p.buy_price || 0, unit_price: r.unit_price || p.sell_price || 0, supplier_id: null, supplier_name: null })}
             />
-            {r.product_id && <div style={{ fontSize: 11, color: 'var(--green)', marginTop: 2 }}><i className="ti ti-link" /> з довідника</div>}
+            {r.supplier_name
+              ? <div style={{ fontSize: 11, color: 'var(--blue)', marginTop: 2 }}><i className="ti ti-tag" /> {r.supplier_name}</div>
+              : r.product_id && <div style={{ fontSize: 11, color: 'var(--green)', marginTop: 2 }}><i className="ti ti-link" /> з довідника</div>}
           </div>
           <input className="form-input" type="number" placeholder="К-сть" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} style={{ width: 80 }} />
           <input className="form-input" placeholder="од." value={r.unit || ''} onChange={e => setRow(i, { unit: e.target.value })} style={{ width: 70 }} />
@@ -432,9 +436,22 @@ function DocumentsTab({ o }) {
 // ───────── Субзамовлення ─────────
 function SuppliersTab({ o }) {
   const [rows, setRows] = useState([])
+  const [items, setItems] = useState({}) // supplier_order_id -> [items]
   const [suppliers, setSuppliers] = useState([])
   const [add, setAdd] = useState(null)
-  const load = () => supabase.from('supplier_orders').select('*, contractors(name)').eq('order_id', o.id).order('created_at').then(({ data }) => setRows(data || []))
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState(null)
+
+  const load = async () => {
+    const { data: so } = await supabase.from('supplier_orders').select('*, contractors(name)').eq('order_id', o.id).order('created_at')
+    setRows(so || [])
+    const ids = (so || []).map(s => s.id)
+    if (ids.length) {
+      const { data: soi } = await supabase.from('supplier_order_items').select('*').in('supplier_order_id', ids)
+      const map = {}; (soi || []).forEach(it => { (map[it.supplier_order_id] ||= []).push(it) })
+      setItems(map)
+    } else setItems({})
+  }
   useEffect(() => {
     load()
     supabase.from('contractors').select('id, name').eq('is_supplier', true).order('name').then(({ data }) => setSuppliers(data || []))
@@ -443,17 +460,50 @@ function SuppliersTab({ o }) {
   const create = async () => {
     const delay = Number(add.delay) || 0
     const due = delay ? new Date(Date.now() + delay * 864e5).toISOString().split('T')[0] : null
-    await supabase.from('supplier_orders').insert({ order_id: o.id, supplier_id: add.supplier_id || null, total: Number(add.total) || 0, payment_delay_days: delay, payment_due_date: due, status: 'new' })
+    await supabase.from('supplier_orders').insert({ order_id: o.id, supplier_id: add.supplier_id || null, total: Number(add.total) || 0, payment_delay_days: delay, payment_due_date: due, status: 'new', source: 'manual' })
     setAdd(null); load()
   }
   const setStatus = async (s, status) => { await supabase.from('supplier_orders').update({ status }).eq('id', s.id); load() }
+  const del = async (s) => { await supabase.from('supplier_orders').delete().eq('id', s.id); load() }
+
+  // Сформувати субзамовлення з товарів замовлення: групуємо за постачальником
+  const generate = async () => {
+    setBusy(true); setMsg(null)
+    const { data: oi } = await supabase.from('order_items').select('supplier_id, product_id, name, unit, qty, cost_price').eq('order_id', o.id)
+    const groups = {}
+    for (const it of oi || []) {
+      if (!(Number(it.qty) > 0)) continue
+      const key = it.supplier_id || '__none__'
+      ;(groups[key] ||= []).push(it)
+    }
+    if (!Object.keys(groups).length) { setBusy(false); setMsg('Немає товарів для формування (додайте позиції у вкладці «Товари»).'); return }
+    // Заміщуємо лише авто-сформовані, ручні лишаємо
+    await supabase.from('supplier_orders').delete().eq('order_id', o.id).eq('source', 'auto')
+    for (const key of Object.keys(groups)) {
+      const list = groups[key]
+      const total = list.reduce((s, it) => s + (Number(it.cost_price) || 0) * (Number(it.qty) || 0), 0)
+      const { data: so } = await supabase.from('supplier_orders').insert({
+        order_id: o.id, supplier_id: key === '__none__' ? null : key, total, status: 'new', source: 'auto',
+      }).select('id').single()
+      if (so?.id) await supabase.from('supplier_order_items').insert(list.map(it => ({
+        supplier_order_id: so.id, product_id: it.product_id || null, name: it.name, unit: it.unit, qty: Number(it.qty) || 0, cost_price: Number(it.cost_price) || 0,
+      })))
+    }
+    setBusy(false); load()
+  }
 
   return (
     <div className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, gap: 8, flexWrap: 'wrap' }}>
         <div className="card-title" style={{ marginBottom: 0 }}>Субзамовлення дистрибюторам</div>
-        {!add && <button className="btn btn-primary" onClick={() => setAdd({ supplier_id: '', total: '', delay: '' })}><i className="ti ti-plus" /> Додати</button>}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-primary" onClick={generate} disabled={busy}><i className="ti ti-wand" /> {busy ? '…' : 'Сформувати з товарів'}</button>
+          {!add && <button className="btn" onClick={() => setAdd({ supplier_id: '', total: '', delay: '' })}><i className="ti ti-plus" /> Вручну</button>}
+        </div>
       </div>
+
+      {msg && <div style={{ color: 'var(--text2)', fontSize: 13, marginBottom: 10 }}>{msg}</div>}
+
       {add && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div className="form-group" style={{ flex: '1 1 180px' }}><label>Постачальник</label>
@@ -467,15 +517,32 @@ function SuppliersTab({ o }) {
           <button className="btn" onClick={() => setAdd(null)}>Скасувати</button>
         </div>
       )}
-      {rows.length === 0 && !add && <p style={{ color: 'var(--text3)', fontSize: 13 }}>Субзамовлень немає.</p>}
+
+      {rows.length === 0 && !add && <p style={{ color: 'var(--text3)', fontSize: 13 }}>Субзамовлень немає. Натисніть «Сформувати з товарів», щоб згрупувати позиції за постачальником.</p>}
+
       {rows.map(s => (
-        <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ flex: 1 }}><b>{s.contractors?.name || 'Постачальник'}</b> · {fmt(s.total)} грн
-            <div style={{ fontSize: 12, color: 'var(--text3)' }}>{s.payment_due_date ? `оплата до ${s.payment_due_date}` : 'без відстрочки'}</div>
+        <div key={s.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <b>{s.contractors?.name || 'Без постачальника'}</b> · {fmt(s.total)} грн
+              {s.source === 'auto' && <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--blue)' }}>авто</span>}
+              <div style={{ fontSize: 12, color: 'var(--text3)' }}>{s.payment_due_date ? `оплата до ${s.payment_due_date}` : 'без відстрочки'}</div>
+            </div>
+            <select className="form-input" value={s.status} onChange={e => setStatus(s, e.target.value)} style={{ width: 150, padding: '4px 8px', fontSize: 12 }}>
+              {['new', 'ordered', 'in_transit', 'received', 'paid'].map(st => <option key={st} value={st}>{st}</option>)}
+            </select>
+            <button className="btn" onClick={() => del(s)} title="Видалити" style={{ color: 'var(--red)' }}><i className="ti ti-x" /></button>
           </div>
-          <select className="form-input" value={s.status} onChange={e => setStatus(s, e.target.value)} style={{ width: 150, padding: '4px 8px', fontSize: 12 }}>
-            {['new', 'ordered', 'in_transit', 'received', 'paid'].map(st => <option key={st} value={st}>{st}</option>)}
-          </select>
+          {(items[s.id] || []).length > 0 && (
+            <div style={{ marginTop: 8, marginLeft: 8, borderLeft: '2px solid var(--border)', paddingLeft: 10 }}>
+              {items[s.id].map(it => (
+                <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text2)', padding: '2px 0', gap: 8 }}>
+                  <span className="trunc" title={it.name}>{it.name}</span>
+                  <span style={{ whiteSpace: 'nowrap' }}>{it.qty} {it.unit || 'шт'} × {fmt(it.cost_price)} = {fmt((Number(it.qty) || 0) * (Number(it.cost_price) || 0))}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       ))}
     </div>
