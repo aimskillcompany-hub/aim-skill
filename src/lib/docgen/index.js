@@ -152,7 +152,7 @@ export async function saveDoc({ docType, docNumber, docDate, contractorId, contr
       amount: total ?? null, vat_amount: vatAmount ?? null,
       direction: dt.direction === 'incoming' ? 'payable' : 'receivable',
       doc_role: dt.direction === 'incoming' ? 'incoming' : 'outgoing',
-      file_name: `${dt.label}_${docNumber}.pdf`,
+      file_name: `${dt.label}_${docNumber}.pdf`, file_path: `generated/${data.id}.pdf`,
       source: 'generated', generated_doc_id: data.id,
     })
   }
