@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { fmt } from '../lib/fmt'
-import { getDocType, previewPdf } from '../lib/docgen'
+import { getDocType, previewPdf, generatePdf } from '../lib/docgen'
 import { resolveProduct } from '../lib/stockService'
 import DocModal from '../components/DocModal'
 import DocGenModal from '../components/DocGenModal'
@@ -490,6 +490,16 @@ function DocumentsTab({ o }) {
   const unlink = async (d) => { await supabase.from('documents').update({ order_id: null }).eq('id', d.id); load() }
   const delGen = async (d) => { await supabase.from('generated_docs').delete().eq('id', d.id); loadGen() }
 
+  // Перегляд / завантаження вже згенерованого документа (регенерація з даних generated_docs)
+  const genItems = (d) => (typeof d.items === 'string' ? JSON.parse(d.items || '[]') : (d.items || []))
+  const genOptions = (d) => ({ docNumber: d.doc_number, docDate: d.doc_date, notes: d.notes, contractNum: d.contract_num, contractDate: d.contract_date, paymentDue: d.payment_due, city: d.city, invoiceRef: d.invoice_ref, invoiceRefDate: d.invoice_ref_date, deliveryBasis: d.delivery_basis, deliveryAddress: d.delivery_address })
+  const withContractor = async (d, fn) => {
+    const { data: c } = await supabase.from('contractors').select('*').eq('id', d.contractor_id).single()
+    try { await fn(d.doc_type, c || { name: d.contractor_name }, genItems(d), genOptions(d)) } catch (e) { alert('Помилка: ' + e.message) }
+  }
+  const viewGen = (d) => withContractor(d, previewPdf)
+  const downloadGen = (d) => withContractor(d, generatePdf)
+
   // Згенерувати документ із товарів замовлення (той самий DocGenModal)
   const openGen = async (docType) => {
     const [{ data: c }, { data: oi }] = await Promise.all([
@@ -524,12 +534,17 @@ function DocumentsTab({ o }) {
               <thead><tr><th>Тип</th><th>№</th><th style={{ textAlign: 'right' }}>Сума</th><th>Дата</th><th /></tr></thead>
               <tbody>
                 {genDocs.map(d => (
-                  <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => setGen({ contractor: { id: d.contractor_id, name: d.contractor_name }, editDoc: d })}>
+                  <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => viewGen(d)}>
                     <td>{getDocType(d.doc_type)?.label || d.doc_type}</td>
                     <td style={{ fontSize: 12, color: 'var(--text2)' }}>{d.doc_number}</td>
                     <td style={{ textAlign: 'right' }}>{fmt(d.total)}</td>
                     <td style={{ fontSize: 12 }}>{(d.doc_date || d.created_at || '').slice(0, 10)}</td>
-                    <td style={{ textAlign: 'right' }}><button className="btn" title="Видалити" onClick={e => { e.stopPropagation(); delGen(d) }} style={{ color: 'var(--red)' }}><i className="ti ti-trash" /></button></td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <button className="btn" title="Переглянути" onClick={e => { e.stopPropagation(); viewGen(d) }}><i className="ti ti-eye" /></button>
+                      <button className="btn" title="Завантажити PDF" onClick={e => { e.stopPropagation(); downloadGen(d) }} style={{ marginLeft: 4 }}><i className="ti ti-file-download" /></button>
+                      <button className="btn" title="Редагувати" onClick={e => { e.stopPropagation(); setGen({ contractor: { id: d.contractor_id, name: d.contractor_name }, editDoc: d }) }} style={{ marginLeft: 4 }}><i className="ti ti-pencil" /></button>
+                      <button className="btn" title="Видалити" onClick={e => { e.stopPropagation(); delGen(d) }} style={{ marginLeft: 4, color: 'var(--red)' }}><i className="ti ti-trash" /></button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
