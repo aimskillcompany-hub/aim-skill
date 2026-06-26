@@ -199,7 +199,7 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `013_order_items_cost.sql` | Позиції замовлення: `cost_price` (маржа) | ✅ застосовано |
 | `014_suborders_auto.sql` | Авто-субзамовлення: `order_items.supplier_id`, `supplier_orders.source`, `supplier_order_items.name/unit` | ✅ застосовано |
 | `015_order_items_vat.sql` | Позиції замовлення: `vat_rate` (розрахунок з/без ПДВ) | ✅ застосовано |
-| `016_order_items_vat_incl.sql` | Позиції: `price_includes_vat` (ПДВ у ціні чи зверху) | ⏳ запустити вручну |
+| `016_order_items_vat_incl.sql` | Позиції: `price_includes_vat` (ПДВ у ціні чи зверху) | ✅ застосовано |
 | `validate.mjs` | Перевірка цілісності (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 
 ---
