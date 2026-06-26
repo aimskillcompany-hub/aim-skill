@@ -476,6 +476,7 @@ function SuppliersTab({ o }) {
     setAdd(null); load()
   }
   const setStatus = async (s, status) => { await supabase.from('supplier_orders').update({ status }).eq('id', s.id); load() }
+  const setSupplier = async (s, supplier_id) => { await supabase.from('supplier_orders').update({ supplier_id: supplier_id || null }).eq('id', s.id); load() }
   const del = async (s) => { await supabase.from('supplier_orders').delete().eq('id', s.id); load() }
 
   // Сформувати субзамовлення з товарів замовлення: групуємо за постачальником
@@ -532,34 +533,58 @@ function SuppliersTab({ o }) {
 
       {rows.length === 0 && !add && <p style={{ color: 'var(--text3)', fontSize: 13 }}>Субзамовлень немає. Натисніть «Сформувати з товарів», щоб згрупувати позиції за постачальником.</p>}
 
-      {rows.map(s => (
-        <div key={s.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ flex: 1 }}>
-              <b>{s.contractors?.name || 'Без постачальника'}</b> · {fmt(s.total)} грн
-              {s.source === 'auto' && <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--blue)' }}>авто</span>}
-              <div style={{ fontSize: 12, color: 'var(--text3)' }}>{s.payment_due_date ? `оплата до ${s.payment_due_date}` : 'без відстрочки'}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {rows.map(s => {
+          const noSupplier = !s.supplier_id
+          return (
+          <div key={s.id} style={{ border: '1px solid var(--border)', borderLeft: `3px solid ${noSupplier ? 'var(--text3)' : 'var(--blue)'}`, borderRadius: 10, padding: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <select className="form-input" value={s.supplier_id || ''} onChange={e => setSupplier(s, e.target.value)} style={{ flex: '1 1 200px', fontWeight: 600 }}>
+                <option value="">Без постачальника — оберіть…</option>
+                {suppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
+              </select>
+              {s.source === 'auto' && <span style={{ fontSize: 11, color: 'var(--blue)', background: 'var(--surface2)', borderRadius: 6, padding: '2px 8px' }}>авто</span>}
+              <select className="form-input" value={s.status} onChange={e => setStatus(s, e.target.value)} style={{ width: 150, padding: '4px 8px', fontSize: 12 }}>
+                {Object.entries(SUB_STATUS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </select>
+              <button className="btn" onClick={() => del(s)} title="Видалити" style={{ color: 'var(--red)' }}><i className="ti ti-trash" /></button>
             </div>
-            <select className="form-input" value={s.status} onChange={e => setStatus(s, e.target.value)} style={{ width: 150, padding: '4px 8px', fontSize: 12 }}>
-              {['new', 'ordered', 'in_transit', 'received', 'paid'].map(st => <option key={st} value={st}>{st}</option>)}
-            </select>
-            <button className="btn" onClick={() => del(s)} title="Видалити" style={{ color: 'var(--red)' }}><i className="ti ti-x" /></button>
+
+            {(items[s.id] || []).length > 0 && (
+              <div className="tbl-wrap" style={{ border: 'none', marginTop: 10 }}>
+                <table>
+                  <thead><tr>
+                    <th>Найменування</th>
+                    <th style={{ textAlign: 'right' }}>К-сть</th>
+                    <th style={{ textAlign: 'right' }}>Закупівля</th>
+                    <th style={{ textAlign: 'right' }}>Сума</th>
+                  </tr></thead>
+                  <tbody>
+                    {items[s.id].map(it => (
+                      <tr key={it.id}>
+                        <td><div className="trunc" title={it.name}>{it.name}</div></td>
+                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{it.qty} {it.unit || 'шт'}</td>
+                        <td style={{ textAlign: 'right' }}>{fmt(it.cost_price)}</td>
+                        <td style={{ textAlign: 'right' }}>{fmt((Number(it.qty) || 0) * (Number(it.cost_price) || 0))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, fontSize: 13 }}>
+              <span style={{ color: 'var(--text3)' }}>{s.payment_due_date ? `оплата до ${s.payment_due_date}` : 'без відстрочки'}</span>
+              <span style={{ fontWeight: 600 }}>Разом закупівля: {fmt(s.total)} грн</span>
+            </div>
           </div>
-          {(items[s.id] || []).length > 0 && (
-            <div style={{ marginTop: 8, marginLeft: 8, borderLeft: '2px solid var(--border)', paddingLeft: 10 }}>
-              {items[s.id].map(it => (
-                <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text2)', padding: '2px 0', gap: 8 }}>
-                  <span className="trunc" title={it.name}>{it.name}</span>
-                  <span style={{ whiteSpace: 'nowrap' }}>{it.qty} {it.unit || 'шт'} × {fmt(it.cost_price)} = {fmt((Number(it.qty) || 0) * (Number(it.cost_price) || 0))}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      ))}
+          )
+        })}
+      </div>
     </div>
   )
 }
+const SUB_STATUS = { new: 'Новий', ordered: 'Замовлено', in_transit: 'В дорозі', received: 'Отримано', paid: 'Оплачено' }
 
 // ───────── Транзакції ─────────
 function TransactionsTab({ o }) {
