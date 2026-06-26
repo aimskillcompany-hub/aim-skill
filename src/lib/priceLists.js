@@ -19,19 +19,36 @@ export const FIELDS = [
   { key: 'in_stock', label: 'Наявність' },
 ]
 
-// Ключові слова для авто-визначення колонок за заголовком
+// Ключові слова для авто-визначення колонок за заголовком.
+// Підказки навмисно вузькі, щоб не плутати схожі колонки (Код / Код категорії,
+// Ціна продажу / РРЦ тощо) у різних постачальників (ERC, MTI…).
 const HINTS = {
-  name: /найменув|назва|товар|опис|product|name/i,
-  sku: /код|артикул|sku|partnumber|p\/n|part/i,
+  name: /найменув|^назва|опис|product name|^name$/i,
+  sku: /артикул|sku|парт.?ном|p\/n|^код$|код товар/i,
   uktzed: /уктзед|укт\s?зед|тн\s?зед|тнзед|hs.?code/i,
-  brand: /виробник|бренд|brand|manufact|vendor/i,
-  category: /^категор/i,
-  unit: /одиниц|вимір|unit|^од\.?$/i,
-  price: /собівар|закуп|опт|cost|дилер|dealer/i,
-  retail_price: /роздріб|retail|^ціна$|rrp/i,
+  brand: /^бренд|виробник(?!.*краї)|brand|manufact|vendor/i,
+  category: /^категор(?!.*рівн)/i,
+  unit: /одиниц.*вимір|вимір|^одиниц|^од\.?$|unit/i,
+  price: /собівар|закуп|опт|cost|дилер|dealer|ціна продаж/i,
+  retail_price: /роздріб|retail|ррц|^ціна,?\s*грн$|^ціна$|rrp/i,
   warranty: /^гарант/i,
   warranty_term: /терм.*гар|гар.*терм|термін/i,
-  in_stock: /кіл-ть|кільк|наявн|залиш|stock|qty|склад|avail/i,
+  in_stock: /на склад|наявн|залиш|^кіл-ть|^к-?ть|stock|qty|avail/i,
+}
+
+// Токени, за якими впізнаємо рядок заголовків (для файлів із шапкою зверху)
+const HEADER_TOKENS = /найменув|назва|опис|артикул|код|бренд|модель|категор|виробник|ціна|роздріб|ррц|дилер|собівар|гарант|наявн|склад|одиниц|уктзед|тн\s?зед|штрихкод|парт/i
+
+// Авто-визначення рядка заголовків (ERC=0, MTI=3): рядок із найбільшою к-стю «заголовкових» слів
+export function guessHeaderRow(aoa = [], maxScan = 15) {
+  let best = 0, bestScore = -1
+  for (let i = 0; i < Math.min(maxScan, aoa.length); i++) {
+    const row = aoa[i] || []
+    let score = 0
+    for (const c of row) if (HEADER_TOKENS.test(String(c || ''))) score++
+    if (score > bestScore) { bestScore = score; best = i }
+  }
+  return best
 }
 
 // Режими визначення валюти ціни закупівлі

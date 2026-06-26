@@ -4,7 +4,7 @@ import { useUser } from '../lib/auth'
 import { fmt } from '../lib/fmt'
 import {
   FIELDS, CURRENCY_MODES, CURRENCY_RULES, parsePriceFile, guessMapping, guessCurrency,
-  importPriceList, loadPriceListMeta, queryPrices, offersForSku,
+  guessHeaderRow, importPriceList, loadPriceListMeta, queryPrices, offersForSku,
 } from '../lib/priceLists'
 
 const PAGE = 100
@@ -206,10 +206,11 @@ function ImportPanel({ meta, onImported }) {
     setFileName(f.name)
     try {
       const rows = await parsePriceFile(f)
+      const hr = guessHeaderRow(rows)
       setAoa(rows)
-      setHeaderRow(0)
-      setMap(guessMapping(rows[0] || []))
-      setCurrency(guessCurrency(rows[0] || []))
+      setHeaderRow(hr)
+      setMap(guessMapping(rows[hr] || []))
+      setCurrency(guessCurrency(rows[hr] || []))
     } catch (err) { setError('Не вдалося прочитати файл: ' + err.message) }
   }
 
