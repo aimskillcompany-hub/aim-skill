@@ -25,6 +25,9 @@ export default function OrderCard() {
   const [o, setO] = useState(null)
   const [lastSent, setLastSent] = useState(null)
   const [tab, setTab] = useState('details')
+  const [busy, setBusy] = useState('')
+  const [confirmDel, setConfirmDel] = useState(false)
+  const [msg, setMsg] = useState(null)
 
   const load = async () => {
     const { data } = await supabase.from('orders').select('*, contractors(name)').eq('id', id).single()
@@ -44,6 +47,28 @@ export default function OrderCard() {
     load()
   }
 
+  const toggleArchive = async () => {
+    setBusy('archive'); setMsg(null)
+    await supabase.from('orders').update({ archived_at: o.archived_at ? null : new Date().toISOString() }).eq('id', id)
+    setBusy(''); load()
+  }
+
+  // Жорстке видалення дозволене лише за відсутності прив'язаних документів
+  // (реальні облікові дані). Інакше — пропонуємо архівування.
+  const del = async () => {
+    setBusy('del'); setMsg(null)
+    const { count } = await supabase.from('documents').select('id', { count: 'exact', head: true }).eq('order_id', id)
+    if (count > 0) {
+      setBusy(''); setConfirmDel(false)
+      setMsg(`Не можна видалити: до замовлення прив'язано ${count} документ(ів). Заархівуйте його замість видалення.`)
+      return
+    }
+    const { error } = await supabase.from('orders').delete().eq('id', id)
+    setBusy('')
+    if (error) { setMsg('Помилка видалення: ' + error.message); return }
+    navigate('/orders')
+  }
+
   const step = stepFor(o)
   const overdue = proposalOverdue(o, lastSent)
 
@@ -61,8 +86,35 @@ export default function OrderCard() {
               <span style={{ color: 'var(--text2)', fontSize: 13 }}>{fmt(o.total)} грн</span>
             </div>
           </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn" onClick={toggleArchive} disabled={!!busy}>
+              <i className={`ti ${o.archived_at ? 'ti-archive-off' : 'ti-archive'}`} /> {o.archived_at ? 'Відновити' : 'Архівувати'}
+            </button>
+            {!confirmDel ? (
+              <button className="btn" onClick={() => { setMsg(null); setConfirmDel(true) }} disabled={!!busy} style={{ color: 'var(--red)' }}>
+                <i className="ti ti-trash" /> Видалити
+              </button>
+            ) : (
+              <>
+                <button className="btn" onClick={del} disabled={busy === 'del'} style={{ background: 'var(--red)', color: '#fff' }}>{busy === 'del' ? '…' : 'Підтвердити видалення'}</button>
+                <button className="btn" onClick={() => setConfirmDel(false)} disabled={busy === 'del'}>Скасувати</button>
+              </>
+            )}
+          </div>
         </div>
       </div>
+
+      {msg && (
+        <div style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 10, padding: '10px 16px', marginBottom: 14, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <i className="ti ti-alert-circle" /> {msg}
+        </div>
+      )}
+
+      {o.archived_at && (
+        <div style={{ background: 'var(--surface2)', color: 'var(--text2)', borderRadius: 10, padding: '10px 16px', marginBottom: 14, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <i className="ti ti-archive" /> Замовлення в архіві (з {o.archived_at.slice(0, 10)}) — приховане з реєстру.
+        </div>
+      )}
 
       {overdue && (
         <div style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>

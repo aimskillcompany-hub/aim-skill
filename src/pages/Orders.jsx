@@ -46,6 +46,9 @@ export default function Orders() {
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase()
     return orders.filter(o => {
+      const archived = !!o.archived_at
+      if (filter === 'archived') { if (!archived) return false }
+      else if (archived) return false
       if (filter === 'action' && !(isOpen(o) && needsAction(o))) return false
       if (filter === 'overdue' && !o.overdue) return false
       if (['trade', 'service', 'agent'].includes(filter) && o.type !== filter) return false
@@ -55,7 +58,7 @@ export default function Orders() {
   }, [orders, q, filter])
 
   const kpi = useMemo(() => {
-    const open = orders.filter(isOpen)
+    const open = orders.filter(o => !o.archived_at && isOpen(o))
     return {
       active: open.length,
       action: open.filter(needsAction).length,
@@ -75,7 +78,7 @@ export default function Orders() {
 
   const FILTERS = [
     ['all', 'Всі'], ['action', 'Потребують дії'], ['overdue', 'Прострочено'],
-    ['trade', 'Торгівля'], ['service', 'Послуги'], ['agent', 'Агент'],
+    ['trade', 'Торгівля'], ['service', 'Послуги'], ['agent', 'Агент'], ['archived', 'Архів'],
   ]
 
   return (
