@@ -195,13 +195,13 @@ export function pdf(company, contractor, items, options) {
       { text: '', margin: [0, 8] },
       sectionTitle('ЧОМУ AIM SKILL'),
       {
+        columnGap: 10,
         columns: ADVANTAGES.map(a => ({
-          width: '25%',
+          width: '*',
           stack: [
             { canvas: [{ type: 'rect', x: 0, y: 0, w: 18, h: 3, color: LIME }], margin: [0, 0, 0, 5] },
             { text: a, fontSize: 8, color: G1, lineHeight: 1.3 },
           ],
-          margin: [0, 0, 8, 0],
         })),
         margin: [0, 0, 0, 4],
       },
