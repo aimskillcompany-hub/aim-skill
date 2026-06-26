@@ -198,8 +198,14 @@ const SELECT_COLS = 'id, sku, uktzed, name, brand, category, unit, price, price_
 // Перегляд/пошук з пагінацією. Працює і без запиту (browse).
 export async function queryPrices({ q = '', supplierId = '', page = 0, pageSize = 100 } = {}) {
   let query = supabase.from('supplier_prices').select(SELECT_COLS)
-  const term = q.trim()
-  if (term) { const esc = term.replace(/[%,]/g, ' '); query = query.or(`name.ilike.%${esc}%,sku.ilike.%${esc}%`) }
+  // Пошук за словами: кожне слово має бути в назві АБО артикулі (AND між словами).
+  // Так уникаємо залежності від точних пробілів/апострофа/порядку.
+  const tokens = q.trim()
+    .split(/[\s,'"`’ʼ()«»]+/)
+    .map(t => t.replace(/[%(),]/g, '').trim())
+    .filter(t => t.length >= 2)
+    .slice(0, 12)
+  for (const tok of tokens) query = query.or(`name.ilike.%${tok}%,sku.ilike.%${tok}%`)
   if (supplierId) query = query.eq('supplier_id', supplierId)
   query = query.order('name', { ascending: true }).range(page * pageSize, page * pageSize + pageSize - 1)
   const { data } = await query
