@@ -6,6 +6,7 @@ import { fmt, fmtInt } from '../lib/fmt'
 import { getContractorBalance } from '../lib/debts'
 import { fetchByEdrpou, isVkursiConfigured } from '../lib/vkursi'
 import { getDocType } from '../lib/docgen'
+import { ORDER_TYPES, TYPE_COLORS, statusLabel } from '../lib/orders'
 import DocModal from '../components/DocModal'
 
 const TABS = [
@@ -221,17 +222,21 @@ function Contacts({ contractorId }) {
 
 // ───────────────────────── Замовлення ─────────────────────────
 function OrdersTab({ id }) {
+  const navigate = useNavigate()
   const [rows, setRows] = useState(null)
   useEffect(() => {
     supabase.from('orders').select('id, order_number, type, status, total, created_at').eq('client_id', id).order('created_at', { ascending: false })
       .then(({ data }) => setRows(data || []))
   }, [id])
   if (rows == null) return <Loading />
-  if (!rows.length) return <Empty text="Замовлень ще немає. Модуль замовлень — Фаза 4." />
+  if (!rows.length) return <Empty text="Замовлень ще немає." />
   return (
     <Table head={['Номер', 'Тип', 'Статус', 'Сума', 'Створено']}>
       {rows.map(o => (
-        <tr key={o.id}><td>{o.order_number || o.id.slice(0, 8)}</td><td>{o.type}</td><td>{o.status}</td>
+        <tr key={o.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/orders/${o.id}`)}>
+          <td style={{ fontWeight: 500 }}>{o.order_number || o.id.slice(0, 8)}</td>
+          <td><span style={{ color: TYPE_COLORS[o.type], fontWeight: 600, fontSize: 12 }}>{ORDER_TYPES[o.type] || o.type}</span></td>
+          <td style={{ fontSize: 13 }}>{statusLabel(o)}</td>
           <td style={{ textAlign: 'right' }}>{fmt(o.total)}</td><td>{(o.created_at || '').slice(0, 10)}</td></tr>
       ))}
     </Table>
