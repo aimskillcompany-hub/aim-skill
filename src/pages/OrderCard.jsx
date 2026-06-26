@@ -7,6 +7,7 @@ import { getDocType } from '../lib/docgen'
 import { resolveProduct } from '../lib/stockService'
 import DocModal from '../components/DocModal'
 import ProductSelect from '../components/ui/ProductSelect'
+import PricePickerModal from '../components/ui/PricePickerModal'
 import {
   ORDER_TYPES, TYPE_COLORS, flowFor, stepFor, statusLabel, nextActionLabel,
   nextStatus, isOpen, needsAction, proposalOverdue,
@@ -197,6 +198,7 @@ function ItemsTab({ o, onChange }) {
   const [rows, setRows] = useState(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [showPicker, setShowPicker] = useState(false)
 
   const load = () => supabase.from('order_items').select('*').eq('order_id', o.id).order('created_at')
     .then(({ data }) => setRows((data || []).map(r => ({ ...r }))))
@@ -204,6 +206,14 @@ function ItemsTab({ o, onChange }) {
 
   const setRow = (i, patch) => setRows(rs => rs.map((r, j) => j === i ? { ...r, ...patch } : r))
   const addRow = () => setRows(rs => [...rs, { product_id: null, name: '', unit: 'шт', qty: 1, unit_price: 0 }])
+  // Підстановка позиції з прайсу: ціна продажу = роздріб (редагована)
+  const addFromPrice = (p) => {
+    setShowPicker(false)
+    setRows(rs => [...rs, {
+      product_id: null, name: p.name, unit: p.unit || 'шт', qty: 1,
+      unit_price: (p.retail_price > 0 ? p.retail_price : p.price) || 0,
+    }])
+  }
   const removeRow = (i) => setRows(rs => rs.filter((_, j) => j !== i))
   const rowTotal = (r) => (Number(r.qty) || 0) * (Number(r.unit_price) || 0)
   const sum = (rows || []).reduce((s, r) => s + rowTotal(r), 0)
@@ -242,7 +252,10 @@ function ItemsTab({ o, onChange }) {
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <div className="card-title" style={{ marginBottom: 0 }}>Товари замовлення</div>
-        <button className="btn" onClick={addRow}><i className="ti ti-plus" /> Позиція</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn" onClick={() => setShowPicker(true)}><i className="ti ti-tag" /> З прайсу</button>
+          <button className="btn" onClick={addRow}><i className="ti ti-plus" /> Позиція</button>
+        </div>
       </div>
 
       {rows.length === 0 && <p style={{ color: 'var(--text3)', fontSize: 13 }}>Товарів немає. Додавайте їх, коли стане відомо, що саме входить у замовлення.</p>}
@@ -277,6 +290,8 @@ function ItemsTab({ o, onChange }) {
           <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? '…' : 'Зберегти'}</button>
         </div>
       </div>
+
+      {showPicker && <PricePickerModal onPick={addFromPrice} onClose={() => setShowPicker(false)} />}
     </div>
   )
 }
