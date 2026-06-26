@@ -52,15 +52,17 @@ export async function generateOrderDoc(docTypeKey, contractor, items, options, {
   const buyer = dt.direction === 'incoming' ? company : enriched
   const clean = cleanItems(items)
   const docDef = dt.template.pdf(seller, buyer, clean, options)
-  const blob = await getPdfBlob(docDef)
   const { total, vatAmount } = calcTotals(clean)
   const fileName = `${dt.label}_${options.docNumber}_${options.docDate}.pdf`
-  const path = `orders/${orderId}/${Date.now()}_${docTypeKey}.pdf`
 
+  // 1) Завантажуємо PDF одразу (перевірений шлях) — користувач завжди отримує файл
+  downloadPdf(docDef, fileName)
+
+  // 2) Збереження в Документи — best-effort (не блокує отримання PDF)
+  const blob = await getPdfBlob(docDef)
+  const path = `orders/${orderId}/${Date.now()}_${docTypeKey}.pdf`
   const { error: upErr } = await supabase.storage.from('documents').upload(path, blob, { contentType: 'application/pdf', upsert: false })
   if (upErr) throw upErr
-
-  // Не дублювати той самий документ (тип+номер) у замовленні — заміщуємо
   await supabase.from('documents').delete().eq('order_id', orderId).eq('type', docTypeKey).eq('doc_number', options.docNumber)
   const { error: insErr } = await supabase.from('documents').insert({
     type: docTypeKey, order_id: orderId, contractor_id: contractorId || contractor?.id || null,
@@ -68,8 +70,6 @@ export async function generateOrderDoc(docTypeKey, contractor, items, options, {
     file_name: fileName, storage_path: path, direction: dt.direction === 'incoming' ? 'payable' : 'receivable',
   })
   if (insErr) throw insErr
-
-  downloadPdf(docDef, fileName)
 }
 
 // ── Генерація та завантаження Excel ──

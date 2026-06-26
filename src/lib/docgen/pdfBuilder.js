@@ -12,6 +12,11 @@ export function openPdf(docDefinition) {
   pdfMake.createPdf(docDefinition).open()
 }
 
-export function getPdfBlob(docDefinition) {
-  return new Promise((resolve) => pdfMake.createPdf(docDefinition).getBlob(resolve))
+export function getPdfBlob(docDefinition, timeoutMs = 20000) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('Таймаут генерації PDF')), timeoutMs)
+    try {
+      pdfMake.createPdf(docDefinition).getBlob((blob) => { clearTimeout(t); resolve(blob) })
+    } catch (e) { clearTimeout(t); reject(e) }
+  })
 }

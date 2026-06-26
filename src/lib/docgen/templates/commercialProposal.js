@@ -212,7 +212,6 @@ export function pdf(company, contractor, items, options) {
         table: {
           widths: ['*'],
           body: [[{
-            border: [false, false, false, false],
             fillColor: '#FAFAFA',
             margin: [14, 12, 14, 12],
             stack: [
@@ -227,7 +226,7 @@ export function pdf(company, contractor, items, options) {
             ],
           }]],
         },
-        layout: { defaultBorder: false },
+        layout: 'noBorders',
       },
 
       // ═══ ПІДПИС ═══
