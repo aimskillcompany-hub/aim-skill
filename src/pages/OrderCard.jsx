@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
@@ -436,28 +436,101 @@ function DocumentsTab({ o }) {
   const { user } = useUser()
   const [rows, setRows] = useState(null)
   const [openDoc, setOpenDoc] = useState(null)
+  const [showAttach, setShowAttach] = useState(false)
   const load = () => supabase.from('documents')
     .select('id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)')
     .eq('order_id', o.id).order('created_at', { ascending: false })
     .then(({ data }) => setRows(data || []))
   useEffect(() => { load() }, [o.id])
+  const unlink = async (d) => { await supabase.from('documents').update({ order_id: null }).eq('id', d.id); load() }
   if (rows == null) return <Loading />
-  if (!rows.length) return <Empty text="Документів до замовлення немає. Прив'язка/генерація — модуль Документів." />
   return (
-    <>
-      <Table head={['Тип', '№', 'Файл', 'Сума', 'Підписано', 'Дата']}>
-        {rows.map(d => (
-          <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => setOpenDoc(d)}>
-            <td>{getDocType(d.type)?.label || d.type || '—'}</td>
-            <td style={{ color: 'var(--text2)', fontSize: 12 }}>{d.doc_number || '—'}</td>
-            <td><div className="trunc">{d.file_name}</div></td>
-            <td style={{ textAlign: 'right' }}>{d.amount ? fmt(d.amount) : '—'}</td>
-            <td>{d.is_signed ? '✓' : '—'}</td><td>{(d.doc_date || d.created_at || '').slice(0, 10)}</td>
-          </tr>
-        ))}
-      </Table>
+    <div className="card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div className="card-title" style={{ marginBottom: 0 }}>Документи замовлення</div>
+        <button className="btn btn-primary" onClick={() => setShowAttach(true)}><i className="ti ti-link" /> Прив'язати документ</button>
+      </div>
+
+      {rows.length === 0 ? (
+        <p style={{ color: 'var(--text3)', fontSize: 13 }}>Документів немає. Натисніть «Прив'язати документ», щоб додати наявний (рахунок, накладну, акт).</p>
+      ) : (
+        <div className="tbl-wrap" style={{ border: 'none' }}>
+          <table>
+            <thead><tr><th>Тип</th><th>№</th><th>Файл</th><th style={{ textAlign: 'right' }}>Сума</th><th>Підписано</th><th>Дата</th><th /></tr></thead>
+            <tbody>
+              {rows.map(d => (
+                <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => setOpenDoc(d)}>
+                  <td>{getDocType(d.type)?.label || d.type || '—'}</td>
+                  <td style={{ color: 'var(--text2)', fontSize: 12 }}>{d.doc_number || '—'}</td>
+                  <td><div className="trunc">{d.file_name}</div></td>
+                  <td style={{ textAlign: 'right' }}>{d.amount ? fmt(d.amount) : '—'}</td>
+                  <td>{d.is_signed ? '✓' : '—'}</td><td>{(d.doc_date || d.created_at || '').slice(0, 10)}</td>
+                  <td style={{ textAlign: 'right' }}><button className="btn" title="Відв'язати" onClick={e => { e.stopPropagation(); unlink(d) }}><i className="ti ti-unlink" /></button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => { setOpenDoc(null); load() }} />}
-    </>
+      {showAttach && <AttachDocsModal o={o} onClose={() => setShowAttach(false)} onAttached={() => { setShowAttach(false); load() }} />}
+    </div>
+  )
+}
+
+// Прив'язка наявного документа до замовлення (виставляє documents.order_id)
+function AttachDocsModal({ o, onClose, onAttached }) {
+  const [q, setQ] = useState('')
+  const [rows, setRows] = useState(null)
+  const timerRef = useRef(null)
+
+  const search = async (term) => {
+    let query = supabase.from('documents')
+      .select('id, type, doc_number, file_name, amount, doc_date, created_at, order_id, contractor_id, contractors(name)')
+      .order('created_at', { ascending: false }).limit(40)
+    const t = term.trim()
+    if (t) query = query.or(`doc_number.ilike.%${t}%,file_name.ilike.%${t}%`)
+    else if (o.client_id) query = query.eq('contractor_id', o.client_id) // за замовч. — документи клієнта
+    const { data } = await query
+    setRows((data || []).filter(d => d.order_id !== o.id))
+  }
+  useEffect(() => { search('') }, []) // eslint-disable-line
+  useEffect(() => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => search(q), 300)
+    return () => clearTimeout(timerRef.current)
+  }, [q]) // eslint-disable-line
+
+  const attach = async (d) => { await supabase.from('documents').update({ order_id: o.id }).eq('id', d.id); onAttached() }
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 720 }}>
+        <div className="modal-header"><h2 style={{ fontSize: 16 }}>Прив'язати документ</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
+        <input className="form-input" autoFocus placeholder="Пошук за № або назвою файлу… (порожньо — документи клієнта)" value={q} onChange={e => setQ(e.target.value)} style={{ marginBottom: 12 }} />
+        <div className="tbl-wrap" style={{ border: 'none', maxHeight: 420, overflow: 'auto' }}>
+          <table>
+            <thead><tr><th>Тип</th><th>№</th><th>Контрагент</th><th style={{ textAlign: 'right' }}>Сума</th><th>Дата</th><th /></tr></thead>
+            <tbody>
+              {rows == null && <tr><td colSpan={6} style={{ color: 'var(--text3)', padding: 14 }}>Завантаження…</td></tr>}
+              {rows && rows.length === 0 && <tr><td colSpan={6} style={{ color: 'var(--text3)', textAlign: 'center', padding: 14 }}>Нічого не знайдено.</td></tr>}
+              {rows && rows.map(d => (
+                <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => attach(d)}>
+                  <td>{getDocType(d.type)?.label || d.type || '—'}</td>
+                  <td style={{ fontSize: 12, color: 'var(--text2)' }}>{d.doc_number || '—'}</td>
+                  <td style={{ fontSize: 12 }}><div className="trunc">{d.contractors?.name || '—'}</div></td>
+                  <td style={{ textAlign: 'right' }}>{d.amount ? fmt(d.amount) : '—'}</td>
+                  <td style={{ fontSize: 12 }}>{(d.doc_date || d.created_at || '').slice(0, 10)}</td>
+                  <td style={{ textAlign: 'right' }}>{d.order_id ? <span style={{ fontSize: 11, color: 'var(--amber)' }}>в ін. замов.</span> : <i className="ti ti-plus" style={{ color: 'var(--blue)' }} />}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 8 }}>Клік по документу прив'язує його до цього замовлення. Документ «в ін. замов.» буде перепризначено.</p>
+      </div>
+    </div>
   )
 }
 
