@@ -1,7 +1,7 @@
 # CONTEXT.md — стан системи AiM Skill
 
 > Канонічний документ стану. Читай його на початку кожної сесії. Оновлюй після кожної завершеної задачі.
-> Останнє оновлення: 2026-06-23.
+> Останнє оновлення: 2026-06-26.
 
 ---
 
@@ -57,7 +57,7 @@ src/
     vkursi.js          — дані контрагента за ЄДРПОУ (+ fallback ЄДР)
     companyConfig.js   — реквізити компанії
     docgen/            — генерація документів (pdfmake)
-  components/          — Auth, ErrorBoundary, Layout, Gantt, DocGenModal, ui/ContractorSelect
+  components/          — Auth, ErrorBoundary, Layout, Kanban, DocGenModal, ui/ContractorSelect
   pages/              — Login, Orders, OrderCard, Contractors, ContractorCard,
                         BankCash, Warehouse, Documents, Analytics, Budget, Settings
   App.jsx             — роутер (lazy-load сторінок), AuthProvider
@@ -78,7 +78,7 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | 1. БД | ✅ | Additive-схема: 22 таблиці, в'юхи `product_stock`/`contractor_balances`, RLS |
 | 2. Фундамент | ✅ | Router, auth-контекст, 8-розділова навігація |
 | 3. Контрагенти | ✅ | Список (пошук/фільтр), картка 6 вкладок, авто-борги, Vkursi |
-| 4. Замовлення | ✅ | Реєстр+Ганта, 3 статус-машини, картка, КП, субзамовлення |
+| 4. Замовлення | ✅ | Реєстр (таблиця+Kanban), 3 статус-машини, картка, КП, субзамовлення, архів/видалення |
 | 5. Банк/Документи | ✅ | Імпорт ПУМБ/Mono, валідація→P&L, перекази, OCR, генерація, прив'язка tx↔doc |
 | 6. Склад | ✅ | Залишки, рухи, FIFO-збірки, Документи→Склад |
 | 7. Аналітика/Бюджет | ✅ | P&L Факт/План/Порівняння, Aging, Dashboard, прогноз |
@@ -114,6 +114,8 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
   - **Заявка з листа (`api/order-from-email.js`):** AI (`extractOrderFromEmail` у `_lib.js`) читає текст листа + вкладення → визначає тип (trade/service/agent), контрагента, суму, позиції, опис → створює `orders` (status `new`, `order_number`=padded count+1); контрагента матчить або **створює** (is_client + contact email); вкладення → `documents` (`source='email'`, OCR до 3 шт) + `order_documents`; `emails.order_id` = нова заявка.
   - **Вихідні (`api/mail-send.js`):** SMTP `nodemailer`, надсилання документа клієнту з вкладенням; кнопка «Надіслати email» у `DocModal` (`components/MailSendModal.jsx`, префіл з `contractor_contacts.email`); пише в `mail_log` + `emails` (direction out, видно в «Пошті»). **Надсилання лишається з розділу Документи** (не з «Пошти»).
   - Авторизація: браузер → Supabase access_token (Bearer, `verifyUser`); cron → `CRON_SECRET`. Серверні операції — service-role (`getAdmin`).
+- **Замовлення: Kanban-дошка** (`components/Kanban.jsx`) замість діаграми Ганта. Колонки = статуси: фільтр за типом (trade/service/agent) показує повний pipeline цього типу (з порожніми колонками), змішаний режим — лише наявні статуси в канонічному порядку (`STATUS_ORDER`/`labelForStatus` у `lib/orders.js`). Картка: № + тип + клієнт + сума + наступна дія, підсвітка прострочених. Клік відкриває замовлення (без drag-and-drop — статус рухається кнопкою «Наступна дія»). `Gantt.jsx` видалено.
+- **Замовлення: архівування + безпечне видалення** (керування з картки замовлення). Архів (`orders.archived_at`, міграція 008) — відновлюваний, архівні приховані з реєстру й не рахуються в KPI, фільтр-чип «Архів» для перегляду. Видалення — двокрокове підтвердження; **блокується**, якщо до замовлення прив'язані документи (пропонує архів), інакше БД каскадом прибирає КП/субзамовлення, а документи/рухи/листи відв'язуються (FK `SET NULL`).
 
 ---
 
@@ -185,6 +187,7 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `005_document_date.sql` | Колонка `documents.doc_date` | ✅ застосовано |
 | `006_mail_integration.sql` | Пошта: `processed_emails`, `mail_log`, `documents.source` | ✅ застосовано |
 | `007_mail_section.sql` | Розділ «Пошта»: таблиця `emails` | ⏳ запустити вручну |
+| `008_order_archive.sql` | Архів замовлень: колонка `orders.archived_at` | ✅ застосовано |
 | `validate.mjs` | Перевірка цілісності (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 
 ---
