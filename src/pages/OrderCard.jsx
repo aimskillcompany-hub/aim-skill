@@ -4,7 +4,9 @@ import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { fmt } from '../lib/fmt'
 import { getDocType } from '../lib/docgen'
+import { resolveProduct } from '../lib/stockService'
 import DocModal from '../components/DocModal'
+import ProductSelect from '../components/ui/ProductSelect'
 import {
   ORDER_TYPES, TYPE_COLORS, flowFor, stepFor, statusLabel, nextActionLabel,
   nextStatus, isOpen, needsAction, proposalOverdue,
@@ -12,6 +14,7 @@ import {
 
 const TABS = [
   { id: 'details', label: 'Деталі', icon: 'ti-info-circle' },
+  { id: 'items', label: 'Товари', icon: 'ti-list-details' },
   { id: 'proposals', label: 'КП', icon: 'ti-file-text' },
   { id: 'documents', label: 'Документи', icon: 'ti-files' },
   { id: 'suppliers', label: 'Субзамовлення', icon: 'ti-truck-delivery' },
@@ -146,6 +149,7 @@ export default function OrderCard() {
       </div>
 
       {tab === 'details' && <DetailsTab o={o} onSaved={load} />}
+      {tab === 'items' && <ItemsTab o={o} onChange={load} />}
       {tab === 'proposals' && <ProposalsTab o={o} onChange={load} />}
       {tab === 'documents' && <DocumentsTab o={o} />}
       {tab === 'suppliers' && <SuppliersTab o={o} />}
@@ -185,6 +189,98 @@ function DetailsTab({ o, onSaved }) {
   )
 }
 
+// ───────── Товари ─────────
+// Необов'язкові позиції замовлення. product_id прив'язує до довідника
+// (переюз у КП/документах/складі); name — знімок назви.
+function ItemsTab({ o, onChange }) {
+  const { user } = useUser()
+  const [rows, setRows] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  const load = () => supabase.from('order_items').select('*').eq('order_id', o.id).order('created_at')
+    .then(({ data }) => setRows((data || []).map(r => ({ ...r }))))
+  useEffect(() => { load() }, [o.id])
+
+  const setRow = (i, patch) => setRows(rs => rs.map((r, j) => j === i ? { ...r, ...patch } : r))
+  const addRow = () => setRows(rs => [...rs, { product_id: null, name: '', unit: 'шт', qty: 1, unit_price: 0 }])
+  const removeRow = (i) => setRows(rs => rs.filter((_, j) => j !== i))
+  const rowTotal = (r) => (Number(r.qty) || 0) * (Number(r.unit_price) || 0)
+  const sum = (rows || []).reduce((s, r) => s + rowTotal(r), 0)
+
+  const save = async () => {
+    setSaving(true)
+    // Створити/знайти товари для рядків з вільною назвою без прив'язки
+    const resolved = []
+    for (const r of rows) {
+      if (!r.name?.trim()) continue
+      let product_id = r.product_id
+      if (!product_id) {
+        const res = await resolveProduct(r.name, r.unit, Number(r.unit_price) || null, user?.id)
+        product_id = res?.productId || null
+      }
+      resolved.push({
+        order_id: o.id, product_id, name: r.name.trim(), unit: r.unit || 'шт',
+        qty: Number(r.qty) || 0, unit_price: Number(r.unit_price) || 0, total: rowTotal(r),
+      })
+    }
+    // Замінюємо повний набір позицій замовлення
+    await supabase.from('order_items').delete().eq('order_id', o.id)
+    if (resolved.length) await supabase.from('order_items').insert(resolved)
+    setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000)
+    load()
+  }
+
+  const writeToOrderTotal = async () => {
+    await supabase.from('orders').update({ total: sum }).eq('id', o.id)
+    onChange()
+  }
+
+  if (rows == null) return <Loading />
+
+  return (
+    <div className="card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div className="card-title" style={{ marginBottom: 0 }}>Товари замовлення</div>
+        <button className="btn" onClick={addRow}><i className="ti ti-plus" /> Позиція</button>
+      </div>
+
+      {rows.length === 0 && <p style={{ color: 'var(--text3)', fontSize: 13 }}>Товарів немає. Додавайте їх, коли стане відомо, що саме входить у замовлення.</p>}
+
+      {rows.map((r, i) => (
+        <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div style={{ flex: '2 1 220px', minWidth: 180 }}>
+            <ProductSelect
+              value={r.name}
+              placeholder="Назва товару або артикул"
+              onChange={(name) => setRow(i, { name, product_id: null })}
+              onSelect={(p) => p._new
+                ? setRow(i, { name: p.name, product_id: null })
+                : setRow(i, { name: p.name, product_id: p.id, unit: p.unit || 'шт', unit_price: r.unit_price || p.sell_price || 0 })}
+            />
+            {r.product_id && <div style={{ fontSize: 11, color: 'var(--green)', marginTop: 2 }}><i className="ti ti-link" /> з довідника</div>}
+          </div>
+          <input className="form-input" type="number" placeholder="К-сть" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} style={{ width: 80 }} />
+          <input className="form-input" placeholder="од." value={r.unit || ''} onChange={e => setRow(i, { unit: e.target.value })} style={{ width: 70 }} />
+          <input className="form-input" type="number" placeholder="Ціна" value={r.unit_price} onChange={e => setRow(i, { unit_price: e.target.value })} style={{ width: 110 }} />
+          <div style={{ width: 110, textAlign: 'right', padding: '8px 0', fontSize: 13, fontWeight: 500 }}>{fmt(rowTotal(r))}</div>
+          <button className="btn" onClick={() => removeRow(i)} title="Прибрати"><i className="ti ti-x" /></button>
+        </div>
+      ))}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 14, flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ fontWeight: 600 }}>Разом: {fmt(sum)} грн
+          {sum > 0 && <button className="btn" onClick={writeToOrderTotal} style={{ marginLeft: 10, fontSize: 12, padding: '4px 10px' }} title="Записати суму позицій у поле «Сума» замовлення">≡ у суму замовлення</button>}
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {saved && <span style={{ color: 'var(--green)', fontSize: 13 }}>Збережено!</span>}
+          <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? '…' : 'Зберегти'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ───────── КП ─────────
 function ProposalsTab({ o, onChange }) {
   const [rows, setRows] = useState([])
@@ -192,7 +288,14 @@ function ProposalsTab({ o, onChange }) {
   const load = () => supabase.from('commercial_proposals').select('*').eq('order_id', o.id).order('version', { ascending: false }).then(({ data }) => setRows(data || []))
   useEffect(() => { load() }, [o.id])
 
-  const startNew = () => setEditing({ version: (rows[0]?.version || 0) + 1, items: [{ name: '', qty: 1, price: 0 }] })
+  // Нова версія КП префілиться позиціями товарів замовлення (якщо є)
+  const startNew = async () => {
+    const { data: items } = await supabase.from('order_items').select('name, qty, unit_price').eq('order_id', o.id).order('created_at')
+    const seed = (items || []).length
+      ? items.map(it => ({ name: it.name, qty: Number(it.qty) || 1, price: Number(it.unit_price) || 0 }))
+      : [{ name: '', qty: 1, price: 0 }]
+    setEditing({ version: (rows[0]?.version || 0) + 1, items: seed })
+  }
   const itemsTotal = (items) => items.reduce((s, i) => s + (Number(i.qty) || 0) * (Number(i.price) || 0), 0)
 
   const saveDraft = async () => {
