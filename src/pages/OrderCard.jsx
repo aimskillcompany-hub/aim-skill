@@ -6,6 +6,7 @@ import { fmt } from '../lib/fmt'
 import { getDocType, previewPdf } from '../lib/docgen'
 import { resolveProduct } from '../lib/stockService'
 import DocModal from '../components/DocModal'
+import DocGenModal from '../components/DocGenModal'
 import ProductSelect from '../components/ui/ProductSelect'
 import PricePickerModal from '../components/ui/PricePickerModal'
 import {
@@ -476,24 +477,71 @@ const PROP_STATUS = { draft: 'Чернетка', sent: 'Надіслано', acc
 function DocumentsTab({ o }) {
   const { user } = useUser()
   const [rows, setRows] = useState(null)
+  const [genDocs, setGenDocs] = useState([])
   const [openDoc, setOpenDoc] = useState(null)
   const [showAttach, setShowAttach] = useState(false)
+  const [gen, setGen] = useState(null) // { contractor, editDoc }
   const load = () => supabase.from('documents')
     .select('id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)')
     .eq('order_id', o.id).order('created_at', { ascending: false })
     .then(({ data }) => setRows(data || []))
-  useEffect(() => { load() }, [o.id])
+  const loadGen = () => supabase.from('generated_docs').select('*').eq('order_id', o.id).order('created_at', { ascending: false }).then(({ data }) => setGenDocs(data || []))
+  useEffect(() => { load(); loadGen() }, [o.id])
   const unlink = async (d) => { await supabase.from('documents').update({ order_id: null }).eq('id', d.id); load() }
+  const delGen = async (d) => { await supabase.from('generated_docs').delete().eq('id', d.id); loadGen() }
+
+  // Згенерувати документ із товарів замовлення (той самий DocGenModal)
+  const openGen = async (docType) => {
+    const [{ data: c }, { data: oi }] = await Promise.all([
+      supabase.from('contractors').select('*').eq('id', o.client_id).single(),
+      supabase.from('order_items').select('*').eq('order_id', o.id).order('created_at'),
+    ])
+    const items = (oi || []).map(it => {
+      const v = Number(it.vat_rate) || 0
+      const net = it.price_includes_vat ? (v > 0 ? Number(it.unit_price) / (1 + v / 100) : Number(it.unit_price)) : Number(it.unit_price)
+      return { name: it.name, quantity: Number(it.qty) || 0, unit: it.unit || 'шт', unitPrice: Math.round((net || 0) * 100) / 100, vatRate: v, amount: '', productId: it.product_id || null }
+    })
+    setGen({ contractor: c || { id: o.client_id, name: o.contractors?.name }, editDoc: { doc_type: docType, items } })
+  }
+
   if (rows == null) return <Loading />
   return (
     <div className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
         <div className="card-title" style={{ marginBottom: 0 }}>Документи замовлення</div>
-        <button className="btn btn-primary" onClick={() => setShowAttach(true)}><i className="ti ti-link" /> Прив'язати документ</button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn" onClick={() => openGen('invoice')}><i className="ti ti-file-invoice" /> Рахунок</button>
+          <button className="btn" onClick={() => openGen('waybill')}><i className="ti ti-truck-delivery" /> Видаткова</button>
+          <button className="btn" onClick={() => setShowAttach(true)}><i className="ti ti-link" /> Прив'язати</button>
+        </div>
       </div>
 
+      {genDocs.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 600, marginBottom: 6 }}>ЗГЕНЕРОВАНІ</div>
+          <div className="tbl-wrap" style={{ border: 'none' }}>
+            <table>
+              <thead><tr><th>Тип</th><th>№</th><th style={{ textAlign: 'right' }}>Сума</th><th>Дата</th><th /></tr></thead>
+              <tbody>
+                {genDocs.map(d => (
+                  <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => setGen({ contractor: { id: d.contractor_id, name: d.contractor_name }, editDoc: d })}>
+                    <td>{getDocType(d.doc_type)?.label || d.doc_type}</td>
+                    <td style={{ fontSize: 12, color: 'var(--text2)' }}>{d.doc_number}</td>
+                    <td style={{ textAlign: 'right' }}>{fmt(d.total)}</td>
+                    <td style={{ fontSize: 12 }}>{(d.doc_date || d.created_at || '').slice(0, 10)}</td>
+                    <td style={{ textAlign: 'right' }}><button className="btn" title="Видалити" onClick={e => { e.stopPropagation(); delGen(d) }} style={{ color: 'var(--red)' }}><i className="ti ti-trash" /></button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {genDocs.length > 0 && rows.length > 0 && <div style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 600, marginBottom: 6 }}>ПРИВ'ЯЗАНІ</div>}
+
       {rows.length === 0 ? (
-        <p style={{ color: 'var(--text3)', fontSize: 13 }}>Документів немає. Натисніть «Прив'язати документ», щоб додати наявний (рахунок, накладну, акт).</p>
+        genDocs.length === 0 && <p style={{ color: 'var(--text3)', fontSize: 13 }}>Документів немає. Згенеруйте «Рахунок»/«Видаткова» з товарів замовлення або «Прив'яжіть» наявний.</p>
       ) : (
         <div className="tbl-wrap" style={{ border: 'none' }}>
           <table>
@@ -516,6 +564,7 @@ function DocumentsTab({ o }) {
 
       {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => { setOpenDoc(null); load() }} />}
       {showAttach && <AttachDocsModal o={o} onClose={() => setShowAttach(false)} onAttached={() => { setShowAttach(false); load() }} />}
+      {gen && <DocGenModal contractor={gen.contractor} userId={user?.id} orderId={o.id} editDoc={gen.editDoc} onClose={() => setGen(null)} onSaved={() => { setGen(null); loadGen() }} />}
     </div>
   )
 }

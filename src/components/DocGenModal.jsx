@@ -7,7 +7,7 @@ import {
 
 const today = () => new Date().toISOString().split('T')[0]
 
-export default function DocGenModal({ contractor, userId, onClose, onSaved, editDoc }) {
+export default function DocGenModal({ contractor, userId, onClose, onSaved, editDoc, orderId }) {
   const isEdit = !!editDoc && !!editDoc.id
   const isFromInvoice = !!editDoc?._fromInvoice
   const [parentDocId] = useState(editDoc?._parentDocId || null)
@@ -141,7 +141,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
           contractorId: contractor.id,
           contractorName: contractor.short_name || contractor.name,
           items, subtotal: totals.subtotal, vatAmount: totals.vatAmount, total: totals.total,
-          notes, contractNum, contractDate, paymentDue, city, parentDocId, contractId: selectedContract || null, userId,
+          notes, contractNum, contractDate, paymentDue, city, parentDocId, contractId: selectedContract || null, orderId: orderId || null, userId,
         })
         // Для прихідних документів — зберегти завантажені файли
         const isIncoming = DOCUMENT_TYPES.find(t => t.key === docType)?.direction === 'incoming'
