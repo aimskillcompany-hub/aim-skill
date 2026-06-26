@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { fmt } from '../lib/fmt'
 import {
   FIELDS, CURRENCY_MODES, CURRENCY_RULES, parsePriceFile, guessMapping, guessCurrency,
-  importPriceList, loadPriceListMeta, searchPrices,
+  importPriceList, loadPriceListMeta, queryPrices, offersForSku,
 } from '../lib/priceLists'
+
+const PAGE = 100
+const priceLabel = (v) => (v != null && v > 0 ? fmt(v) : 'за запитом')
 
 export default function PriceLists() {
   const [tab, setTab] = useState('search') // search | import
@@ -33,36 +36,57 @@ export default function PriceLists() {
   )
 }
 
-// ───────── Пошук / порівняння ─────────
+// ───────── Перегляд / пошук / порівняння ─────────
 function SearchPanel({ meta }) {
   const [q, setQ] = useState('')
-  const [rows, setRows] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [supplierId, setSupplierId] = useState('')
+  const [rows, setRows] = useState([])
+  const [page, setPage] = useState(0)
+  const [hasMore, setHasMore] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [selected, setSelected] = useState(null)
+  const timerRef = useRef(null)
 
-  const run = async (term) => {
-    setQ(term)
-    if (term.trim().length < 2) { setRows(null); return }
+  const suppliers = useMemo(() => {
+    const m = new Map()
+    meta.forEach(x => { if (x.supplier_id && !m.has(x.supplier_id)) m.set(x.supplier_id, x.contractors?.name || '—') })
+    return [...m.entries()]
+  }, [meta])
+  const totalRows = meta.reduce((s, m) => s + (m.rows_count || 0), 0)
+
+  const fetchPage = async (p, { append } = {}) => {
     setLoading(true)
-    setRows(await searchPrices(term))
+    const data = await queryPrices({ q, supplierId, page: p, pageSize: PAGE })
+    setRows(prev => append ? [...prev, ...data] : data)
+    setHasMore(data.length === PAGE)
     setLoading(false)
   }
 
-  const totalRows = meta.reduce((s, m) => s + (m.rows_count || 0), 0)
+  // дебаунс при зміні запиту/постачальника
+  useEffect(() => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => { setPage(0); fetchPage(0) }, 300)
+    return () => clearTimeout(timerRef.current)
+  }, [q, supplierId]) // eslint-disable-line
+
+  const loadMore = () => { const n = page + 1; setPage(n); fetchPage(n, { append: true }) }
 
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
         <input className="form-input" autoFocus placeholder="Назва товару або артикул…" value={q}
-          onChange={e => run(e.target.value)} style={{ flex: '1 1 320px', maxWidth: 480 }} />
+          onChange={e => setQ(e.target.value)} style={{ flex: '1 1 280px', maxWidth: 420 }} />
+        <select className="form-input" value={supplierId} onChange={e => setSupplierId(e.target.value)} style={{ maxWidth: 240 }}>
+          <option value="">Усі постачальники</option>
+          {suppliers.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+        </select>
         <span style={{ fontSize: 12, color: 'var(--text3)' }}>{totalRows ? `${totalRows.toLocaleString('uk')} позицій у ${meta.length} прайсах` : 'прайси ще не імпортовані'}</span>
       </div>
 
-      {rows == null ? (
-        <div className="card"><p style={{ color: 'var(--text3)', textAlign: 'center', padding: 24 }}>Введіть назву або артикул для пошуку по всіх прайсах.</p></div>
-      ) : loading ? (
-        <div className="card"><p style={{ color: 'var(--text3)' }}>Пошук…</p></div>
+      {loading && rows.length === 0 ? (
+        <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
       ) : rows.length === 0 ? (
-        <div className="card"><p style={{ color: 'var(--text3)', textAlign: 'center', padding: 24 }}>Нічого не знайдено.</p></div>
+        <div className="card"><p style={{ color: 'var(--text3)', textAlign: 'center', padding: 24 }}>{q ? 'Нічого не знайдено.' : 'Прайси ще не імпортовані.'}</p></div>
       ) : (
         <div className="card">
           <div className="tbl-wrap" style={{ border: 'none' }}>
@@ -72,17 +96,17 @@ function SearchPanel({ meta }) {
                 <th style={{ textAlign: 'right' }}>Закупівля</th><th style={{ textAlign: 'right' }}>Роздріб</th><th>Гарантія</th><th>Наявність</th>
               </tr></thead>
               <tbody>
-                {rows.map((r, i) => (
-                  <tr key={r.id}>
+                {rows.map(r => (
+                  <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setSelected(r)}>
                     <td><div className="trunc" title={r.name}>{r.name}</div>{r.category && <div style={{ fontSize: 11, color: 'var(--text3)' }}>{r.category}</div>}</td>
                     <td style={{ fontSize: 12, color: 'var(--text2)' }}>{r.sku || '—'}{r.uktzed && <div style={{ fontSize: 11, color: 'var(--text3)' }}>УКТЗД {r.uktzed}</div>}</td>
                     <td style={{ fontSize: 12 }}>{r.brand || '—'}</td>
                     <td style={{ fontSize: 12 }}>{r.contractors?.name || '—'}</td>
-                    <td style={{ textAlign: 'right', fontWeight: i === 0 && r.price ? 600 : 400, color: i === 0 && r.price ? 'var(--green)' : undefined }}>
-                      {r.price != null ? fmt(r.price) : '—'}
-                      {r.currency === 'USD' && r.price_original != null && <div style={{ fontSize: 11, color: 'var(--text3)' }}>${r.price_original}</div>}
+                    <td style={{ textAlign: 'right', color: r.price > 0 ? undefined : 'var(--text3)' }}>
+                      {priceLabel(r.price)}
+                      {r.currency === 'USD' && r.price_original != null && r.price > 0 && <div style={{ fontSize: 11, color: 'var(--text3)' }}>${r.price_original}</div>}
                     </td>
-                    <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{r.retail_price != null ? fmt(r.retail_price) : '—'}</td>
+                    <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{priceLabel(r.retail_price)}</td>
                     <td style={{ fontSize: 12, color: 'var(--text2)' }}>{[r.warranty, r.warranty_term].filter(Boolean).join(' ') || '—'}</td>
                     <td style={{ fontSize: 12, color: 'var(--text2)' }}>{r.in_stock || '—'}</td>
                   </tr>
@@ -90,9 +114,65 @@ function SearchPanel({ meta }) {
               </tbody>
             </table>
           </div>
-          <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 8 }}>Відсортовано за ціною закупівлі (найдешевше — зверху). Показано до 80 позицій.</p>
+          {hasMore && <div style={{ textAlign: 'center', marginTop: 12 }}><button className="btn" onClick={loadMore} disabled={loading}>{loading ? 'Завантаження…' : 'Показати ще'}</button></div>}
+          <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 8 }}>Клік по рядку — деталі та порівняння за артикулом. «За запитом» — ціни немає у прайсі.</p>
         </div>
       )}
+
+      {selected && <PriceDetailModal row={selected} onClose={() => setSelected(null)} />}
+    </div>
+  )
+}
+
+// ───────── Картка позиції прайсу ─────────
+function PriceDetailModal({ row, onClose }) {
+  const [offers, setOffers] = useState(null)
+  useEffect(() => { offersForSku(row.sku).then(setOffers) }, [row.sku])
+
+  const Field = ({ label, value }) => (
+    <div><div style={{ fontSize: 11, color: 'var(--text3)' }}>{label}</div><div style={{ fontSize: 14 }}>{value || '—'}</div></div>
+  )
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 620 }}>
+        <div className="modal-header"><h2 style={{ fontSize: 16 }}>{row.name}</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 16 }}>
+          <Field label="Артикул" value={row.sku} />
+          <Field label="Код УКТЗД" value={row.uktzed} />
+          <Field label="Бренд" value={row.brand} />
+          <Field label="Категорія" value={row.category} />
+          <Field label="Постачальник" value={row.contractors?.name} />
+          <Field label="Одиниця" value={row.unit} />
+          <Field label="Закупівля" value={row.price > 0 ? `${fmt(row.price)} грн${row.currency === 'USD' && row.price_original ? ` ($${row.price_original})` : ''}` : 'за запитом'} />
+          <Field label="Роздріб" value={row.retail_price > 0 ? `${fmt(row.retail_price)} грн` : 'за запитом'} />
+          <Field label="ПДВ" value={row.vat_rate != null ? `${row.vat_rate}%` : '—'} />
+          <Field label="Гарантія" value={[row.warranty, row.warranty_term].filter(Boolean).join(' ')} />
+          <Field label="Наявність" value={row.in_stock} />
+        </div>
+
+        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Пропозиції за артикулом {row.sku || ''}</div>
+        {offers == null ? <p style={{ color: 'var(--text3)', fontSize: 13 }}>Завантаження…</p>
+          : offers.length === 0 ? <p style={{ color: 'var(--text3)', fontSize: 13 }}>Інших пропозицій з ціною немає.</p>
+          : (
+            <div className="tbl-wrap" style={{ border: 'none' }}>
+              <table>
+                <thead><tr><th>Постачальник</th><th style={{ textAlign: 'right' }}>Закупівля</th><th style={{ textAlign: 'right' }}>Роздріб</th><th>Наявність</th></tr></thead>
+                <tbody>
+                  {offers.map((o, i) => (
+                    <tr key={o.id}>
+                      <td style={{ fontSize: 13 }}>{o.contractors?.name || '—'}{i === 0 && <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--green)', fontWeight: 600 }}>найдешевше</span>}</td>
+                      <td style={{ textAlign: 'right', fontWeight: i === 0 ? 600 : 400, color: i === 0 ? 'var(--green)' : undefined }}>{fmt(o.price)}{o.currency === 'USD' && o.price_original ? <span style={{ fontSize: 11, color: 'var(--text3)' }}> (${o.price_original})</span> : ''}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{priceLabel(o.retail_price)}</td>
+                      <td style={{ fontSize: 12, color: 'var(--text2)' }}>{o.in_stock || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+      </div>
     </div>
   )
 }

@@ -163,6 +163,28 @@ export async function loadPriceListMeta() {
   return data || []
 }
 
+const SELECT_COLS = 'id, sku, uktzed, name, brand, category, unit, price, price_original, currency, vat_rate, retail_price, warranty, warranty_term, in_stock, supplier_id, contractors(name)'
+
+// Перегляд/пошук з пагінацією. Працює і без запиту (browse).
+export async function queryPrices({ q = '', supplierId = '', page = 0, pageSize = 100 } = {}) {
+  let query = supabase.from('supplier_prices').select(SELECT_COLS)
+  const term = q.trim()
+  if (term) { const esc = term.replace(/[%,]/g, ' '); query = query.or(`name.ilike.%${esc}%,sku.ilike.%${esc}%`) }
+  if (supplierId) query = query.eq('supplier_id', supplierId)
+  query = query.order('name', { ascending: true }).range(page * pageSize, page * pageSize + pageSize - 1)
+  const { data } = await query
+  return data || []
+}
+
+// Усі пропозиції за артикулом (для порівняння постачальників у картці), дешевші зверху
+export async function offersForSku(sku) {
+  if (!sku) return []
+  const { data } = await supabase.from('supplier_prices')
+    .select('id, price, currency, price_original, retail_price, in_stock, contractors(name)')
+    .eq('sku', sku).gt('price', 0).order('price', { ascending: true })
+  return data || []
+}
+
 // Пошук по всіх прайсах (за назвою/артикулом), відсортовано за ціною
 export async function searchPrices(q, { limit = 80 } = {}) {
   const term = q.trim()
