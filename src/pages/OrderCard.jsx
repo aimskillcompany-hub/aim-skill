@@ -13,6 +13,8 @@ import {
   nextStatus, isOpen, needsAction, proposalOverdue,
 } from '../lib/orders'
 
+const VAT_RATES = [0, 20]
+
 const TABS = [
   { id: 'details', label: 'Деталі', icon: 'ti-info-circle' },
   { id: 'items', label: 'Товари', icon: 'ti-list-details' },
@@ -320,7 +322,9 @@ function ItemsTab({ o, onChange }) {
           <input className="form-input" placeholder="од." value={r.unit || ''} onChange={e => setRow(i, { unit: e.target.value })} style={{ width: 70 }} />
           <input className="form-input" type="number" placeholder="Закупівля" value={r.cost_price ?? ''} onChange={e => setRow(i, { cost_price: e.target.value })} style={{ width: 110 }} />
           <input className="form-input" type="number" placeholder="Ціна" value={r.unit_price} onChange={e => setRow(i, { unit_price: e.target.value })} style={{ width: 110 }} />
-          <input className="form-input" type="number" placeholder="20" value={r.vat_rate ?? ''} onChange={e => setRow(i, { vat_rate: e.target.value })} style={{ width: 60 }} />
+          <select className="form-input" value={Number(r.vat_rate) || 0} onChange={e => setRow(i, { vat_rate: Number(e.target.value) })} style={{ width: 72, padding: '8px 6px' }}>
+            {VAT_RATES.map(v => <option key={v} value={v}>{v}%</option>)}
+          </select>
           <div style={{ width: 120, textAlign: 'right', padding: '8px 0', fontSize: 13, color: mColor }}>{fmt(m)}<div style={{ fontSize: 11 }}>{mp.toFixed(0)}%</div></div>
           <div style={{ width: 110, textAlign: 'right', padding: '8px 0', fontSize: 13, fontWeight: 500 }}>{fmt(rowTotal(r))}</div>
           <button className="btn" onClick={() => removeRow(i)} title="Прибрати"><i className="ti ti-x" /></button>
@@ -411,7 +415,9 @@ function ProposalsTab({ o, onChange }) {
               <input className="form-input" placeholder="Найменування" value={it.name} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, name: e.target.value }; return { ...d, items } })} style={{ flex: 2 }} />
               <input className="form-input" type="number" placeholder="К-сть" value={it.qty} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, qty: e.target.value }; return { ...d, items } })} style={{ width: 80 }} />
               <input className="form-input" type="number" placeholder="Ціна з ПДВ" value={it.price} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, price: e.target.value }; return { ...d, items } })} style={{ width: 110 }} />
-              <input className="form-input" type="number" placeholder="ПДВ%" value={it.vat ?? ''} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, vat: e.target.value }; return { ...d, items } })} style={{ width: 64 }} />
+              <select className="form-input" value={Number(it.vat) || 0} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, vat: Number(e.target.value) }; return { ...d, items } })} style={{ width: 72, padding: '8px 6px' }}>
+                {VAT_RATES.map(v => <option key={v} value={v}>{v}%</option>)}
+              </select>
               <button className="btn" onClick={() => setEditing(d => ({ ...d, items: d.items.filter((_, j) => j !== i) }))}><i className="ti ti-x" /></button>
             </div>
           ))}
