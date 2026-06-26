@@ -163,10 +163,21 @@ export default function OrderCard() {
 // ───────── Деталі ─────────
 function DetailsTab({ o, onSaved }) {
   const [form, setForm] = useState({ total: o.total, description: o.description || '', status: o.status })
+  const [itemsSum, setItemsSum] = useState(null)
+  const [hasItems, setHasItems] = useState(false)
   const [saved, setSaved] = useState(false)
   const flow = flowFor(o.type)
+
+  useEffect(() => {
+    supabase.from('order_items').select('qty, unit_price').eq('order_id', o.id).then(({ data }) => {
+      setHasItems((data || []).length > 0)
+      setItemsSum((data || []).reduce((s, r) => s + (Number(r.qty) || 0) * (Number(r.unit_price) || 0), 0))
+    })
+  }, [o.id])
+
+  const effectiveTotal = hasItems ? (itemsSum || 0) : (Number(form.total) || 0)
   const save = async () => {
-    const upd = { total: Number(form.total) || 0, description: form.description || null, status: form.status }
+    const upd = { total: effectiveTotal, description: form.description || null, status: form.status }
     if (form.status === 'closed' && !o.closed_at) upd.closed_at = new Date().toISOString()
     await supabase.from('orders').update(upd).eq('id', o.id)
     setSaved(true); setTimeout(() => setSaved(false), 2000); onSaved()
@@ -174,7 +185,11 @@ function DetailsTab({ o, onSaved }) {
   return (
     <div className="card">
       <div className="form-grid">
-        <div className="form-group"><label>Сума</label><input className="form-input" type="number" value={form.total} onChange={e => setForm(f => ({ ...f, total: e.target.value }))} /></div>
+        <div className="form-group"><label>Сума</label>
+          {hasItems
+            ? <><input className="form-input" value={`${fmt(itemsSum || 0)} грн`} disabled style={{ background: 'var(--surface2)' }} /><div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>Рахується з цін продажу товарів (вкладка «Товари»)</div></>
+            : <input className="form-input" type="number" value={form.total} onChange={e => setForm(f => ({ ...f, total: e.target.value }))} />}
+        </div>
         <div className="form-group"><label>Статус (ручне керування)</label>
           <select className="form-input" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
             {flow.map(s => <option key={s.s} value={s.s}>{s.label}</option>)}
@@ -244,13 +259,10 @@ function ItemsTab({ o, onChange }) {
     // Замінюємо повний набір позицій замовлення
     await supabase.from('order_items').delete().eq('order_id', o.id)
     if (resolved.length) await supabase.from('order_items').insert(resolved)
+    // Сума замовлення = сума цін продажу товарів (синхронізуємо автоматично)
+    if (resolved.length) await supabase.from('orders').update({ total: sum }).eq('id', o.id)
     setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000)
-    load()
-  }
-
-  const writeToOrderTotal = async () => {
-    await supabase.from('orders').update({ total: sum }).eq('id', o.id)
-    onChange()
+    load(); onChange()
   }
 
   if (rows == null) return <Loading />
@@ -312,7 +324,7 @@ function ItemsTab({ o, onChange }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 14, flexWrap: 'wrap', gap: 10 }}>
         <div style={{ fontWeight: 600 }}>Разом: {fmt(sum)} грн
           {marginSum !== 0 && <span style={{ marginLeft: 12, fontSize: 13, fontWeight: 500, color: marginSum > 0 ? 'var(--green)' : 'var(--red)' }}>Маржа: {fmt(marginSum)} грн{sum > 0 ? ` (${((marginSum / sum) * 100).toFixed(0)}%)` : ''}</span>}
-          {sum > 0 && <button className="btn" onClick={writeToOrderTotal} style={{ marginLeft: 10, fontSize: 12, padding: '4px 10px' }} title="Записати суму позицій у поле «Сума» замовлення">≡ у суму замовлення</button>}
+          <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 400, marginTop: 2 }}>Ця сума стає «Сумою» замовлення після збереження.</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {saved && <span style={{ color: 'var(--green)', fontSize: 13 }}>Збережено!</span>}
