@@ -86,6 +86,19 @@ export async function parsePriceFile(file) {
   const buf = await file.arrayBuffer()
   const wb = XLSX.read(new Uint8Array(buf), { type: 'array', codepage: 1251, cellText: true, cellDates: false })
   const ws = wb.Sheets[wb.SheetNames[0]]
+  // Деякі експортери (напр. MTI) пишуть занижений !ref (A1:Z4), хоча даних більше.
+  // Перерахуємо діапазон за фактичними клітинками, інакше рядки обрізаються.
+  let maxR = 0, maxC = 0
+  for (const k of Object.keys(ws)) {
+    if (k[0] === '!') continue
+    const m = k.match(/^([A-Z]+)(\d+)$/)
+    if (!m) continue
+    const r = parseInt(m[2], 10) - 1
+    const c = XLSX.utils.decode_col(m[1])
+    if (r > maxR) maxR = r
+    if (c > maxC) maxC = c
+  }
+  if (maxR > 0) ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } })
   return XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' })
 }
 
