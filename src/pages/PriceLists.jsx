@@ -3,7 +3,8 @@ import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { fmt } from '../lib/fmt'
 import {
-  FIELDS, parsePriceFile, guessMapping, importPriceList, loadPriceListMeta, searchPrices,
+  FIELDS, CURRENCY_MODES, CURRENCY_RULES, parsePriceFile, guessMapping, guessCurrency,
+  importPriceList, loadPriceListMeta, searchPrices,
 } from '../lib/priceLists'
 
 export default function PriceLists() {
@@ -77,7 +78,10 @@ function SearchPanel({ meta }) {
                     <td style={{ fontSize: 12, color: 'var(--text2)' }}>{r.sku || '—'}</td>
                     <td style={{ fontSize: 12 }}>{r.brand || '—'}</td>
                     <td style={{ fontSize: 12 }}>{r.contractors?.name || '—'}</td>
-                    <td style={{ textAlign: 'right', fontWeight: i === 0 && r.price ? 600 : 400, color: i === 0 && r.price ? 'var(--green)' : undefined }}>{r.price != null ? fmt(r.price) : '—'}</td>
+                    <td style={{ textAlign: 'right', fontWeight: i === 0 && r.price ? 600 : 400, color: i === 0 && r.price ? 'var(--green)' : undefined }}>
+                      {r.price != null ? fmt(r.price) : '—'}
+                      {r.currency === 'USD' && r.price_original != null && <div style={{ fontSize: 11, color: 'var(--text3)' }}>${r.price_original}</div>}
+                    </td>
                     <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{r.retail_price != null ? fmt(r.retail_price) : '—'}</td>
                     <td style={{ fontSize: 12, color: 'var(--text2)' }}>{r.in_stock || '—'}</td>
                   </tr>
@@ -101,6 +105,9 @@ function ImportPanel({ meta, onImported }) {
   const [aoa, setAoa] = useState(null)
   const [headerRow, setHeaderRow] = useState(0)
   const [map, setMap] = useState({})
+  const [usdRate, setUsdRate] = useState('')
+  const [vatRate, setVatRate] = useState('20')
+  const [currency, setCurrency] = useState({ mode: 'uah', col: null, rule: 'one_is_uah' })
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState(null)
   const [result, setResult] = useState(null)
@@ -120,6 +127,7 @@ function ImportPanel({ meta, onImported }) {
       setAoa(rows)
       setHeaderRow(0)
       setMap(guessMapping(rows[0] || []))
+      setCurrency(guessCurrency(rows[0] || []))
     } catch (err) { setError('Не вдалося прочитати файл: ' + err.message) }
   }
 
@@ -128,8 +136,9 @@ function ImportPanel({ meta, onImported }) {
     if (!supplierId || !aoa) return
     const prev = meta.find(m => m.supplier_id === supplierId)?.column_map
     if (prev) {
-      const { headerRow: hr, ...m } = prev
+      const { headerRow: hr, currency: cur, ...m } = prev
       if (hr != null) setHeaderRow(hr)
+      if (cur) setCurrency(cur)
       setMap(m)
     }
   }, [supplierId]) // eslint-disable-line
@@ -138,13 +147,14 @@ function ImportPanel({ meta, onImported }) {
   const preview = aoa ? aoa.slice(headerRow + 1, headerRow + 6) : []
   const colOptions = headers.map((h, i) => ({ i, label: `${i + 1}. ${h || '(без назви)'}` }))
 
-  const canImport = supplierId && aoa && map.name != null && !busy
+  const needsRate = currency.mode === 'usd' || currency.mode === 'column'
+  const canImport = supplierId && aoa && map.name != null && !busy && !(needsRate && !Number(usdRate))
 
   const doImport = async () => {
     setBusy(true); setError(null); setResult(null); setProgress({ done: 0, total: 0 })
     try {
       const res = await importPriceList(
-        { supplierId, fileName, map, headerRow, rows: aoa, userId: user?.id },
+        { supplierId, fileName, map, headerRow, rows: aoa, userId: user?.id, usdRate, vatRate, currency },
         (done, total) => setProgress({ done, total })
       )
       setResult(res); setAoa(null); setFileName(''); setMap({}); onImported()
@@ -182,7 +192,35 @@ function ImportPanel({ meta, onImported }) {
               <div style={{ fontSize: 12, color: 'var(--text3)' }}>Усього рядків у файлі: {aoa.length.toLocaleString('uk')}</div>
             </div>
 
-            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Відповідність колонок</div>
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Валюта, курс і ПДВ</div>
+            <div className="form-grid" style={{ marginBottom: 6 }}>
+              <div className="form-group"><label>Валюта ціни закупівлі</label>
+                <select className="form-input" value={currency.mode} onChange={e => setCurrency(c => ({ ...c, mode: e.target.value }))}>
+                  {CURRENCY_MODES.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                </select>
+              </div>
+              {currency.mode === 'column' && <>
+                <div className="form-group"><label>Колонка-ознака валюти</label>
+                  <select className="form-input" value={currency.col ?? ''} onChange={e => setCurrency(c => ({ ...c, col: e.target.value === '' ? null : Number(e.target.value) }))}>
+                    <option value="">— оберіть —</option>
+                    {colOptions.map(c => <option key={c.i} value={c.i}>{c.label}</option>)}
+                  </select>
+                </div>
+                <div className="form-group"><label>Правило</label>
+                  <select className="form-input" value={currency.rule} onChange={e => setCurrency(c => ({ ...c, rule: e.target.value }))}>
+                    {CURRENCY_RULES.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
+                  </select>
+                </div>
+              </>}
+              <div className="form-group"><label>Курс USD→UAH{needsRate ? ' *' : ''}</label>
+                <input className="form-input" type="number" step="0.01" placeholder="напр. 42.00" value={usdRate} onChange={e => setUsdRate(e.target.value)} disabled={currency.mode === 'uah'} />
+              </div>
+              <div className="form-group"><label>Ставка ПДВ, %</label>
+                <input className="form-input" type="number" step="1" placeholder="20" value={vatRate} onChange={e => setVatRate(e.target.value)} />
+              </div>
+            </div>
+
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8, marginTop: 6 }}>Відповідність колонок</div>
             <div className="form-grid" style={{ marginBottom: 14 }}>
               {FIELDS.map(f => (
                 <div className="form-group" key={f.key}>
@@ -214,6 +252,7 @@ function ImportPanel({ meta, onImported }) {
               </button>
               {!supplierId && <span style={{ fontSize: 12, color: 'var(--text3)' }}>оберіть постачальника</span>}
               {map.name == null && <span style={{ fontSize: 12, color: 'var(--red)' }}>вкажіть колонку «Найменування»</span>}
+              {needsRate && !Number(usdRate) && <span style={{ fontSize: 12, color: 'var(--red)' }}>вкажіть курс USD</span>}
             </div>
           </>
         )}
@@ -227,13 +266,15 @@ function ImportPanel({ meta, onImported }) {
         {meta.length === 0 ? <p style={{ color: 'var(--text3)', fontSize: 13 }}>Ще немає жодного прайсу.</p> : (
           <div className="tbl-wrap" style={{ border: 'none' }}>
             <table>
-              <thead><tr><th>Постачальник</th><th>Файл</th><th style={{ textAlign: 'right' }}>Позицій</th><th>Оновлено</th><th /></tr></thead>
+              <thead><tr><th>Постачальник</th><th>Файл</th><th style={{ textAlign: 'right' }}>Позицій</th><th style={{ textAlign: 'right' }}>Курс</th><th style={{ textAlign: 'right' }}>ПДВ</th><th>Оновлено</th><th /></tr></thead>
               <tbody>
                 {meta.map(m => (
                   <tr key={m.id}>
                     <td>{m.contractors?.name || '—'}</td>
                     <td style={{ fontSize: 12, color: 'var(--text2)' }}><div className="trunc">{m.file_name}</div></td>
                     <td style={{ textAlign: 'right' }}>{(m.rows_count || 0).toLocaleString('uk')}</td>
+                    <td style={{ textAlign: 'right', fontSize: 12 }}>{m.usd_rate ? Number(m.usd_rate).toFixed(2) : '—'}</td>
+                    <td style={{ textAlign: 'right', fontSize: 12 }}>{m.vat_rate != null ? m.vat_rate + '%' : '—'}</td>
                     <td style={{ fontSize: 12 }}>{(m.imported_at || '').slice(0, 10)}</td>
                     <td style={{ textAlign: 'right' }}><button className="btn" onClick={() => delList(m.id)} title="Видалити прайс" style={{ color: 'var(--red)' }}><i className="ti ti-trash" /></button></td>
                   </tr>

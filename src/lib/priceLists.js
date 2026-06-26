@@ -11,8 +11,8 @@ export const FIELDS = [
   { key: 'brand', label: 'Виробник / Бренд' },
   { key: 'category', label: 'Категорія' },
   { key: 'unit', label: 'Одиниця' },
-  { key: 'price', label: 'Ціна закупівлі' },
-  { key: 'retail_price', label: 'Ціна продажу (роздріб)' },
+  { key: 'price', label: 'Ціна закупівлі (Дилер)' },
+  { key: 'retail_price', label: 'Ціна продажу (роздріб, грн)' },
   { key: 'in_stock', label: 'Наявність' },
 ]
 
@@ -23,9 +23,39 @@ const HINTS = {
   brand: /виробник|бренд|brand|manufact|vendor/i,
   category: /^категор/i,
   unit: /одиниц|вимір|unit|^од\.?$/i,
-  price: /собівар|закуп|опт|cost|dealer.*грн/i,
-  retail_price: /роздріб|retail|продаж|rrp/i,
+  price: /собівар|закуп|опт|cost|дилер|dealer/i,
+  retail_price: /роздріб|retail|^ціна$|rrp/i,
   in_stock: /кіл-ть|кільк|наявн|залиш|stock|qty|склад|avail/i,
+}
+
+// Режими визначення валюти ціни закупівлі
+export const CURRENCY_MODES = [
+  { key: 'uah', label: 'Уся ціна в грн' },
+  { key: 'usd', label: 'Уся ціна в USD (× курс)' },
+  { key: 'column', label: 'За колонкою у файлі' },
+]
+export const CURRENCY_RULES = [
+  { key: 'one_is_uah', label: '1 = грн, 0/порожньо = USD (ERC: DDP)' },
+  { key: 'one_is_usd', label: '1 = USD, 0/порожньо = грн' },
+  { key: 'text', label: 'Текст: USD/$/840 → долар, інакше грн' },
+]
+
+// Авто-визначення режиму валюти за заголовками
+export function guessCurrency(headers = []) {
+  const ddp = headers.findIndex(h => /^ddp$/i.test(String(h || '')))
+  if (ddp >= 0) return { mode: 'column', col: ddp, rule: 'one_is_uah' }
+  const cur = headers.findIndex(h => /валюта|currency/i.test(String(h || '')))
+  if (cur >= 0) return { mode: 'column', col: cur, rule: 'text' }
+  return { mode: 'uah', col: null, rule: 'text' }
+}
+
+function rowCurrency(r, { mode, col, rule }) {
+  if (mode === 'uah') return 'UAH'
+  if (mode === 'usd') return 'USD'
+  const v = String(col != null ? r[col] : '').trim()
+  if (rule === 'one_is_uah') return (v === '1' || /^(так|yes|true)$/i.test(v)) ? 'UAH' : 'USD'
+  if (rule === 'one_is_usd') return (v === '1' || /^(так|yes|true)$/i.test(v)) ? 'USD' : 'UAH'
+  return /usd|\$|840|дол/i.test(v) ? 'USD' : 'UAH'
 }
 
 // Парсинг файлу → масив рядків (AoA), row[0] = заголовки
@@ -61,25 +91,39 @@ export function num(v) {
 }
 
 // Імпорт: заміщує попередній прайс цього постачальника новим набором рядків.
+// usdRate — курс USD→UAH; vatRate — ставка ПДВ (% на весь файл);
+// currency — { mode, col, rule } для визначення валюти ціни закупівлі.
 // onProgress(done, total) — для індикатора.
-export async function importPriceList({ supplierId, fileName, map, headerRow, rows, userId }, onProgress) {
+export async function importPriceList({ supplierId, fileName, map, headerRow, rows, userId, usdRate, vatRate, currency }, onProgress) {
   const dataRows = rows.slice(headerRow + 1)
   const col = (r, key) => (map[key] != null ? r[map[key]] : undefined)
+  const rate = Number(usdRate) || null
+  const vat = vatRate === '' || vatRate == null ? null : Number(vatRate)
+  const cur = currency || { mode: 'uah' }
 
-  const prepared = dataRows.map(r => ({
-    name: decode(col(r, 'name')),
-    sku: map.sku != null ? decode(col(r, 'sku')) || null : null,
-    brand: map.brand != null ? decode(col(r, 'brand')) || null : null,
-    category: map.category != null ? decode(col(r, 'category')) || null : null,
-    unit: map.unit != null ? decode(col(r, 'unit')) || null : null,
-    price: map.price != null ? num(col(r, 'price')) : null,
-    retail_price: map.retail_price != null ? num(col(r, 'retail_price')) : null,
-    in_stock: map.in_stock != null ? decode(col(r, 'in_stock')) || null : null,
-  })).filter(r => r.name)
+  const prepared = dataRows.map(r => {
+    const orig = map.price != null ? num(col(r, 'price')) : null
+    const ccy = orig != null ? rowCurrency(r, cur) : 'UAH'
+    const priceUah = orig == null ? null : (ccy === 'USD' && rate ? Math.round(orig * rate * 100) / 100 : orig)
+    return {
+      name: decode(col(r, 'name')),
+      sku: map.sku != null ? decode(col(r, 'sku')) || null : null,
+      brand: map.brand != null ? decode(col(r, 'brand')) || null : null,
+      category: map.category != null ? decode(col(r, 'category')) || null : null,
+      unit: map.unit != null ? decode(col(r, 'unit')) || null : null,
+      price_original: orig,
+      currency: ccy,
+      price: priceUah,
+      retail_price: map.retail_price != null ? num(col(r, 'retail_price')) : null,
+      vat_rate: vat,
+      in_stock: map.in_stock != null ? decode(col(r, 'in_stock')) || null : null,
+    }
+  }).filter(r => r.name)
 
   // 1. Новий запис імпорту
   const { data: pl, error: plErr } = await supabase.from('supplier_price_lists').insert({
-    supplier_id: supplierId, file_name: fileName, column_map: { ...map, headerRow }, imported_by: userId || null,
+    supplier_id: supplierId, file_name: fileName, usd_rate: rate, vat_rate: vat,
+    column_map: { ...map, headerRow, currency: cur }, imported_by: userId || null,
   }).select('id').single()
   if (plErr) throw plErr
 
@@ -104,7 +148,7 @@ export async function importPriceList({ supplierId, fileName, map, headerRow, ro
 // Останній імпорт по кожному постачальнику (для прев'ю стану + переюзу мапінгу)
 export async function loadPriceListMeta() {
   const { data } = await supabase.from('supplier_price_lists')
-    .select('id, supplier_id, file_name, rows_count, column_map, imported_at, contractors(name)')
+    .select('id, supplier_id, file_name, rows_count, column_map, usd_rate, vat_rate, imported_at, contractors(name)')
     .order('imported_at', { ascending: false })
   return data || []
 }
@@ -115,7 +159,7 @@ export async function searchPrices(q, { limit = 80 } = {}) {
   if (!term) return []
   const esc = term.replace(/[%,]/g, ' ')
   const { data } = await supabase.from('supplier_prices')
-    .select('id, sku, name, brand, category, unit, price, retail_price, in_stock, contractors(name)')
+    .select('id, sku, name, brand, category, unit, price, price_original, currency, vat_rate, retail_price, in_stock, contractors(name)')
     .or(`name.ilike.%${esc}%,sku.ilike.%${esc}%`)
     .order('price', { ascending: true, nullsFirst: false })
     .limit(limit)
