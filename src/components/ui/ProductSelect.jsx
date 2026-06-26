@@ -28,7 +28,7 @@ export default function ProductSelect({ value, onChange, onSelect, placeholder }
     timerRef.current = setTimeout(async () => {
       setLoading(true)
       const { data } = await supabase.from('products')
-        .select('id, name, sku, unit, sell_price')
+        .select('id, name, sku, unit, sell_price, buy_price')
         .eq('status', 'active')
         .or(`name.ilike.%${q}%,sku.ilike.%${q}%`)
         .limit(8)

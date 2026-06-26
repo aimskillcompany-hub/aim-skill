@@ -205,18 +205,22 @@ function ItemsTab({ o, onChange }) {
   useEffect(() => { load() }, [o.id])
 
   const setRow = (i, patch) => setRows(rs => rs.map((r, j) => j === i ? { ...r, ...patch } : r))
-  const addRow = () => setRows(rs => [...rs, { product_id: null, name: '', unit: 'шт', qty: 1, unit_price: 0 }])
-  // Підстановка позиції з прайсу: ціна продажу = роздріб (редагована)
+  const addRow = () => setRows(rs => [...rs, { product_id: null, name: '', unit: 'шт', qty: 1, cost_price: 0, unit_price: 0 }])
+  // Підстановка позиції з прайсу: закупівля = ціна прайсу, продаж = роздріб (редагована)
   const addFromPrice = (p) => {
     setShowPicker(false)
     setRows(rs => [...rs, {
       product_id: null, name: p.name, unit: p.unit || 'шт', qty: 1,
+      cost_price: p.price || 0,
       unit_price: (p.retail_price > 0 ? p.retail_price : p.price) || 0,
     }])
   }
   const removeRow = (i) => setRows(rs => rs.filter((_, j) => j !== i))
   const rowTotal = (r) => (Number(r.qty) || 0) * (Number(r.unit_price) || 0)
+  const rowMargin = (r) => ((Number(r.unit_price) || 0) - (Number(r.cost_price) || 0)) * (Number(r.qty) || 0)
+  const marginPct = (r) => { const p = Number(r.unit_price) || 0; return p > 0 ? ((p - (Number(r.cost_price) || 0)) / p) * 100 : 0 }
   const sum = (rows || []).reduce((s, r) => s + rowTotal(r), 0)
+  const marginSum = (rows || []).reduce((s, r) => s + rowMargin(r), 0)
 
   const save = async () => {
     setSaving(true)
@@ -231,7 +235,8 @@ function ItemsTab({ o, onChange }) {
       }
       resolved.push({
         order_id: o.id, product_id, name: r.name.trim(), unit: r.unit || 'шт',
-        qty: Number(r.qty) || 0, unit_price: Number(r.unit_price) || 0, total: rowTotal(r),
+        qty: Number(r.qty) || 0, cost_price: Number(r.cost_price) || 0,
+        unit_price: Number(r.unit_price) || 0, total: rowTotal(r),
       })
     }
     // Замінюємо повний набір позицій замовлення
@@ -260,7 +265,23 @@ function ItemsTab({ o, onChange }) {
 
       {rows.length === 0 && <p style={{ color: 'var(--text3)', fontSize: 13 }}>Товарів немає. Додавайте їх, коли стане відомо, що саме входить у замовлення.</p>}
 
-      {rows.map((r, i) => (
+      {rows.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 6, fontSize: 11, color: 'var(--text3)', fontWeight: 600 }}>
+          <div style={{ flex: '2 1 220px', minWidth: 180 }}>Товар</div>
+          <div style={{ width: 80 }}>К-сть</div>
+          <div style={{ width: 70 }}>Од.</div>
+          <div style={{ width: 110 }}>Закупівля</div>
+          <div style={{ width: 110 }}>Ціна продажу</div>
+          <div style={{ width: 120, textAlign: 'right' }}>Маржа</div>
+          <div style={{ width: 110, textAlign: 'right' }}>Сума</div>
+          <div style={{ width: 38 }} />
+        </div>
+      )}
+
+      {rows.map((r, i) => {
+        const m = rowMargin(r), mp = marginPct(r)
+        const mColor = m > 0 ? 'var(--green)' : m < 0 ? 'var(--red)' : 'var(--text3)'
+        return (
         <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div style={{ flex: '2 1 220px', minWidth: 180 }}>
             <ProductSelect
@@ -269,20 +290,24 @@ function ItemsTab({ o, onChange }) {
               onChange={(name) => setRow(i, { name, product_id: null })}
               onSelect={(p) => p._new
                 ? setRow(i, { name: p.name, product_id: null })
-                : setRow(i, { name: p.name, product_id: p.id, unit: p.unit || 'шт', unit_price: r.unit_price || p.sell_price || 0 })}
+                : setRow(i, { name: p.name, product_id: p.id, unit: p.unit || 'шт', cost_price: r.cost_price || p.buy_price || 0, unit_price: r.unit_price || p.sell_price || 0 })}
             />
             {r.product_id && <div style={{ fontSize: 11, color: 'var(--green)', marginTop: 2 }}><i className="ti ti-link" /> з довідника</div>}
           </div>
           <input className="form-input" type="number" placeholder="К-сть" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} style={{ width: 80 }} />
           <input className="form-input" placeholder="од." value={r.unit || ''} onChange={e => setRow(i, { unit: e.target.value })} style={{ width: 70 }} />
+          <input className="form-input" type="number" placeholder="Закупівля" value={r.cost_price ?? ''} onChange={e => setRow(i, { cost_price: e.target.value })} style={{ width: 110 }} />
           <input className="form-input" type="number" placeholder="Ціна" value={r.unit_price} onChange={e => setRow(i, { unit_price: e.target.value })} style={{ width: 110 }} />
+          <div style={{ width: 120, textAlign: 'right', padding: '8px 0', fontSize: 13, color: mColor }}>{fmt(m)}<div style={{ fontSize: 11 }}>{mp.toFixed(0)}%</div></div>
           <div style={{ width: 110, textAlign: 'right', padding: '8px 0', fontSize: 13, fontWeight: 500 }}>{fmt(rowTotal(r))}</div>
           <button className="btn" onClick={() => removeRow(i)} title="Прибрати"><i className="ti ti-x" /></button>
         </div>
-      ))}
+        )
+      })}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 14, flexWrap: 'wrap', gap: 10 }}>
         <div style={{ fontWeight: 600 }}>Разом: {fmt(sum)} грн
+          {marginSum !== 0 && <span style={{ marginLeft: 12, fontSize: 13, fontWeight: 500, color: marginSum > 0 ? 'var(--green)' : 'var(--red)' }}>Маржа: {fmt(marginSum)} грн{sum > 0 ? ` (${((marginSum / sum) * 100).toFixed(0)}%)` : ''}</span>}
           {sum > 0 && <button className="btn" onClick={writeToOrderTotal} style={{ marginLeft: 10, fontSize: 12, padding: '4px 10px' }} title="Записати суму позицій у поле «Сума» замовлення">≡ у суму замовлення</button>}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
