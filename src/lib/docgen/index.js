@@ -1,8 +1,9 @@
 // ── Document Generation Public API ──
 import { getCompany } from '../companyConfig'
 import { getDocType } from './templates/registry'
-import { downloadPdf } from './pdfBuilder'
+import { downloadPdf, getPdfBlob } from './pdfBuilder'
 import { downloadXlsx } from './xlsxBuilder'
+import { calcTotals } from './formatUtils'
 import { supabase } from '../supabase'
 
 export { DOCUMENT_TYPES, getDocType, getDocLabel, STATUS_LABELS, STATUS_COLORS } from './templates/registry'
@@ -38,6 +39,36 @@ export async function generatePdf(docTypeKey, contractor, items, options) {
   const buyer = dt.direction === 'incoming' ? company : enriched
   const docDef = dt.template.pdf(seller, buyer, cleanItems(items), options)
   const fileName = `${dt.label}_${options.docNumber}_${options.docDate}.pdf`
+  downloadPdf(docDef, fileName)
+}
+
+// ── Згенерувати документ із замовлення: PDF → Storage → рядок у documents (order_id) + завантаження ──
+export async function generateOrderDoc(docTypeKey, contractor, items, options, { orderId, contractorId }) {
+  const dt = getDocType(docTypeKey)
+  if (!dt) throw new Error(`Невідомий тип документа: ${docTypeKey}`)
+  const enriched = await enrichContractorSigner(contractor)
+  const company = await getCompany()
+  const seller = dt.direction === 'incoming' ? enriched : company
+  const buyer = dt.direction === 'incoming' ? company : enriched
+  const clean = cleanItems(items)
+  const docDef = dt.template.pdf(seller, buyer, clean, options)
+  const blob = await getPdfBlob(docDef)
+  const { total, vatAmount } = calcTotals(clean)
+  const fileName = `${dt.label}_${options.docNumber}_${options.docDate}.pdf`
+  const path = `orders/${orderId}/${Date.now()}_${docTypeKey}.pdf`
+
+  const { error: upErr } = await supabase.storage.from('documents').upload(path, blob, { contentType: 'application/pdf', upsert: false })
+  if (upErr) throw upErr
+
+  // Не дублювати той самий документ (тип+номер) у замовленні — заміщуємо
+  await supabase.from('documents').delete().eq('order_id', orderId).eq('type', docTypeKey).eq('doc_number', options.docNumber)
+  const { error: insErr } = await supabase.from('documents').insert({
+    type: docTypeKey, order_id: orderId, contractor_id: contractorId || contractor?.id || null,
+    doc_number: options.docNumber, doc_date: options.docDate, amount: total || null, vat_amount: vatAmount || null,
+    file_name: fileName, storage_path: path, direction: dt.direction === 'incoming' ? 'payable' : 'receivable',
+  })
+  if (insErr) throw insErr
+
   downloadPdf(docDef, fileName)
 }
 

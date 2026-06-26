@@ -11,3 +11,7 @@ export function downloadPdf(docDefinition, fileName) {
 export function openPdf(docDefinition) {
   pdfMake.createPdf(docDefinition).open()
 }
+
+export function getPdfBlob(docDefinition) {
+  return new Promise((resolve) => pdfMake.createPdf(docDefinition).getBlob(resolve))
+}

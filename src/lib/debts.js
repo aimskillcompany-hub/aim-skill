@@ -10,7 +10,7 @@ const sum = (arr, f) => (arr || []).reduce((s, x) => s + (Number(f(x)) || 0), 0)
 // вони НЕ створюють борг. Борг створюють лише РЕАЛІЗОВАНІ документи
 // (видаткова/прихідна накладна, акт). Тому рахунок + накладна на одну угоду
 // рахуються як один борг, а не два.
-export const NON_DEBT_TYPES = new Set(['invoice', 'salesOrder', 'purchaseOrder', 'loanAgreement', 'supplyAgreement'])
+export const NON_DEBT_TYPES = new Set(['invoice', 'salesOrder', 'purchaseOrder', 'loanAgreement', 'supplyAgreement', 'commercialProposal'])
 export const countsAsDebt = (type) => !NON_DEBT_TYPES.has(type)
 
 // Детальний баланс одного контрагента (для картки)
