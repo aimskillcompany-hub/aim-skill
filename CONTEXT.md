@@ -196,9 +196,9 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `010_supplier_price_lists.sql` | Прайси постачальників: `supplier_price_lists`, `supplier_prices` | ✅ застосовано |
 | `011_supplier_prices_currency.sql` | Прайси: валюта/курс/ПДВ (`currency`,`price_original`,`vat_rate`,`usd_rate`) | ✅ застосовано |
 | `012_supplier_prices_extra.sql` | Прайси: `uktzed`, `warranty`, `warranty_term` | ⏳ запустити вручну |
-| `013_order_items_cost.sql` | Позиції замовлення: `cost_price` (маржа) | ⏳ запустити вручну |
-| `014_suborders_auto.sql` | Авто-субзамовлення: `order_items.supplier_id`, `supplier_orders.source`, `supplier_order_items.name/unit` | ⏳ запустити вручну |
-| `015_order_items_vat.sql` | Позиції замовлення: `vat_rate` (розрахунок з/без ПДВ) | ⏳ запустити вручну |
+| `013_order_items_cost.sql` | Позиції замовлення: `cost_price` (маржа) | ✅ застосовано |
+| `014_suborders_auto.sql` | Авто-субзамовлення: `order_items.supplier_id`, `supplier_orders.source`, `supplier_order_items.name/unit` | ✅ застосовано |
+| `015_order_items_vat.sql` | Позиції замовлення: `vat_rate` (розрахунок з/без ПДВ) | ✅ застосовано |
 | `validate.mjs` | Перевірка цілісності (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 
 ---
