@@ -69,13 +69,13 @@ function SearchPanel({ meta }) {
             <table>
               <thead><tr>
                 <th>Найменування</th><th>Артикул</th><th>Бренд</th><th>Постачальник</th>
-                <th style={{ textAlign: 'right' }}>Закупівля</th><th style={{ textAlign: 'right' }}>Роздріб</th><th>Наявність</th>
+                <th style={{ textAlign: 'right' }}>Закупівля</th><th style={{ textAlign: 'right' }}>Роздріб</th><th>Гарантія</th><th>Наявність</th>
               </tr></thead>
               <tbody>
                 {rows.map((r, i) => (
                   <tr key={r.id}>
                     <td><div className="trunc" title={r.name}>{r.name}</div>{r.category && <div style={{ fontSize: 11, color: 'var(--text3)' }}>{r.category}</div>}</td>
-                    <td style={{ fontSize: 12, color: 'var(--text2)' }}>{r.sku || '—'}</td>
+                    <td style={{ fontSize: 12, color: 'var(--text2)' }}>{r.sku || '—'}{r.uktzed && <div style={{ fontSize: 11, color: 'var(--text3)' }}>УКТЗД {r.uktzed}</div>}</td>
                     <td style={{ fontSize: 12 }}>{r.brand || '—'}</td>
                     <td style={{ fontSize: 12 }}>{r.contractors?.name || '—'}</td>
                     <td style={{ textAlign: 'right', fontWeight: i === 0 && r.price ? 600 : 400, color: i === 0 && r.price ? 'var(--green)' : undefined }}>
@@ -83,6 +83,7 @@ function SearchPanel({ meta }) {
                       {r.currency === 'USD' && r.price_original != null && <div style={{ fontSize: 11, color: 'var(--text3)' }}>${r.price_original}</div>}
                     </td>
                     <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{r.retail_price != null ? fmt(r.retail_price) : '—'}</td>
+                    <td style={{ fontSize: 12, color: 'var(--text2)' }}>{[r.warranty, r.warranty_term].filter(Boolean).join(' ') || '—'}</td>
                     <td style={{ fontSize: 12, color: 'var(--text2)' }}>{r.in_stock || '—'}</td>
                   </tr>
                 ))}
@@ -108,6 +109,7 @@ function ImportPanel({ meta, onImported }) {
   const [usdRate, setUsdRate] = useState('')
   const [vatRate, setVatRate] = useState('20')
   const [currency, setCurrency] = useState({ mode: 'uah', col: null, rule: 'one_is_uah' })
+  const [defaultUnit, setDefaultUnit] = useState('шт')
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState(null)
   const [result, setResult] = useState(null)
@@ -136,9 +138,10 @@ function ImportPanel({ meta, onImported }) {
     if (!supplierId || !aoa) return
     const prev = meta.find(m => m.supplier_id === supplierId)?.column_map
     if (prev) {
-      const { headerRow: hr, currency: cur, ...m } = prev
+      const { headerRow: hr, currency: cur, defaultUnit: du, ...m } = prev
       if (hr != null) setHeaderRow(hr)
       if (cur) setCurrency(cur)
+      if (du != null) setDefaultUnit(du)
       setMap(m)
     }
   }, [supplierId]) // eslint-disable-line
@@ -154,7 +157,7 @@ function ImportPanel({ meta, onImported }) {
     setBusy(true); setError(null); setResult(null); setProgress({ done: 0, total: 0 })
     try {
       const res = await importPriceList(
-        { supplierId, fileName, map, headerRow, rows: aoa, userId: user?.id, usdRate, vatRate, currency },
+        { supplierId, fileName, map, headerRow, rows: aoa, userId: user?.id, usdRate, vatRate, currency, defaultUnit },
         (done, total) => setProgress({ done, total })
       )
       setResult(res); setAoa(null); setFileName(''); setMap({}); onImported()
@@ -217,6 +220,10 @@ function ImportPanel({ meta, onImported }) {
               </div>
               <div className="form-group"><label>Ставка ПДВ, %</label>
                 <input className="form-input" type="number" step="1" placeholder="20" value={vatRate} onChange={e => setVatRate(e.target.value)} />
+              </div>
+              <div className="form-group"><label>Одиниця за замовчуванням</label>
+                <input className="form-input" placeholder="шт" value={defaultUnit} onChange={e => setDefaultUnit(e.target.value)} />
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>Застосовується, якщо колонку «Одиниця» не вказано або клітинка порожня.</div>
               </div>
             </div>
 

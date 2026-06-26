@@ -8,11 +8,14 @@ import { supabase } from './supabase'
 export const FIELDS = [
   { key: 'name', label: 'Найменування', required: true },
   { key: 'sku', label: 'Артикул / Код' },
+  { key: 'uktzed', label: 'Код УКТЗД (ТН ЗЕД)' },
   { key: 'brand', label: 'Виробник / Бренд' },
   { key: 'category', label: 'Категорія' },
   { key: 'unit', label: 'Одиниця' },
   { key: 'price', label: 'Ціна закупівлі (Дилер)' },
   { key: 'retail_price', label: 'Ціна продажу (роздріб, грн)' },
+  { key: 'warranty', label: 'Гарантія' },
+  { key: 'warranty_term', label: 'Тип / термін гарантії' },
   { key: 'in_stock', label: 'Наявність' },
 ]
 
@@ -20,11 +23,14 @@ export const FIELDS = [
 const HINTS = {
   name: /найменув|назва|товар|опис|product|name/i,
   sku: /код|артикул|sku|partnumber|p\/n|part/i,
+  uktzed: /уктзед|укт\s?зед|тн\s?зед|тнзед|hs.?code/i,
   brand: /виробник|бренд|brand|manufact|vendor/i,
   category: /^категор/i,
   unit: /одиниц|вимір|unit|^од\.?$/i,
   price: /собівар|закуп|опт|cost|дилер|dealer/i,
   retail_price: /роздріб|retail|^ціна$|rrp/i,
+  warranty: /^гарант/i,
+  warranty_term: /терм.*гар|гар.*терм|термін/i,
   in_stock: /кіл-ть|кільк|наявн|залиш|stock|qty|склад|avail/i,
 }
 
@@ -94,12 +100,13 @@ export function num(v) {
 // usdRate — курс USD→UAH; vatRate — ставка ПДВ (% на весь файл);
 // currency — { mode, col, rule } для визначення валюти ціни закупівлі.
 // onProgress(done, total) — для індикатора.
-export async function importPriceList({ supplierId, fileName, map, headerRow, rows, userId, usdRate, vatRate, currency }, onProgress) {
+export async function importPriceList({ supplierId, fileName, map, headerRow, rows, userId, usdRate, vatRate, currency, defaultUnit }, onProgress) {
   const dataRows = rows.slice(headerRow + 1)
   const col = (r, key) => (map[key] != null ? r[map[key]] : undefined)
   const rate = Number(usdRate) || null
   const vat = vatRate === '' || vatRate == null ? null : Number(vatRate)
   const cur = currency || { mode: 'uah' }
+  const defUnit = (defaultUnit || '').trim() || null
 
   const prepared = dataRows.map(r => {
     const orig = map.price != null ? num(col(r, 'price')) : null
@@ -108,14 +115,17 @@ export async function importPriceList({ supplierId, fileName, map, headerRow, ro
     return {
       name: decode(col(r, 'name')),
       sku: map.sku != null ? decode(col(r, 'sku')) || null : null,
+      uktzed: map.uktzed != null ? decode(col(r, 'uktzed')) || null : null,
       brand: map.brand != null ? decode(col(r, 'brand')) || null : null,
       category: map.category != null ? decode(col(r, 'category')) || null : null,
-      unit: map.unit != null ? decode(col(r, 'unit')) || null : null,
+      unit: (map.unit != null ? decode(col(r, 'unit')) : '') || defUnit,
       price_original: orig,
       currency: ccy,
       price: priceUah,
       retail_price: map.retail_price != null ? num(col(r, 'retail_price')) : null,
       vat_rate: vat,
+      warranty: map.warranty != null ? decode(col(r, 'warranty')) || null : null,
+      warranty_term: map.warranty_term != null ? decode(col(r, 'warranty_term')) || null : null,
       in_stock: map.in_stock != null ? decode(col(r, 'in_stock')) || null : null,
     }
   }).filter(r => r.name)
@@ -123,7 +133,7 @@ export async function importPriceList({ supplierId, fileName, map, headerRow, ro
   // 1. Новий запис імпорту
   const { data: pl, error: plErr } = await supabase.from('supplier_price_lists').insert({
     supplier_id: supplierId, file_name: fileName, usd_rate: rate, vat_rate: vat,
-    column_map: { ...map, headerRow, currency: cur }, imported_by: userId || null,
+    column_map: { ...map, headerRow, currency: cur, defaultUnit: defUnit }, imported_by: userId || null,
   }).select('id').single()
   if (plErr) throw plErr
 
@@ -159,7 +169,7 @@ export async function searchPrices(q, { limit = 80 } = {}) {
   if (!term) return []
   const esc = term.replace(/[%,]/g, ' ')
   const { data } = await supabase.from('supplier_prices')
-    .select('id, sku, name, brand, category, unit, price, price_original, currency, vat_rate, retail_price, in_stock, contractors(name)')
+    .select('id, sku, uktzed, name, brand, category, unit, price, price_original, currency, vat_rate, retail_price, warranty, warranty_term, in_stock, contractors(name)')
     .or(`name.ilike.%${esc}%,sku.ilike.%${esc}%`)
     .order('price', { ascending: true, nullsFirst: false })
     .limit(limit)
