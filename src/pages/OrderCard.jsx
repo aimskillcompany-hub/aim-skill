@@ -482,9 +482,9 @@ function DocumentsTab({ o }) {
   const [showAttach, setShowAttach] = useState(false)
   const [gen, setGen] = useState(null) // { contractor, editDoc }
   const load = () => supabase.from('documents')
-    .select('id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)')
+    .select('id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, source, contractors(name)')
     .eq('order_id', o.id).order('created_at', { ascending: false })
-    .then(({ data }) => setRows(data || []))
+    .then(({ data }) => setRows((data || []).filter(d => d.source !== 'generated'))) // згенеровані показані окремою секцією
   const loadGen = () => supabase.from('generated_docs').select('*').eq('order_id', o.id).order('created_at', { ascending: false }).then(({ data }) => setGenDocs(data || []))
   useEffect(() => { load(); loadGen() }, [o.id])
   const unlink = async (d) => { await supabase.from('documents').update({ order_id: null }).eq('id', d.id); load() }
