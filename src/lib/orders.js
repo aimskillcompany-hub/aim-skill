@@ -39,6 +39,17 @@ const FLOW = {
 export const flowFor = (type) => FLOW[type] || FLOW.trade
 export const stepFor = (o) => flowFor(o.type).find(x => x.s === o.status) || flowFor(o.type)[0]
 export const statusLabel = (o) => stepFor(o).label
+
+// Канонічний порядок статусів для Kanban-дошки (об'єднання трьох циклів)
+export const STATUS_ORDER = [
+  'new', 'proposal_sent', 'confirmed', 'contract_signed', 'invoiced',
+  'paid_partial', 'paid', 'ordering_supplier', 'in_transit', 'ready_to_ship',
+  'shipped', 'docs_received', 'client_transferred', 'deal_done', 'closed',
+]
+
+// Лейбл статусу без прив'язки до типу (для колонок канбану)
+const ALL_STEPS = [...FLOW.trade, ...FLOW.service, ...FLOW.agent]
+export const labelForStatus = (s) => ALL_STEPS.find(x => x.s === s)?.label || s
 export const nextActionLabel = (o) => stepFor(o).next
 export const isOpen = (o) => o.status !== 'closed'
 export const needsAction = (o) => stepFor(o).act === 'do'

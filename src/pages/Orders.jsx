@@ -7,7 +7,7 @@ import {
   ORDER_TYPES, TYPE_COLORS, statusLabel, nextActionLabel, isOpen, needsAction,
   proposalOverdue, paymentOverdue,
 } from '../lib/orders'
-import Gantt from '../components/Gantt'
+import Kanban from '../components/Kanban'
 import { useSort, SortTh } from '../components/Sort'
 
 export default function Orders() {
@@ -16,7 +16,7 @@ export default function Orders() {
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState('all')
-  const [view, setView] = useState('table') // table | gantt
+  const [view, setView] = useState('table') // table | kanban
   const [showNew, setShowNew] = useState(false)
 
   const load = async () => {
@@ -102,14 +102,14 @@ export default function Orders() {
         </div>
         <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
           <button className="btn" onClick={() => setView('table')} style={{ background: view === 'table' ? 'var(--surface2)' : 'var(--surface)' }} title="Таблиця"><i className="ti ti-list" /></button>
-          <button className="btn" onClick={() => setView('gantt')} style={{ background: view === 'gantt' ? 'var(--surface2)' : 'var(--surface)' }} title="Діаграма Ганта"><i className="ti ti-timeline" /></button>
+          <button className="btn" onClick={() => setView('kanban')} style={{ background: view === 'kanban' ? 'var(--surface2)' : 'var(--surface)' }} title="Канбан"><i className="ti ti-layout-kanban" /></button>
         </div>
       </div>
 
       {loading ? (
         <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
-      ) : view === 'gantt' ? (
-        <Gantt orders={filtered} onOpen={(id) => navigate(`/orders/${id}`)} />
+      ) : view === 'kanban' ? (
+        <Kanban orders={filtered} type={filter} onOpen={(id) => navigate(`/orders/${id}`)} />
       ) : (
         <div className="card">
           <div className="tbl-wrap" style={{ border: 'none' }}>
