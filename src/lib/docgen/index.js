@@ -144,28 +144,15 @@ export async function saveDoc({ docType, docNumber, docDate, contractorId, contr
   const dt = getDocType(docType)
 
   // Дзеркало в documents (канонічний список: Документи, картка контрагента, борги).
-  // PDF у Storage — best-effort (щоб документ був переглядабельний звідусіль).
+  // Створюється МИТТЄВО (без рендера PDF), щоб не блокувати збереження.
   if (data?.id) {
-    let storagePath = null
-    try {
-      const { data: full } = await supabase.from('contractors').select('*').eq('id', contractorId).maybeSingle()
-      const company = await getCompany()
-      const enriched = await enrichContractorSigner(full || { name: contractorName })
-      const seller = dt.direction === 'incoming' ? enriched : company
-      const buyer = dt.direction === 'incoming' ? company : enriched
-      const docDef = dt.template.pdf(seller, buyer, cleanItems(items), { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city })
-      const blob = await getPdfBlob(docDef)
-      storagePath = `generated/${data.id}/${docNumber}.pdf`
-      await supabase.storage.from('documents').upload(storagePath, blob, { contentType: 'application/pdf', upsert: true })
-    } catch { storagePath = null }
-
     await supabase.from('documents').insert({
       type: docType, doc_number: docNumber, doc_date: docDate,
       contractor_id: contractorId || null, order_id: orderId || null,
       amount: total ?? null, vat_amount: vatAmount ?? null,
       direction: dt.direction === 'incoming' ? 'payable' : 'receivable',
       doc_role: dt.direction === 'incoming' ? 'incoming' : 'outgoing',
-      file_name: `${dt.label}_${docNumber}.pdf`, storage_path: storagePath,
+      file_name: `${dt.label}_${docNumber}.pdf`,
       source: 'generated', generated_doc_id: data.id,
     })
   }
