@@ -171,7 +171,7 @@ export default function OrderCard() {
 
 // ───────── Деталі ─────────
 function DetailsTab({ o, onSaved }) {
-  const [form, setForm] = useState({ total: o.total, description: o.description || '', status: o.status })
+  const [form, setForm] = useState({ total: o.total, description: o.description || '', status: o.status, procurement_type: o.procurement_type || 'direct' })
   const [itemsSum, setItemsSum] = useState(null)
   const [hasItems, setHasItems] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -186,7 +186,7 @@ function DetailsTab({ o, onSaved }) {
 
   const effectiveTotal = hasItems ? (itemsSum || 0) : (Number(form.total) || 0)
   const save = async () => {
-    const upd = { total: effectiveTotal, description: form.description || null, status: form.status }
+    const upd = { total: effectiveTotal, description: form.description || null, status: form.status, procurement_type: form.procurement_type }
     if (form.status === 'closed' && !o.closed_at) upd.closed_at = new Date().toISOString()
     await supabase.from('orders').update(upd).eq('id', o.id)
     setSaved(true); setTimeout(() => setSaved(false), 2000); onSaved()
@@ -202,6 +202,12 @@ function DetailsTab({ o, onSaved }) {
         <div className="form-group"><label>Статус (ручне керування)</label>
           <select className="form-input" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
             {flow.map(s => <option key={s.s} value={s.s}>{s.label}</option>)}
+          </select>
+        </div>
+        <div className="form-group"><label>Тип закупівлі</label>
+          <select className="form-input" value={form.procurement_type} onChange={e => setForm(f => ({ ...f, procurement_type: e.target.value }))}>
+            <option value="direct">Пряма закупівля</option>
+            <option value="tender">Тендер</option>
           </select>
         </div>
         <div className="form-group full"><label>Опис</label><input className="form-input" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></div>
@@ -695,11 +701,13 @@ function SuppliersTab({ o }) {
     if (!list.length) { setMsg('У субзамовленні немає позицій.'); return }
     let supplier = { name: s.contractors?.name || 'Постачальник' }
     if (s.supplier_id) { const { data } = await supabase.from('contractors').select('*').eq('id', s.supplier_id).single(); if (data) supplier = data }
+    let client = { name: o.contractors?.name }
+    if (o.client_id) { const { data } = await supabase.from('contractors').select('name, short_name, edrpou, legal_address, address').eq('id', o.client_id).single(); if (data) client = data }
     const today = new Date().toISOString().slice(0, 10)
     try {
       await supplierOrderPdf(supplier, list, {
         docNumber: `ЗП-${o.order_number || o.id.slice(0, 6)}-${s.id.slice(0, 4)}`,
-        docDate: today, clientName: o.contractors?.name,
+        docDate: today, client, procurementType: o.procurement_type,
       }, { download })
     } catch (e) { setMsg('Помилка формування: ' + e.message) }
   }

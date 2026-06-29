@@ -1,6 +1,6 @@
 // ── Шаблон: Замовлення постачальнику ──
 // Від кого: наша компанія; Кому: постачальник; Для клієнта: клієнт замовлення.
-import { formatMoney, formatDateLong } from '../formatUtils'
+import { formatDateLong } from '../formatUtils'
 import { LOGO_BASE64 } from '../logo'
 
 const BLACK = '#0A0A0A'
@@ -19,13 +19,11 @@ const rvLine = (label, value) => value ? {
 
 const sectionTitle = (text) => ({ text, fontSize: 7.5, letterSpacing: 2, color: G2, bold: true, margin: [0, 0, 0, 6] })
 
+const PROCUREMENT = { tender: 'Тендер', direct: 'Пряма закупівля' }
+
 export function pdf(company, supplier, items, options) {
-  const { docNumber, docDate, clientName, notes } = options
-  const rows = items.map((it, i) => {
-    const q = parseFloat(it.quantity) || 0, p = parseFloat(it.price) || 0
-    return { n: i + 1, name: it.name || '', u: it.unit || 'шт', q, p, t: q * p }
-  })
-  const total = rows.reduce((s, r) => s + r.t, 0)
+  const { docNumber, docDate, client, procurementType, notes } = options
+  const rows = items.map((it, i) => ({ n: i + 1, name: it.name || '', u: it.unit || 'шт', q: parseFloat(it.quantity) || 0 }))
 
   return {
     pageSize: 'A4',
@@ -74,23 +72,32 @@ export function pdf(company, supplier, items, options) {
         margin: [0, 0, 0, 8],
       },
 
-      clientName ? { text: [{ text: 'Для клієнта: ', color: G2 }, { text: clientName, color: BLACK, bold: true }], fontSize: 9, margin: [0, 0, 0, 10] } : { text: '', margin: [0, 0, 0, 4] },
+      // ── Для клієнта (з реквізитами) + тип закупівлі ──
+      client ? {
+        stack: [
+          sectionTitle('ДЛЯ КЛІЄНТА'),
+          { text: client.short_name || client.name || '—', fontSize: 9.5, bold: true, color: BLACK, margin: [0, 0, 0, 4] },
+          rvLine('ЄДРПОУ', client.edrpou),
+          rvLine('Адреса', client.legal_address || client.address),
+        ].filter(Boolean),
+        margin: [0, 0, 0, 8],
+      } : { text: '', margin: [0, 0, 0, 4] },
+
+      procurementType ? { text: [{ text: 'Тип закупівлі: ', color: G2 }, { text: PROCUREMENT[procurementType] || procurementType, color: BLACK, bold: true }], fontSize: 9, margin: [0, 0, 0, 10] } : { text: '', margin: [0, 0, 0, 4] },
 
       {
         table: {
           headerRows: 1,
-          widths: [18, '*', 30, 34, 70, 74],
+          widths: [22, '*', 50, 60],
           body: [
-            ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна', 'Сума'].map(t => ({
+            ['№', 'Найменування', 'Од.', 'К-сть'].map(t => ({
               text: t, fontSize: 6.5, bold: true, color: '#FFF', fillColor: DARK, alignment: 'center', margin: [0, 3, 0, 3],
             })),
             ...rows.map(r => [
               { text: r.n, alignment: 'center', fontSize: 8.5, color: G2 },
               { text: r.name, fontSize: 8.5, color: BLACK },
               { text: r.u, alignment: 'center', fontSize: 8, color: G2 },
-              { text: r.q, alignment: 'center', fontSize: 8.5 },
-              { text: formatMoney(r.p), alignment: 'right', fontSize: 8.5 },
-              { text: formatMoney(r.t), alignment: 'right', fontSize: 8.5, bold: true, color: BLACK },
+              { text: r.q, alignment: 'center', fontSize: 9, bold: true, color: BLACK },
             ]),
           ],
         },
@@ -101,15 +108,6 @@ export function pdf(company, supplier, items, options) {
           paddingLeft: () => 4, paddingRight: () => 4, paddingTop: () => 4, paddingBottom: () => 4,
           fillColor: (i) => i > 0 && i % 2 === 0 ? '#FAFAFA' : null,
         },
-      },
-
-      {
-        columns: [
-          { width: '*', text: '' },
-          { width: 200, table: { widths: [100, 100], body: [
-            [{ text: 'Разом:', alignment: 'right', fontSize: 10, bold: true, color: BLACK }, { text: `${formatMoney(total)} грн`, alignment: 'right', fontSize: 10, bold: true, color: BLACK }],
-          ] }, layout: 'noBorders', margin: [0, 6, 0, 0] },
-        ],
       },
 
       notes ? { text: notes, fontSize: 8.5, color: G1, margin: [0, 10, 0, 0], lineHeight: 1.4 } : {},
