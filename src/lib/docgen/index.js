@@ -153,8 +153,13 @@ export async function saveDoc({ docType, docNumber, docDate, contractorId, contr
   const dt = getDocType(docType)
 
   // Дзеркало в documents (канонічний список: Документи, картка контрагента, борги).
-  // Створюється МИТТЄВО (без рендера PDF), щоб не блокувати збереження.
+  // Створюється МИТТЄВО (без рендера PDF). Пропускаємо, якщо документ з таким
+  // же контрагентом+типом+номером уже існує (щоб не задвоювати борг).
   if (data?.id) {
+    let dup = supabase.from('documents').select('id', { count: 'exact', head: true }).eq('type', docType).eq('doc_number', docNumber)
+    dup = contractorId ? dup.eq('contractor_id', contractorId) : dup.is('contractor_id', null)
+    const { count: existing } = await dup
+    if (existing) return data // вже є такий документ — дзеркало не створюємо
     await supabase.from('documents').insert({
       type: docType, doc_number: docNumber, doc_date: docDate,
       contractor_id: contractorId || null, order_id: orderId || null,
