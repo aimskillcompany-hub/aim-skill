@@ -4,9 +4,9 @@
 // Env: TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_IDS (через кому), TELEGRAM_OWNER_ID, APP_URL
 import { getAdmin } from './_lib.js'
 
-const TOKEN = process.env.TELEGRAM_BOT_TOKEN
+const TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim()
 const ALLOWED = (process.env.TELEGRAM_ALLOWED_IDS || '').split(',').map(s => s.trim()).filter(Boolean)
-const OWNER = process.env.TELEGRAM_OWNER_ID
+const OWNER = (process.env.TELEGRAM_OWNER_ID || '').trim()
 const APP_URL = process.env.APP_URL || 'https://aim-skill.vercel.app'
 const orderUrl = (id) => `${APP_URL}/#/orders/${id}`
 
@@ -114,18 +114,6 @@ async function showCard(admin, chatId, orderId) {
 // ── Головний обробник ──
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(200).json({ ok: true })
-  // Тимчасова діагностика: POST {"diag":"<секрет>"}
-  if (req.body && req.body.diag === 'aimskill2026') {
-    const info = {
-      hasToken: !!TOKEN, tokenLen: (TOKEN || '').length, tokenTail: (TOKEN || '').slice(-6),
-      allowed: ALLOWED, owner: OWNER || null, hasFetch: typeof fetch,
-      tokenEnc: encodeURIComponent(TOKEN || ''),
-    }
-    if (req.body.testSend && OWNER) {
-      info.sendResult = await tg('sendMessage', { chat_id: OWNER, text: 'diag: тест надсилання зсередини функції' })
-    }
-    return res.status(200).json(info)
-  }
   if (!TOKEN) return res.status(200).json({ ok: false, error: 'no token' })
   const admin = getAdmin()
   const upd = req.body || {}
