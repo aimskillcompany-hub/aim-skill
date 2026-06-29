@@ -116,10 +116,14 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(200).json({ ok: true })
   // Тимчасова діагностика: POST {"diag":"<секрет>"}
   if (req.body && req.body.diag === 'aimskill2026') {
-    return res.status(200).json({
+    const info = {
       hasToken: !!TOKEN, tokenLen: (TOKEN || '').length, tokenTail: (TOKEN || '').slice(-6),
-      allowed: ALLOWED, owner: OWNER || null,
-    })
+      allowed: ALLOWED, owner: OWNER || null, hasFetch: typeof fetch,
+    }
+    if (req.body.testSend && OWNER) {
+      info.sendResult = await tg('sendMessage', { chat_id: OWNER, text: 'diag: тест надсилання зсередини функції' })
+    }
+    return res.status(200).json(info)
   }
   if (!TOKEN) return res.status(200).json({ ok: false, error: 'no token' })
   const admin = getAdmin()
