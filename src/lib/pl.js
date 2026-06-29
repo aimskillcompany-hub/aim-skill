@@ -59,6 +59,67 @@ export async function computePL(year, month) {
   return { sections, totals: { fact: wf('factSum'), plan: wf('planSum') }, hasPlan: Object.keys(plan).length > 0 }
 }
 
+// ── P&L Факт по періодах (матриця): рік → місяці, місяць → дні ──
+const MONTHS_UA = ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Лип', 'Сер', 'Вер', 'Жов', 'Лис', 'Гру']
+
+export async function computePLBreakdown(year, month) {
+  const { from, to } = periodRange(year, month)
+  const [{ data: txs }, { data: arts }] = await Promise.all([
+    supabase.from('bank_transactions').select('amount, article, direction, date').eq('is_validated', true).eq('is_ignored', false).gte('date', from).lte('date', to),
+    supabase.from('articles').select('name, type, pl_level, sort_order'),
+  ])
+  const meta = {}; (arts || []).forEach(a => { meta[a.name] = a })
+
+  const cols = month
+    ? Array.from({ length: monthEnd(year, month) }, (_, i) => ({ key: String(i + 1), label: String(i + 1) }))
+    : MONTHS_UA.map((m, i) => ({ key: String(i + 1), label: m }))
+  const bucketOf = (d) => month ? String(Number(d.slice(8, 10))) : String(Number(d.slice(5, 7)))
+
+  const fact = {} // article -> { bucketKey: sum }
+  ;(txs || []).forEach(t => {
+    if (!t.article || t.direction === 'Інше' || t.direction === 'ПФД') return
+    const b = bucketOf(t.date)
+    ;(fact[t.article] ||= {})[b] = (fact[t.article][b] || 0) + Math.abs(Number(t.amount) || 0)
+  })
+
+  const levels = PL_ORDER.filter(k => !k.startsWith('_'))
+  const names = Object.keys(fact)
+  const secByLevel = {}
+  levels.forEach(level => {
+    const rows = names
+      .filter(n => (meta[n]?.pl_level || (meta[n]?.type === 'income' ? 'revenue' : 'opex')) === level)
+      .map(n => ({ name: n, cells: fact[n] || {}, total: Object.values(fact[n] || {}).reduce((s, v) => s + v, 0), sort: meta[n]?.sort_order || 999 }))
+      .filter(r => r.total).sort((a, b) => a.sort - b.sort)
+    const totals = {}; cols.forEach(c => { totals[c.key] = rows.reduce((s, r) => s + (r.cells[c.key] || 0), 0) })
+    secByLevel[level] = { rows, totals, total: rows.reduce((s, r) => s + r.total, 0) }
+  })
+
+  const st = (lvl, key) => secByLevel[lvl] ? (key === 'total' ? secByLevel[lvl].total : (secByLevel[lvl].totals[key] || 0)) : 0
+  const wf = (kind, key) => {
+    const rev = st('revenue', key), cogs = st('cogs', key), opex = st('opex', key), oth = st('other_income', key), below = st('below_line', key)
+    if (kind === 'gp') return rev - cogs
+    if (kind === 'ebit') return rev - cogs - opex
+    if (kind === 'np') return rev - cogs - opex + oth
+    if (kind === 'net') return rev - cogs - opex + oth - below
+    return 0
+  }
+  const cellsFor = (fn) => { const c = {}; cols.forEach(col => { c[col.key] = fn(col.key) }); return c }
+
+  const out = []
+  PL_ORDER.forEach(key => {
+    if (key.startsWith('_')) {
+      const kind = { _gp: 'gp', _ebit: 'ebit', _np: 'np', _net: 'net' }[key]
+      out.push({ type: 'subtotal', label: PL_LABELS[key], cells: cellsFor(k => wf(kind, k)), total: wf(kind, 'total') })
+    } else {
+      const sec = secByLevel[key]
+      if (!sec || !sec.rows.length) return
+      out.push({ type: 'header', label: PL_LABELS[key], cells: sec.totals, total: sec.total })
+      sec.rows.forEach(r => out.push({ type: 'row', label: r.name, cells: r.cells, total: r.total }))
+    }
+  })
+  return { cols, rows: out }
+}
+
 // ── Борги (Aging): по документах мінус прив'язані транзакції ──
 const BUCKETS = [['0-7', 0, 7], ['8-14', 8, 14], ['15-30', 15, 30], ['30+', 31, Infinity]]
 

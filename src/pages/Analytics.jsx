@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts'
 import { fmt, fmtInt } from '../lib/fmt'
 import { PL_ORDER, PL_LABELS } from '../lib/articles'
-import { computePL, computeAging, dashboardStats } from '../lib/pl'
+import { computePL, computePLBreakdown, computeAging, dashboardStats } from '../lib/pl'
 
 const NOW = new Date()
 const YEARS = [NOW.getFullYear(), NOW.getFullYear() - 1, NOW.getFullYear() - 2]
@@ -102,8 +102,13 @@ function PLView() {
   const [month, setMonth] = useState(0) // 0 = весь рік
   const [mode, setMode] = useState('fact') // fact | plan | compare
   const [data, setData] = useState(null)
+  const [bd, setBd] = useState(null) // матриця Факт по періодах
 
-  useEffect(() => { setData(null); computePL(year, month || null).then(setData) }, [year, month])
+  useEffect(() => {
+    setData(null); setBd(null)
+    if (mode === 'fact') computePLBreakdown(year, month || null).then(setBd)
+    else computePL(year, month || null).then(setData)
+  }, [year, month, mode])
 
   const rows = useMemo(() => {
     if (!data) return []
@@ -139,7 +144,33 @@ function PLView() {
       </div>
 
       <div className="card">
-        {!data ? <p style={{ color: 'var(--text3)' }}>Завантаження…</p> : (
+        {mode === 'fact' ? (
+          !bd ? <p style={{ color: 'var(--text3)' }}>Завантаження…</p> : (
+            <div className="tbl-wrap" style={{ border: 'none' }}>
+              <table>
+                <thead><tr>
+                  <th style={{ position: 'sticky', left: 0, background: 'var(--surface)', zIndex: 1 }}>Стаття</th>
+                  {bd.cols.map(c => <th key={c.key} style={{ textAlign: 'right' }}>{c.label}</th>)}
+                  <th style={{ textAlign: 'right' }}>Разом</th>
+                </tr></thead>
+                <tbody>
+                  {bd.rows.map((r, i) => {
+                    const style = r.type === 'subtotal' ? { fontWeight: 700, background: 'var(--surface2)' } : r.type === 'header' ? { fontWeight: 600 } : {}
+                    const stickyBg = r.type === 'subtotal' ? 'var(--surface2)' : 'var(--surface)'
+                    return (
+                      <tr key={i} style={style}>
+                        <td style={{ paddingLeft: r.type === 'row' ? 24 : 12, position: 'sticky', left: 0, background: stickyBg, whiteSpace: 'nowrap', zIndex: 1 }}>{r.label}</td>
+                        {bd.cols.map(c => <td key={c.key} style={{ textAlign: 'right', color: (r.cells[c.key] || 0) ? undefined : 'var(--text3)' }}>{(r.cells[c.key] || 0) ? fmtInt(r.cells[c.key]) : '·'}</td>)}
+                        <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmtInt(r.total)}</td>
+                      </tr>
+                    )
+                  })}
+                  {bd.rows.length === 0 && <tr><td colSpan={bd.cols.length + 2} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Немає валідованих даних за період</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          )
+        ) : !data ? <p style={{ color: 'var(--text3)' }}>Завантаження…</p> : (
           <div className="tbl-wrap" style={{ border: 'none' }}>
             <table>
               <thead><tr>
