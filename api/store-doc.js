@@ -3,14 +3,17 @@
 // Браузер лише будує docDef (sync, без зависання getBlob).
 // Body: { kind: 'proposal'|'generated', id, docDef }
 import { getAdmin, verifyUser } from './_lib.js'
+import { createRequire } from 'module'
+
+const require = createRequire(import.meta.url)
 
 let _printer
-async function getPrinter() {
+function getPrinter() {
   if (_printer) return _printer
-  const printerMod = await import('pdfmake/js/printer.js')
+  // require зі статичними рядками → nft трасує й бандлить pdfmake + залежності.
+  const printerMod = require('pdfmake/js/printer.js')
   const PdfPrinter = printerMod.default || printerMod
-  const vfsMod = await import('pdfmake/build/vfs_fonts.js')
-  const vfsImport = vfsMod.default || vfsMod
+  const vfsImport = require('pdfmake/build/vfs_fonts.js')
   const vfs = vfsImport?.pdfMake?.vfs || vfsImport?.vfs || vfsImport
   const fonts = {
     Roboto: {
