@@ -203,7 +203,7 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `015_order_items_vat.sql` | Позиції замовлення: `vat_rate` (розрахунок з/без ПДВ) | ✅ застосовано |
 | `016_order_items_vat_incl.sql` | Позиції: `price_includes_vat` (ПДВ у ціні чи зверху) | ✅ застосовано |
 | `017_documents_generated_link.sql` | Дзеркало згенерованих: `documents.generated_doc_id` | ✅ застосовано |
-| `018_orders_procurement.sql` | Замовлення: `procurement_type` (тендер/пряма) | ⏳ запустити вручну |
+| `018_orders_procurement.sql` | Замовлення: `procurement_type` (тендер/пряма) | ✅ застосовано |
 | `validate.mjs` | Перевірка цілісності (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 
 ---
