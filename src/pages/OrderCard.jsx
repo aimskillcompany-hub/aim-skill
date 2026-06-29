@@ -35,6 +35,12 @@ export default function OrderCard() {
   const [busy, setBusy] = useState('')
   const [confirmDel, setConfirmDel] = useState(false)
   const [msg, setMsg] = useState(null)
+  const [itemsDirty, setItemsDirty] = useState(false)
+
+  const UNSAVED_MSG = 'У вкладці «Товари» є незбережені зміни. Якщо піти — вони втратяться. Продовжити?'
+  const guardLeave = () => !itemsDirty || window.confirm(UNSAVED_MSG)
+  const switchTab = (id) => { if (id !== 'items' && tab === 'items' && !guardLeave()) return; if (id !== 'items') setItemsDirty(false); setTab(id) }
+  const goBack = () => { if (!guardLeave()) return; setItemsDirty(false); navigate('/orders') }
 
   const load = async () => {
     const { data } = await supabase.from('orders').select('*, contractors(name)').eq('id', id).single()
@@ -82,7 +88,7 @@ export default function OrderCard() {
   return (
     <div>
       <div className="page-header" style={{ marginBottom: 12 }}>
-        <button className="btn" onClick={() => navigate('/orders')} style={{ marginBottom: 10 }}><i className="ti ti-arrow-left" /> До реєстру</button>
+        <button className="btn" onClick={goBack} style={{ marginBottom: 10 }}><i className="ti ti-arrow-left" /> До реєстру</button>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
           <div>
             <h1 style={{ marginBottom: 6 }}>Замовлення {o.order_number || o.id.slice(0, 6)}</h1>
@@ -143,7 +149,7 @@ export default function OrderCard() {
 
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 18, overflowX: 'auto' }}>
         {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
+          <button key={t.id} onClick={() => switchTab(t.id)} style={{
             padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
             fontSize: 13, fontWeight: 500, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6,
             borderBottom: tab === t.id ? '2px solid var(--blue)' : '2px solid transparent',
@@ -153,7 +159,7 @@ export default function OrderCard() {
       </div>
 
       {tab === 'details' && <DetailsTab o={o} onSaved={load} />}
-      {tab === 'items' && <ItemsTab o={o} onChange={load} />}
+      {tab === 'items' && <ItemsTab o={o} onChange={load} onDirty={setItemsDirty} />}
       {tab === 'proposals' && <ProposalsTab o={o} onChange={load} />}
       {tab === 'documents' && <DocumentsTab o={o} />}
       {tab === 'suppliers' && <SuppliersTab o={o} />}
@@ -211,23 +217,33 @@ function DetailsTab({ o, onSaved }) {
 // ───────── Товари ─────────
 // Необов'язкові позиції замовлення. product_id прив'язує до довідника
 // (переюз у КП/документах/складі); name — знімок назви.
-function ItemsTab({ o, onChange }) {
+function ItemsTab({ o, onChange, onDirty }) {
   const { user } = useUser()
   const [rows, setRows] = useState(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [showPicker, setShowPicker] = useState(false)
+  const [dirty, setDirty] = useState(false)
+  const markDirty = () => { setDirty(true); onDirty?.(true) }
 
   const load = () => supabase.from('order_items').select('*, contractors(name)').eq('order_id', o.id).order('created_at')
-    .then(({ data }) => setRows((data || []).map(r => ({ ...r, supplier_name: r.contractors?.name || null }))))
+    .then(({ data }) => { setRows((data || []).map(r => ({ ...r, supplier_name: r.contractors?.name || null }))); setDirty(false); onDirty?.(false) })
   useEffect(() => { load() }, [o.id])
 
-  const setRow = (i, patch) => setRows(rs => rs.map((r, j) => j === i ? { ...r, ...patch } : r))
-  const addRow = () => setRows(rs => [...rs, { product_id: null, name: '', unit: 'шт', qty: 1, cost_price: 0, unit_price: 0, vat_rate: 20, price_includes_vat: false, supplier_id: null, supplier_name: null }])
+  // Попередження про незбережені зміни при оновленні/закритті сторінки
+  useEffect(() => {
+    const h = (e) => { if (dirty) { e.preventDefault(); e.returnValue = '' } }
+    window.addEventListener('beforeunload', h)
+    return () => window.removeEventListener('beforeunload', h)
+  }, [dirty])
+
+  const setRow = (i, patch) => { markDirty(); setRows(rs => rs.map((r, j) => j === i ? { ...r, ...patch } : r)) }
+  const addRow = () => { markDirty(); setRows(rs => [...rs, { product_id: null, name: '', unit: 'шт', qty: 1, cost_price: 0, unit_price: 0, vat_rate: 20, price_includes_vat: false, supplier_id: null, supplier_name: null }]) }
   // Підстановка позиції з прайсу: закупівля = ціна прайсу, продаж = роздріб (редагована),
   // запам'ятовуємо постачальника (для авто-формування субзамовлень)
   const addFromPrice = (p) => {
     setShowPicker(false)
+    markDirty()
     setRows(rs => [...rs, {
       product_id: null, name: p.name, unit: p.unit || 'шт', qty: 1,
       cost_price: p.price || 0,
@@ -237,7 +253,7 @@ function ItemsTab({ o, onChange }) {
       supplier_id: p.supplier_id || null, supplier_name: p.contractors?.name || null,
     }])
   }
-  const removeRow = (i) => setRows(rs => rs.filter((_, j) => j !== i))
+  const removeRow = (i) => { markDirty(); setRows(rs => rs.filter((_, j) => j !== i)) }
   // unit_price трактується залежно від price_includes_vat:
   //   true  → ціна вже з ПДВ (прайс); false → ціна без ПДВ, ПДВ зверху (склад)
   const rate = (r) => Number(r.vat_rate) || 0
