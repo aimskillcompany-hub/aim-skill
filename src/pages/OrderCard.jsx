@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { fmt } from '../lib/fmt'
-import { getDocType, previewPdf, generatePdf } from '../lib/docgen'
+import { getDocType, previewPdf, generatePdf, supplierOrderPdf } from '../lib/docgen'
 import { resolveProduct } from '../lib/stockService'
 import DocModal from '../components/DocModal'
 import DocGenModal from '../components/DocGenModal'
@@ -673,6 +673,21 @@ function SuppliersTab({ o }) {
   const setSupplier = async (s, supplier_id) => { await supabase.from('supplier_orders').update({ supplier_id: supplier_id || null }).eq('id', s.id); load() }
   const del = async (s) => { await supabase.from('supplier_orders').delete().eq('id', s.id); load() }
 
+  // PDF «Замовлення постачальнику» для конкретного субзамовлення
+  const genPdf = async (s, download) => {
+    const list = (items[s.id] || []).map(it => ({ name: it.name, quantity: Number(it.qty) || 0, unit: it.unit || 'шт', price: Number(it.cost_price) || 0 }))
+    if (!list.length) { setMsg('У субзамовленні немає позицій.'); return }
+    let supplier = { name: s.contractors?.name || 'Постачальник' }
+    if (s.supplier_id) { const { data } = await supabase.from('contractors').select('*').eq('id', s.supplier_id).single(); if (data) supplier = data }
+    const today = new Date().toISOString().slice(0, 10)
+    try {
+      await supplierOrderPdf(supplier, list, {
+        docNumber: `ЗП-${o.order_number || o.id.slice(0, 6)}-${s.id.slice(0, 4)}`,
+        docDate: today, clientName: o.contractors?.name,
+      }, { download })
+    } catch (e) { setMsg('Помилка формування: ' + e.message) }
+  }
+
   // Сформувати субзамовлення з товарів замовлення: групуємо за постачальником
   const generate = async () => {
     setBusy(true); setMsg(null)
@@ -741,6 +756,8 @@ function SuppliersTab({ o }) {
               <select className="form-input" value={s.status} onChange={e => setStatus(s, e.target.value)} style={{ width: 150, padding: '4px 8px', fontSize: 12 }}>
                 {Object.entries(SUB_STATUS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
               </select>
+              <button className="btn" onClick={() => genPdf(s, false)} title="Переглянути замовлення постачальнику (PDF)"><i className="ti ti-eye" /></button>
+              <button className="btn" onClick={() => genPdf(s, true)} title="Завантажити PDF"><i className="ti ti-file-download" /></button>
               <button className="btn" onClick={() => del(s)} title="Видалити" style={{ color: 'var(--red)' }}><i className="ti ti-trash" /></button>
             </div>
 

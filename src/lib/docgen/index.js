@@ -72,6 +72,15 @@ export async function generateOrderDoc(docTypeKey, contractor, items, options, {
   if (insErr) throw insErr
 }
 
+// ── Замовлення постачальнику (PDF): від компанії, постачальнику, для клієнта ──
+export async function supplierOrderPdf(supplier, items, options, { download } = {}) {
+  const supplierOrder = await import('./templates/supplierOrder')
+  const company = await getCompany()
+  const docDef = supplierOrder.pdf(company, supplier || {}, items || [], options)
+  if (download) downloadPdf(docDef, `Замовлення постачальнику_${options.docNumber}.pdf`)
+  else openPdf(docDef)
+}
+
 // ── Перегляд PDF у новій вкладці (без збереження) ──
 export async function previewPdf(docTypeKey, contractor, items, options) {
   const dt = getDocType(docTypeKey)
