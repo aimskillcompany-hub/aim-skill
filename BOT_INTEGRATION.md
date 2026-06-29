@@ -7,7 +7,56 @@
 
 ---
 
-## 1. Підключення
+## 0. Готовий API-ендпоінт для бота (рекомендовано)
+
+У системі є серверний ендпоінт **`POST /api/bot`** (`api/bot.js`) — бот ходить у нього, а не напряму в базу. Уся бізнес-логіка (номер заявки, перерахунок суми з ПДВ, статуси) — на сервері.
+
+**Базовий URL:** `https://aim-skill.vercel.app/api/bot`
+**Авторизація:** заголовок `Authorization: Bearer <BOT_API_TOKEN>`.
+**Налаштування:** додай у Vercel → Project → Settings → Environment Variables змінну **`BOT_API_TOKEN`** (довільний секретний рядок) і використовуй те саме значення в боті. (Service-ключ Supabase ендпоінт бере з уже наявної env `SUPABASE_SERVICE_KEY`.)
+
+Формат: `POST` з JSON `{ "action": "...", ...параметри }`.
+
+| action | параметри | повертає |
+|---|---|---|
+| `listOrders` | `status?`, `clientId?`, `includeClosed?`, `includeArchived?`, `limit?` | `orders[]` (з `statusLabel`, `client`) |
+| `getOrder` | `orderId` | `order`, `items[]`, `proposals[]`, `supplierOrders[]` |
+| `createOrder` | `type`(trade/service/agent), `client:{name,edrpou?,email?,phone?}` або `clientId`, `description?`, `procurementType?`, `items?[]` | `orderId`, `orderNumber` |
+| `addItems` | `orderId`, `items[]` | `total` |
+| `advance` | `orderId` | `status`, `statusLabel` (наступний статус) |
+| `setStatus` | `orderId`, `status` | `status` |
+| `findClient` | `q` | `clients[]` |
+| `searchPrices` | `q`, `limit?` | `prices[]` (з `supplier`, `price`=закупівля, `retail_price`=продаж) |
+| `overdue` | — | `proposalsOverdue[]`, `paymentsOverdue[]` |
+
+**Структура товару (`items[]`):** `{ name, sku?, unit?, qty, unit_price, vat_rate?(0|20), price_includes_vat?(bool), cost_price?, supplier_id? }`.
+
+**Приклади:**
+```bash
+# Список активних заявок
+curl -X POST https://aim-skill.vercel.app/api/bot \
+  -H "Authorization: Bearer $BOT_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"action":"listOrders"}'
+
+# Створити заявку з товарами
+curl -X POST https://aim-skill.vercel.app/api/bot \
+  -H "Authorization: Bearer $BOT_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"action":"createOrder","type":"trade","client":{"name":"ТОВ Ромашка","edrpou":"12345678"},
+       "items":[{"name":"Ноутбук","qty":2,"unit_price":25000,"vat_rate":20,"price_includes_vat":true}]}'
+
+# Наступний статус
+curl -X POST https://aim-skill.vercel.app/api/bot \
+  -H "Authorization: Bearer $BOT_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"action":"advance","orderId":"<uuid>"}'
+```
+
+Помилки: HTTP 401 (немає/невірний токен), 400 (невідома дія/параметри), 500 (`{error}`).
+
+> Нижче (§1–§7) — довідка по моделі даних і **прямий доступ у базу** (альтернатива, якщо колись знадобиться). Для бота достатньо ендпоінта `/api/bot`.
+
+---
+
+## 1. Підключення (прямий доступ — альтернатива)
 
 - **База:** Supabase (Postgres + REST / JS-клієнт)
 - **URL:** `https://ivhfwdojjaflvdbdmttf.supabase.co`
