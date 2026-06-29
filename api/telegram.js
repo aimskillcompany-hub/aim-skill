@@ -18,6 +18,12 @@ const STATUS_LABEL = {
   client_transferred: 'Клієнт переданий', deal_done: 'Угода закрита',
 }
 const SOURCE_LABEL = { recommendation: 'Рекомендація', tender: 'Тендер', cold: 'Холодний', other: 'Інше' }
+const DOC_TYPE_LABEL = {
+  invoice: 'Рахунок на оплату', waybill: 'Видаткова накладна', serviceAct: 'Акт наданих послуг',
+  incomingWaybill: 'Прихідна накладна', commercialProposal: 'Комерційна пропозиція',
+  loanAgreement: 'Договір фін. допомоги', supplyAgreement: 'Договір поставки',
+  purchaseOrder: 'Замовлення постачальнику', salesOrder: 'Замовлення від клієнта',
+}
 const fmt = (n) => (Number(n) || 0).toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 // ── Telegram API ──
@@ -93,16 +99,36 @@ async function showList(admin, chatId, offset = 0) {
 }
 
 async function showCard(admin, chatId, orderId) {
-  const [{ data: order }, { data: items }, { data: props }, { data: subs }] = await Promise.all([
+  const [{ data: order }, { data: items }, { data: props }, { data: subs }, { data: docs }] = await Promise.all([
     admin.from('orders').select('*, contractors(name)').eq('id', orderId).single(),
     admin.from('order_items').select('name, qty, unit').eq('order_id', orderId).order('created_at'),
     admin.from('commercial_proposals').select('version, status').eq('order_id', orderId).order('version', { ascending: false }),
     admin.from('supplier_orders').select('id').eq('order_id', orderId),
+    admin.from('documents').select('id').eq('order_id', orderId),
   ])
   if (!order) return send(chatId, 'Заявку не знайдено.')
-  return send(chatId, orderCardText(order, items || [], props || [], subs || []), {
-    reply_markup: { inline_keyboard: [[{ text: '🔗 Відкрити в системі', url: orderUrl(orderId) }]] },
-  })
+  const kb = [[{ text: '🔗 Відкрити в системі', url: orderUrl(orderId) }]]
+  if ((docs || []).length) kb.unshift([{ text: `📄 Документи (${docs.length})`, callback_data: `docs:${orderId}` }])
+  return send(chatId, orderCardText(order, items || [], props || [], subs || []), { reply_markup: { inline_keyboard: kb } })
+}
+
+async function showDocs(admin, chatId, orderId) {
+  const { data } = await admin.from('documents').select('id, type, doc_number, file_name, storage_path').eq('order_id', orderId).order('created_at', { ascending: false })
+  if (!data || !data.length) return send(chatId, 'Документів немає.')
+  const rows = data.map(d => [{
+    text: `${DOC_TYPE_LABEL[d.type] || d.type}${d.doc_number ? ` №${d.doc_number}` : ''}${d.storage_path ? '' : ' (без файлу)'}`.slice(0, 60),
+    callback_data: d.storage_path ? `doc:${d.id}` : `nofile:${d.id}`,
+  }])
+  return send(chatId, '<b>Документи заявки:</b>', { reply_markup: { inline_keyboard: rows } })
+}
+
+async function sendDoc(admin, chatId, docId) {
+  const { data: d } = await admin.from('documents').select('storage_path, file_name, type, doc_number').eq('id', docId).single()
+  if (!d?.storage_path) return send(chatId, 'Файл недоступний — відкрийте в системі.')
+  const { data: signed } = await admin.storage.from('documents').createSignedUrl(d.storage_path, 600)
+  if (!signed?.signedUrl) return send(chatId, 'Не вдалося отримати файл.')
+  const caption = `${DOC_TYPE_LABEL[d.type] || d.type}${d.doc_number ? ` №${d.doc_number}` : ''}`
+  return tg('sendDocument', { chat_id: chatId, document: signed.signedUrl, caption })
 }
 
 // ── Головний обробник ──
@@ -134,6 +160,9 @@ export default async function handler(req, res) {
         return res.json({ ok: true })
       }
       if (data.startsWith('order:')) { await showCard(admin, chatId, data.slice(6)); return res.json({ ok: true }) }
+      if (data.startsWith('docs:')) { await showDocs(admin, chatId, data.slice(5)); return res.json({ ok: true }) }
+      if (data.startsWith('doc:')) { await sendDoc(admin, chatId, data.slice(4)); return res.json({ ok: true }) }
+      if (data.startsWith('nofile:')) { await send(chatId, 'Для цього документа файл не збережено — відкрийте заявку в системі.'); return res.json({ ok: true }) }
       if (data.startsWith('page:')) { await showList(admin, chatId, Number(data.slice(5)) || 0); return res.json({ ok: true }) }
       if (data.startsWith('src:')) {
         const s = (await getSession(admin, fromId)) || {}

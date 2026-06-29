@@ -81,6 +81,25 @@ export async function supplierOrderPdf(supplier, items, options, { download } = 
   else openPdf(docDef)
 }
 
+// ── Зберегти PDF згенерованого документа у Storage (щоб був доступний з бота) ──
+// Викликати після saveDoc (browser-side, getBlob у браузері). Best-effort.
+export async function storeGeneratedPdf(generatedDocId, docTypeKey, contractor, items, options) {
+  try {
+    const dt = getDocType(docTypeKey)
+    if (!dt || !generatedDocId) return
+    const enriched = await enrichContractorSigner(contractor)
+    const company = await getCompany()
+    const seller = dt.direction === 'incoming' ? enriched : company
+    const buyer = dt.direction === 'incoming' ? company : enriched
+    const docDef = dt.template.pdf(seller, buyer, cleanItems(items), options)
+    const blob = await getPdfBlob(docDef)
+    const path = `generated/${generatedDocId}.pdf`
+    const { error } = await supabase.storage.from('documents').upload(path, blob, { contentType: 'application/pdf', upsert: true })
+    if (error) return
+    await supabase.from('documents').update({ storage_path: path }).eq('generated_doc_id', generatedDocId)
+  } catch { /* best-effort */ }
+}
+
 // ── Перегляд PDF у новій вкладці (без збереження) ──
 export async function previewPdf(docTypeKey, contractor, items, options) {
   const dt = getDocType(docTypeKey)
