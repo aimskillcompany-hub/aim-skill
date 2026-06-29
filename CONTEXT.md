@@ -208,6 +208,7 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `018_orders_procurement.sql` | Замовлення: `procurement_type` (тендер/пряма) | ✅ застосовано |
 | `019_items_sku.sql` | Код товару: `order_items.sku`, `supplier_order_items.sku` | ⏳ запустити вручну |
 | `020_orders_lead_source.sql` | Бот: `orders.lead_source` + таблиця `bot_sessions` | ⏳ запустити вручну |
+| `021_proposals_storage.sql` | КП: `commercial_proposals.storage_path` (перегляд з бота) | ⏳ запустити вручну |
 | `validate.mjs` | Перевірка цілісності (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 
 ---

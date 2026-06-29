@@ -102,12 +102,13 @@ async function showCard(admin, chatId, orderId) {
   const [{ data: order }, { data: items }, { data: props }, { data: subs }, { data: docs }] = await Promise.all([
     admin.from('orders').select('*, contractors(name)').eq('id', orderId).single(),
     admin.from('order_items').select('name, qty, unit').eq('order_id', orderId).order('created_at'),
-    admin.from('commercial_proposals').select('version, status').eq('order_id', orderId).order('version', { ascending: false }),
+    admin.from('commercial_proposals').select('id, version, status, storage_path').eq('order_id', orderId).order('version', { ascending: false }),
     admin.from('supplier_orders').select('id').eq('order_id', orderId),
     admin.from('documents').select('id').eq('order_id', orderId),
   ])
   if (!order) return send(chatId, 'Заявку не знайдено.')
   const kb = [[{ text: '🔗 Відкрити в системі', url: orderUrl(orderId) }]]
+  if ((props || []).length) kb.unshift([{ text: `📑 КП (${props.length})`, callback_data: `kps:${orderId}` }])
   if ((docs || []).length) kb.unshift([{ text: `📄 Документи (${docs.length})`, callback_data: `docs:${orderId}` }])
   return send(chatId, orderCardText(order, items || [], props || [], subs || []), { reply_markup: { inline_keyboard: kb } })
 }
@@ -120,6 +121,24 @@ async function showDocs(admin, chatId, orderId) {
     callback_data: d.storage_path ? `doc:${d.id}` : `nofile:${d.id}`,
   }])
   return send(chatId, '<b>Документи заявки:</b>', { reply_markup: { inline_keyboard: rows } })
+}
+
+async function showKps(admin, chatId, orderId) {
+  const { data } = await admin.from('commercial_proposals').select('id, version, total, status, storage_path').eq('order_id', orderId).order('version', { ascending: false })
+  if (!data || !data.length) return send(chatId, 'КП немає.')
+  const rows = data.map(p => [{
+    text: `Версія ${p.version} · ${fmt(p.total)} грн · ${p.status}${p.storage_path ? '' : ' (без файлу)'}`.slice(0, 60),
+    callback_data: p.storage_path ? `kp:${p.id}` : 'kpnofile',
+  }])
+  return send(chatId, '<b>Комерційні пропозиції:</b>', { reply_markup: { inline_keyboard: rows } })
+}
+
+async function sendKp(admin, chatId, kpId) {
+  const { data: p } = await admin.from('commercial_proposals').select('storage_path, version').eq('id', kpId).single()
+  if (!p?.storage_path) return send(chatId, 'Файл КП не збережено — відкрийте «Переглянути» в системі.')
+  const { data: signed } = await admin.storage.from('documents').createSignedUrl(p.storage_path, 600)
+  if (!signed?.signedUrl) return send(chatId, 'Не вдалося отримати файл.')
+  return tg('sendDocument', { chat_id: chatId, document: signed.signedUrl, caption: `Комерційна пропозиція, версія ${p.version}` })
 }
 
 async function sendDoc(admin, chatId, docId) {
@@ -163,6 +182,9 @@ export default async function handler(req, res) {
       if (data.startsWith('docs:')) { await showDocs(admin, chatId, data.slice(5)); return res.json({ ok: true }) }
       if (data.startsWith('doc:')) { await sendDoc(admin, chatId, data.slice(4)); return res.json({ ok: true }) }
       if (data.startsWith('nofile:')) { await send(chatId, 'Для цього документа файл не збережено — відкрийте заявку в системі.'); return res.json({ ok: true }) }
+      if (data.startsWith('kps:')) { await showKps(admin, chatId, data.slice(4)); return res.json({ ok: true }) }
+      if (data.startsWith('kp:')) { await sendKp(admin, chatId, data.slice(3)); return res.json({ ok: true }) }
+      if (data === 'kpnofile') { await send(chatId, 'Файл КП не збережено. Відкрийте КП → «Переглянути» в системі, щоб зберегти.'); return res.json({ ok: true }) }
       if (data.startsWith('page:')) { await showList(admin, chatId, Number(data.slice(5)) || 0); return res.json({ ok: true }) }
       if (data.startsWith('src:')) {
         const s = (await getSession(admin, fromId)) || {}

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { fmt } from '../lib/fmt'
-import { getDocType, previewPdf, generatePdf, supplierOrderPdf } from '../lib/docgen'
+import { getDocType, previewPdf, generatePdf, supplierOrderPdf, storeProposalPdf } from '../lib/docgen'
 import { resolveProduct } from '../lib/stockService'
 import DocModal from '../components/DocModal'
 import DocGenModal from '../components/DocGenModal'
@@ -446,8 +446,10 @@ function ProposalsTab({ o, onChange }) {
         return { name: it.name, quantity: Number(it.qty) || 0, unit: 'шт', unitPrice: net, vatRate: vr }
       })
       const today = new Date().toISOString().slice(0, 10)
-      await previewPdf('commercialProposal', c || { name: o.contractors?.name }, items,
-        { docNumber: `КП-${o.order_number || o.id.slice(0, 6)}-v${p.version}`, docDate: today })
+      const opts = { docNumber: `КП-${o.order_number || o.id.slice(0, 6)}-v${p.version}`, docDate: today }
+      await previewPdf('commercialProposal', c || { name: o.contractors?.name }, items, opts)
+      // Зберегти PDF, щоб був доступний з бота (best-effort)
+      storeProposalPdf(p.id, c || { name: o.contractors?.name }, items, opts)
     } catch (e) { alert('Помилка формування: ' + e.message) }
     setGenId(null)
   }

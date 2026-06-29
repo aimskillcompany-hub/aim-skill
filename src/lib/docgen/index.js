@@ -100,6 +100,21 @@ export async function storeGeneratedPdf(generatedDocId, docTypeKey, contractor, 
   } catch { /* best-effort */ }
 }
 
+// ── Зберегти PDF комерційної пропозиції у Storage (для перегляду з бота) ──
+export async function storeProposalPdf(proposalId, contractor, items, options) {
+  try {
+    if (!proposalId) return
+    const cp = await import('./templates/commercialProposal')
+    const company = await getCompany()
+    const docDef = cp.pdf(company, contractor || {}, cleanItems(items), options)
+    const blob = await getPdfBlob(docDef)
+    const path = `proposals/${proposalId}.pdf`
+    const { error } = await supabase.storage.from('documents').upload(path, blob, { contentType: 'application/pdf', upsert: true })
+    if (error) return
+    await supabase.from('commercial_proposals').update({ storage_path: path }).eq('id', proposalId)
+  } catch { /* best-effort */ }
+}
+
 // ── Перегляд PDF у новій вкладці (без збереження) ──
 export async function previewPdf(docTypeKey, contractor, items, options) {
   const dt = getDocType(docTypeKey)
