@@ -3,12 +3,14 @@
 // Браузер лише будує docDef (sync, без зависання getBlob).
 // Body: { kind: 'proposal'|'generated', id, docDef }
 import { getAdmin, verifyUser } from './_lib.js'
-import PdfPrinter from 'pdfmake/js/printer.js'
-import vfsImport from 'pdfmake/build/vfs_fonts.js'
 
 let _printer
-function getPrinter() {
+async function getPrinter() {
   if (_printer) return _printer
+  const printerMod = await import('pdfmake/js/printer.js')
+  const PdfPrinter = printerMod.default || printerMod
+  const vfsMod = await import('pdfmake/build/vfs_fonts.js')
+  const vfsImport = vfsMod.default || vfsMod
   const vfs = vfsImport?.pdfMake?.vfs || vfsImport?.vfs || vfsImport
   const fonts = {
     Roboto: {
@@ -22,10 +24,11 @@ function getPrinter() {
   return _printer
 }
 
-function renderPdf(docDef) {
+async function renderPdf(docDef) {
+  const printer = await getPrinter()
   return new Promise((resolve, reject) => {
     try {
-      const doc = getPrinter().createPdfKitDocument(docDef)
+      const doc = printer.createPdfKitDocument(docDef)
       const chunks = []
       doc.on('data', (c) => chunks.push(c))
       doc.on('end', () => resolve(Buffer.concat(chunks)))
