@@ -113,11 +113,30 @@ export async function computePLBreakdown(year, month) {
     } else {
       const sec = secByLevel[key]
       if (!sec || !sec.rows.length) return
-      out.push({ type: 'header', label: PL_LABELS[key], cells: sec.totals, total: sec.total })
-      sec.rows.forEach(r => out.push({ type: 'row', label: r.name, cells: r.cells, total: r.total }))
+      out.push({ type: 'header', label: PL_LABELS[key], level: key, articles: sec.rows.map(r => r.name), cells: sec.totals, total: sec.total })
+      sec.rows.forEach(r => out.push({ type: 'row', label: r.name, level: key, articles: [r.name], cells: r.cells, total: r.total }))
     }
   })
   return { cols, rows: out }
+}
+
+// ── Drill-down: транзакції, що формують клітинку P&L ──
+export async function plDrill(year, month, bucketKey, articleNames) {
+  let from, to
+  if (month) {
+    if (bucketKey === 'total') ({ from, to } = periodRange(year, month))
+    else { const d = `${year}-${pad(month)}-${pad(Number(bucketKey))}`; from = d; to = d }
+  } else {
+    if (bucketKey === 'total') ({ from, to } = periodRange(year, null))
+    else { const m = Number(bucketKey); from = `${year}-${pad(m)}-01`; to = `${year}-${pad(m)}-${pad(monthEnd(year, m))}` }
+  }
+  const { data } = await supabase.from('bank_transactions')
+    .select('id, date, amount, article, direction, counterparty, contractor_id, description')
+    .eq('is_validated', true).eq('is_ignored', false)
+    .gte('date', from).lte('date', to)
+    .in('article', articleNames)
+    .order('date', { ascending: true })
+  return (data || []).filter(t => t.direction !== 'Інше' && t.direction !== 'ПФД')
 }
 
 // ── Борги (Aging): по документах мінус прив'язані транзакції ──

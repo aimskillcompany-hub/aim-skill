@@ -3,11 +3,20 @@ import { useNavigate } from 'react-router-dom'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts'
 import { fmt, fmtInt } from '../lib/fmt'
 import { PL_ORDER, PL_LABELS } from '../lib/articles'
-import { computePL, computePLBreakdown, computeAging, dashboardStats } from '../lib/pl'
+import { computePL, computePLBreakdown, computeAging, dashboardStats, plDrill } from '../lib/pl'
 
 const NOW = new Date()
 const YEARS = [NOW.getFullYear(), NOW.getFullYear() - 1, NOW.getFullYear() - 2]
 const MONTHS = ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Лип', 'Сер', 'Вер', 'Жов', 'Лис', 'Гру']
+
+// Доходи зеленуваті, витрати червонуваті
+const GREEN = '#15803D', RED = '#DC2626'
+const INCOME_LEVELS = new Set(['revenue', 'other_income'])
+function plColor(r, v) {
+  if (!v) return 'var(--text3)'
+  if (r.type === 'subtotal') return v >= 0 ? GREEN : RED
+  return INCOME_LEVELS.has(r.level) ? GREEN : RED
+}
 
 export default function Analytics() {
   const [tab, setTab] = useState('overview')
@@ -103,6 +112,7 @@ function PLView() {
   const [mode, setMode] = useState('fact') // fact | plan | compare
   const [data, setData] = useState(null)
   const [bd, setBd] = useState(null) // матриця Факт по періодах
+  const [drill, setDrill] = useState(null) // { articles, bucketKey, title }
 
   useEffect(() => {
     setData(null); setBd(null)
@@ -160,8 +170,26 @@ function PLView() {
                     return (
                       <tr key={i} style={style}>
                         <td style={{ paddingLeft: r.type === 'row' ? 24 : 12, position: 'sticky', left: 0, background: stickyBg, whiteSpace: 'nowrap', zIndex: 1 }}>{r.label}</td>
-                        {bd.cols.map(c => <td key={c.key} style={{ textAlign: 'right', color: (r.cells[c.key] || 0) ? undefined : 'var(--text3)' }}>{(r.cells[c.key] || 0) ? fmtInt(r.cells[c.key]) : '·'}</td>)}
-                        <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmtInt(r.total)}</td>
+                        {bd.cols.map(c => {
+                          const v = r.cells[c.key] || 0
+                          const clickable = r.articles && v
+                          return (
+                            <td key={c.key}
+                              onClick={clickable ? () => setDrill({ articles: r.articles, bucketKey: c.key, title: `${r.label} · ${c.label} ${month ? MONTHS[month - 1] : ''} ${year}` }) : undefined}
+                              style={{ textAlign: 'right', color: plColor(r, v), cursor: clickable ? 'pointer' : 'default', textDecoration: clickable ? 'underline dotted' : 'none', textUnderlineOffset: 3 }}>
+                              {v ? fmtInt(v) : '·'}
+                            </td>
+                          )
+                        })}
+                        {(() => {
+                          const clickable = r.articles && r.total
+                          return (
+                            <td onClick={clickable ? () => setDrill({ articles: r.articles, bucketKey: 'total', title: `${r.label} · Разом ${year}` }) : undefined}
+                              style={{ textAlign: 'right', fontWeight: 700, color: plColor(r, r.total), cursor: clickable ? 'pointer' : 'default', textDecoration: clickable ? 'underline dotted' : 'none', textUnderlineOffset: 3 }}>
+                              {fmtInt(r.total)}
+                            </td>
+                          )
+                        })()}
                       </tr>
                     )
                   })}
@@ -185,10 +213,11 @@ function PLView() {
                   const dev = (r.fact || 0) - (r.plan || 0)
                   const pct = r.plan ? Math.round((r.fact / r.plan) * 100) : null
                   const style = r.subtotal ? { fontWeight: 700, background: 'var(--surface2)' } : r.header ? { fontWeight: 600 } : {}
+                  const factColor = !r.fact ? undefined : r.subtotal ? (r.fact >= 0 ? GREEN : RED) : r.sign > 0 ? GREEN : r.sign < 0 ? RED : undefined
                   return (
                     <tr key={i} style={style}>
                       <td style={{ paddingLeft: r.header || r.subtotal ? 12 : 28 }}>{r.label}</td>
-                      {(mode === 'fact' || mode === 'compare') && <td style={{ textAlign: 'right' }}>{fmtInt(r.fact)}</td>}
+                      {(mode === 'fact' || mode === 'compare') && <td style={{ textAlign: 'right', color: factColor }}>{fmtInt(r.fact)}</td>}
                       {(mode === 'plan' || mode === 'compare') && <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{fmtInt(r.plan)}</td>}
                       {mode === 'compare' && <td style={{ textAlign: 'right', color: dev >= 0 ? 'var(--green)' : 'var(--red)' }}>{dev >= 0 ? '+' : ''}{fmtInt(dev)}</td>}
                       {mode === 'compare' && <td style={{ textAlign: 'right', color: 'var(--text3)', fontSize: 12 }}>{pct == null ? '—' : pct + '%'}</td>}
@@ -200,7 +229,43 @@ function PLView() {
             </table>
           </div>
         )}
-        <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>У P&L враховуються лише підтверджені (is_validated) транзакції.</p>
+        <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>У P&L враховуються лише підтверджені (is_validated) транзакції. Натисніть на цифру, щоб побачити операції.</p>
+      </div>
+      {drill && <DrillModal drill={drill} year={year} month={month || null} onClose={() => setDrill(null)} />}
+    </div>
+  )
+}
+
+// ───────── Drill-down: операції за клітинкою P&L ─────────
+function DrillModal({ drill, year, month, onClose }) {
+  const [rows, setRows] = useState(null)
+  useEffect(() => { plDrill(year, month, drill.bucketKey, drill.articles).then(setRows) }, [drill])
+  const total = (rows || []).reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0)
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', zIndex: 1000, overflow: 'auto' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: 12, padding: 20, width: '100%', maxWidth: 700, boxShadow: '0 10px 40px rgba(0,0,0,.3)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, gap: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>{drill.title}</div>
+          <button className="btn" onClick={onClose} style={{ flexShrink: 0 }}><i className="ti ti-x" /></button>
+        </div>
+        {!rows ? <p style={{ color: 'var(--text3)' }}>Завантаження…</p> : rows.length === 0 ? <p style={{ color: 'var(--text3)' }}>Немає транзакцій</p> : (
+          <div className="tbl-wrap" style={{ border: 'none', maxHeight: '62vh', overflow: 'auto' }}>
+            <table>
+              <thead><tr><th>Дата</th><th>Контрагент</th><th>Стаття</th><th style={{ textAlign: 'right' }}>Сума</th></tr></thead>
+              <tbody>
+                {rows.map(t => (
+                  <tr key={t.id}>
+                    <td style={{ whiteSpace: 'nowrap' }}>{t.date}</td>
+                    <td><div className="trunc" title={t.counterparty || ''}>{t.counterparty || '—'}</div>{t.description && <div className="trunc" style={{ fontSize: 11, color: 'var(--text3)' }}>{t.description}</div>}</td>
+                    <td><div className="trunc">{t.article}</div></td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: t.direction === 'Доходи' ? GREEN : RED }}>{fmtInt(Math.abs(Number(t.amount) || 0))}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot><tr style={{ fontWeight: 700 }}><td colSpan={3}>Разом ({rows.length})</td><td style={{ textAlign: 'right' }}>{fmtInt(total)}</td></tr></tfoot>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )
