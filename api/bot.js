@@ -17,6 +17,8 @@ const STATUS_LABEL = {
   client_transferred: 'Клієнт переданий', deal_done: 'Угода закрита',
 }
 const VALID_TYPES = ['trade', 'service', 'agent']
+const APP_URL = process.env.APP_URL || 'https://aim-skill.vercel.app'
+const orderUrl = (id) => `${APP_URL}/#/orders/${id}`
 const nextStatus = (type, status) => {
   const f = FLOW[type] || FLOW.trade
   const i = f.indexOf(status)
@@ -74,9 +76,11 @@ export default async function handler(req, res) {
         if (p.status) q = q.eq('status', p.status)
         else if (!p.includeClosed) q = q.neq('status', 'closed')
         if (p.clientId) q = q.eq('client_id', p.clientId)
-        const { data, error } = await q.order('created_at', { ascending: false }).limit(p.limit || 50)
+        const limit = Math.min(p.limit || 10, 50)
+        const offset = p.offset || 0
+        const { data, error } = await q.order('created_at', { ascending: false }).range(offset, offset + limit - 1)
         if (error) throw error
-        return res.json({ ok: true, orders: (data || []).map(o => ({ ...o, statusLabel: STATUS_LABEL[o.status] || o.status, client: o.contractors?.name })) })
+        return res.json({ ok: true, orders: (data || []).map(o => ({ ...o, statusLabel: STATUS_LABEL[o.status] || o.status, client: o.contractors?.name })), hasMore: (data || []).length === limit })
       }
 
       // ── Картка заявки ──
@@ -88,7 +92,7 @@ export default async function handler(req, res) {
           admin.from('supplier_orders').select('*, contractors(name)').eq('order_id', p.orderId),
         ])
         if (!order) return res.status(404).json({ error: 'Замовлення не знайдено' })
-        return res.json({ ok: true, order: { ...order, statusLabel: STATUS_LABEL[order.status] || order.status }, items: items || [], proposals: props || [], supplierOrders: subs || [] })
+        return res.json({ ok: true, order: { ...order, statusLabel: STATUS_LABEL[order.status] || order.status, url: orderUrl(order.id) }, items: items || [], proposals: props || [], supplierOrders: subs || [] })
       }
 
       // ── Створити заявку ──
@@ -97,10 +101,15 @@ export default async function handler(req, res) {
         const clientId = await findOrCreateClient(admin, p.client || { id: p.clientId })
         const { count } = await admin.from('orders').select('id', { count: 'exact', head: true })
         const order_number = String((count || 0) + 1).padStart(4, '0')
+        // Опис: потреба клієнта + контактна особа
+        const descParts = []
+        if (p.description) descParts.push(p.description)
+        if (p.contact) descParts.push(`Контакт: ${p.contact}`)
         const { data: order, error } = await admin.from('orders').insert({
           order_number, type, status: 'new', client_id: clientId,
-          total: 0, description: p.description || null,
+          total: 0, description: descParts.join('\n') || null,
           procurement_type: p.procurementType || 'direct',
+          lead_source: p.leadSource || null,
         }).select('id, order_number').single()
         if (error) throw error
         if (Array.isArray(p.items) && p.items.length) {
@@ -113,7 +122,26 @@ export default async function handler(req, res) {
           })))
           await recalcTotal(admin, order.id)
         }
-        return res.json({ ok: true, orderId: order.id, orderNumber: order.order_number })
+        return res.json({ ok: true, orderId: order.id, orderNumber: order.order_number, url: orderUrl(order.id) })
+      }
+
+      // ── Пошук заявок (за номером або клієнтом) ──
+      case 'searchOrders': {
+        const term = (p.q || '').trim()
+        if (term.length < 1) return res.json({ ok: true, orders: [] })
+        // спершу за номером
+        let { data } = await admin.from('orders').select('id, order_number, type, status, total, contractors(name)')
+          .ilike('order_number', `%${term}%`).limit(10)
+        if (!data || !data.length) {
+          // потім за назвою клієнта
+          const { data: cl } = await admin.from('contractors').select('id').ilike('name', `%${term}%`).limit(20)
+          const ids = (cl || []).map(c => c.id)
+          if (ids.length) {
+            const r = await admin.from('orders').select('id, order_number, type, status, total, contractors(name)').in('client_id', ids).order('created_at', { ascending: false }).limit(20)
+            data = r.data
+          }
+        }
+        return res.json({ ok: true, orders: (data || []).map(o => ({ ...o, statusLabel: STATUS_LABEL[o.status] || o.status, client: o.contractors?.name })) })
       }
 
       // ── Додати товари ──
