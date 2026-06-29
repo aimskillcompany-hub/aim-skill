@@ -244,14 +244,14 @@ function ItemsTab({ o, onChange, onDirty }) {
   }, [dirty])
 
   const setRow = (i, patch) => { markDirty(); setRows(rs => rs.map((r, j) => j === i ? { ...r, ...patch } : r)) }
-  const addRow = () => { markDirty(); setRows(rs => [...rs, { product_id: null, name: '', unit: 'шт', qty: 1, cost_price: 0, unit_price: 0, vat_rate: 20, price_includes_vat: false, supplier_id: null, supplier_name: null }]) }
+  const addRow = () => { markDirty(); setRows(rs => [...rs, { product_id: null, name: '', sku: '', unit: 'шт', qty: 1, cost_price: 0, unit_price: 0, vat_rate: 20, price_includes_vat: false, supplier_id: null, supplier_name: null }]) }
   // Підстановка позиції з прайсу: закупівля = ціна прайсу, продаж = роздріб (редагована),
   // запам'ятовуємо постачальника (для авто-формування субзамовлень)
   const addFromPrice = (p) => {
     setShowPicker(false)
     markDirty()
     setRows(rs => [...rs, {
-      product_id: null, name: p.name, unit: p.unit || 'шт', qty: 1,
+      product_id: null, name: p.name, sku: p.sku || '', unit: p.unit || 'шт', qty: 1,
       cost_price: p.price || 0,
       unit_price: (p.retail_price > 0 ? p.retail_price : p.price) || 0,
       vat_rate: p.vat_rate != null ? Number(p.vat_rate) : 20,
@@ -286,7 +286,7 @@ function ItemsTab({ o, onChange, onDirty }) {
         product_id = res?.productId || null
       }
       resolved.push({
-        order_id: o.id, product_id, name: r.name.trim(), unit: r.unit || 'шт',
+        order_id: o.id, product_id, name: r.name.trim(), sku: r.sku || null, unit: r.unit || 'шт',
         qty: Number(r.qty) || 0, cost_price: Number(r.cost_price) || 0,
         unit_price: Number(r.unit_price) || 0, vat_rate: Number(r.vat_rate) || 0, price_includes_vat: !!r.price_includes_vat, total: rowTotal(r), supplier_id: r.supplier_id || null,
       })
@@ -317,6 +317,7 @@ function ItemsTab({ o, onChange, onDirty }) {
       {rows.length > 0 && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 6, fontSize: 11, color: 'var(--text3)', fontWeight: 600 }}>
           <div style={{ flex: '2 1 220px', minWidth: 180 }}>Товар</div>
+          <div style={{ width: 100 }}>Код</div>
           <div style={{ width: 80 }}>К-сть</div>
           <div style={{ width: 70 }}>Од.</div>
           <div style={{ width: 110 }}>Закупівля</div>
@@ -341,12 +342,13 @@ function ItemsTab({ o, onChange, onDirty }) {
               onChange={(name) => setRow(i, { name, product_id: null })}
               onSelect={(p) => p._new
                 ? setRow(i, { name: p.name, product_id: null })
-                : setRow(i, { name: p.name, product_id: p.id, unit: p.unit || 'шт', cost_price: r.cost_price || p.buy_price || 0, unit_price: r.unit_price || p.sell_price || 0, price_includes_vat: false, supplier_id: null, supplier_name: null })}
+                : setRow(i, { name: p.name, product_id: p.id, sku: p.sku || r.sku || '', unit: p.unit || 'шт', cost_price: r.cost_price || p.buy_price || 0, unit_price: r.unit_price || p.sell_price || 0, price_includes_vat: false, supplier_id: null, supplier_name: null })}
             />
             {r.supplier_name
               ? <div style={{ fontSize: 11, color: 'var(--blue)', marginTop: 2 }}><i className="ti ti-tag" /> {r.supplier_name}</div>
               : r.product_id && <div style={{ fontSize: 11, color: 'var(--green)', marginTop: 2 }}><i className="ti ti-link" /> з довідника</div>}
           </div>
+          <input className="form-input" placeholder="Код" value={r.sku || ''} onChange={e => setRow(i, { sku: e.target.value })} style={{ width: 100 }} />
           <input className="form-input" type="number" placeholder="К-сть" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} style={{ width: 80 }} />
           <input className="form-input" placeholder="од." value={r.unit || ''} onChange={e => setRow(i, { unit: e.target.value })} style={{ width: 70 }} />
           <input className="form-input" type="number" placeholder="Закупівля" value={r.cost_price ?? ''} onChange={e => setRow(i, { cost_price: e.target.value })} style={{ width: 110 }} />
@@ -697,7 +699,7 @@ function SuppliersTab({ o }) {
 
   // PDF «Замовлення постачальнику» для конкретного субзамовлення
   const genPdf = async (s, download) => {
-    const list = (items[s.id] || []).map(it => ({ name: it.name, quantity: Number(it.qty) || 0, unit: it.unit || 'шт', price: Number(it.cost_price) || 0 }))
+    const list = (items[s.id] || []).map(it => ({ name: it.name, sku: it.sku, quantity: Number(it.qty) || 0, unit: it.unit || 'шт', price: Number(it.cost_price) || 0 }))
     if (!list.length) { setMsg('У субзамовленні немає позицій.'); return }
     let supplier = { name: s.contractors?.name || 'Постачальник' }
     if (s.supplier_id) { const { data } = await supabase.from('contractors').select('*').eq('id', s.supplier_id).single(); if (data) supplier = data }
@@ -715,7 +717,7 @@ function SuppliersTab({ o }) {
   // Сформувати субзамовлення з товарів замовлення: групуємо за постачальником
   const generate = async () => {
     setBusy(true); setMsg(null)
-    const { data: oi } = await supabase.from('order_items').select('supplier_id, product_id, name, unit, qty, cost_price').eq('order_id', o.id)
+    const { data: oi } = await supabase.from('order_items').select('supplier_id, product_id, name, sku, unit, qty, cost_price').eq('order_id', o.id)
     const groups = {}
     for (const it of oi || []) {
       if (!(Number(it.qty) > 0)) continue
@@ -732,7 +734,7 @@ function SuppliersTab({ o }) {
         order_id: o.id, supplier_id: key === '__none__' ? null : key, total, status: 'new', source: 'auto',
       }).select('id').single()
       if (so?.id) await supabase.from('supplier_order_items').insert(list.map(it => ({
-        supplier_order_id: so.id, product_id: it.product_id || null, name: it.name, unit: it.unit, qty: Number(it.qty) || 0, cost_price: Number(it.cost_price) || 0,
+        supplier_order_id: so.id, product_id: it.product_id || null, name: it.name, sku: it.sku || null, unit: it.unit, qty: Number(it.qty) || 0, cost_price: Number(it.cost_price) || 0,
       })))
     }
     setBusy(false); load()

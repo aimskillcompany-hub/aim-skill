@@ -23,7 +23,7 @@ const PROCUREMENT = { tender: 'Тендер', direct: 'Пряма закупів
 
 export function pdf(company, supplier, items, options) {
   const { docNumber, docDate, client, procurementType, notes } = options
-  const rows = items.map((it, i) => ({ n: i + 1, name: it.name || '', u: it.unit || 'шт', q: parseFloat(it.quantity) || 0 }))
+  const rows = items.map((it, i) => ({ n: i + 1, name: it.name || '', sku: it.sku || '', u: it.unit || 'шт', q: parseFloat(it.quantity) || 0 }))
 
   return {
     pageSize: 'A4',
@@ -88,13 +88,14 @@ export function pdf(company, supplier, items, options) {
       {
         table: {
           headerRows: 1,
-          widths: [22, '*', 50, 60],
+          widths: [22, 90, '*', 44, 54],
           body: [
-            ['№', 'Найменування', 'Од.', 'К-сть'].map(t => ({
+            ['№', 'Код', 'Найменування', 'Од.', 'К-сть'].map(t => ({
               text: t, fontSize: 6.5, bold: true, color: '#FFF', fillColor: DARK, alignment: 'center', margin: [0, 3, 0, 3],
             })),
             ...rows.map(r => [
               { text: r.n, alignment: 'center', fontSize: 8.5, color: G2 },
+              { text: r.sku || '—', fontSize: 8, color: G1 },
               { text: r.name, fontSize: 8.5, color: BLACK },
               { text: r.u, alignment: 'center', fontSize: 8, color: G2 },
               { text: r.q, alignment: 'center', fontSize: 9, bold: true, color: BLACK },
