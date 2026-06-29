@@ -40,24 +40,18 @@ const clearSession = (admin, tgId) => admin.from('bot_sessions').delete().eq('te
 
 const isAllowed = (id) => ALLOWED.length === 0 ? false : ALLOWED.includes(String(id))
 
-// ── Створення заявки ──
-async function findOrCreateClient(admin, { name, phone }) {
-  const { data: byName } = await admin.from('contractors').select('id').ilike('name', name).maybeSingle()
-  if (byName) return byName.id
-  const isEmail = phone && phone.includes('@')
-  const { data } = await admin.from('contractors').insert({
-    name, is_client: true, email: isEmail ? phone : null, phone: isEmail ? null : (phone || null),
-  }).select('id').single()
-  return data.id
-}
-
+// ── Створення заявки (клієнта НЕ створюємо автоматично) ──
 async function createOrder(admin, s) {
-  const clientId = await findOrCreateClient(admin, { name: s.company, phone: s.phone })
   const { count } = await admin.from('orders').select('id', { count: 'exact', head: true })
   const order_number = String((count || 0) + 1).padStart(4, '0')
-  const desc = [s.need, s.contact ? `Контакт: ${s.contact}` : null, s.phone ? `Тел./email: ${s.phone}` : null].filter(Boolean).join('\n')
+  const desc = [
+    s.need,
+    !s.clientId && s.company ? `Клієнт (не призначений): ${s.company}` : null,
+    s.contact ? `Контакт: ${s.contact}` : null,
+    s.phone ? `Тел./email: ${s.phone}` : null,
+  ].filter(Boolean).join('\n')
   const { data } = await admin.from('orders').insert({
-    order_number, type: 'trade', status: 'new', client_id: clientId,
+    order_number, type: 'trade', status: 'new', client_id: s.clientId || null,
     total: 0, description: desc || null, lead_source: s.source || null,
   }).select('id, order_number').single()
   return data
@@ -129,6 +123,16 @@ export default async function handler(req, res) {
       await answer(cq.id)
 
       if (data === 'cancel') { await clearSession(admin, fromId); await send(chatId, 'Скасовано.', { reply_markup: MAIN_KB }); return res.json({ ok: true }) }
+      if (data.startsWith('client:')) {
+        const s = (await getSession(admin, fromId)) || {}
+        if (s.step !== 'pickClient') { await send(chatId, 'Сесія застаріла. Почніть знову: ➕ Нова заявка'); return res.json({ ok: true }) }
+        const v = data.slice(7)
+        if (v === 'none') { s.clientId = null }
+        else { s.clientId = v; const { data: c } = await admin.from('contractors').select('name').eq('id', v).maybeSingle(); if (c) s.company = c.name }
+        s.step = 'contact'; await setSession(admin, fromId, s)
+        await send(chatId, '👤 <b>Контактна особа</b> (або «-»):', { reply_markup: cancelKb })
+        return res.json({ ok: true })
+      }
       if (data.startsWith('order:')) { await showCard(admin, chatId, data.slice(6)); return res.json({ ok: true }) }
       if (data.startsWith('page:')) { await showList(admin, chatId, Number(data.slice(5)) || 0); return res.json({ ok: true }) }
       if (data.startsWith('src:')) {
@@ -137,10 +141,12 @@ export default async function handler(req, res) {
         s.source = data.slice(4)
         const order = await createOrder(admin, s)
         await clearSession(admin, fromId)
-        await send(chatId, `✅ Заявку <b>${order.order_number}</b> створено.`, { reply_markup: MAIN_KB })
+        const note = s.clientId ? '' : '\n⚠️ Клієнта не призначено — оберіть/додайте в системі.'
+        await send(chatId, `✅ Заявку <b>${order.order_number}</b> створено.${note}`, { reply_markup: MAIN_KB })
         // Сповіщення власнику
         if (OWNER && String(OWNER) !== String(fromId)) {
-          const txt = [`🆕 <b>Нова заявка ${order.order_number}</b>`, `Клієнт: ${s.company}`,
+          const txt = [`🆕 <b>Нова заявка ${order.order_number}</b>`,
+            `Клієнт: ${s.company}${s.clientId ? '' : ' (не призначений у базі)'}`,
             s.contact ? `Контакт: ${s.contact}` : null, s.phone ? `Тел./email: ${s.phone}` : null,
             s.need ? `Потреба: ${s.need}` : null, `Джерело: ${SOURCE_LABEL[s.source] || s.source}`,
             `Від: ${cq.from.first_name || ''} @${cq.from.username || fromId}`].filter(Boolean).join('\n')
@@ -197,7 +203,21 @@ export default async function handler(req, res) {
       await send(chatId, '<b>Знайдено:</b>', { reply_markup: { inline_keyboard: rows } })
       return res.json({ ok: true })
     }
-    if (s?.step === 'company') { s.company = text; s.step = 'contact'; await setSession(admin, fromId, s); await send(chatId, '👤 <b>Контактна особа</b> (або «-»):', { reply_markup: cancelKb }); return res.json({ ok: true }) }
+    if (s?.step === 'company') {
+      s.company = text
+      const { data: matches } = await admin.from('contractors').select('id, name, edrpou').ilike('name', `%${text}%`).eq('is_client', true).limit(8)
+      if (matches && matches.length) {
+        s.step = 'pickClient'; await setSession(admin, fromId, s)
+        const rows = matches.map(c => [{ text: `${c.name}${c.edrpou ? ` (${c.edrpou})` : ''}`.slice(0, 60), callback_data: `client:${c.id}` }])
+        rows.push([{ text: '➕ Новий клієнт (вкажу в системі)', callback_data: 'client:none' }])
+        rows.push([{ text: '✖️ Скасувати', callback_data: 'cancel' }])
+        await send(chatId, `Знайдено в базі за «${text}». Оберіть клієнта або «Новий»:`, { reply_markup: { inline_keyboard: rows } })
+      } else {
+        s.clientId = null; s.step = 'contact'; await setSession(admin, fromId, s)
+        await send(chatId, 'Збігів у базі немає — клієнта призначиш у системі.\n👤 <b>Контактна особа</b> (або «-»):', { reply_markup: cancelKb })
+      }
+      return res.json({ ok: true })
+    }
     if (s?.step === 'contact') { s.contact = text === '-' ? '' : text; s.step = 'phone'; await setSession(admin, fromId, s); await send(chatId, '📞 <b>Телефон або email</b> (або «-»):', { reply_markup: cancelKb }); return res.json({ ok: true }) }
     if (s?.step === 'phone') { s.phone = text === '-' ? '' : text; s.step = 'need'; await setSession(admin, fromId, s); await send(chatId, '📝 <b>Що потрібно клієнту?</b> (вільний текст):', { reply_markup: cancelKb }); return res.json({ ok: true }) }
     if (s?.step === 'need') { s.need = text; s.step = 'source'; await setSession(admin, fromId, s); await send(chatId, '📍 <b>Звідки контакт?</b>', { reply_markup: sourceKb }); return res.json({ ok: true }) }

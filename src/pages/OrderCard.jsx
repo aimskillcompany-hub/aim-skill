@@ -9,6 +9,7 @@ import DocModal from '../components/DocModal'
 import DocGenModal from '../components/DocGenModal'
 import ProductSelect from '../components/ui/ProductSelect'
 import PricePickerModal from '../components/ui/PricePickerModal'
+import ContractorSelect from '../components/ui/ContractorSelect'
 import {
   ORDER_TYPES, TYPE_COLORS, flowFor, stepFor, statusLabel, nextActionLabel,
   nextStatus, isOpen, needsAction, proposalOverdue,
@@ -171,7 +172,7 @@ export default function OrderCard() {
 
 // ───────── Деталі ─────────
 function DetailsTab({ o, onSaved }) {
-  const [form, setForm] = useState({ total: o.total, description: o.description || '', status: o.status, procurement_type: o.procurement_type || 'direct' })
+  const [form, setForm] = useState({ total: o.total, description: o.description || '', status: o.status, procurement_type: o.procurement_type || 'direct', client_id: o.client_id || null, clientName: o.contractors?.name || '' })
   const [itemsSum, setItemsSum] = useState(null)
   const [hasItems, setHasItems] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -186,7 +187,7 @@ function DetailsTab({ o, onSaved }) {
 
   const effectiveTotal = hasItems ? (itemsSum || 0) : (Number(form.total) || 0)
   const save = async () => {
-    const upd = { total: effectiveTotal, description: form.description || null, status: form.status, procurement_type: form.procurement_type }
+    const upd = { total: effectiveTotal, description: form.description || null, status: form.status, procurement_type: form.procurement_type, client_id: form.client_id || null }
     if (form.status === 'closed' && !o.closed_at) upd.closed_at = new Date().toISOString()
     await supabase.from('orders').update(upd).eq('id', o.id)
     setSaved(true); setTimeout(() => setSaved(false), 2000); onSaved()
@@ -194,6 +195,18 @@ function DetailsTab({ o, onSaved }) {
   return (
     <div className="card">
       <div className="form-grid">
+        <div className="form-group full"><label>Клієнт{!form.client_id && <span style={{ color: 'var(--red)', marginLeft: 6, fontSize: 12 }}>не призначений</span>}</label>
+          <ContractorSelect value={form.clientName} placeholder="Оберіть клієнта або введіть назву"
+            onChange={(name) => setForm(f => ({ ...f, clientName: name }))}
+            onContractorSelect={async (c) => {
+              if (c._new) {
+                const { data } = await supabase.from('contractors').insert({ name: c.name, is_client: true }).select('id').single()
+                setForm(f => ({ ...f, client_id: data?.id || null, clientName: c.name }))
+              } else {
+                setForm(f => ({ ...f, client_id: c.id, clientName: c.name }))
+              }
+            }} />
+        </div>
         <div className="form-group"><label>Сума</label>
           {hasItems
             ? <><input className="form-input" value={`${fmt(itemsSum || 0)} грн`} disabled style={{ background: 'var(--surface2)' }} /><div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>Рахується з цін продажу товарів (вкладка «Товари»)</div></>
