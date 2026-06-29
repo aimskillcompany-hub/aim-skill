@@ -102,17 +102,17 @@ export async function storeGeneratedPdf(generatedDocId, docTypeKey, contractor, 
 
 // ── Зберегти PDF комерційної пропозиції у Storage (для перегляду з бота) ──
 export async function storeProposalPdf(proposalId, contractor, items, options) {
-  try {
-    if (!proposalId) return
-    const cp = await import('./templates/commercialProposal')
-    const company = await getCompany()
-    const docDef = cp.pdf(company, contractor || {}, cleanItems(items), options)
-    const blob = await getPdfBlob(docDef)
-    const path = `proposals/${proposalId}.pdf`
-    const { error } = await supabase.storage.from('documents').upload(path, blob, { contentType: 'application/pdf', upsert: true })
-    if (error) return
-    await supabase.from('commercial_proposals').update({ storage_path: path }).eq('id', proposalId)
-  } catch { /* best-effort */ }
+  if (!proposalId) return { ok: false, error: 'no id' }
+  const cp = await import('./templates/commercialProposal')
+  const company = await getCompany()
+  const docDef = cp.pdf(company, contractor || {}, cleanItems(items), options)
+  const blob = await getPdfBlob(docDef)
+  const path = `proposals/${proposalId}.pdf`
+  const { error: upErr } = await supabase.storage.from('documents').upload(path, blob, { contentType: 'application/pdf', upsert: true })
+  if (upErr) throw new Error('upload: ' + upErr.message)
+  const { error: updErr } = await supabase.from('commercial_proposals').update({ storage_path: path }).eq('id', proposalId)
+  if (updErr) throw new Error('update: ' + updErr.message)
+  return { ok: true }
 }
 
 // ── Перегляд PDF у новій вкладці (без збереження) ──

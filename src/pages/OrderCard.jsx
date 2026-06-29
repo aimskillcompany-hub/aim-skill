@@ -434,6 +434,7 @@ function ProposalsTab({ o, onChange }) {
       })
       const today = new Date().toISOString().slice(0, 10)
       storeProposalPdf(p.id, c || { name: o.contractors?.name }, items, { docNumber: `КП-${o.order_number || o.id.slice(0, 6)}-v${p.version}`, docDate: today })
+        .catch(e => alert('КП збережено, але файл НЕ створено: ' + e.message))
     }
     setEditing(null); load()
   }
@@ -461,8 +462,9 @@ function ProposalsTab({ o, onChange }) {
       const today = new Date().toISOString().slice(0, 10)
       const opts = { docNumber: `КП-${o.order_number || o.id.slice(0, 6)}-v${p.version}`, docDate: today }
       await previewPdf('commercialProposal', c || { name: o.contractors?.name }, items, opts)
-      // Зберегти PDF, щоб був доступний з бота (best-effort)
-      storeProposalPdf(p.id, c || { name: o.contractors?.name }, items, opts)
+      // Зберегти PDF, щоб був доступний з бота
+      try { await storeProposalPdf(p.id, c || { name: o.contractors?.name }, items, opts) }
+      catch (e2) { alert('КП показано, але файл НЕ збережено: ' + e2.message) }
     } catch (e) { alert('Помилка формування: ' + e.message) }
     setGenId(null)
   }
