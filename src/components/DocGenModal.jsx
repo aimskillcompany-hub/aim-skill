@@ -155,11 +155,6 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
             }
           }
         }
-        // Вихідні (рахунок/накладна/акт) — зберегти PDF у Storage (доступний з бота)
-        if (!isIncoming && savedDoc?.id) {
-          const { storeGeneratedPdf } = await import('../lib/docgen')
-          await storeGeneratedPdf(savedDoc.id, docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress })
-        }
       }
       // Автоматично створити договір якщо є номер і такого ще немає
       if (contractNum && !selectedContract && contractor?.id) {

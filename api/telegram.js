@@ -118,20 +118,18 @@ async function showCard(admin, chatId, orderId) {
 async function showDocs(admin, chatId, orderId) {
   const { data } = await admin.from('documents').select('id, type, doc_number, file_name, storage_path').eq('order_id', orderId).order('created_at', { ascending: false })
   if (!data || !data.length) return send(chatId, 'Документів немає.')
-  const rows = data.map(d => [{
-    text: `${DOC_TYPE_LABEL[d.type] || d.type}${d.doc_number ? ` №${d.doc_number}` : ''}${d.storage_path ? '' : ' (без файлу)'}`.slice(0, 60),
-    callback_data: d.storage_path ? `doc:${d.id}` : `nofile:${d.id}`,
-  }])
+  const rows = data.map(d => [d.storage_path
+    ? { text: `${DOC_TYPE_LABEL[d.type] || d.type}${d.doc_number ? ` №${d.doc_number}` : ''}`.slice(0, 60), callback_data: `doc:${d.id}` }
+    : { text: `${DOC_TYPE_LABEL[d.type] || d.type}${d.doc_number ? ` №${d.doc_number}` : ''} · відкрити в системі`.slice(0, 60), url: orderUrl(orderId) }])
   return send(chatId, '<b>Документи заявки:</b>', { reply_markup: { inline_keyboard: rows } })
 }
 
 async function showKps(admin, chatId, orderId) {
   const { data } = await admin.from('commercial_proposals').select('id, version, total, status, storage_path').eq('order_id', orderId).order('version', { ascending: false })
   if (!data || !data.length) return send(chatId, 'КП немає.')
-  const rows = data.map(p => [{
-    text: `Версія ${p.version} · ${fmt(p.total)} грн · ${p.status}${p.storage_path ? '' : ' (без файлу)'}`.slice(0, 60),
-    callback_data: p.storage_path ? `kp:${p.id}` : 'kpnofile',
-  }])
+  const rows = data.map(p => [p.storage_path
+    ? { text: `Версія ${p.version} · ${fmt(p.total)} грн · ${p.status}`.slice(0, 60), callback_data: `kp:${p.id}` }
+    : { text: `Версія ${p.version} · ${fmt(p.total)} грн · відкрити в системі`.slice(0, 60), url: orderUrl(orderId) }])
   return send(chatId, '<b>Комерційні пропозиції:</b>', { reply_markup: { inline_keyboard: rows } })
 }
 

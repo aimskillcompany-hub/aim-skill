@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { fmt } from '../lib/fmt'
-import { getDocType, previewPdf, generatePdf, supplierOrderPdf, storeProposalPdf } from '../lib/docgen'
+import { getDocType, previewPdf, generatePdf, supplierOrderPdf } from '../lib/docgen'
 import { resolveProduct } from '../lib/stockService'
 import DocModal from '../components/DocModal'
 import DocGenModal from '../components/DocGenModal'
@@ -421,21 +421,8 @@ function ProposalsTab({ o, onChange }) {
 
   const saveDraft = async () => {
     const total = itemsTotal(editing.items)
-    const { data: p } = await supabase.from('commercial_proposals')
+    await supabase.from('commercial_proposals')
       .insert({ order_id: o.id, version: editing.version, items: editing.items, total, status: 'draft' })
-      .select('id, version').single()
-    // Авто-збереження PDF КП (щоб був доступний з бота), best-effort
-    if (p) {
-      const { data: c } = await supabase.from('contractors').select('*').eq('id', o.client_id).maybeSingle()
-      const items = editing.items.map(it => {
-        const gross = Number(it.price) || 0, vr = Number(it.vat) || 0
-        const net = it.incl ? (vr > 0 ? gross / (1 + vr / 100) : gross) : gross
-        return { name: it.name, quantity: Number(it.qty) || 0, unit: 'шт', unitPrice: net, vatRate: vr }
-      })
-      const today = new Date().toISOString().slice(0, 10)
-      storeProposalPdf(p.id, c || { name: o.contractors?.name }, items, { docNumber: `КП-${o.order_number || o.id.slice(0, 6)}-v${p.version}`, docDate: today })
-        .catch(e => alert('КП збережено, але файл НЕ створено: ' + e.message))
-    }
     setEditing(null); load()
   }
   const send = async (p) => {
@@ -462,9 +449,6 @@ function ProposalsTab({ o, onChange }) {
       const today = new Date().toISOString().slice(0, 10)
       const opts = { docNumber: `КП-${o.order_number || o.id.slice(0, 6)}-v${p.version}`, docDate: today }
       await previewPdf('commercialProposal', c || { name: o.contractors?.name }, items, opts)
-      // Зберегти PDF, щоб був доступний з бота
-      try { await storeProposalPdf(p.id, c || { name: o.contractors?.name }, items, opts) }
-      catch (e2) { alert('КП показано, але файл НЕ збережено: ' + e2.message) }
     } catch (e) { alert('Помилка формування: ' + e.message) }
     setGenId(null)
   }
