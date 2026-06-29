@@ -119,6 +119,7 @@ export default async function handler(req, res) {
     const info = {
       hasToken: !!TOKEN, tokenLen: (TOKEN || '').length, tokenTail: (TOKEN || '').slice(-6),
       allowed: ALLOWED, owner: OWNER || null, hasFetch: typeof fetch,
+      tokenEnc: encodeURIComponent(TOKEN || ''),
     }
     if (req.body.testSend && OWNER) {
       info.sendResult = await tg('sendMessage', { chat_id: OWNER, text: 'diag: тест надсилання зсередини функції' })
