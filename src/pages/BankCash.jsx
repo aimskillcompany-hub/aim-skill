@@ -77,6 +77,7 @@ function TransactionsTab({ accounts, onChange }) {
   const [openDoc, setOpenDoc] = useState(null)
   const [linkMsg, setLinkMsg] = useState(null)
   const [linking, setLinking] = useState(false)
+  const [showAdd, setShowAdd] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -199,6 +200,7 @@ function TransactionsTab({ accounts, onChange }) {
           <option value="all">Всі рахунки</option>
           {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
         </select>
+        <button className="btn btn-primary" onClick={() => setShowAdd(true)}><i className="ti ti-plus" /> Додати операцію</button>
         {status === 'unconfirmed' && rows.length > 0 && <button className="btn" onClick={autoFill}><i className="ti ti-wand" /> Авто-класифікація</button>}
         <button className="btn" onClick={autoLink} disabled={linking} title="Прив'язати документи за контрагентом + сумою + датою (±15 днів)"><i className="ti ti-link" /> {linking ? 'Прив\'язую…' : 'Авто-прив\'язка'}</button>
         <span style={{ marginLeft: 'auto', color: 'var(--text3)', fontSize: 13 }}>{rows.length} транзакцій</span>
@@ -249,9 +251,93 @@ function TransactionsTab({ accounts, onChange }) {
         </div>
       </div>
 
+      {showAdd && <AddTxModal accounts={accounts} grouped={grouped} onClose={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); load(); onChange() }} />}
       {editTx && <TxModal tx={editTx} grouped={grouped} onClose={() => setEditTx(null)} onSaved={() => { setEditTx(null); load(); onChange() }} onLink={() => { setLinkTx(editTx); setEditTx(null) }} onOpenDoc={(d) => { setOpenDoc(d); setEditTx(null) }} />}
       {linkTx && <TxLinkModal tx={linkTx} onClose={() => setLinkTx(null)} onSaved={() => { setLinkTx(null); load() }} />}
       {openDoc && <DocModal existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => { setOpenDoc(null); load() }} />}
+    </div>
+  )
+}
+
+// ───────── Ручне додавання операції (надходження / витрата) ─────────
+function AddTxModal({ accounts, grouped, onClose, onSaved }) {
+  const { user } = useUser()
+  const today = new Date().toISOString().slice(0, 10)
+  const [f, setF] = useState({
+    account_id: accounts[0]?.id || '', date: today, kind: 'in', amount: '',
+    direction: 'Доходи', article: '', contractor_id: null, cname: '', description: '',
+  })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const set = (k, v) => setF(s => ({ ...s, [k]: v }))
+  // при зміні типу — підставити логічний напрям за замовчуванням
+  const setKind = (kind) => setF(s => ({ ...s, kind, direction: kind === 'in' ? 'Доходи' : 'Витрати' }))
+
+  const save = async () => {
+    const sum = Number(f.amount)
+    if (!f.account_id) { setError('Оберіть рахунок'); return }
+    if (!sum || sum <= 0) { setError('Вкажіть суму'); return }
+    setBusy(true); setError(null)
+    const arts = Object.values(grouped).flat()
+    const article = arts.find(a => a.name === f.article)
+    const signed = f.kind === 'in' ? Math.abs(sum) : -Math.abs(sum)
+    const { error } = await supabase.from('bank_transactions').insert({
+      account_id: f.account_id, date: f.date, amount: signed,
+      direction: f.direction || null, article: f.article || null, article_id: article?.id || null,
+      contractor_id: f.contractor_id || null, counterparty: f.cname || null, description: f.description || null,
+      is_validated: true, is_ignored: false, imported_by: user?.id || null,
+    })
+    setBusy(false)
+    if (error) { setError(error.message); return }
+    onSaved()
+  }
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+        <div className="modal-header"><h2>Додати операцію</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
+        <div className="form-grid">
+          <div className="form-group"><label>Рахунок *</label>
+            <select className="form-input" value={f.account_id} onChange={e => set('account_id', e.target.value)}>
+              <option value="">—</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
+          <div className="form-group"><label>Дата</label><input className="form-input" type="date" value={f.date} onChange={e => set('date', e.target.value)} /></div>
+          <div className="form-group"><label>Тип</label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button className="btn" onClick={() => setKind('in')} style={{ flex: 1, background: f.kind === 'in' ? 'var(--green)' : 'var(--surface)', color: f.kind === 'in' ? '#fff' : 'var(--text2)', border: '1px solid var(--border)' }}>Надходження</button>
+              <button className="btn" onClick={() => setKind('out')} style={{ flex: 1, background: f.kind === 'out' ? 'var(--red)' : 'var(--surface)', color: f.kind === 'out' ? '#fff' : 'var(--text2)', border: '1px solid var(--border)' }}>Витрата</button>
+            </div>
+          </div>
+          <div className="form-group"><label>Сума *</label><input className="form-input" type="number" min="0" step="0.01" value={f.amount} onChange={e => set('amount', e.target.value)} /></div>
+          <div className="form-group"><label>Напрям (P&L)</label>
+            <select className="form-input" value={f.direction} onChange={e => set('direction', e.target.value)}>
+              {DIRECTIONS.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div className="form-group"><label>Стаття</label>
+            <select className="form-input" value={f.article} onChange={e => set('article', e.target.value)}>
+              <option value="">—</option>
+              {Object.entries(grouped).map(([type, arts]) => (
+                <optgroup key={type} label={TYPE_LABELS[type] || type}>
+                  {arts.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+          <div className="form-group full"><label>Контрагент</label>
+            <ContractorSelect value={f.cname} placeholder="Контрагент (необов'язково)"
+              onChange={(v) => set('cname', v)}
+              onContractorSelect={(c) => setF(s => ({ ...s, contractor_id: c.id, cname: c.name }))} />
+          </div>
+          <div className="form-group full"><label>Опис</label><input className="form-input" value={f.description} onChange={e => set('description', e.target.value)} /></div>
+        </div>
+        {error && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 10 }}>{error}</div>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+          <button className="btn" onClick={onClose}>Скасувати</button>
+          <button className="btn btn-primary" onClick={save} disabled={busy}><i className="ti ti-check" /> {busy ? '…' : 'Зберегти'}</button>
+        </div>
+      </div>
     </div>
   )
 }

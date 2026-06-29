@@ -64,7 +64,7 @@ async function createOrder(admin, s) {
 }
 
 // ── Тексти ──
-const MAIN_KB = { keyboard: [['➕ Нова заявка'], ['📋 Заявки', '🔍 Пошук']], resize_keyboard: true }
+const MAIN_KB = { keyboard: [['➕ Нова заявка'], ['📋 Заявки', '🔍 Пошук'], ['💵 Операція (каса/банк)']], resize_keyboard: true }
 const cancelKb = { inline_keyboard: [[{ text: '✖️ Скасувати', callback_data: 'cancel' }]] }
 const sourceKb = {
   inline_keyboard: [
@@ -168,6 +168,21 @@ export default async function handler(req, res) {
       await answer(cq.id)
 
       if (data === 'cancel') { await clearSession(admin, fromId); await send(chatId, 'Скасовано.', { reply_markup: MAIN_KB }); return res.json({ ok: true }) }
+      // ── Операція (каса/банк): вибір рахунку / типу ──
+      if (data.startsWith('opacc:')) {
+        const s = (await getSession(admin, fromId)) || {}
+        if (s.flow !== 'op') { await send(chatId, 'Сесія застаріла. Почніть знову: 💵 Операція'); return res.json({ ok: true }) }
+        s.account_id = data.slice(6); s.step = 'op_type'; await setSession(admin, fromId, s)
+        await send(chatId, 'Тип операції:', { reply_markup: { inline_keyboard: [[{ text: '➕ Надходження', callback_data: 'optype:in' }, { text: '➖ Витрата', callback_data: 'optype:out' }]] } })
+        return res.json({ ok: true })
+      }
+      if (data.startsWith('optype:')) {
+        const s = (await getSession(admin, fromId)) || {}
+        if (s.flow !== 'op') { await send(chatId, 'Сесія застаріла.'); return res.json({ ok: true }) }
+        s.kind = data.slice(7); s.step = 'op_amount'; await setSession(admin, fromId, s)
+        await send(chatId, '💰 Введіть <b>суму</b> (грн):', { reply_markup: cancelKb })
+        return res.json({ ok: true })
+      }
       if (data.startsWith('client:')) {
         const s = (await getSession(admin, fromId)) || {}
         if (s.step !== 'pickClient') { await send(chatId, 'Сесія застаріла. Почніть знову: ➕ Нова заявка'); return res.json({ ok: true }) }
@@ -237,6 +252,13 @@ export default async function handler(req, res) {
       await send(chatId, '🔍 Введіть <b>номер заявки</b> або <b>назву клієнта</b>:', { reply_markup: cancelKb })
       return res.json({ ok: true })
     }
+    if (text === '💵 Операція (каса/банк)' || text === '/op') {
+      const { data: accs } = await admin.from('accounts').select('id, name').eq('is_active', true).order('sort_order')
+      if (!accs || !accs.length) { await send(chatId, 'Немає рахунків у системі.'); return res.json({ ok: true }) }
+      await setSession(admin, fromId, { flow: 'op', step: 'op_account' })
+      await send(chatId, 'Оберіть <b>рахунок</b>:', { reply_markup: { inline_keyboard: [...accs.map(a => [{ text: a.name, callback_data: `opacc:${a.id}` }]), [{ text: '✖️ Скасувати', callback_data: 'cancel' }]] } })
+      return res.json({ ok: true })
+    }
 
     // Майстер за станом
     const s = await getSession(admin, fromId)
@@ -254,6 +276,27 @@ export default async function handler(req, res) {
       await send(chatId, '<b>Знайдено:</b>', { reply_markup: { inline_keyboard: rows } })
       return res.json({ ok: true })
     }
+    // Майстер операції (каса/банк)
+    if (s?.flow === 'op' && s.step === 'op_amount') {
+      const sum = Number((text || '').replace(',', '.').replace(/\s/g, ''))
+      if (!sum || sum <= 0) { await send(chatId, 'Невірна сума. Введіть число, напр. 1500:', { reply_markup: cancelKb }); return res.json({ ok: true }) }
+      s.amount = sum; s.step = 'op_desc'; await setSession(admin, fromId, s)
+      await send(chatId, '📝 Опис операції (або «-»):', { reply_markup: cancelKb })
+      return res.json({ ok: true })
+    }
+    if (s?.flow === 'op' && s.step === 'op_desc') {
+      const signed = s.kind === 'in' ? Math.abs(s.amount) : -Math.abs(s.amount)
+      const { error } = await admin.from('bank_transactions').insert({
+        account_id: s.account_id, date: new Date().toISOString().slice(0, 10), amount: signed,
+        direction: s.kind === 'in' ? 'Доходи' : 'Витрати', description: text === '-' ? null : text,
+        is_validated: true, is_ignored: false,
+      })
+      await clearSession(admin, fromId)
+      if (error) { await send(chatId, 'Помилка: ' + error.message, { reply_markup: MAIN_KB }); return res.json({ ok: true }) }
+      await send(chatId, `✅ Операцію збережено: ${s.kind === 'in' ? '➕' : '➖'} ${Math.abs(s.amount)} грн.`, { reply_markup: MAIN_KB })
+      return res.json({ ok: true })
+    }
+
     if (s?.step === 'company') {
       s.company = text
       const { data: matches } = await admin.from('contractors').select('id, name, edrpou').ilike('name', `%${text}%`).eq('is_client', true).limit(8)
