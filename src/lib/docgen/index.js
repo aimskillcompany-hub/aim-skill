@@ -1,7 +1,7 @@
 // ── Document Generation Public API ──
 import { getCompany } from '../companyConfig'
 import { getDocType } from './templates/registry'
-import { downloadPdf, openPdf, getPdfBlob } from './pdfBuilder'
+import { downloadPdf, openPdf, getPdfBlob, getPdfBase64 } from './pdfBuilder'
 import { downloadXlsx } from './xlsxBuilder'
 import { calcTotals } from './formatUtils'
 import { supabase } from '../supabase'
@@ -92,27 +92,31 @@ export async function storeGeneratedPdf(generatedDocId, docTypeKey, contractor, 
     const seller = dt.direction === 'incoming' ? enriched : company
     const buyer = dt.direction === 'incoming' ? company : enriched
     const docDef = dt.template.pdf(seller, buyer, cleanItems(items), options)
-    const blob = await getPdfBlob(docDef)
-    const path = `generated/${generatedDocId}.pdf`
-    const { error } = await supabase.storage.from('documents').upload(path, blob, { contentType: 'application/pdf', upsert: true })
-    if (error) return
-    await supabase.from('documents').update({ storage_path: path }).eq('generated_doc_id', generatedDocId)
+    const base64 = await getPdfBase64(docDef)
+    await uploadPdfViaApi('generated', generatedDocId, base64)
   } catch { /* best-effort */ }
 }
 
 // ── Зберегти PDF комерційної пропозиції у Storage (для перегляду з бота) ──
+async function uploadPdfViaApi(kind, id, base64) {
+  const { data } = await supabase.auth.getSession()
+  const token = data?.session?.access_token || ''
+  const r = await fetch('/api/store-doc', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ kind, id, base64 }),
+  })
+  const j = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(j.error || `store failed (${r.status})`)
+  return j
+}
+
 export async function storeProposalPdf(proposalId, contractor, items, options) {
   if (!proposalId) return { ok: false, error: 'no id' }
   const cp = await import('./templates/commercialProposal')
   const company = await getCompany()
   const docDef = cp.pdf(company, contractor || {}, cleanItems(items), options)
-  const blob = await getPdfBlob(docDef)
-  const path = `proposals/${proposalId}.pdf`
-  const { error: upErr } = await supabase.storage.from('documents').upload(path, blob, { contentType: 'application/pdf', upsert: true })
-  if (upErr) throw new Error('upload: ' + upErr.message)
-  const { error: updErr } = await supabase.from('commercial_proposals').update({ storage_path: path }).eq('id', proposalId)
-  if (updErr) throw new Error('update: ' + updErr.message)
-  return { ok: true }
+  const base64 = await getPdfBase64(docDef)
+  return uploadPdfViaApi('proposal', proposalId, base64)
 }
 
 // ── Перегляд PDF у новій вкладці (без збереження) ──

@@ -20,3 +20,12 @@ export function getPdfBlob(docDefinition, timeoutMs = 20000) {
     } catch (e) { clearTimeout(t); reject(e) }
   })
 }
+
+export function getPdfBase64(docDefinition, timeoutMs = 20000) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('Таймаут генерації PDF')), timeoutMs)
+    try {
+      pdfMake.createPdf(docDefinition).getBase64((b64) => { clearTimeout(t); resolve(b64) })
+    } catch (e) { clearTimeout(t); reject(e) }
+  })
+}
