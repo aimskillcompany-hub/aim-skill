@@ -76,12 +76,14 @@ const sourceKb = {
 function orderCardText(order, items, props, subs) {
   const lines = [
     `<b>Заявка ${order.order_number}</b> — ${STATUS_LABEL[order.status] || order.status}`,
-    `Клієнт: ${order.contractors?.name || '—'}`,
+    `Клієнт: ${order.contractors?.name || 'не призначений'}`,
     order.lead_source ? `Джерело: ${SOURCE_LABEL[order.lead_source] || order.lead_source}` : null,
     `Сума: ${fmt(order.total)} грн`,
     `Дата: ${(order.created_at || '').slice(0, 10)}`,
-    order.description ? `\n${order.description}` : null,
   ].filter(Boolean)
+  // опис без службового рядка «Клієнт (не призначений): …»
+  const desc = (order.description || '').split('\n').filter(l => !l.trim().startsWith('Клієнт (не призначений)')).join('\n').trim()
+  if (desc) lines.push(`\n${desc}`)
   if (items.length) lines.push('\n<b>Товари:</b>\n' + items.map(i => `• ${i.name} — ${i.qty} ${i.unit || 'шт'}`).join('\n'))
   if (props.length) lines.push(`\nКП: версія ${props[0].version} (${props[0].status})`)
   if (subs.length) lines.push(`Субзамовлень: ${subs.length}`)
