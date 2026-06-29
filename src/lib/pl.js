@@ -62,10 +62,11 @@ export async function computePL(year, month) {
 // ── P&L Факт по періодах (матриця): рік → місяці, місяць → дні ──
 const MONTHS_UA = ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Лип', 'Сер', 'Вер', 'Жов', 'Лис', 'Гру']
 
-export async function computePLBreakdown(year, month) {
+export async function computePLBreakdown(year, month, opts = {}) {
+  const includePending = !!opts.includePending
   const { from, to } = periodRange(year, month)
   const [{ data: txs }, { data: arts }] = await Promise.all([
-    supabase.from('bank_transactions').select('amount, article, direction, date').eq('is_validated', true).eq('is_ignored', false).gte('date', from).lte('date', to),
+    supabase.from('bank_transactions').select('amount, article, direction, date, is_validated').eq('is_ignored', false).gte('date', from).lte('date', to),
     supabase.from('articles').select('name, type, pl_level, sort_order'),
   ])
   const meta = {}; (arts || []).forEach(a => { meta[a.name] = a })
@@ -75,53 +76,64 @@ export async function computePLBreakdown(year, month) {
     : MONTHS_UA.map((m, i) => ({ key: String(i + 1), label: m }))
   const bucketOf = (d) => month ? String(Number(d.slice(8, 10))) : String(Number(d.slice(5, 7)))
 
-  const fact = {} // article -> { bucketKey: sum }
+  const factV = {}, factP = {} // article -> { bucketKey: sum }: V=підтверджені, P=непідтверджені (превʼю)
   ;(txs || []).forEach(t => {
     if (!t.article || t.direction === 'Інше' || t.direction === 'ПФД') return
+    if (!t.is_validated && !includePending) return
+    const tgt = t.is_validated ? factV : factP
     const b = bucketOf(t.date)
-    ;(fact[t.article] ||= {})[b] = (fact[t.article][b] || 0) + Math.abs(Number(t.amount) || 0)
+    ;(tgt[t.article] ||= {})[b] = (tgt[t.article][b] || 0) + Math.abs(Number(t.amount) || 0)
   })
+  const sumCells = (m) => Object.values(m || {}).reduce((s, v) => s + v, 0)
 
   const levels = PL_ORDER.filter(k => !k.startsWith('_'))
-  const names = Object.keys(fact)
+  const names = includePending ? [...new Set([...Object.keys(factV), ...Object.keys(factP)])] : Object.keys(factV)
   const secByLevel = {}
   levels.forEach(level => {
     const rows = names
       .filter(n => (meta[n]?.pl_level || (meta[n]?.type === 'income' ? 'revenue' : 'opex')) === level)
-      .map(n => ({ name: n, cells: fact[n] || {}, total: Object.values(fact[n] || {}).reduce((s, v) => s + v, 0), sort: meta[n]?.sort_order || 999 }))
-      .filter(r => r.total).sort((a, b) => a.sort - b.sort)
-    const totals = {}; cols.forEach(c => { totals[c.key] = rows.reduce((s, r) => s + (r.cells[c.key] || 0), 0) })
-    secByLevel[level] = { rows, totals, total: rows.reduce((s, r) => s + r.total, 0) }
+      .map(n => ({ name: n, cells: factV[n] || {}, total: sumCells(factV[n]), pending: factP[n] || {}, pendingTotal: sumCells(factP[n]), sort: meta[n]?.sort_order || 999 }))
+      .filter(r => r.total || r.pendingTotal).sort((a, b) => a.sort - b.sort)
+    const totals = {}, pendingTotals = {}
+    cols.forEach(c => {
+      totals[c.key] = rows.reduce((s, r) => s + (r.cells[c.key] || 0), 0)
+      pendingTotals[c.key] = rows.reduce((s, r) => s + (r.pending[c.key] || 0), 0)
+    })
+    secByLevel[level] = { rows, totals, pendingTotals, total: rows.reduce((s, r) => s + r.total, 0), pendingTotal: rows.reduce((s, r) => s + r.pendingTotal, 0) }
   })
 
-  const st = (lvl, key) => secByLevel[lvl] ? (key === 'total' ? secByLevel[lvl].total : (secByLevel[lvl].totals[key] || 0)) : 0
-  const wf = (kind, key) => {
-    const rev = st('revenue', key), cogs = st('cogs', key), opex = st('opex', key), oth = st('other_income', key), below = st('below_line', key)
+  const st = (src, lvl, key) => {
+    const s = secByLevel[lvl]; if (!s) return 0
+    if (key === 'total') return src === 'p' ? s.pendingTotal : s.total
+    return (src === 'p' ? s.pendingTotals : s.totals)[key] || 0
+  }
+  const wf = (src, kind, key) => {
+    const rev = st(src, 'revenue', key), cogs = st(src, 'cogs', key), opex = st(src, 'opex', key), oth = st(src, 'other_income', key), below = st(src, 'below_line', key)
     if (kind === 'gp') return rev - cogs
     if (kind === 'ebit') return rev - cogs - opex
     if (kind === 'np') return rev - cogs - opex + oth
     if (kind === 'net') return rev - cogs - opex + oth - below
     return 0
   }
-  const cellsFor = (fn) => { const c = {}; cols.forEach(col => { c[col.key] = fn(col.key) }); return c }
+  const cellsFor = (src, kind) => { const c = {}; cols.forEach(col => { c[col.key] = wf(src, kind, col.key) }); return c }
 
   const out = []
   PL_ORDER.forEach(key => {
     if (key.startsWith('_')) {
       const kind = { _gp: 'gp', _ebit: 'ebit', _np: 'np', _net: 'net' }[key]
-      out.push({ type: 'subtotal', label: PL_LABELS[key], cells: cellsFor(k => wf(kind, k)), total: wf(kind, 'total') })
+      out.push({ type: 'subtotal', label: PL_LABELS[key], cells: cellsFor('v', kind), total: wf('v', kind, 'total'), pending: cellsFor('p', kind), pendingTotal: wf('p', kind, 'total') })
     } else {
       const sec = secByLevel[key]
       if (!sec || !sec.rows.length) return
-      out.push({ type: 'header', label: PL_LABELS[key], level: key, articles: sec.rows.map(r => r.name), cells: sec.totals, total: sec.total })
-      sec.rows.forEach(r => out.push({ type: 'row', label: r.name, level: key, articles: [r.name], cells: r.cells, total: r.total }))
+      out.push({ type: 'header', label: PL_LABELS[key], level: key, articles: sec.rows.map(r => r.name), cells: sec.totals, total: sec.total, pending: sec.pendingTotals, pendingTotal: sec.pendingTotal })
+      sec.rows.forEach(r => out.push({ type: 'row', label: r.name, level: key, articles: [r.name], cells: r.cells, total: r.total, pending: r.pending, pendingTotal: r.pendingTotal }))
     }
   })
-  return { cols, rows: out }
+  return { cols, rows: out, hasPending: Object.keys(factP).length > 0 }
 }
 
 // ── Drill-down: транзакції, що формують клітинку P&L ──
-export async function plDrill(year, month, bucketKey, articleNames) {
+export async function plDrill(year, month, bucketKey, articleNames, opts = {}) {
   let from, to
   if (month) {
     if (bucketKey === 'total') ({ from, to } = periodRange(year, month))
@@ -132,7 +144,7 @@ export async function plDrill(year, month, bucketKey, articleNames) {
   }
   const { data } = await supabase.from('bank_transactions')
     .select('id, date, amount, article, direction, counterparty, contractor_id, description')
-    .eq('is_validated', true).eq('is_ignored', false)
+    .eq('is_validated', opts.validated === false ? false : true).eq('is_ignored', false)
     .gte('date', from).lte('date', to)
     .in('article', articleNames)
     .order('date', { ascending: true })

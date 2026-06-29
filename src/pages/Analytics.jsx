@@ -10,12 +10,33 @@ const YEARS = [NOW.getFullYear(), NOW.getFullYear() - 1, NOW.getFullYear() - 2]
 const MONTHS = ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Лип', 'Сер', 'Вер', 'Жов', 'Лис', 'Гру']
 
 // Доходи зеленуваті, витрати червонуваті
-const GREEN = '#15803D', RED = '#DC2626'
+const GREEN = '#15803D', RED = '#DC2626', AMBER = '#B45309'
 const INCOME_LEVELS = new Set(['revenue', 'other_income'])
 function plColor(r, v) {
   if (!v) return 'var(--text3)'
   if (r.type === 'subtotal') return v >= 0 ? GREEN : RED
   return INCOME_LEVELS.has(r.level) ? GREEN : RED
+}
+
+// Клітинка матриці: основне (підтверджене) число + дрібне превʼю непідтверджених
+function Cell({ r, v, pv, bucketKey, colLabel, setDrill, showPending, bold }) {
+  const clickable = r.articles && v
+  return (
+    <>
+      <span
+        onClick={clickable ? () => setDrill({ articles: r.articles, bucketKey, title: `${r.label} · ${colLabel}`, validated: true }) : undefined}
+        style={{ color: plColor(r, v), fontWeight: bold ? 700 : undefined, cursor: clickable ? 'pointer' : 'default', textDecoration: clickable ? 'underline dotted' : 'none', textUnderlineOffset: 3 }}>
+        {v ? fmtInt(v) : '·'}
+      </span>
+      {showPending && pv ? (
+        <div title="Непідтверджені (не входять у підсумок)"
+          onClick={r.articles ? () => setDrill({ articles: r.articles, bucketKey, title: `${r.label} · ${colLabel} (непідтверджені)`, validated: false }) : undefined}
+          style={{ fontSize: 10, color: AMBER, cursor: r.articles ? 'pointer' : 'default', marginTop: 1 }}>
+          ~{fmtInt(pv)}
+        </div>
+      ) : null}
+    </>
+  )
 }
 
 export default function Analytics() {
@@ -112,13 +133,14 @@ function PLView() {
   const [mode, setMode] = useState('fact') // fact | plan | compare
   const [data, setData] = useState(null)
   const [bd, setBd] = useState(null) // матриця Факт по періодах
-  const [drill, setDrill] = useState(null) // { articles, bucketKey, title }
+  const [drill, setDrill] = useState(null) // { articles, bucketKey, title, validated }
+  const [showPending, setShowPending] = useState(false) // превʼю непідтверджених
 
   useEffect(() => {
     setData(null); setBd(null)
-    if (mode === 'fact') computePLBreakdown(year, month || null).then(setBd)
+    if (mode === 'fact') computePLBreakdown(year, month || null, { includePending: showPending }).then(setBd)
     else computePL(year, month || null).then(setData)
-  }, [year, month, mode])
+  }, [year, month, mode, showPending])
 
   const rows = useMemo(() => {
     if (!data) return []
@@ -146,6 +168,12 @@ function PLView() {
           <option value={0}>Весь рік</option>
           {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
         </select>
+        {mode === 'fact' && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: AMBER, cursor: 'pointer', userSelect: 'none' }}>
+            <input type="checkbox" checked={showPending} onChange={e => setShowPending(e.target.checked)} />
+            + непідтверджені (превʼю)
+          </label>
+        )}
         <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
           {[['fact', 'Факт'], ['plan', 'План'], ['compare', 'Порівняння']].map(([k, lbl]) => (
             <button key={k} onClick={() => setMode(k)} className="btn" style={{ background: mode === k ? 'var(--blue)' : 'var(--surface)', color: mode === k ? '#fff' : 'var(--text2)', border: '1px solid var(--border)' }}>{lbl}</button>
@@ -170,26 +198,16 @@ function PLView() {
                     return (
                       <tr key={i} style={style}>
                         <td style={{ paddingLeft: r.type === 'row' ? 24 : 12, position: 'sticky', left: 0, background: stickyBg, whiteSpace: 'nowrap', zIndex: 1 }}>{r.label}</td>
-                        {bd.cols.map(c => {
-                          const v = r.cells[c.key] || 0
-                          const clickable = r.articles && v
-                          return (
-                            <td key={c.key}
-                              onClick={clickable ? () => setDrill({ articles: r.articles, bucketKey: c.key, title: `${r.label} · ${c.label} ${month ? MONTHS[month - 1] : ''} ${year}` }) : undefined}
-                              style={{ textAlign: 'right', color: plColor(r, v), cursor: clickable ? 'pointer' : 'default', textDecoration: clickable ? 'underline dotted' : 'none', textUnderlineOffset: 3 }}>
-                              {v ? fmtInt(v) : '·'}
-                            </td>
-                          )
-                        })}
-                        {(() => {
-                          const clickable = r.articles && r.total
-                          return (
-                            <td onClick={clickable ? () => setDrill({ articles: r.articles, bucketKey: 'total', title: `${r.label} · Разом ${year}` }) : undefined}
-                              style={{ textAlign: 'right', fontWeight: 700, color: plColor(r, r.total), cursor: clickable ? 'pointer' : 'default', textDecoration: clickable ? 'underline dotted' : 'none', textUnderlineOffset: 3 }}>
-                              {fmtInt(r.total)}
-                            </td>
-                          )
-                        })()}
+                        {bd.cols.map(c => (
+                          <td key={c.key} style={{ textAlign: 'right' }}>
+                            <Cell r={r} v={r.cells[c.key] || 0} pv={(r.pending || {})[c.key] || 0} bucketKey={c.key}
+                              colLabel={`${c.label} ${month ? MONTHS[month - 1] : ''} ${year}`} setDrill={setDrill} showPending={showPending} />
+                          </td>
+                        ))}
+                        <td style={{ textAlign: 'right' }}>
+                          <Cell r={r} v={r.total} pv={r.pendingTotal || 0} bucketKey="total" bold
+                            colLabel={`Разом ${year}`} setDrill={setDrill} showPending={showPending} />
+                        </td>
                       </tr>
                     )
                   })}
@@ -239,7 +257,7 @@ function PLView() {
 // ───────── Drill-down: операції за клітинкою P&L ─────────
 function DrillModal({ drill, year, month, onClose }) {
   const [rows, setRows] = useState(null)
-  useEffect(() => { plDrill(year, month, drill.bucketKey, drill.articles).then(setRows) }, [drill])
+  useEffect(() => { plDrill(year, month, drill.bucketKey, drill.articles, { validated: drill.validated }).then(setRows) }, [drill])
   const total = (rows || []).reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0)
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', zIndex: 1000, overflow: 'auto' }}>
