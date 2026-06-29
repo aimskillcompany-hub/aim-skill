@@ -3,16 +3,13 @@
 // Браузер лише будує docDef (sync, без зависання getBlob).
 // Body: { kind: 'proposal'|'generated', id, docDef }
 import { getAdmin, verifyUser } from './_lib.js'
-import { createRequire } from 'module'
-
-const require = createRequire(import.meta.url)
+import PdfPrinter from 'pdfmake/js/printer.js'
+import vfsImport from 'pdfmake/build/vfs_fonts.js'
 
 let _printer
 function getPrinter() {
   if (_printer) return _printer
-  const PdfPrinter = require('pdfmake/src/printer')
-  const vfsMod = require('pdfmake/build/vfs_fonts.js')
-  const vfs = vfsMod.pdfMake?.vfs || vfsMod.vfs || vfsMod
+  const vfs = vfsImport?.pdfMake?.vfs || vfsImport?.vfs || vfsImport
   const fonts = {
     Roboto: {
       normal: Buffer.from(vfs['Roboto-Regular.ttf'], 'base64'),

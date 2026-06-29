@@ -1,4 +1,7 @@
 {
+  "functions": {
+    "api/store-doc.js": { "includeFiles": "node_modules/pdfmake/**" }
+  },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
