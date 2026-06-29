@@ -421,7 +421,20 @@ function ProposalsTab({ o, onChange }) {
 
   const saveDraft = async () => {
     const total = itemsTotal(editing.items)
-    await supabase.from('commercial_proposals').insert({ order_id: o.id, version: editing.version, items: editing.items, total, status: 'draft' })
+    const { data: p } = await supabase.from('commercial_proposals')
+      .insert({ order_id: o.id, version: editing.version, items: editing.items, total, status: 'draft' })
+      .select('id, version').single()
+    // Авто-збереження PDF КП (щоб був доступний з бота), best-effort
+    if (p) {
+      const { data: c } = await supabase.from('contractors').select('*').eq('id', o.client_id).maybeSingle()
+      const items = editing.items.map(it => {
+        const gross = Number(it.price) || 0, vr = Number(it.vat) || 0
+        const net = it.incl ? (vr > 0 ? gross / (1 + vr / 100) : gross) : gross
+        return { name: it.name, quantity: Number(it.qty) || 0, unit: 'шт', unitPrice: net, vatRate: vr }
+      })
+      const today = new Date().toISOString().slice(0, 10)
+      storeProposalPdf(p.id, c || { name: o.contractors?.name }, items, { docNumber: `КП-${o.order_number || o.id.slice(0, 6)}-v${p.version}`, docDate: today })
+    }
     setEditing(null); load()
   }
   const send = async (p) => {
