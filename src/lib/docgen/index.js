@@ -92,18 +92,19 @@ export async function storeGeneratedPdf(generatedDocId, docTypeKey, contractor, 
     const seller = dt.direction === 'incoming' ? enriched : company
     const buyer = dt.direction === 'incoming' ? company : enriched
     const docDef = dt.template.pdf(seller, buyer, cleanItems(items), options)
-    const base64 = await getPdfBase64(docDef)
-    await uploadPdfViaApi('generated', generatedDocId, base64)
+    await uploadDocDefViaApi('generated', generatedDocId, docDef)
   } catch { /* best-effort */ }
 }
 
 // ── Зберегти PDF комерційної пропозиції у Storage (для перегляду з бота) ──
-async function uploadPdfViaApi(kind, id, base64) {
+// Рендер PDF — на сервері (браузерний getBlob/getBase64 зависає в цьому збиранні).
+// Браузер будує docDef (sync) і шле його на /api/store-doc.
+async function uploadDocDefViaApi(kind, id, docDef) {
   const { data } = await supabase.auth.getSession()
   const token = data?.session?.access_token || ''
   const r = await fetch('/api/store-doc', {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ kind, id, base64 }),
+    body: JSON.stringify({ kind, id, docDef }),
   })
   const j = await r.json().catch(() => ({}))
   if (!r.ok) throw new Error(j.error || `store failed (${r.status})`)
@@ -115,8 +116,7 @@ export async function storeProposalPdf(proposalId, contractor, items, options) {
   const cp = await import('./templates/commercialProposal')
   const company = await getCompany()
   const docDef = cp.pdf(company, contractor || {}, cleanItems(items), options)
-  const base64 = await getPdfBase64(docDef)
-  return uploadPdfViaApi('proposal', proposalId, base64)
+  return uploadDocDefViaApi('proposal', proposalId, docDef)
 }
 
 // ── Перегляд PDF у новій вкладці (без збереження) ──
