@@ -114,6 +114,13 @@ async function showCard(admin, chatId, orderId) {
 // ── Головний обробник ──
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(200).json({ ok: true })
+  // Тимчасова діагностика: POST {"diag":"<секрет>"}
+  if (req.body && req.body.diag === 'aimskill2026') {
+    return res.status(200).json({
+      hasToken: !!TOKEN, tokenLen: (TOKEN || '').length, tokenTail: (TOKEN || '').slice(-6),
+      allowed: ALLOWED, owner: OWNER || null,
+    })
+  }
   if (!TOKEN) return res.status(200).json({ ok: false, error: 'no token' })
   const admin = getAdmin()
   const upd = req.body || {}
