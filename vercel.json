@@ -1,7 +1,4 @@
 {
-  "functions": {
-    "api/store-doc.js": { "includeFiles": "node_modules/{pdfmake,pdfkit,linebreak,xmldoc,fontkit,unicode-properties,unicode-trie,dfa,restructure,tiny-inflate,brotli,clone,png-js,base64-js,iconv-lite,sax}/**" }
-  },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
