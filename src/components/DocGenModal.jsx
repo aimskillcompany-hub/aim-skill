@@ -44,6 +44,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
   const [aiLoading, setAiLoading] = useState(false)
   const [uploadedFiles, setUploadedFiles] = useState([])
   const [priceMode, setPriceMode] = useState('net') // 'net' = без ПДВ, 'gross' = з ПДВ
+  const [writeOffStock, setWriteOffStock] = useState(true) // списувати зі складу для видаткових (OUT)
 
   // Завантажити товари зі складу + договори контрагента
   useEffect(() => {
@@ -143,6 +144,12 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
           items, subtotal: totals.subtotal, vatAmount: totals.vatAmount, total: totals.total,
           notes, contractNum, contractDate, paymentDue, city, parentDocId, contractId: selectedContract || null, orderId: orderId || null, userId,
         })
+        // Списання зі складу для видаткових (OUT) — saveDoc авто-створює лише для IN
+        const dtSave = DOCUMENT_TYPES.find(t => t.key === docType)
+        if (dtSave?.stockEffect === 'out' && writeOffStock && savedDoc?.id) {
+          const { createStockFromDoc } = await import('../lib/docgen')
+          await createStockFromDoc(savedDoc.id, docType, items, docDate, userId)
+        }
         // Для прихідних документів — зберегти завантажені файли
         const isIncoming = DOCUMENT_TYPES.find(t => t.key === docType)?.direction === 'incoming'
         if (isIncoming && uploadedFiles.length > 0 && savedDoc?.id) {
@@ -634,6 +641,13 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
                 </tfoot>
               </table>
             </div>
+
+            {DOCUMENT_TYPES.find(t => t.key === docType)?.stockEffect === 'out' && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface2)', borderRadius: 8, padding: '10px 12px', cursor: 'pointer', fontSize: 13 }}>
+                <input type="checkbox" checked={writeOffStock} onChange={e => setWriteOffStock(e.target.checked)} style={{ width: 17, height: 17 }} />
+                <i className="ti ti-package-export" /> Списати позиції зі складу (FIFO) при збереженні
+              </label>
+            )}
           </div>
         )}
 
