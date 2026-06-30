@@ -197,6 +197,7 @@ function StockTab() {
 function ServicesTab() {
   const [rows, setRows] = useState(null)
   const [q, setQ] = useState('')
+  const [detail, setDetail] = useState(null)
 
   const load = async () => {
     const { data: prods } = await supabase.from('product_stock')
@@ -236,7 +237,7 @@ function ServicesTab() {
             <thead><tr><th>Послуга</th><th style={{ textAlign: 'right' }}>К-сть</th><th style={{ textAlign: 'right' }}>Загальна вартість</th></tr></thead>
             <tbody>
               {list.map(r => (
-                <tr key={r.id}>
+                <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setDetail(r)}>
                   <td><div className="trunc" style={{ fontWeight: 500 }}>{r.name}</div>{r.category && <div style={{ fontSize: 11, color: 'var(--text3)' }}>{r.category}</div>}</td>
                   <td style={{ textAlign: 'right' }}>{fmt(r[qtyKey])}</td>
                   <td style={{ textAlign: 'right', fontWeight: 600, color }}>{fmtInt(r[valKey])}</td>
@@ -257,9 +258,12 @@ function ServicesTab() {
       {both.length > 0 && (
         <div className="card">
           <div className="card-title">Без операцій ({both.length})</div>
-          <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>{both.map(r => r.name).join(' · ')}</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {both.map(r => <span key={r.id} onClick={() => setDetail(r)} style={{ background: 'var(--surface2)', borderRadius: 6, padding: '2px 8px', fontSize: 12, cursor: 'pointer' }}>{r.name}</span>)}
+          </div>
         </div>
       )}
+      {detail && <ProductModal product={detail} onClose={() => { setDetail(null); load() }} />}
     </div>
   )
 }
@@ -270,6 +274,7 @@ function ConsumablesTab() {
   const [rows, setRows] = useState(null)
   const [q, setQ] = useState('')
   const [consume, setConsume] = useState(null)
+  const [detail, setDetail] = useState(null)
 
   const load = async () => {
     const { data } = await supabase.from('product_stock')
@@ -295,7 +300,7 @@ function ConsumablesTab() {
                 const c = bal > 0 ? 'var(--green)' : bal < 0 ? 'var(--red)' : 'var(--text3)'
                 return (
                   <tr key={r.id}>
-                    <td><div className="trunc" style={{ fontWeight: 500 }}>{r.name}</div></td>
+                    <td onClick={() => setDetail(r)} style={{ cursor: 'pointer' }}><div className="trunc" style={{ fontWeight: 500, color: 'var(--blue)' }}>{r.name}</div></td>
                     <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{fmt(r.total_in)}</td>
                     <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{fmt(r.total_out)}</td>
                     <td style={{ textAlign: 'right', color: c, fontWeight: 600 }}>{fmt(bal)} {r.unit}</td>
@@ -309,6 +314,7 @@ function ConsumablesTab() {
         </div>
       </div>
       {consume && <ConsumeModal product={consume} user={user} onClose={() => setConsume(null)} onDone={() => { setConsume(null); load() }} />}
+      {detail && <ProductModal product={detail} onClose={() => { setDetail(null); load() }} />}
     </div>
   )
 }
@@ -353,54 +359,117 @@ function ConsumeModal({ product, user, onClose, onDone }) {
   )
 }
 
+const PRODUCT_TYPES = [['goods', 'Товар'], ['service', 'Послуга'], ['expense', 'Розхідний матеріал']]
+
 function ProductModal({ product, onClose }) {
   const { user } = useUser()
   const [aliases, setAliases] = useState([])
   const [movs, setMovs] = useState([])
   const [openDoc, setOpenDoc] = useState(null)
   const [linkMov, setLinkMov] = useState(null)
-  const [category, setCategory] = useState(product.category || '')
   const [allCats, setAllCats] = useState([])
-  const [savingCat, setSavingCat] = useState(false)
+  const [form, setForm] = useState(null)
+  const [orig, setOrig] = useState(null)
+  const [stock, setStock] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
   const loadMovs = () => supabase.from('stock_movements').select(`id, type, quantity, cost_price, date, description, source, document_id, ${DOC_EMBED}`).eq('product_id', product.id).order('date', { ascending: false }).limit(50).then(({ data }) => setMovs(data || []))
   useEffect(() => {
+    supabase.from('product_stock').select('computed_stock, total_in, total_out, unit, product_type').eq('id', product.id).maybeSingle().then(({ data }) => setStock(data))
     supabase.from('product_aliases').select('alias').eq('product_id', product.id).then(({ data }) => setAliases(data || []))
     supabase.from('products').select('category').not('category', 'is', null).then(({ data }) => {
       setAllCats([...new Set((data || []).map(d => (d.category || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'uk')))
     })
+    supabase.from('products').select('id, name, sku, unit, category, product_type, buy_price, sell_price, min_stock').eq('id', product.id).single().then(({ data }) => {
+      if (data) { setForm(data); setOrig(data) }
+    })
     loadMovs()
   }, [product.id])
 
-  const saveCategory = async () => {
-    setSavingCat(true)
-    const val = category.trim() || null
-    await supabase.from('products').update({ category: val }).eq('id', product.id)
-    product.category = val // оновити локально, щоб список після закриття бачив зміну
-    setSavingCat(false)
+  const setF = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const dirty = form && orig && JSON.stringify(form) !== JSON.stringify(orig)
+
+  const save = async () => {
+    if (!form.name?.trim()) { setErr('Вкажіть назву'); return }
+    setBusy(true); setErr(null)
+    const { error } = await supabase.from('products').update({
+      name: form.name.trim(), sku: form.sku?.trim() || null, unit: form.unit?.trim() || 'шт',
+      category: form.category?.trim() || null, product_type: form.product_type,
+      buy_price: form.buy_price === '' ? null : Number(form.buy_price), sell_price: form.sell_price === '' ? null : Number(form.sell_price),
+      min_stock: form.min_stock === '' ? null : Number(form.min_stock),
+    }).eq('id', product.id)
+    setBusy(false)
+    if (error) { setErr('Помилка збереження: ' + error.message); return }
+    onClose()
   }
+
+  const archive = async () => {
+    if (!confirm('Архівувати? Зникне зі списків складу, історія рухів збережеться.')) return
+    setBusy(true)
+    await supabase.from('products').update({ status: 'archived' }).eq('id', product.id)
+    setBusy(false); onClose()
+  }
+
+  const del = async () => {
+    const { count } = await supabase.from('stock_movements').select('id', { count: 'exact', head: true }).eq('product_id', product.id)
+    if (count > 0) {
+      alert(`Не можна видалити: є ${count} складських рухів (історія). Скористайтесь «Архівувати».`)
+      return
+    }
+    if (!confirm('Видалити безповоротно? Дію не можна скасувати.')) return
+    setBusy(true)
+    const { error } = await supabase.from('products').delete().eq('id', product.id)
+    setBusy(false)
+    if (error) { setErr('Не вдалося видалити: ' + error.message + '. Спробуйте «Архівувати».'); return }
+    onClose()
+  }
+
   const linkDoc = async (docId) => {
     await supabase.from('stock_movements').update({ document_id: docId, source: 'document' }).eq('id', linkMov.id)
     setLinkMov(null); loadMovs()
   }
+
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
-        <div className="modal-header"><h2>{product.name}</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
+        <div className="modal-header"><h2>{form?.name || product.name}</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
         <div className="kpi-grid" style={{ marginBottom: 16 }}>
-          <div className="kpi"><div className="kpi-label">Залишок</div><div className="kpi-value" style={{ color: (Number(product.computed_stock) || 0) > 0 ? 'var(--green)' : (Number(product.computed_stock) || 0) < 0 ? 'var(--red)' : 'var(--text3)' }}>{fmt(product.computed_stock)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>{product.unit}</span></div></div>
-          <div className="kpi"><div className="kpi-label">Надійшло / Вибуло</div><div className="kpi-value" style={{ fontSize: 18 }}>{fmt(product.total_in)} / {fmt(product.total_out)}</div></div>
-          <div className="kpi"><div className="kpi-label">Артикул</div><div className="kpi-value" style={{ fontSize: 16 }}>{product.sku || '—'}</div></div>
+          {(form?.product_type || stock?.product_type) === 'service'
+            ? <div className="kpi"><div className="kpi-label">Послуга</div><div className="kpi-value" style={{ fontSize: 16 }}>без залишку</div></div>
+            : <div className="kpi"><div className="kpi-label">Залишок</div><div className="kpi-value" style={{ color: (Number(stock?.computed_stock) || 0) > 0 ? 'var(--green)' : (Number(stock?.computed_stock) || 0) < 0 ? 'var(--red)' : 'var(--text3)' }}>{fmt(stock?.computed_stock || 0)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>{stock?.unit}</span></div></div>}
+          <div className="kpi"><div className="kpi-label">Надійшло / Вибуло</div><div className="kpi-value" style={{ fontSize: 18 }}>{fmt(stock?.total_in || 0)} / {fmt(stock?.total_out || 0)}</div></div>
+          <div className="kpi"><div className="kpi-label">Рухів</div><div className="kpi-value" style={{ fontSize: 18 }}>{movs.length}</div></div>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 16, flexWrap: 'wrap' }}>
-          <div style={{ flex: '1 1 240px' }}>
-            <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Категорія</label>
-            <input className="form-input" list="wh-categories" placeholder="Напр. Ноутбуки" value={category} onChange={e => setCategory(e.target.value)} />
-            <datalist id="wh-categories">{allCats.map(c => <option key={c} value={c} />)}</datalist>
+
+        {!form ? <p style={{ color: 'var(--text3)' }}>Завантаження…</p> : (
+          <div className="form-grid" style={{ marginBottom: 14 }}>
+            <div className="form-group full"><label>Назва *</label><input className="form-input" value={form.name || ''} onChange={e => setF('name', e.target.value)} /></div>
+            <div className="form-group"><label>Тип</label>
+              <select className="form-input" value={form.product_type || 'goods'} onChange={e => setF('product_type', e.target.value)}>
+                {PRODUCT_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+            <div className="form-group"><label>Артикул</label><input className="form-input" value={form.sku || ''} onChange={e => setF('sku', e.target.value)} /></div>
+            <div className="form-group"><label>Категорія</label>
+              <input className="form-input" list="wh-categories" value={form.category || ''} onChange={e => setF('category', e.target.value)} />
+              <datalist id="wh-categories">{allCats.map(c => <option key={c} value={c} />)}</datalist>
+            </div>
+            <div className="form-group"><label>Одиниця</label><input className="form-input" value={form.unit || ''} onChange={e => setF('unit', e.target.value)} /></div>
+            <div className="form-group"><label>Ціна закупівлі</label><input className="form-input" type="number" step="any" value={form.buy_price ?? ''} onChange={e => setF('buy_price', e.target.value)} /></div>
+            <div className="form-group"><label>Ціна продажу</label><input className="form-input" type="number" step="any" value={form.sell_price ?? ''} onChange={e => setF('sell_price', e.target.value)} /></div>
+            <div className="form-group"><label>Мін. залишок</label><input className="form-input" type="number" step="any" value={form.min_stock ?? ''} onChange={e => setF('min_stock', e.target.value)} /></div>
           </div>
-          <button className="btn btn-primary" onClick={saveCategory} disabled={savingCat || (category.trim() === (product.category || ''))}>
-            {savingCat ? '…' : 'Зберегти категорію'}
-          </button>
+        )}
+
+        {err && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn" onClick={archive} disabled={busy} style={{ color: 'var(--text2)' }}><i className="ti ti-archive" /> Архівувати</button>
+            <button className="btn" onClick={del} disabled={busy} style={{ color: 'var(--red)' }}><i className="ti ti-trash" /> Видалити</button>
+          </div>
+          <button className="btn btn-primary" onClick={save} disabled={busy || !dirty}>{busy ? '…' : 'Зберегти зміни'}</button>
         </div>
+
         {aliases.length > 0 && (
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 6 }}>Синоніми ({aliases.length})</div>
@@ -408,7 +477,7 @@ function ProductModal({ product, onClose }) {
           </div>
         )}
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 6 }}>Рухи</div>
-        <div className="tbl-wrap" style={{ border: 'none', maxHeight: 300, overflowY: 'auto' }}>
+        <div className="tbl-wrap" style={{ border: 'none', maxHeight: 280, overflowY: 'auto' }}>
           <table><thead><tr><th>Дата</th><th>Тип</th><th style={{ textAlign: 'right' }}>К-сть</th><th style={{ textAlign: 'right' }}>Собівартість</th><th>Опис</th><th>Документ</th></tr></thead>
             <tbody>{movs.map(m => <tr key={m.id}><td style={{ fontSize: 12 }}>{m.date}</td><td>{m.type === 'in' ? 'Прихід' : m.type === 'out' ? 'Видаток' : m.type}</td><td style={{ textAlign: 'right' }}>{fmt(m.quantity)}</td><td style={{ textAlign: 'right' }}>{m.cost_price ? fmt(m.cost_price) : '—'}</td><td><div className="trunc">{m.description}</div></td>
               <td>{m.documents
