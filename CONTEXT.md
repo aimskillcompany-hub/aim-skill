@@ -127,6 +127,7 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 - **Ручне внесення операцій** у Банк/Каса → «Транзакції» → кнопка **«Додати операцію»** (`AddTxModal`: рахунок, дата, тип ±, сума, напрям, стаття, контрагент, опис; `is_validated=true`, amount зі знаком). Те саме в боті.
 - **Складський рух з будь-якого документа (DocModal).** Раніше склад чіпали лише типи зі `stockEffect` (Прихідна=in, Видаткова=out) і лише при першому завантаженні. Тепер у DocModal **чекбокс «Рух на складі» + напрям (Прихід/Видача FIFO)** доступний для будь-якого документа з позиціями (напр. «Акт наданих послуг» з ліцензіями). За замовч. увімкнено для накладних, **opt-in** для актів/рахунків. Обробка **і при створенні, і при редагуванні**, ідемпотентно: `syncDocStock()` спершу видаляє старі `stock_movements` з `source='document'` для цього `document_id`, потім створює заново з `form.items`. Позиції підвантажуються з `ocr_data.items` (ContractorCard/Documents додали `ocr_data` у select), тож **старі документи виправляються простим перевідкриттям→галочка→Зберегти**. Напрям для актів дефолтиться за `doc_role`, користувач може змінити.
 - **In-bot перегляд КП/документів:** скани з файлом бот надсилає; КП/згенеровані (без збереженого файлу) → кнопка «відкрити в системі». Серверний рендер pdfmake на Vercel не вийшов (бандл) — лишено на майбутнє окремим PDF-сервісом.
+- **Прайс постачальника по API — Brain (`api/brain-sync.js`, міграція 022).** Окрім Excel-імпорту, прайс може тягтись з API: `POST /auth` (login + md5(password)) → SID; `GET /pricelists/{targetID}/json/{SID}?lang=ua&full=1` → лінк на повний прайс одним файлом → завантаження JSON → дефенсивний мапінг полів (articul/product_code→sku, price_uah→price, retail_price_uah→retail_price, vendor→brand, stocks/available→in_stock) → **перезапис** `supplier_prices` для price_list з `source='brain_api'` (один на постачальника). Запит мусить іти з серверлес (CORS + http). Тригери: кнопка **«Оновити з API»** у Прайси→Імпорт (`BrainSyncCard`, Bearer supabase-JWT) і **щоденний cron** `0 5 * * *` (Bearer `CRON_SECRET`). Env у Vercel: `BRAIN_LOGIN`, `BRAIN_PASSWORD`, `BRAIN_TARGET_ID` (точка отримання, дефолт 0), `BRAIN_SUPPLIER_ID` (опц., інакше пошук/створення контрагента за `BRAIN_SUPPLIER_NAME`='Brain'). Пошук/порівняння/«З прайсу» в замовленні працюють без змін (та сама таблиця). Відповідь синку повертає `sampleKeys` першого рядка — для звірки мапінгу при першому запуску (поля прайс-файлу Brain не перевірені наживо).
 
 ---
 
@@ -212,6 +213,7 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `019_items_sku.sql` | Код товару: `order_items.sku`, `supplier_order_items.sku` | ⏳ запустити вручну |
 | `020_orders_lead_source.sql` | Бот: `orders.lead_source` + таблиця `bot_sessions` | ⏳ запустити вручну |
 | `021_proposals_storage.sql` | КП: `commercial_proposals.storage_path` (перегляд з бота) | ⏳ запустити вручну |
+| `022_pricelist_source.sql` | Прайси: `supplier_price_lists.source` ('file'\|'brain_api') для API-синку Brain | ⏳ запустити вручну |
 | `validate.mjs` | Перевірка цілісності (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 
 ---
