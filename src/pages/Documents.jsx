@@ -26,7 +26,7 @@ export default function Documents() {
   const load = async () => {
     setLoading(true)
     const { data } = await supabase.from('documents')
-      .select('id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, direction, created_at, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)')
+      .select('id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, direction, created_at, contractor_id, storage_path, file_path, file_type, doc_role, ocr_data, contractors(name)')
       .order('created_at', { ascending: false }).limit(500)
     setRows(data || [])
     setLoading(false)

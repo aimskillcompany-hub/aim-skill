@@ -32,9 +32,19 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
   const [previewUrl, setPreviewUrl] = useState(null)
   const [previewType, setPreviewType] = useState('image')
   const [showMail, setShowMail] = useState(false)
+  const [stockOn, setStockOn] = useState(false)   // оприбуткувати/списати позиції на склад
+  const [stockDir, setStockDir] = useState('in')  // 'in' = прихід, 'out' = видача (FIFO)
 
   useEffect(() => { if (existingDoc) recognizeExisting(autoOcr) }, [])
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }, [previewUrl])
+  // Дефолти складського руху: для накладних — увімкнено за типом; для актів/рахунків — напрям за роллю, вимкнено (opt-in)
+  useEffect(() => {
+    if (!form) return
+    const dt = getDocType(form.type)
+    const role = form.doc_role || existingDoc?.doc_role
+    setStockDir(dt?.stockEffect || (role === 'incoming' ? 'in' : 'out'))
+    setStockOn((form.items || []).length > 0 && !!dt?.stockEffect)
+  }, [form?.type])
 
   const makePreview = (blob, name = '', type = '') => {
     const ext = (name.split('.').pop() || '').toLowerCase()
@@ -66,7 +76,8 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
           vat_amount: d.vat_amount ?? 0,
           date: d.doc_date || (d.created_at || '').slice(0, 10),
           is_signed: d.is_signed || false,
-          items: [],
+          doc_role: d.doc_role || null,
+          items: d.ocr_data?.items || [],
         })
         setBusy(false)
       }
@@ -96,10 +107,29 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
         vat_amount: data.vatAmount ?? 0,
         date: data.date || existingDoc?.doc_date || new Date().toISOString().split('T')[0],
         is_signed: existingDoc?.is_signed || false,
+        doc_role: docRole,
         items: data.items || [],
       })
     } catch (e) { setError(e.message) }
     setBusy(false)
+  }
+
+  // Ідемпотентно синхронізувати складські рухи документа (прибрати старі source='document', створити заново)
+  const syncDocStock = async (documentId) => {
+    await supabase.from('stock_movements').delete().eq('document_id', documentId).eq('source', 'document')
+    if (!stockOn) return
+    for (const it of (form.items || [])) {
+      const qty = Number(it.quantity ?? it.qty) || 0
+      if (!qty || !it.name) continue
+      const price = Number(it.unit_price ?? it.unitPrice ?? it.price) || null
+      const productId = await resolveProduct(it.name, it.unit, price, user?.id)
+      if (!productId) continue
+      await createStockMovement({
+        productId, type: stockDir, quantity: qty, price,
+        total: Number(it.amount) || (price ? qty * price : null),
+        documentId, date: form.date, description: `${getDocType(form.type)?.label}: ${it.name}`.slice(0, 200), userId: user?.id,
+      })
+    }
   }
 
   const save = async () => {
@@ -120,6 +150,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
         }).eq('id', existingDoc.id).select('id')
         if (error) throw error
         if (!data?.length) throw new Error('Документ не оновлено (немає прав UPDATE). Запусти migrations/004 у Supabase.')
+        await syncDocStock(existingDoc.id)
         onSaved(); return
       }
       let storage_path = null, file_name = null, file_type = null
@@ -146,21 +177,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
       }).select('id').single()
       if (error) throw error
 
-      const stockEffect = getDocType(form.type)?.stockEffect
-      if (stockEffect && (form.items || []).length) {
-        for (const it of form.items) {
-          const qty = Number(it.quantity ?? it.qty) || 0
-          if (!qty || !it.name) continue
-          const price = Number(it.unit_price ?? it.unitPrice ?? it.price) || null
-          const productId = await resolveProduct(it.name, it.unit, price, user?.id)
-          if (!productId) continue
-          await createStockMovement({
-            productId, type: stockEffect, quantity: qty, price,
-            total: Number(it.amount) || (price ? qty * price : null),
-            documentId: doc.id, date: form.date, description: `${getDocType(form.type)?.label}: ${it.name}`.slice(0, 200), userId: user?.id,
-          })
-        }
-      }
+      await syncDocStock(doc.id)
       onSaved()
     } catch (e) { setError(e.message) }
     setBusy(false)
@@ -243,9 +260,21 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
                 </div>
               </div>
 
-              {getDocType(form.type)?.stockEffect && (form.items || []).length > 0 && (
-                <div style={{ background: 'var(--blue-bg, #EFF4FF)', borderRadius: 8, padding: '10px 14px', marginTop: 12, fontSize: 13, color: 'var(--text2)' }}>
-                  <i className="ti ti-package" /> {form.items.length} позицій → {getDocType(form.type).stockEffect === 'in' ? 'оприбуткування на склад' : 'списання зі складу за FIFO'} при збереженні.
+              {(form.items || []).length > 0 && (
+                <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: '10px 14px', marginTop: 12, fontSize: 13, color: 'var(--text2)' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={stockOn} onChange={e => setStockOn(e.target.checked)} style={{ width: 17, height: 17 }} />
+                    <i className="ti ti-package" /> Рух на складі для {form.items.length} позицій
+                  </label>
+                  {stockOn && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                      <select className="form-input" value={stockDir} onChange={e => setStockDir(e.target.value)} style={{ width: 240, height: 38 }}>
+                        <option value="in">Прихід (оприбуткування)</option>
+                        <option value="out">Видача (списання за FIFO)</option>
+                      </select>
+                      <span style={{ fontSize: 12, color: 'var(--text3)' }}>при збереженні</span>
+                    </div>
+                  )}
                 </div>
               )}
 

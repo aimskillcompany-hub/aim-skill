@@ -249,7 +249,7 @@ function DocumentsTab({ id }) {
   const [rows, setRows] = useState(null)
   const [openDoc, setOpenDoc] = useState(null)
   const load = () => supabase.from('documents')
-    .select('id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)')
+    .select('id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, ocr_data, contractors(name)')
     .eq('contractor_id', id).order('created_at', { ascending: false })
     .then(({ data }) => setRows(data || []))
   useEffect(() => { load() }, [id])
