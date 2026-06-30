@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { fmt, fmtInt } from '../lib/fmt'
@@ -41,25 +41,35 @@ function StockTab() {
   const [q, setQ] = useState('')
   const [onlyStock, setOnlyStock] = useState(false)
   const [detail, setDetail] = useState(null)
+  const [cat, setCat] = useState('')        // фільтр за категорією ('' = всі, '__none__' = без категорії)
+  const [grouped, setGrouped] = useState(false)
 
   const load = async () => {
     setLoading(true)
     const { data } = await supabase.from('product_stock')
-      .select('id, name, sku, unit, buy_price, sell_price, computed_stock, total_in, total_out')
+      .select('id, name, sku, unit, category, buy_price, sell_price, computed_stock, total_in, total_out')
       .eq('status', 'active').order('name').limit(2000)
     setRows(data || [])
     setLoading(false)
   }
   useEffect(() => { load() }, [])
 
+  const categories = useMemo(() => {
+    const set = new Set()
+    rows.forEach(r => { const c = (r.category || '').trim(); if (c) set.add(c) })
+    return [...set].sort((a, b) => a.localeCompare(b, 'uk'))
+  }, [rows])
+
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase()
     return rows.filter(r => {
       if (onlyStock && (Number(r.computed_stock) || 0) <= 0) return false
+      if (cat === '__none__' && (r.category || '').trim()) return false
+      if (cat && cat !== '__none__' && (r.category || '').trim() !== cat) return false
       if (!t) return true
       return (r.name || '').toLowerCase().includes(t) || (r.sku || '').toLowerCase().includes(t)
     })
-  }, [rows, q, onlyStock])
+  }, [rows, q, onlyStock, cat])
 
   const totalValue = useMemo(() => filtered.reduce((s, r) => s + (Number(r.computed_stock) || 0) * (Number(r.buy_price) || 0), 0), [filtered])
   const { sort, onSort, sorted } = useSort('name', 'asc')
@@ -69,11 +79,50 @@ function StockTab() {
     sell_price: r => Number(r.sell_price) || 0,
   })
 
+  // Групування за категорією (для режиму «Групувати»)
+  const groups = useMemo(() => {
+    if (!grouped) return null
+    const map = new Map()
+    for (const r of view) {
+      const key = (r.category || '').trim() || '__none__'
+      if (!map.has(key)) map.set(key, [])
+      map.get(key).push(r)
+    }
+    const arr = [...map.entries()].map(([key, items]) => ({
+      key,
+      label: key === '__none__' ? 'Без категорії' : key,
+      items,
+      value: items.reduce((s, r) => s + (Number(r.computed_stock) || 0) * (Number(r.buy_price) || 0), 0),
+    }))
+    arr.sort((a, b) => a.key === '__none__' ? 1 : b.key === '__none__' ? -1 : a.label.localeCompare(b.label, 'uk'))
+    return arr
+  }, [grouped, view])
+
+  const renderRow = (r) => {
+    const stock = Number(r.computed_stock) || 0
+    const stockColor = stock > 0 ? 'var(--green)' : stock < 0 ? 'var(--red)' : 'var(--text3)'
+    return (
+      <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setDetail(r)}>
+        <td><div className="trunc" style={{ fontWeight: 500 }}>{r.name}</div></td>
+        <td style={{ color: 'var(--text2)', fontSize: 12 }}>{r.sku || '—'}</td>
+        <td style={{ textAlign: 'right', color: stockColor, fontWeight: stock !== 0 ? 600 : 400 }}>{fmt(stock)} {r.unit}</td>
+        <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{r.buy_price ? fmt(r.buy_price) : '—'}</td>
+        <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{r.sell_price ? fmt(r.sell_price) : '—'}</td>
+      </tr>
+    )
+  }
+
   if (loading) return <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        <input className="form-input" placeholder="Пошук товару або артикулу…" value={q} onChange={e => setQ(e.target.value)} style={{ flex: '1 1 260px', maxWidth: 400 }} />
+        <input className="form-input" placeholder="Пошук товару або артикулу…" value={q} onChange={e => setQ(e.target.value)} style={{ flex: '1 1 220px', maxWidth: 360 }} />
+        <select className="form-input" value={cat} onChange={e => setCat(e.target.value)} style={{ width: 200 }}>
+          <option value="">Усі категорії</option>
+          {categories.map(c => <option key={c} value={c}>{c}</option>)}
+          <option value="__none__">Без категорії</option>
+        </select>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}><input type="checkbox" checked={grouped} onChange={e => setGrouped(e.target.checked)} /> Групувати</label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}><input type="checkbox" checked={onlyStock} onChange={e => setOnlyStock(e.target.checked)} /> Тільки з залишком</label>
         <span style={{ marginLeft: 'auto', color: 'var(--text2)', fontSize: 13 }}>{filtered.length} товарів · вартість запасу ≈ {fmtInt(totalValue)} грн</span>
       </div>
@@ -88,25 +137,22 @@ function StockTab() {
               <SortTh label="Продаж" k="sell_price" sort={sort} onSort={onSort} align="right" />
             </tr></thead>
             <tbody>
-              {view.map(r => {
-                const stock = Number(r.computed_stock) || 0
-                const stockColor = stock > 0 ? 'var(--green)' : stock < 0 ? 'var(--red)' : 'var(--text3)'
-                return (
-                  <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setDetail(r)}>
-                    <td><div className="trunc" style={{ fontWeight: 500 }}>{r.name}</div></td>
-                    <td style={{ color: 'var(--text2)', fontSize: 12 }}>{r.sku || '—'}</td>
-                    <td style={{ textAlign: 'right', color: stockColor, fontWeight: stock !== 0 ? 600 : 400 }}>{fmt(stock)} {r.unit}</td>
-                    <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{r.buy_price ? fmt(r.buy_price) : '—'}</td>
-                    <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{r.sell_price ? fmt(r.sell_price) : '—'}</td>
+              {!grouped && view.map(renderRow)}
+              {grouped && groups.map(g => (
+                <Fragment key={g.key}>
+                  <tr style={{ background: 'var(--surface2)' }}>
+                    <td colSpan={2} style={{ fontWeight: 700 }}>{g.label} <span style={{ color: 'var(--text3)', fontWeight: 400, fontSize: 12 }}>· {g.items.length}</span></td>
+                    <td colSpan={3} style={{ textAlign: 'right', color: 'var(--text3)', fontSize: 12 }}>запас ≈ {fmtInt(g.value)} грн</td>
                   </tr>
-                )
-              })}
+                  {g.items.map(renderRow)}
+                </Fragment>
+              ))}
               {view.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Нічого не знайдено</td></tr>}
             </tbody>
           </table>
         </div>
       </div>
-      {detail && <ProductModal product={detail} onClose={() => setDetail(null)} />}
+      {detail && <ProductModal product={detail} onClose={() => { setDetail(null); load() }} />}
     </div>
   )
 }
@@ -117,11 +163,25 @@ function ProductModal({ product, onClose }) {
   const [movs, setMovs] = useState([])
   const [openDoc, setOpenDoc] = useState(null)
   const [linkMov, setLinkMov] = useState(null)
+  const [category, setCategory] = useState(product.category || '')
+  const [allCats, setAllCats] = useState([])
+  const [savingCat, setSavingCat] = useState(false)
   const loadMovs = () => supabase.from('stock_movements').select(`id, type, quantity, cost_price, date, description, source, document_id, ${DOC_EMBED}`).eq('product_id', product.id).order('date', { ascending: false }).limit(50).then(({ data }) => setMovs(data || []))
   useEffect(() => {
     supabase.from('product_aliases').select('alias').eq('product_id', product.id).then(({ data }) => setAliases(data || []))
+    supabase.from('products').select('category').not('category', 'is', null).then(({ data }) => {
+      setAllCats([...new Set((data || []).map(d => (d.category || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'uk')))
+    })
     loadMovs()
   }, [product.id])
+
+  const saveCategory = async () => {
+    setSavingCat(true)
+    const val = category.trim() || null
+    await supabase.from('products').update({ category: val }).eq('id', product.id)
+    product.category = val // оновити локально, щоб список після закриття бачив зміну
+    setSavingCat(false)
+  }
   const linkDoc = async (docId) => {
     await supabase.from('stock_movements').update({ document_id: docId, source: 'document' }).eq('id', linkMov.id)
     setLinkMov(null); loadMovs()
@@ -134,6 +194,16 @@ function ProductModal({ product, onClose }) {
           <div className="kpi"><div className="kpi-label">Залишок</div><div className="kpi-value" style={{ color: (Number(product.computed_stock) || 0) > 0 ? 'var(--green)' : (Number(product.computed_stock) || 0) < 0 ? 'var(--red)' : 'var(--text3)' }}>{fmt(product.computed_stock)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>{product.unit}</span></div></div>
           <div className="kpi"><div className="kpi-label">Надійшло / Вибуло</div><div className="kpi-value" style={{ fontSize: 18 }}>{fmt(product.total_in)} / {fmt(product.total_out)}</div></div>
           <div className="kpi"><div className="kpi-label">Артикул</div><div className="kpi-value" style={{ fontSize: 16 }}>{product.sku || '—'}</div></div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 16, flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 240px' }}>
+            <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Категорія</label>
+            <input className="form-input" list="wh-categories" placeholder="Напр. Ноутбуки" value={category} onChange={e => setCategory(e.target.value)} />
+            <datalist id="wh-categories">{allCats.map(c => <option key={c} value={c} />)}</datalist>
+          </div>
+          <button className="btn btn-primary" onClick={saveCategory} disabled={savingCat || (category.trim() === (product.category || ''))}>
+            {savingCat ? '…' : 'Зберегти категорію'}
+          </button>
         </div>
         {aliases.length > 0 && (
           <div style={{ marginBottom: 14 }}>
