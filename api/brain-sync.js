@@ -41,8 +41,24 @@ async function brainAuth() {
   return j.result // SID
 }
 
-async function brainPricelist(sid) {
-  const target = process.env.BRAIN_TARGET_ID || '0'
+async function brainTargets(sid) {
+  const r = await fetch(`${BASE}/targets/${sid}`)
+  const j = await r.json().catch(() => ({}))
+  return Array.isArray(j.result) ? j.result : []
+}
+
+// Обрати targetID: явний env → інакше перший «Самовивіз» → інакше перший зі списку
+async function resolveTarget(sid) {
+  const envT = process.env.BRAIN_TARGET_ID
+  if (envT && envT !== '0') return { targetID: envT, list: null }
+  const list = await brainTargets(sid)
+  if (!list.length) throw new Error('Не вдалося отримати список пунктів видачі (/targets порожній). Задайте BRAIN_TARGET_ID вручну.')
+  const pickup = list.find(t => /самови|самовыв|pickup|пв /i.test(`${t.type} ${t.name}`))
+  const chosen = pickup || list[0]
+  return { targetID: chosen.targetID, list }
+}
+
+async function brainPricelist(sid, target) {
   const r = await fetch(`${BASE}/pricelists/${target}/json/${sid}?lang=ua&full=1`)
   const j = await r.json().catch(() => ({}))
   if (j.status !== 1 || !j.url) throw new Error('Brain /pricelists відмовив: ' + JSON.stringify(j).slice(0, 300))
@@ -110,8 +126,9 @@ export default async function handler(req, res) {
     const supplierId = await resolveSupplier(admin)
 
     const sid = await brainAuth()
-    const raw = await brainPricelist(sid)
-    if (!raw.length) return res.status(200).json({ ok: true, count: 0, note: 'Прайс порожній або невідома структура файлу' })
+    const { targetID, list: targetsList } = await resolveTarget(sid)
+    const raw = await brainPricelist(sid, targetID)
+    if (!raw.length) return res.status(200).json({ ok: true, count: 0, targetID, note: 'Прайс порожній або невідома структура файлу' })
 
     // price_list-рядок для джерела brain_api (один на постачальника)
     let { data: list } = await admin.from('supplier_price_lists')
@@ -139,7 +156,9 @@ export default async function handler(req, res) {
     await admin.from('supplier_price_lists').update({ rows_count: inserted, imported_at: new Date().toISOString() }).eq('id', priceListId)
 
     return res.status(200).json({
-      ok: true, count: inserted,
+      ok: true, count: inserted, targetID,
+      // список пунктів видачі — щоб обрати конкретний BRAIN_TARGET_ID за потреби
+      targets: (targetsList || []).map(t => ({ id: t.targetID, name: t.name, region: t.region, type: t.type })).slice(0, 50),
       sampleKeys: Object.keys(raw[0] || {}).slice(0, 40), // діагностика мапінгу при першому запуску
     })
   } catch (e) {
