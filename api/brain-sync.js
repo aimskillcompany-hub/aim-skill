@@ -47,22 +47,41 @@ async function brainTargets(sid) {
   return Array.isArray(j.result) ? j.result : []
 }
 
-// Обрати targetID: явний env → інакше перший «Самовивіз» → інакше перший зі списку
-async function resolveTarget(sid) {
-  const envT = process.env.BRAIN_TARGET_ID
-  if (envT && envT !== '0') return { targetID: envT, list: null }
-  const list = await brainTargets(sid)
-  if (!list.length) throw new Error('Не вдалося отримати список пунктів видачі (/targets порожній). Задайте BRAIN_TARGET_ID вручну.')
-  const pickup = list.find(t => /самови|самовыв|pickup|пв /i.test(`${t.type} ${t.name}`))
-  const chosen = pickup || list[0]
-  return { targetID: chosen.targetID, list }
-}
-
-async function brainPricelist(sid, target) {
+// Запит лінка на прайслист для конкретного target (дешево: повертає url або помилку)
+async function pricelistUrl(sid, target) {
   const r = await fetch(`${BASE}/pricelists/${target}/json/${sid}?lang=ua&full=1`)
   const j = await r.json().catch(() => ({}))
-  if (j.status !== 1 || !j.url) throw new Error('Brain /pricelists відмовив: ' + JSON.stringify(j).slice(0, 300))
-  const fileRes = await fetch(j.url)
+  return { ok: j.status === 1 && !!j.url, url: j.url, raw: j }
+}
+
+// Знайти робочий targetID для прайслиста: явний env → інакше перебрати /targets
+// (валідні для прайслиста id відрізняються від /targets, тож пробуємо, поки не прийме).
+async function resolvePricelistUrl(sid) {
+  const envT = process.env.BRAIN_TARGET_ID
+  if (envT && envT !== '0') {
+    const res = await pricelistUrl(sid, envT)
+    if (!res.ok) throw new Error('Brain /pricelists відмовив для BRAIN_TARGET_ID=' + envT + ': ' + JSON.stringify(res.raw).slice(0, 200))
+    return { url: res.url, targetID: envT, list: null }
+  }
+  const list = await brainTargets(sid)
+  if (!list.length) throw new Error('Не вдалося отримати список пунктів видачі (/targets порожній). Задайте BRAIN_TARGET_ID вручну.')
+  // спершу самовивіз/ПВ, далі решта
+  const ordered = [...list].sort((a, b) => {
+    const score = t => /самови|самовыв|pickup|пв /i.test(`${t.type} ${t.name}`) ? 0 : 1
+    return score(a) - score(b)
+  })
+  let lastErr = null
+  for (const t of ordered) {
+    const res = await pricelistUrl(sid, t.targetID)
+    if (res.ok) return { url: res.url, targetID: t.targetID, list }
+    lastErr = res.raw
+  }
+  const sample = list.map(t => ({ id: t.targetID, name: t.name, region: t.region, type: t.type }))
+  throw new Error('Жоден targetID не прийнятий прайслистом. Остання відповідь: ' + JSON.stringify(lastErr).slice(0, 150) + ' · Доступні пункти: ' + JSON.stringify(sample).slice(0, 600))
+}
+
+async function downloadPricelist(url) {
+  const fileRes = await fetch(url)
   const data = await fileRes.json().catch(async () => {
     const t = await fileRes.text().catch(() => '')
     throw new Error('Не вдалося розпарсити прайс-файл як JSON: ' + t.slice(0, 200))
@@ -126,8 +145,8 @@ export default async function handler(req, res) {
     const supplierId = await resolveSupplier(admin)
 
     const sid = await brainAuth()
-    const { targetID, list: targetsList } = await resolveTarget(sid)
-    const raw = await brainPricelist(sid, targetID)
+    const { url, targetID, list: targetsList } = await resolvePricelistUrl(sid)
+    const raw = await downloadPricelist(url)
     if (!raw.length) return res.status(200).json({ ok: true, count: 0, targetID, note: 'Прайс порожній або невідома структура файлу' })
 
     // price_list-рядок для джерела brain_api (один на постачальника)
