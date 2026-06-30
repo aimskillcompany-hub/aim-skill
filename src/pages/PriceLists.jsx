@@ -178,23 +178,31 @@ function PriceDetailModal({ row, onClose }) {
 }
 
 // ───────── Синхронізація прайсу по API (Brain) ─────────
+async function brainApi(action, payload = {}) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const r = await fetch('/api/brain-sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+    body: JSON.stringify({ action, ...payload }),
+  })
+  const j = await r.json()
+  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`)
+  return j
+}
+
 function BrainSyncCard({ meta, onSynced }) {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
   const [err, setErr] = useState(null)
+  const [showCats, setShowCats] = useState(false)
   const brain = meta.find(m => m.source === 'brain_api')
+  const selCount = Array.isArray(brain?.categories) ? brain.categories.length : 0
 
   const sync = async () => {
     setBusy(true); setErr(null); setMsg(null)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      const r = await fetch('/api/brain-sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
-      })
-      const j = await r.json()
-      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`)
-      setMsg(`Синхронізовано ${(j.count || 0).toLocaleString('uk')} позицій.`)
+      const j = await brainApi('sync')
+      setMsg(j.note || `Синхронізовано ${(j.count || 0).toLocaleString('uk')} позицій${j.categoriesFetched ? ` (категорій: ${j.categoriesFetched})` : ''}.`)
       onSynced()
     } catch (e) { setErr('Помилка синхронізації: ' + e.message) }
     setBusy(false)
@@ -203,18 +211,98 @@ function BrainSyncCard({ meta, onSynced }) {
   return (
     <div className="card" style={{ marginBottom: 18 }}>
       <div className="card-title">Прайс по API — Brain (api.brain.com.ua)</div>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button className="btn btn-primary" onClick={sync} disabled={busy}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className="btn" onClick={() => setShowCats(true)} disabled={busy}>
+          <i className="ti ti-category" /> Категорії{selCount ? ` (${selCount})` : ''}
+        </button>
+        <button className="btn btn-primary" onClick={sync} disabled={busy || !selCount}>
           <i className={`ti ${busy ? 'ti-loader-2' : 'ti-refresh'}`} /> {busy ? 'Синхронізація…' : 'Оновити з API'}
         </button>
         <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>
-          {brain
-            ? <>Останнє оновлення: {(brain.imported_at || '').slice(0, 10) || '—'} · {(brain.rows_count || 0).toLocaleString('uk')} позицій. Авто-синк раз на добу.</>
-            : <>Ще не синхронізовано. Натисніть «Оновити з API» (потрібні налаштування BRAIN_* у Vercel). Авто-синк раз на добу.</>}
+          {!selCount
+            ? <>Спершу оберіть категорії (кнопка «Категорії») — тягнемо лише їх. Авто-синк раз на добу.</>
+            : brain?.imported_at
+              ? <>Останнє оновлення: {(brain.imported_at || '').slice(0, 10)} · {(brain.rows_count || 0).toLocaleString('uk')} позицій. Авто-синк раз на добу.</>
+              : <>Обрано категорій: {selCount}. Натисніть «Оновити з API».</>}
         </div>
       </div>
       {msg && <div style={{ color: 'var(--green)', fontSize: 13, marginTop: 10 }}>{msg}</div>}
       {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 10 }}>{err}</div>}
+      {showCats && <BrainCategoriesModal onClose={() => setShowCats(false)} onSaved={() => { setShowCats(false); onSynced() }} />}
+    </div>
+  )
+}
+
+function BrainCategoriesModal({ onClose, onSaved }) {
+  const [cats, setCats] = useState(null)
+  const [sel, setSel] = useState(new Set())
+  const [q, setQ] = useState('')
+  const [err, setErr] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    brainApi('categories')
+      .then(j => { setCats(j.categories || []); setSel(new Set((j.selected || []).map(String))) })
+      .catch(e => setErr(e.message))
+  }, [])
+
+  const depth = useMemo(() => {
+    const byId = {}; (cats || []).forEach(c => { byId[c.id] = c })
+    const d = {}
+    const calc = (id, guard = 0) => {
+      if (d[id] != null) return d[id]
+      const c = byId[id]
+      if (!c || c.parentID === '1' || !byId[c.parentID] || guard > 20) return (d[id] = 0)
+      return (d[id] = calc(c.parentID, guard + 1) + 1)
+    }
+    ;(cats || []).forEach(c => calc(c.id))
+    return d
+  }, [cats])
+
+  const shown = useMemo(() => {
+    if (!cats) return []
+    const term = q.trim().toLowerCase()
+    const list = term ? cats.filter(c => (c.name || '').toLowerCase().includes(term)) : cats
+    return list
+  }, [cats, q])
+
+  const toggle = (id) => setSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+
+  const save = async () => {
+    setSaving(true); setErr(null)
+    try { await brainApi('save_categories', { categoryIds: [...sel] }); onSaved() }
+    catch (e) { setErr(e.message); setSaving(false) }
+  }
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 640, width: '95vw' }}>
+        <div className="modal-header"><h2 style={{ fontSize: 16 }}>Категорії Brain для завантаження</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
+        {!cats && !err && <p style={{ color: 'var(--text3)' }}>Завантаження категорій з Brain…</p>}
+        {err && <div style={{ color: 'var(--red)', fontSize: 13 }}>{err}</div>}
+        {cats && (
+          <>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+              <input className="form-input" placeholder="Пошук категорії…" value={q} onChange={e => setQ(e.target.value)} style={{ flex: 1, minWidth: 180 }} />
+              <span style={{ fontSize: 12, color: 'var(--text3)' }}>Обрано: {sel.size}</span>
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--text3)', marginBottom: 8 }}>Вибір батьківської категорії автоматично включає всі її підкатегорії.</div>
+            <div style={{ maxHeight: '52vh', overflow: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: 8 }}>
+              {shown.map(c => (
+                <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', paddingLeft: 6 + (q ? 0 : (depth[c.id] || 0) * 18), cursor: 'pointer', fontSize: 13 }}>
+                  <input type="checkbox" checked={sel.has(c.id)} onChange={() => toggle(c.id)} />
+                  <span>{c.name} <span style={{ color: 'var(--text3)', fontSize: 11 }}>#{c.id}</span></span>
+                </label>
+              ))}
+              {shown.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 13, padding: 12, textAlign: 'center' }}>Нічого не знайдено</div>}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+              <button className="btn" onClick={onClose}>Скасувати</button>
+              <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Збереження…' : 'Зберегти'}</button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }

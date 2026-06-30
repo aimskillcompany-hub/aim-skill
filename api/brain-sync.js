@@ -1,22 +1,24 @@
-// Синхронізація прайсу постачальника BRAIN (api.brain.com.ua) → таблиці supplier_prices.
-// Тригери: кнопка «Оновити з API» в UI (Bearer supabase-token) АБО Cron (Bearer CRON_SECRET).
+// Синхронізація прайсу постачальника BRAIN (api.brain.com.ua) → таблиця supplier_prices.
+// Метод: /products по обраних категоріях (відома структура полів). Категорії обирає користувач у UI.
 //
-// Послідовність Brain API:
-//   1) POST /auth  (login + md5(password))                 → SID
-//   2) GET  /pricelists/{targetID}/json/{SID}?lang=ua&full=1 → { url } (лінк на повний прайс одним файлом)
-//   3) GET  {url}                                            → JSON з переліком товарів
-//   4) мапимо рядки й перезаписуємо supplier_prices для контрагента-Brain.
+// Дії (body.action або ?action=):
+//   'categories'      → список категорій Brain (для чекбоксів) + поточний вибір
+//   'save_categories' → зберегти обрані категорії ({ categoryIds: [...] })
+//   'sync' (default)  → синхронізувати товари обраних категорій у supplier_prices
 //
-// Env у Vercel:
-//   BRAIN_LOGIN, BRAIN_PASSWORD  — обліковий запис дилерського кабінету (менеджер/адмін)
-//   BRAIN_TARGET_ID              — точка отримання (distribution point); за замовч. 0
-//   BRAIN_SUPPLIER_ID            — contractors.id постачальника Brain (опц.; інакше пошук/створення за назвою)
-//   BRAIN_SUPPLIER_NAME          — назва для пошуку/створення контрагента (за замовч. 'Brain')
-//   CRON_SECRET                  — для виклику з Cron
+// Brain API:
+//   POST /auth (login + md5(password))            → SID
+//   GET  /categories/{SID}?lang=ua                → дерево категорій
+//   GET  /vendors/{SID}?lang=ua                   → виробники (vendorID→name)
+//   GET  /products/{categoryID}/{SID}?lang=ua&limit=100&offset=N → товари категорії (з price_uah, articul, stocks…)
+//
+// Env: BRAIN_LOGIN, BRAIN_PASSWORD, BRAIN_SUPPLIER_ID (опц.), BRAIN_SUPPLIER_NAME ('Brain'), CRON_SECRET
 import crypto from 'crypto'
 import { getAdmin, verifyUser } from './_lib.js'
 
-const BASE = 'http://api.brain.com.ua' // redeploy: env BRAIN_* (deploy 2)
+const BASE = 'http://api.brain.com.ua'
+const PAGE = 100              // ліміт сторінки /products для звичайних акаунтів
+const MAX_PAGES = 200        // запобіжник на категорію (200×100 = 20k товарів)
 const md5 = (s) => crypto.createHash('md5').update(String(s)).digest('hex')
 
 async function authorize(req) {
@@ -30,98 +32,77 @@ async function brainAuth() {
   const login = process.env.BRAIN_LOGIN
   const password = process.env.BRAIN_PASSWORD
   if (!login || !password) throw new Error('BRAIN_LOGIN / BRAIN_PASSWORD не налаштовано у Vercel env')
-  const body = new URLSearchParams({ login, password: md5(password) })
   const r = await fetch(`${BASE}/auth`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body,
+    body: new URLSearchParams({ login, password: md5(password) }),
   })
   const j = await r.json().catch(() => ({}))
   if (j.status !== 1 || !j.result) throw new Error('Brain /auth відмовив: ' + JSON.stringify(j).slice(0, 300))
-  return j.result // SID
+  return j.result
 }
 
-async function brainTargets(sid) {
-  const r = await fetch(`${BASE}/targets/${sid}`)
-  const j = await r.json().catch(() => ({}))
+async function brainJson(path) {
+  const r = await fetch(`${BASE}${path}`)
+  return r.json().catch(() => ({}))
+}
+
+async function getCategories(sid) {
+  const j = await brainJson(`/categories/${sid}?lang=ua`)
   return Array.isArray(j.result) ? j.result : []
 }
 
-// Запит лінка на прайслист для конкретного target (дешево: повертає url або помилку)
-async function pricelistUrl(sid, target) {
-  const r = await fetch(`${BASE}/pricelists/${target}/json/${sid}?lang=ua&full=1`)
-  const j = await r.json().catch(() => ({}))
-  return { ok: j.status === 1 && !!j.url, url: j.url, raw: j }
-}
-
-// Знайти робочий targetID для прайслиста: явний env → інакше перебрати /targets
-// (валідні для прайслиста id відрізняються від /targets, тож пробуємо, поки не прийме).
-async function resolvePricelistUrl(sid) {
-  const envT = process.env.BRAIN_TARGET_ID
-  if (envT && envT !== '0') {
-    const res = await pricelistUrl(sid, envT)
-    if (!res.ok) throw new Error('Brain /pricelists відмовив для BRAIN_TARGET_ID=' + envT + ': ' + JSON.stringify(res.raw).slice(0, 200))
-    return { url: res.url, targetID: envT, list: null }
+async function getVendorsMap(sid) {
+  const j = await brainJson(`/vendors/${sid}?lang=ua`)
+  const arr = Array.isArray(j.result) ? j.result : []
+  const map = {}
+  for (const v of arr) {
+    const id = v.vendorID ?? v.id
+    const name = v.name ?? v.vendor ?? v.title
+    if (id != null && name) map[String(id)] = String(name)
   }
-  const list = await brainTargets(sid)
-  if (!list.length) throw new Error('Не вдалося отримати список пунктів видачі (/targets порожній). Задайте BRAIN_TARGET_ID вручну.')
-  // спершу самовивіз/ПВ, далі решта
-  const ordered = [...list].sort((a, b) => {
-    const score = t => /самови|самовыв|pickup|пв /i.test(`${t.type} ${t.name}`) ? 0 : 1
-    return score(a) - score(b)
-  })
-  let lastErr = null
-  for (const t of ordered) {
-    const res = await pricelistUrl(sid, t.targetID)
-    if (res.ok) return { url: res.url, targetID: t.targetID, list }
-    lastErr = res.raw
-  }
-  const sample = list.map(t => ({ id: t.targetID, name: t.name, region: t.region, type: t.type }))
-  throw new Error('Жоден targetID не прийнятий прайслистом. Остання відповідь: ' + JSON.stringify(lastErr).slice(0, 150) + ' · Доступні пункти: ' + JSON.stringify(sample).slice(0, 600))
-}
-
-async function downloadPricelist(url) {
-  const fileRes = await fetch(url)
-  const data = await fileRes.json().catch(async () => {
-    const t = await fileRes.text().catch(() => '')
-    throw new Error('Не вдалося розпарсити прайс-файл як JSON: ' + t.slice(0, 200))
-  })
-  // Файл може бути масивом або обгорткою { result | list | products | data: [...] }
-  const rows = Array.isArray(data) ? data
-    : data.result?.list || data.result || data.list || data.products || data.data || []
-  return Array.isArray(rows) ? rows : []
+  return map
 }
 
 const pick = (o, keys) => { for (const k of keys) { const v = o?.[k]; if (v != null && v !== '') return v } return null }
 const num = (v) => { if (v == null) return null; const n = parseFloat(String(v).replace(/\s/g, '').replace(',', '.').replace(/[^\d.\-]/g, '')); return Number.isFinite(n) ? n : null }
-
 function stockStr(o) {
-  const direct = pick(o, ['in_stock', 'count', 'quantity', 'qty'])
-  if (direct != null) return String(direct).slice(0, 60)
   let total = 0
-  const s = o?.stocks
-  if (Array.isArray(s)) total += s.reduce((a, x) => a + (num(x) || 0), 0)
-  const av = o?.available
-  if (av && typeof av === 'object') total += Object.values(av).reduce((a, x) => a + (num(x) || 0), 0)
+  if (Array.isArray(o?.stocks)) total += o.stocks.reduce((a, x) => a + (num(x) || 0), 0)
+  if (o?.available && typeof o.available === 'object') total += Object.values(o.available).reduce((a, x) => a + (num(x) || 0), 0)
+  const direct = pick(o, ['in_stock', 'count', 'quantity'])
+  if (!total && direct != null) return String(direct).slice(0, 60)
   return total > 0 ? `${total}` : null
 }
 
-function mapRow(o, supplierId, priceListId) {
+function mapProduct(o, vendors, catName, supplierId, priceListId) {
   const name = String(pick(o, ['name', 'title', 'brief_description']) ?? '').trim().slice(0, 500)
   if (!name) return null
-  const brand = pick(o, ['vendor', 'brand', 'vendor_name', 'producer', 'manufacturer'])
-  const cat = pick(o, ['category', 'category_name', 'group', 'categoryName'])
+  const vId = pick(o, ['vendorID', 'vendor_id', 'vendor'])
+  const brand = vId != null ? (vendors[String(vId)] || String(vId)) : null
+  const skuRaw = pick(o, ['articul', 'product_code', 'productID', 'id'])
   return {
     price_list_id: priceListId,
     supplier_id: supplierId,
-    sku: (() => { const v = pick(o, ['articul', 'article', 'product_code', 'code', 'productID', 'id']); return v == null ? null : String(v).slice(0, 120) })(),
+    sku: skuRaw == null ? null : String(skuRaw).slice(0, 120),
     name,
-    brand: brand == null ? null : String(brand).slice(0, 200),
-    category: cat == null ? null : String(cat).slice(0, 200),
-    unit: String(pick(o, ['unit', 'units']) ?? 'шт').slice(0, 40),
-    price: num(pick(o, ['price_uah', 'priceUAH', 'price', 'dealer_price', 'dealerPrice'])),
-    retail_price: num(pick(o, ['retail_price_uah', 'recommendable_price', 'rrp', 'retail_price', 'retailPrice'])),
+    brand: brand ? String(brand).slice(0, 200) : null,
+    category: catName ? String(catName).slice(0, 200) : null,
+    unit: 'шт',
+    price: num(pick(o, ['price_uah', 'priceUAH', 'price'])),
+    retail_price: num(pick(o, ['retail_price_uah', 'recommendable_price', 'retail_price'])),
     in_stock: stockStr(o),
+  }
+}
+
+async function fetchCategoryProducts(sid, categoryID, vendors, catName, supplierId, priceListId, out) {
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const j = await brainJson(`/products/${categoryID}/${sid}?lang=ua&limit=${PAGE}&offset=${page * PAGE}`)
+    const list = j?.result?.list || (Array.isArray(j?.result) ? j.result : [])
+    if (!Array.isArray(list) || !list.length) break
+    for (const o of list) { const m = mapProduct(o, vendors, catName, supplierId, priceListId); if (m) out.push(m) }
+    const count = Number(j?.result?.count) || 0
+    if (list.length < PAGE || (count && (page + 1) * PAGE >= count)) break
   }
 }
 
@@ -136,35 +117,81 @@ async function resolveSupplier(admin) {
   return created.id
 }
 
+// price_list-рядок для джерела brain_api (один на постачальника)
+async function ensureList(admin, supplierId) {
+  const { data } = await admin.from('supplier_price_lists')
+    .select('id, categories').eq('supplier_id', supplierId).eq('source', 'brain_api').limit(1).maybeSingle()
+  if (data?.id) return data
+  const { data: created, error } = await admin.from('supplier_price_lists')
+    .insert({ supplier_id: supplierId, file_name: 'Brain API', source: 'brain_api', rows_count: 0 })
+    .select('id, categories').single()
+  if (error) throw new Error('price_list insert: ' + error.message)
+  return created
+}
+
+// Розгорнути обрані категорії на всіх нащадків (вибір батьківської = всі підкатегорії)
+function expandCategories(selected, allCats) {
+  const children = {}
+  for (const c of allCats) {
+    const p = String(c.parentID)
+    ;(children[p] ||= []).push(String(c.categoryID))
+  }
+  const result = new Set()
+  const stack = [...selected.map(String)]
+  while (stack.length) {
+    const id = stack.pop()
+    if (result.has(id)) continue
+    result.add(id)
+    for (const ch of (children[id] || [])) stack.push(ch)
+  }
+  return result
+}
+
 export default async function handler(req, res) {
   if (!['GET', 'POST'].includes(req.method)) return res.status(405).json({ error: 'Method not allowed' })
   if (!(await authorize(req))) return res.status(401).json({ error: 'Unauthorized' })
 
+  const body = req.body && typeof req.body === 'object' ? req.body : {}
+  const action = body.action || req.query?.action || 'sync'
+
   try {
     const admin = getAdmin()
     const supplierId = await resolveSupplier(admin)
+    const list = await ensureList(admin, supplierId)
+
+    if (action === 'save_categories') {
+      const ids = Array.isArray(body.categoryIds) ? body.categoryIds.map(String) : []
+      const { error } = await admin.from('supplier_price_lists').update({ categories: ids }).eq('id', list.id)
+      if (error) throw new Error('save_categories: ' + error.message)
+      return res.status(200).json({ ok: true, saved: ids.length })
+    }
+
+    if (action === 'categories') {
+      const sid = await brainAuth()
+      const cats = await getCategories(sid)
+      return res.status(200).json({
+        ok: true,
+        categories: cats.map(c => ({ id: String(c.categoryID), parentID: String(c.parentID), name: c.name })),
+        selected: Array.isArray(list.categories) ? list.categories.map(String) : [],
+      })
+    }
+
+    // ── sync ──
+    const selected = Array.isArray(list.categories) ? list.categories.map(String) : []
+    if (!selected.length) return res.status(200).json({ ok: true, count: 0, note: 'Оберіть категорії для завантаження (кнопка «Категорії»).' })
 
     const sid = await brainAuth()
-    const { url, targetID, list: targetsList } = await resolvePricelistUrl(sid)
-    const raw = await downloadPricelist(url)
-    if (!raw.length) return res.status(200).json({ ok: true, count: 0, targetID, note: 'Прайс порожній або невідома структура файлу' })
+    const [allCats, vendors] = await Promise.all([getCategories(sid), getVendorsMap(sid)])
+    const nameById = {}; allCats.forEach(c => { nameById[String(c.categoryID)] = c.name })
+    const toFetch = [...expandCategories(selected, allCats)]
 
-    // price_list-рядок для джерела brain_api (один на постачальника)
-    let { data: list } = await admin.from('supplier_price_lists')
-      .select('id').eq('supplier_id', supplierId).eq('source', 'brain_api').limit(1).maybeSingle()
-    if (!list?.id) {
-      const { data: created, error } = await admin.from('supplier_price_lists')
-        .insert({ supplier_id: supplierId, file_name: 'Brain API', source: 'brain_api', rows_count: 0 })
-        .select('id').single()
-      if (error) throw new Error('price_list insert: ' + error.message)
-      list = created
+    const mapped = []
+    for (const cid of toFetch) {
+      await fetchCategoryProducts(sid, cid, vendors, nameById[cid] || null, supplierId, list.id, mapped)
     }
-    const priceListId = list.id
 
-    const mapped = raw.map(o => mapRow(o, supplierId, priceListId)).filter(Boolean)
-
-    // Перезапис: прибрати старі рядки цього прайсу, вставити свіжі чанками
-    await admin.from('supplier_prices').delete().eq('price_list_id', priceListId)
+    // Перезапис прайсу
+    await admin.from('supplier_prices').delete().eq('price_list_id', list.id)
     let inserted = 0
     for (let i = 0; i < mapped.length; i += 500) {
       const chunk = mapped.slice(i, i + 500)
@@ -172,14 +199,9 @@ export default async function handler(req, res) {
       if (error) throw new Error(`insert chunk @${i}: ${error.message}`)
       inserted += chunk.length
     }
-    await admin.from('supplier_price_lists').update({ rows_count: inserted, imported_at: new Date().toISOString() }).eq('id', priceListId)
+    await admin.from('supplier_price_lists').update({ rows_count: inserted, imported_at: new Date().toISOString() }).eq('id', list.id)
 
-    return res.status(200).json({
-      ok: true, count: inserted, targetID,
-      // список пунктів видачі — щоб обрати конкретний BRAIN_TARGET_ID за потреби
-      targets: (targetsList || []).map(t => ({ id: t.targetID, name: t.name, region: t.region, type: t.type })).slice(0, 50),
-      sampleKeys: Object.keys(raw[0] || {}).slice(0, 40), // діагностика мапінгу при першому запуску
-    })
+    return res.status(200).json({ ok: true, count: inserted, categoriesFetched: toFetch.length })
   } catch (e) {
     return res.status(500).json({ error: e.message })
   }
