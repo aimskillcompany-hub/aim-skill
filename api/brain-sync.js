@@ -16,6 +16,8 @@
 import crypto from 'crypto'
 import { getAdmin, verifyUser } from './_lib.js'
 
+export const config = { maxDuration: 300 } // дати функції більше часу на синк великих категорій
+
 const BASE = 'http://api.brain.com.ua'
 const PAGE = 100              // ліміт сторінки /products для звичайних акаунтів
 const MAX_PAGES = 200        // запобіжник на категорію (200×100 = 20k товарів)
@@ -95,6 +97,7 @@ function mapProduct(o, vendors, catName, supplierId, priceListId) {
   }
 }
 
+// /products повертає товари категорії РАЗОМ з усіма підкатегоріями — обходити дочірні окремо не треба
 async function fetchCategoryProducts(sid, categoryID, vendors, catName, supplierId, priceListId, out) {
   for (let page = 0; page < MAX_PAGES; page++) {
     const j = await brainJson(`/products/${categoryID}/${sid}?lang=ua&limit=${PAGE}&offset=${page * PAGE}`)
@@ -104,6 +107,26 @@ async function fetchCategoryProducts(sid, categoryID, vendors, catName, supplier
     const count = Number(j?.result?.count) || 0
     if (list.length < PAGE || (count && (page + 1) * PAGE >= count)) break
   }
+}
+
+// Живий пошук: по обраних категоріях (або по кореневих, якщо нічого не обрано)
+async function searchProducts(sid, query, categoryIDs, vendors, supplierId, priceListId) {
+  const out = []
+  const seen = new Set()
+  const search = encodeURIComponent(query)
+  for (const cid of categoryIDs) {
+    if (out.length >= 300) break
+    const j = await brainJson(`/products/${cid}/${sid}?lang=ua&limit=100&search=${search}`)
+    const list = j?.result?.list || (Array.isArray(j?.result) ? j.result : [])
+    for (const o of list) {
+      const key = String(o.productID ?? o.articul ?? o.name)
+      if (seen.has(key)) continue
+      seen.add(key)
+      const m = mapProduct(o, vendors, null, supplierId, priceListId)
+      if (m) out.push(m)
+    }
+  }
+  return out
 }
 
 async function resolveSupplier(admin) {
@@ -127,24 +150,6 @@ async function ensureList(admin, supplierId) {
     .select('id, categories').single()
   if (error) throw new Error('price_list insert: ' + error.message)
   return created
-}
-
-// Розгорнути обрані категорії на всіх нащадків (вибір батьківської = всі підкатегорії)
-function expandCategories(selected, allCats) {
-  const children = {}
-  for (const c of allCats) {
-    const p = String(c.parentID)
-    ;(children[p] ||= []).push(String(c.categoryID))
-  }
-  const result = new Set()
-  const stack = [...selected.map(String)]
-  while (stack.length) {
-    const id = stack.pop()
-    if (result.has(id)) continue
-    result.add(id)
-    for (const ch of (children[id] || [])) stack.push(ch)
-  }
-  return result
 }
 
 export default async function handler(req, res) {
@@ -176,17 +181,27 @@ export default async function handler(req, res) {
       })
     }
 
-    // ── sync ──
+    if (action === 'search') {
+      const q = (body.query || '').trim()
+      if (q.length < 2) return res.status(200).json({ ok: true, results: [] })
+      const sid = await brainAuth()
+      const [allCats, vendors] = await Promise.all([getCategories(sid), getVendorsMap(sid)])
+      const selected = Array.isArray(list.categories) ? list.categories.map(String) : []
+      const cats = selected.length ? selected : allCats.filter(c => String(c.parentID) === '1').map(c => String(c.categoryID))
+      const results = await searchProducts(sid, q, cats, vendors, supplierId, list.id)
+      return res.status(200).json({ ok: true, results, priceListId: list.id, supplierId, scope: selected.length ? 'selected' : 'all' })
+    }
+
+    // ── sync (масове завантаження обраних категорій разом з підкатегоріями) ──
     const selected = Array.isArray(list.categories) ? list.categories.map(String) : []
     if (!selected.length) return res.status(200).json({ ok: true, count: 0, note: 'Оберіть категорії для завантаження (кнопка «Категорії»).' })
 
     const sid = await brainAuth()
     const [allCats, vendors] = await Promise.all([getCategories(sid), getVendorsMap(sid)])
     const nameById = {}; allCats.forEach(c => { nameById[String(c.categoryID)] = c.name })
-    const toFetch = [...expandCategories(selected, allCats)]
 
     const mapped = []
-    for (const cid of toFetch) {
+    for (const cid of selected) {
       await fetchCategoryProducts(sid, cid, vendors, nameById[cid] || null, supplierId, list.id, mapped)
     }
 

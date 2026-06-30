@@ -185,7 +185,9 @@ async function brainApi(action, payload = {}) {
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
     body: JSON.stringify({ action, ...payload }),
   })
-  const j = await r.json()
+  const text = await r.text()
+  let j
+  try { j = JSON.parse(text) } catch { throw new Error(`Сервер повернув не-JSON (${r.status}). Імовірно таймаут/збій функції: ${text.slice(0, 120)}`) }
   if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`)
   return j
 }
@@ -228,7 +230,81 @@ function BrainSyncCard({ meta, onSynced }) {
       </div>
       {msg && <div style={{ color: 'var(--green)', fontSize: 13, marginTop: 10 }}>{msg}</div>}
       {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 10 }}>{err}</div>}
+
+      <BrainSearchBox onSaved={onSynced} />
+
       {showCats && <BrainCategoriesModal onClose={() => setShowCats(false)} onSaved={() => { setShowCats(false); onSynced() }} />}
+    </div>
+  )
+}
+
+// Живий пошук товару в Brain (без масового завантаження) + збереження знайденого в прайс
+function BrainSearchBox({ onSaved }) {
+  const [q, setQ] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [rows, setRows] = useState(null)
+  const [err, setErr] = useState(null)
+  const [msg, setMsg] = useState(null)
+
+  const search = async () => {
+    if (q.trim().length < 2) return
+    setBusy(true); setErr(null); setMsg(null); setRows(null)
+    try { const j = await brainApi('search', { query: q.trim() }); setRows(j.results || []) }
+    catch (e) { setErr(e.message) }
+    setBusy(false)
+  }
+
+  const saveAll = async () => {
+    if (!rows?.length) return
+    setBusy(true); setErr(null); setMsg(null)
+    try {
+      const plId = rows[0].price_list_id
+      const skus = rows.map(r => r.sku).filter(Boolean)
+      if (skus.length) await supabase.from('supplier_prices').delete().eq('price_list_id', plId).in('sku', skus)
+      const { error } = await supabase.from('supplier_prices').insert(rows)
+      if (error) throw error
+      setMsg(`Збережено ${rows.length} позицій у прайс — тепер доступні в пошуку й у замовленні.`)
+      onSaved()
+    } catch (e) { setErr('Збереження: ' + e.message) }
+    setBusy(false)
+  }
+
+  return (
+    <div style={{ marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Живий пошук товару в Brain</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <input className="form-input" placeholder="Напр. SSD Samsung 1TB" value={q}
+          onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()} style={{ flex: 1, minWidth: 220 }} />
+        <button className="btn btn-primary" onClick={search} disabled={busy || q.trim().length < 2}>
+          <i className={`ti ${busy ? 'ti-loader-2' : 'ti-search'}`} /> Знайти
+        </button>
+        {rows?.length > 0 && <button className="btn" onClick={saveAll} disabled={busy}><i className="ti ti-database-plus" /> Зберегти все в прайс</button>}
+      </div>
+      {msg && <div style={{ color: 'var(--green)', fontSize: 13, marginTop: 8 }}>{msg}</div>}
+      {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 8 }}>{err}</div>}
+      {rows && (
+        rows.length === 0
+          ? <div style={{ color: 'var(--text3)', fontSize: 13, marginTop: 10 }}>Нічого не знайдено.</div>
+          : (
+            <div className="tbl-wrap" style={{ marginTop: 10, maxHeight: 320, overflow: 'auto' }}>
+              <table>
+                <thead><tr><th>Найменування</th><th>Артикул</th><th>Бренд</th><th style={{ textAlign: 'right' }}>Закупівля</th><th style={{ textAlign: 'right' }}>Роздріб</th><th>Наявність</th></tr></thead>
+                <tbody>
+                  {rows.map((r, i) => (
+                    <tr key={i}>
+                      <td style={{ fontSize: 12 }}><div className="trunc" title={r.name}>{r.name}</div></td>
+                      <td style={{ fontSize: 12 }}>{r.sku || '—'}</td>
+                      <td style={{ fontSize: 12 }}>{r.brand || '—'}</td>
+                      <td style={{ textAlign: 'right', fontSize: 12 }}>{r.price != null ? fmt(r.price) : '—'}</td>
+                      <td style={{ textAlign: 'right', fontSize: 12 }}>{r.retail_price != null ? fmt(r.retail_price) : '—'}</td>
+                      <td style={{ fontSize: 12 }}>{r.in_stock || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+      )}
     </div>
   )
 }
