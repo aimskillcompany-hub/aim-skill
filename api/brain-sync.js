@@ -16,7 +16,7 @@
 import crypto from 'crypto'
 import { getAdmin, verifyUser } from './_lib.js'
 
-const BASE = 'http://api.brain.com.ua'
+const BASE = 'http://api.brain.com.ua' // redeploy: env BRAIN_* (deploy 2)
 const md5 = (s) => crypto.createHash('md5').update(String(s)).digest('hex')
 
 async function authorize(req) {
