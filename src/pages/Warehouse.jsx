@@ -43,6 +43,9 @@ function StockTab() {
   const [detail, setDetail] = useState(null)
   const [cat, setCat] = useState('')        // фільтр за категорією ('' = всі, '__none__' = без категорії)
   const [grouped, setGrouped] = useState(false)
+  const [sel, setSel] = useState(() => new Set()) // обрані товари для масового присвоєння
+  const [bulkCat, setBulkCat] = useState('')
+  const [bulkBusy, setBulkBusy] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -98,11 +101,31 @@ function StockTab() {
     return arr
   }, [grouped, view])
 
+  const toggleSel = (id) => setSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const allVisibleSelected = view.length > 0 && view.every(r => sel.has(r.id))
+  const toggleAll = () => setSel(s => {
+    const n = new Set(s)
+    if (allVisibleSelected) view.forEach(r => n.delete(r.id))
+    else view.forEach(r => n.add(r.id))
+    return n
+  })
+  const assignBulk = async () => {
+    if (!sel.size) return
+    setBulkBusy(true)
+    const val = bulkCat.trim() || null
+    await supabase.from('products').update({ category: val }).in('id', [...sel])
+    setSel(new Set()); setBulkCat(''); setBulkBusy(false)
+    load()
+  }
+
   const renderRow = (r) => {
     const stock = Number(r.computed_stock) || 0
     const stockColor = stock > 0 ? 'var(--green)' : stock < 0 ? 'var(--red)' : 'var(--text3)'
     return (
-      <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setDetail(r)}>
+      <tr key={r.id} style={{ cursor: 'pointer', background: sel.has(r.id) ? 'var(--surface2)' : undefined }} onClick={() => setDetail(r)}>
+        <td style={{ width: 34 }} onClick={e => { e.stopPropagation(); toggleSel(r.id) }}>
+          <input type="checkbox" checked={sel.has(r.id)} onChange={() => {}} style={{ display: 'block' }} />
+        </td>
         <td><div className="trunc" style={{ fontWeight: 500 }}>{r.name}</div></td>
         <td style={{ color: 'var(--text2)', fontSize: 12 }}>{r.sku || '—'}</td>
         <td style={{ textAlign: 'right', color: stockColor, fontWeight: stock !== 0 ? 600 : 400 }}>{fmt(stock)} {r.unit}</td>
@@ -126,10 +149,21 @@ function StockTab() {
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}><input type="checkbox" checked={onlyStock} onChange={e => setOnlyStock(e.target.checked)} /> Тільки з залишком</label>
         <span style={{ marginLeft: 'auto', color: 'var(--text2)', fontSize: 13 }}>{filtered.length} товарів · вартість запасу ≈ {fmtInt(totalValue)} грн</span>
       </div>
+      {sel.size > 0 && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, padding: '10px 14px', background: 'var(--surface2)', borderRadius: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>Обрано: {sel.size}</span>
+          <input className="form-input" list="wh-categories-bulk" placeholder="Категорія для обраних" value={bulkCat} onChange={e => setBulkCat(e.target.value)} style={{ flex: '1 1 220px', maxWidth: 320 }} />
+          <datalist id="wh-categories-bulk">{categories.map(c => <option key={c} value={c} />)}</datalist>
+          <button className="btn btn-primary" onClick={assignBulk} disabled={bulkBusy || !bulkCat.trim()}>{bulkBusy ? '…' : 'Присвоїти категорію'}</button>
+          <button className="btn" onClick={assignBulk} disabled={bulkBusy || !!bulkCat.trim()} title="Очистити категорію в обраних">Очистити</button>
+          <button className="btn" onClick={() => setSel(new Set())}>Зняти виділення</button>
+        </div>
+      )}
       <div className="card">
         <div className="tbl-wrap" style={{ border: 'none' }}>
           <table>
             <thead><tr>
+              <th style={{ width: 34 }}><input type="checkbox" checked={allVisibleSelected} onChange={toggleAll} title="Виділити всі видимі" /></th>
               <SortTh label="Товар" k="name" sort={sort} onSort={onSort} />
               <SortTh label="Артикул" k="sku" sort={sort} onSort={onSort} />
               <SortTh label="Залишок" k="computed_stock" sort={sort} onSort={onSort} align="right" />
@@ -141,13 +175,13 @@ function StockTab() {
               {grouped && groups.map(g => (
                 <Fragment key={g.key}>
                   <tr style={{ background: 'var(--surface2)' }}>
-                    <td colSpan={2} style={{ fontWeight: 700 }}>{g.label} <span style={{ color: 'var(--text3)', fontWeight: 400, fontSize: 12 }}>· {g.items.length}</span></td>
+                    <td colSpan={3} style={{ fontWeight: 700 }}>{g.label} <span style={{ color: 'var(--text3)', fontWeight: 400, fontSize: 12 }}>· {g.items.length}</span></td>
                     <td colSpan={3} style={{ textAlign: 'right', color: 'var(--text3)', fontSize: 12 }}>запас ≈ {fmtInt(g.value)} грн</td>
                   </tr>
                   {g.items.map(renderRow)}
                 </Fragment>
               ))}
-              {view.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Нічого не знайдено</td></tr>}
+              {view.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Нічого не знайдено</td></tr>}
             </tbody>
           </table>
         </div>
