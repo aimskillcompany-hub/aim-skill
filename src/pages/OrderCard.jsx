@@ -295,7 +295,7 @@ function ItemsTab({ o, onChange, onDirty }) {
       if (!r.name?.trim()) continue
       let product_id = r.product_id
       if (!product_id) {
-        const res = await resolveProduct(r.name, r.unit, Number(r.unit_price) || null, user?.id)
+        const res = await resolveProduct(r.name, r.unit, Number(r.unit_price) || null, user?.id, r.sku || null)
         product_id = res?.productId || null
       }
       resolved.push({

@@ -233,7 +233,7 @@ export async function createStockFromDoc(docId, docType, items, date, userId) {
     // Знайти або створити продукт
     const resolved = item.productId
       ? { productId: item.productId, isNew: false }
-      : await resolveProduct(item.name, item.unit || 'шт', parseFloat(item.unitPrice) || null, userId)
+      : await resolveProduct(item.name, item.unit || 'шт', parseFloat(item.unitPrice) || null, userId, item.sku || null)
 
     if (!resolved?.productId) continue
 

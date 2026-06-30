@@ -122,7 +122,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
       const qty = Number(it.quantity ?? it.qty) || 0
       if (!qty || !it.name) continue
       const price = Number(it.unit_price ?? it.unitPrice ?? it.price) || null
-      const resolved = await resolveProduct(it.name, it.unit, price, user?.id)
+      const resolved = await resolveProduct(it.name, it.unit, price, user?.id, it.sku ?? it.code ?? null)
       const productId = resolved?.productId
       if (!productId) continue
       await createStockMovement({

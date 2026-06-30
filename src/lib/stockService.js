@@ -120,11 +120,29 @@ export async function matchProduct(name) {
 }
 
 // ── Знайти або створити продукт по назві (через aliases) ──
-export async function resolveProduct(name, unit, price, userId) {
+export async function resolveProduct(name, unit, price, userId, sku = null) {
   if (!name?.trim()) return null
 
   const normalized = normalizeName(name)
   if (!normalized) return null
+  const skuT = (sku == null ? '' : String(sku)).trim() || null
+
+  // Бекфіл артикулу/ціни для знайденого продукту (артикул лише якщо ще порожній)
+  const backfill = async (id) => {
+    if (price) await supabase.from('products').update({ buy_price: price }).eq('id', id).is('buy_price', null)
+    if (skuT) await supabase.from('products').update({ sku: skuT }).eq('id', id).is('sku', null)
+  }
+
+  // 0. Збіг за артикулом (точний) — найнадійніший
+  if (skuT) {
+    const { data: bySku } = await supabase.from('products')
+      .select('id').eq('sku', skuT).eq('status', 'active').limit(1).maybeSingle()
+    if (bySku?.id) {
+      await supabase.from('product_aliases').upsert({ product_id: bySku.id, alias: name.trim(), normalized }, { onConflict: 'normalized', ignoreDuplicates: true })
+      await backfill(bySku.id)
+      return { productId: bySku.id, isNew: false }
+    }
+  }
 
   // 1. Точний збіг по aliases
   const { data: alias } = await supabase
@@ -134,10 +152,7 @@ export async function resolveProduct(name, unit, price, userId) {
     .maybeSingle()
 
   if (alias?.product_id) {
-    if (price) {
-      await supabase.from('products').update({ buy_price: price })
-        .eq('id', alias.product_id).is('buy_price', null)
-    }
+    await backfill(alias.product_id)
     return { productId: alias.product_id, isNew: false }
   }
 
@@ -155,10 +170,7 @@ export async function resolveProduct(name, unit, price, userId) {
       normalized,
     }, { onConflict: 'normalized', ignoreDuplicates: true })
 
-    if (price) {
-      await supabase.from('products').update({ buy_price: price })
-        .eq('id', fuzzyHit.product_id).is('buy_price', null)
-    }
+    await backfill(fuzzyHit.product_id)
     return { productId: fuzzyHit.product_id, isNew: false }
   }
 
@@ -175,16 +187,14 @@ export async function resolveProduct(name, unit, price, userId) {
       product_id: existing.id, alias: name.trim(), normalized,
     }, { onConflict: 'normalized', ignoreDuplicates: true })
 
-    if (price) {
-      await supabase.from('products').update({ buy_price: price })
-        .eq('id', existing.id).is('buy_price', null)
-    }
+    await backfill(existing.id)
     return { productId: existing.id, isNew: false }
   }
 
   // 4. Створити новий продукт + alias
   const { data: newProd } = await supabase.from('products').insert({
     name: name.trim(),
+    sku: skuT,
     unit: unit || 'шт',
     buy_price: price || null,
     status: 'active',
@@ -493,7 +503,7 @@ export async function processDocumentItems(savedItems, {
           }, { onConflict: 'normalized', ignoreDuplicates: true })
         }
       } else {
-        result = await resolveProduct(item.name, item.unit, item.unit_price, userId)
+        result = await resolveProduct(item.name, item.unit, item.unit_price, userId, item.sku || null)
       }
       if (!result) {
         errors.push(`Не вдалося створити продукт: ${item.name}`)
