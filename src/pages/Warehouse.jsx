@@ -90,11 +90,12 @@ function StockTab() {
             <tbody>
               {view.map(r => {
                 const stock = Number(r.computed_stock) || 0
+                const stockColor = stock > 0 ? 'var(--green)' : stock < 0 ? 'var(--red)' : 'var(--text3)'
                 return (
                   <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setDetail(r)}>
                     <td><div className="trunc" style={{ fontWeight: 500 }}>{r.name}</div></td>
                     <td style={{ color: 'var(--text2)', fontSize: 12 }}>{r.sku || '—'}</td>
-                    <td style={{ textAlign: 'right', color: stock > 0 ? 'var(--text)' : 'var(--text3)', fontWeight: stock > 0 ? 600 : 400 }}>{fmt(stock)} {r.unit}</td>
+                    <td style={{ textAlign: 'right', color: stockColor, fontWeight: stock !== 0 ? 600 : 400 }}>{fmt(stock)} {r.unit}</td>
                     <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{r.buy_price ? fmt(r.buy_price) : '—'}</td>
                     <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{r.sell_price ? fmt(r.sell_price) : '—'}</td>
                   </tr>
@@ -130,7 +131,7 @@ function ProductModal({ product, onClose }) {
       <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
         <div className="modal-header"><h2>{product.name}</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
         <div className="kpi-grid" style={{ marginBottom: 16 }}>
-          <div className="kpi"><div className="kpi-label">Залишок</div><div className="kpi-value">{fmt(product.computed_stock)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>{product.unit}</span></div></div>
+          <div className="kpi"><div className="kpi-label">Залишок</div><div className="kpi-value" style={{ color: (Number(product.computed_stock) || 0) > 0 ? 'var(--green)' : (Number(product.computed_stock) || 0) < 0 ? 'var(--red)' : 'var(--text3)' }}>{fmt(product.computed_stock)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>{product.unit}</span></div></div>
           <div className="kpi"><div className="kpi-label">Надійшло / Вибуло</div><div className="kpi-value" style={{ fontSize: 18 }}>{fmt(product.total_in)} / {fmt(product.total_out)}</div></div>
           <div className="kpi"><div className="kpi-label">Артикул</div><div className="kpi-value" style={{ fontSize: 16 }}>{product.sku || '—'}</div></div>
         </div>
