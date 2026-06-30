@@ -237,10 +237,7 @@ export async function createStockFromDoc(docId, docType, items, date, userId) {
 
     if (!resolved?.productId) continue
 
-    // Перевірити product_type — послуги не потребують складського руху
-    const { data: prodInfo } = await supabase.from('products')
-      .select('product_type').eq('id', resolved.productId).maybeSingle()
-    if (prodInfo?.product_type === 'service' || prodInfo?.product_type === 'expense') continue
+    // Послуги/розхідники також ведуться рухами (in/out) — облік кількості/вартості, без залишку-балансу в розділі «Товари»
 
     // Створити рух
     const unitPrice = parseFloat(item.unitPrice) || null

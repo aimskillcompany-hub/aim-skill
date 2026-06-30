@@ -125,9 +125,6 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
       const resolved = await resolveProduct(it.name, it.unit, price, user?.id)
       const productId = resolved?.productId
       if (!productId) continue
-      // послуги/витрати не ведемо на складі
-      const { data: prodInfo } = await supabase.from('products').select('product_type').eq('id', productId).maybeSingle()
-      if (prodInfo?.product_type === 'service' || prodInfo?.product_type === 'expense') continue
       await createStockMovement({
         productId, type: stockDir, quantity: qty, price,
         total: Number(it.amount) || (price ? qty * price : null),

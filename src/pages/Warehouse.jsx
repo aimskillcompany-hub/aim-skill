@@ -13,16 +13,18 @@ const SRC_LABEL = { document: 'з документа', manual: 'вручну', a
 const srcLabel = (s) => SRC_LABEL[s] || s || '—'
 
 export default function Warehouse() {
-  const [tab, setTab] = useState('stock')
+  const [tab, setTab] = useState('goods')
   return (
     <div>
       <div className="page-header"><h1>Склад</h1></div>
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 18, overflowX: 'auto' }}>
-        {[['stock', 'Залишки', 'ti-package'], ['movements', 'Рухи', 'ti-arrows-up-down'], ['assemblies', 'Збірки', 'ti-tool']].map(([id, lbl, icon]) => (
+        {[['goods', 'Товари', 'ti-package'], ['services', 'Послуги', 'ti-briefcase'], ['consumables', 'Розхідні матеріали', 'ti-paper-bag'], ['movements', 'Рухи', 'ti-arrows-up-down'], ['assemblies', 'Збірки', 'ti-tool']].map(([id, lbl, icon]) => (
           <button key={id} onClick={() => setTab(id)} style={tabStyle(tab === id)}><i className={`ti ${icon}`} style={{ fontSize: 15 }} />{lbl}</button>
         ))}
       </div>
-      {tab === 'stock' && <StockTab />}
+      {tab === 'goods' && <StockTab />}
+      {tab === 'services' && <ServicesTab />}
+      {tab === 'consumables' && <ConsumablesTab />}
       {tab === 'movements' && <MovementsTab />}
       {tab === 'assemblies' && <AssembliesTab />}
     </div>
@@ -51,7 +53,7 @@ function StockTab() {
     setLoading(true)
     const { data } = await supabase.from('product_stock')
       .select('id, name, sku, unit, category, buy_price, sell_price, computed_stock, total_in, total_out')
-      .eq('status', 'active').order('name').limit(2000)
+      .eq('status', 'active').eq('product_type', 'goods').order('name').limit(2000)
     setRows(data || [])
     setLoading(false)
   }
@@ -187,6 +189,166 @@ function StockTab() {
         </div>
       </div>
       {detail && <ProductModal product={detail} onClose={() => { setDetail(null); load() }} />}
+    </div>
+  )
+}
+
+// ───────── Послуги (без залишків: к-сть + вартість, вхідні/вихідні) ─────────
+function ServicesTab() {
+  const [rows, setRows] = useState(null)
+  const [q, setQ] = useState('')
+
+  const load = async () => {
+    const { data: prods } = await supabase.from('product_stock')
+      .select('id, name, category').eq('status', 'active').eq('product_type', 'service').order('name').limit(2000)
+    const ids = (prods || []).map(p => p.id)
+    let movs = []
+    if (ids.length) {
+      const { data } = await supabase.from('stock_movements').select('product_id, type, quantity, total').in('product_id', ids)
+      movs = data || []
+    }
+    const agg = {}
+    movs.forEach(m => {
+      const a = (agg[m.product_id] ||= { inQty: 0, inVal: 0, outQty: 0, outVal: 0 })
+      const qn = Number(m.quantity) || 0, t = Number(m.total) || 0
+      if (m.type === 'in') { a.inQty += qn; a.inVal += t } else if (m.type === 'out') { a.outQty += qn; a.outVal += t }
+    })
+    setRows((prods || []).map(p => ({ ...p, ...(agg[p.id] || { inQty: 0, inVal: 0, outQty: 0, outVal: 0 }) })))
+  }
+  useEffect(() => { load() }, [])
+
+  if (!rows) return <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
+  const t = q.trim().toLowerCase()
+  const flt = rows.filter(r => !t || (r.name || '').toLowerCase().includes(t))
+  const out = flt.filter(r => r.outQty > 0 || r.outVal > 0)
+  const inc = flt.filter(r => r.inQty > 0 || r.inVal > 0)
+  const both = flt.filter(r => !(r.outQty || r.outVal) && !(r.inQty || r.inVal)) // ще без операцій
+
+  const Section = ({ title, list, qtyKey, valKey, color }) => (
+    <div className="card" style={{ marginBottom: 18 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+        <div className="card-title" style={{ marginBottom: 0 }}>{title}</div>
+        <div style={{ fontSize: 13, color }}>{fmtInt(list.reduce((s, r) => s + r[valKey], 0))} грн</div>
+      </div>
+      {list.length === 0 ? <p style={{ color: 'var(--text3)', fontSize: 13 }}>Немає операцій.</p> : (
+        <div className="tbl-wrap" style={{ border: 'none' }}>
+          <table>
+            <thead><tr><th>Послуга</th><th style={{ textAlign: 'right' }}>К-сть</th><th style={{ textAlign: 'right' }}>Загальна вартість</th></tr></thead>
+            <tbody>
+              {list.map(r => (
+                <tr key={r.id}>
+                  <td><div className="trunc" style={{ fontWeight: 500 }}>{r.name}</div>{r.category && <div style={{ fontSize: 11, color: 'var(--text3)' }}>{r.category}</div>}</td>
+                  <td style={{ textAlign: 'right' }}>{fmt(r[qtyKey])}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600, color }}>{fmtInt(r[valKey])}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+
+  return (
+    <div>
+      <input className="form-input" placeholder="Пошук послуги…" value={q} onChange={e => setQ(e.target.value)} style={{ maxWidth: 360, marginBottom: 14 }} />
+      <Section title="Вихідні послуги (надаємо)" list={out} qtyKey="outQty" valKey="outVal" color="var(--green)" />
+      <Section title="Вхідні послуги (отримуємо)" list={inc} qtyKey="inQty" valKey="inVal" color="var(--red)" />
+      {both.length > 0 && (
+        <div className="card">
+          <div className="card-title">Без операцій ({both.length})</div>
+          <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>{both.map(r => r.name).join(' · ')}</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ───────── Розхідні матеріали (придбано/списано/залишок + списання) ─────────
+function ConsumablesTab() {
+  const { user } = useUser()
+  const [rows, setRows] = useState(null)
+  const [q, setQ] = useState('')
+  const [consume, setConsume] = useState(null)
+
+  const load = async () => {
+    const { data } = await supabase.from('product_stock')
+      .select('id, name, unit, computed_stock, total_in, total_out').eq('status', 'active').eq('product_type', 'expense').order('name').limit(2000)
+    setRows(data || [])
+  }
+  useEffect(() => { load() }, [])
+
+  if (!rows) return <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
+  const t = q.trim().toLowerCase()
+  const view = rows.filter(r => !t || (r.name || '').toLowerCase().includes(t))
+
+  return (
+    <div>
+      <input className="form-input" placeholder="Пошук матеріалу…" value={q} onChange={e => setQ(e.target.value)} style={{ maxWidth: 360, marginBottom: 14 }} />
+      <div className="card">
+        <div className="tbl-wrap" style={{ border: 'none' }}>
+          <table>
+            <thead><tr><th>Матеріал</th><th style={{ textAlign: 'right' }}>Придбано</th><th style={{ textAlign: 'right' }}>Списано</th><th style={{ textAlign: 'right' }}>Залишок</th><th /></tr></thead>
+            <tbody>
+              {view.map(r => {
+                const bal = Number(r.computed_stock) || 0
+                const c = bal > 0 ? 'var(--green)' : bal < 0 ? 'var(--red)' : 'var(--text3)'
+                return (
+                  <tr key={r.id}>
+                    <td><div className="trunc" style={{ fontWeight: 500 }}>{r.name}</div></td>
+                    <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{fmt(r.total_in)}</td>
+                    <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{fmt(r.total_out)}</td>
+                    <td style={{ textAlign: 'right', color: c, fontWeight: 600 }}>{fmt(bal)} {r.unit}</td>
+                    <td style={{ textAlign: 'right' }}><button className="btn" onClick={() => setConsume(r)} title="Списати"><i className="ti ti-minus" /> Списати</button></td>
+                  </tr>
+                )
+              })}
+              {view.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Немає розхідних матеріалів</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {consume && <ConsumeModal product={consume} user={user} onClose={() => setConsume(null)} onDone={() => { setConsume(null); load() }} />}
+    </div>
+  )
+}
+
+function ConsumeModal({ product, user, onClose, onDone }) {
+  const [qty, setQty] = useState('')
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const save = async () => {
+    const q = Number(qty) || 0
+    if (q <= 0) { setErr('Вкажіть кількість'); return }
+    setBusy(true); setErr(null)
+    const { error } = await supabase.from('stock_movements').insert({
+      product_id: product.id, type: 'out', quantity: q, date,
+      source: 'manual', description: note.trim() || `Списання: ${product.name}`.slice(0, 200), created_by: user?.id || null,
+    })
+    setBusy(false)
+    if (error) { setErr(error.message); return }
+    onDone()
+  }
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
+        <div className="modal-header"><h2 style={{ fontSize: 16 }}>Списати матеріал</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
+        <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 12 }}>{product.name} · залишок {fmt(product.computed_stock)} {product.unit}</div>
+        <div className="form-grid">
+          <div className="form-group"><label>Кількість *</label><input className="form-input" type="number" min="0" step="any" value={qty} onChange={e => setQty(e.target.value)} autoFocus /></div>
+          <div className="form-group"><label>Дата</label><input className="form-input" type="date" value={date} onChange={e => setDate(e.target.value)} /></div>
+          <div className="form-group full"><label>Примітка</label><input className="form-input" value={note} onChange={e => setNote(e.target.value)} placeholder="напр. видано в офіс" /></div>
+        </div>
+        {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 8 }}>{err}</div>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+          <button className="btn" onClick={onClose}>Скасувати</button>
+          <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? '…' : 'Списати'}</button>
+        </div>
+      </div>
     </div>
   )
 }
