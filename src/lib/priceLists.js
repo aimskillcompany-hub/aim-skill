@@ -188,7 +188,7 @@ export async function importPriceList({ supplierId, fileName, map, headerRow, ro
 // Останній імпорт по кожному постачальнику (для прев'ю стану + переюзу мапінгу)
 export async function loadPriceListMeta() {
   const { data } = await supabase.from('supplier_price_lists')
-    .select('id, supplier_id, file_name, rows_count, column_map, usd_rate, vat_rate, imported_at, contractors(name)')
+    .select('id, supplier_id, file_name, rows_count, column_map, usd_rate, vat_rate, imported_at, source, contractors(name)')
     .order('imported_at', { ascending: false })
   return data || []
 }

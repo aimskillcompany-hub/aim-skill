@@ -4,6 +4,7 @@
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [
-    { "path": "/api/mail-sync", "schedule": "0 7 * * *" }
+    { "path": "/api/mail-sync", "schedule": "0 7 * * *" },
+    { "path": "/api/brain-sync", "schedule": "0 5 * * *" }
   ]
 }

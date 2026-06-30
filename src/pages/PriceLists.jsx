@@ -177,6 +177,48 @@ function PriceDetailModal({ row, onClose }) {
   )
 }
 
+// ───────── Синхронізація прайсу по API (Brain) ─────────
+function BrainSyncCard({ meta, onSynced }) {
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState(null)
+  const [err, setErr] = useState(null)
+  const brain = meta.find(m => m.source === 'brain_api')
+
+  const sync = async () => {
+    setBusy(true); setErr(null); setMsg(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const r = await fetch('/api/brain-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`)
+      setMsg(`Синхронізовано ${(j.count || 0).toLocaleString('uk')} позицій.`)
+      onSynced()
+    } catch (e) { setErr('Помилка синхронізації: ' + e.message) }
+    setBusy(false)
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: 18 }}>
+      <div className="card-title">Прайс по API — Brain (api.brain.com.ua)</div>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className="btn btn-primary" onClick={sync} disabled={busy}>
+          <i className={`ti ${busy ? 'ti-loader-2' : 'ti-refresh'}`} /> {busy ? 'Синхронізація…' : 'Оновити з API'}
+        </button>
+        <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>
+          {brain
+            ? <>Останнє оновлення: {(brain.imported_at || '').slice(0, 10) || '—'} · {(brain.rows_count || 0).toLocaleString('uk')} позицій. Авто-синк раз на добу.</>
+            : <>Ще не синхронізовано. Натисніть «Оновити з API» (потрібні налаштування BRAIN_* у Vercel). Авто-синк раз на добу.</>}
+        </div>
+      </div>
+      {msg && <div style={{ color: 'var(--green)', fontSize: 13, marginTop: 10 }}>{msg}</div>}
+      {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 10 }}>{err}</div>}
+    </div>
+  )
+}
+
 // ───────── Імпорт ─────────
 function ImportPanel({ meta, onImported }) {
   const { user } = useUser()
@@ -253,6 +295,8 @@ function ImportPanel({ meta, onImported }) {
 
   return (
     <div>
+      <BrainSyncCard meta={meta} onSynced={onImported} />
+
       <div className="card" style={{ marginBottom: 18 }}>
         <div className="card-title">Завантажити прайс (Excel)</div>
         <div className="form-grid" style={{ marginBottom: 12 }}>
@@ -359,7 +403,7 @@ function ImportPanel({ meta, onImported }) {
                 {meta.map(m => (
                   <tr key={m.id}>
                     <td>{m.contractors?.name || '—'}</td>
-                    <td style={{ fontSize: 12, color: 'var(--text2)' }}><div className="trunc">{m.file_name}</div></td>
+                    <td style={{ fontSize: 12, color: 'var(--text2)' }}><div className="trunc">{m.file_name}{m.source === 'brain_api' && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: 'var(--blue)', border: '1px solid var(--blue)', borderRadius: 4, padding: '1px 4px' }}>API</span>}</div></td>
                     <td style={{ textAlign: 'right' }}>{(m.rows_count || 0).toLocaleString('uk')}</td>
                     <td style={{ textAlign: 'right', fontSize: 12 }}>{m.usd_rate ? Number(m.usd_rate).toFixed(2) : '—'}</td>
                     <td style={{ textAlign: 'right', fontSize: 12 }}>{m.vat_rate != null ? m.vat_rate + '%' : '—'}</td>

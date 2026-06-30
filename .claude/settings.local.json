@@ -17,7 +17,8 @@
       "Bash(git push:*)",
       "Bash(sed -i '' 's/deploy: 2026-06-16-v5/deploy: 2026-06-16-v6/' /Users/user/Downloads/aim-skill-main/src/main.jsx)",
       "Bash(sed -i '' 's/deploy: 2026-06-16-v6/deploy: 2026-06-16-v7/' /Users/user/Downloads/aim-skill-main/src/main.jsx)",
-      "WebSearch"
+      "WebSearch",
+      "WebFetch(domain:api.brain.com.ua)"
     ]
   },
   "enabledPlugins": {
