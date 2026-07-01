@@ -711,6 +711,19 @@ function SuppliersTab({ o }) {
   const setSupplier = async (s, supplier_id) => { await supabase.from('supplier_orders').update({ supplier_id: supplier_id || null }).eq('id', s.id); load() }
   const del = async (s) => { await supabase.from('supplier_orders').delete().eq('id', s.id); load() }
 
+  // Помітка «замовлено» на позиції субзамовлення
+  const toggleOrdered = async (soId, it, val) => {
+    await supabase.from('supplier_order_items').update({ ordered: val }).eq('id', it.id)
+    setItems(prev => ({ ...prev, [soId]: (prev[soId] || []).map(x => x.id === it.id ? { ...x, ordered: val } : x) }))
+  }
+  const toggleAllOrdered = async (s, val) => {
+    const list = items[s.id] || []
+    const ids = list.map(x => x.id)
+    if (ids.length) await supabase.from('supplier_order_items').update({ ordered: val }).in('id', ids)
+    setItems(prev => ({ ...prev, [s.id]: (prev[s.id] || []).map(x => ({ ...x, ordered: val })) }))
+    if (val && s.status === 'new') await setStatus(s, 'ordered')
+  }
+
   // PDF «Замовлення постачальнику» для конкретного субзамовлення
   const genPdf = async (s, download) => {
     const list = (items[s.id] || []).map(it => ({ name: it.name, sku: it.sku, quantity: Number(it.qty) || 0, unit: it.unit || 'шт', price: Number(it.cost_price) || 0 }))
@@ -801,19 +814,31 @@ function SuppliersTab({ o }) {
               <button className="btn" onClick={() => del(s)} title="Видалити" style={{ color: 'var(--red)' }}><i className="ti ti-trash" /></button>
             </div>
 
-            {(items[s.id] || []).length > 0 && (
+            {(items[s.id] || []).length > 0 && (() => {
+              const list = items[s.id]
+              const allOrdered = list.length > 0 && list.every(x => x.ordered)
+              const orderedCnt = list.filter(x => x.ordered).length
+              return (
               <div className="tbl-wrap" style={{ border: 'none', marginTop: 10 }}>
                 <table>
                   <thead><tr>
+                    <th style={{ width: 32, textAlign: 'center' }} title="Замовлено">
+                      <input type="checkbox" checked={allOrdered} onChange={e => toggleAllOrdered(s, e.target.checked)} />
+                    </th>
+                    <th style={{ width: 110 }}>Код</th>
                     <th>Найменування</th>
                     <th style={{ textAlign: 'right' }}>К-сть</th>
                     <th style={{ textAlign: 'right' }}>Закупівля</th>
                     <th style={{ textAlign: 'right' }}>Сума</th>
                   </tr></thead>
                   <tbody>
-                    {items[s.id].map(it => (
-                      <tr key={it.id}>
-                        <td><div className="trunc" title={it.name}>{it.name}</div></td>
+                    {list.map(it => (
+                      <tr key={it.id} style={it.ordered ? { background: 'var(--surface2)' } : undefined}>
+                        <td style={{ textAlign: 'center' }}>
+                          <input type="checkbox" checked={!!it.ordered} onChange={e => toggleOrdered(s.id, it, e.target.checked)} title="Замовлено" />
+                        </td>
+                        <td style={{ fontSize: 12, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{it.sku || '—'}</td>
+                        <td style={{ textDecoration: it.ordered ? 'line-through' : 'none', color: it.ordered ? 'var(--text3)' : undefined }}><div className="trunc" title={it.name}>{it.name}</div></td>
                         <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{it.qty} {it.unit || 'шт'}</td>
                         <td style={{ textAlign: 'right' }}>{fmt(it.cost_price)}</td>
                         <td style={{ textAlign: 'right' }}>{fmt((Number(it.qty) || 0) * (Number(it.cost_price) || 0))}</td>
@@ -821,8 +846,10 @@ function SuppliersTab({ o }) {
                     ))}
                   </tbody>
                 </table>
+                <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 4 }}>Замовлено {orderedCnt} з {list.length}</div>
               </div>
-            )}
+              )
+            })()}
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, fontSize: 13 }}>
               <span style={{ color: 'var(--text3)' }}>{s.payment_due_date ? `оплата до ${s.payment_due_date}` : 'без відстрочки'}</span>
