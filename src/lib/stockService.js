@@ -479,9 +479,37 @@ export async function getAssembly(id) {
   return { ...a, items: items || [] }
 }
 
+// ── Реверс складських рухів збірки ──
+// Спочатку пробуємо видалити рухи за assembly_id (нові збірки).
+// Якщо їх нема (старі збірки з assembly_id=null) — створюємо компенсуючі рухи
+// з assembly_items: компоненти повертаються (IN), виріб знімається (OUT).
+async function reverseAssemblyMovements(id) {
+  const [{ data: a }, { data: items }] = await Promise.all([
+    supabase.from('assemblies').select('quantity, result_product_id, total_cost, name').eq('id', id).maybeSingle(),
+    supabase.from('assembly_items').select('product_id, quantity, cost_price, total').eq('assembly_id', id),
+  ])
+  const { data: deleted } = await supabase.from('stock_movements').delete().eq('assembly_id', id).select('id')
+  if (deleted && deleted.length) return // рухи були прив'язані — видалили, цього досить
+
+  const today = new Date().toISOString().slice(0, 10)
+  for (const it of (items || [])) {
+    await supabase.from('stock_movements').insert({
+      product_id: it.product_id, type: 'in', quantity: it.quantity, price: it.cost_price, cost_price: it.cost_price, total: it.total,
+      date: today, source: 'assembly', description: `Скасування збірки: ${a?.name || ''} — повернення компонента`.slice(0, 200),
+    })
+  }
+  if (a?.result_product_id) {
+    const unit = a.quantity ? a.total_cost / a.quantity : a.total_cost
+    await supabase.from('stock_movements').insert({
+      product_id: a.result_product_id, type: 'out', quantity: a.quantity, price: unit, cost_price: unit, total: a.total_cost,
+      date: today, source: 'assembly', description: `Скасування збірки: ${a?.name || ''} — зняття виробу`.slice(0, 200),
+    })
+  }
+}
+
 // ── Видалити збірку (реверс рухів: компоненти повертаються, виріб знімається) ──
 export async function deleteAssembly(id) {
-  await supabase.from('stock_movements').delete().eq('assembly_id', id)
+  await reverseAssemblyMovements(id)
   await supabase.from('assembly_items').delete().eq('assembly_id', id)
   const { error } = await supabase.from('assemblies').delete().eq('id', id)
   return { error: error?.message || null }
@@ -502,8 +530,8 @@ export async function editAssembly(id, { name, quantity, components, date, notes
     if (avail < need) return { error: `Недостатньо "${comp.productName || comp.productId}": потрібно ${need}, буде доступно ${avail}` }
   }
 
-  // Реверс
-  await supabase.from('stock_movements').delete().eq('assembly_id', id)
+  // Реверс (видалення прив'язаних рухів або компенсуючі рухи для старих збірок)
+  await reverseAssemblyMovements(id)
   await supabase.from('assembly_items').delete().eq('assembly_id', id)
   await supabase.from('assemblies').delete().eq('id', id)
 
