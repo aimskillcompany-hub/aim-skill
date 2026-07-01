@@ -131,6 +131,18 @@ export async function previewPdf(docTypeKey, contractor, items, options) {
   openPdf(docDef)
 }
 
+// ── Blob згенерованого PDF (для прев'ю в модалці) ──
+export async function generatedDocBlob(docTypeKey, contractor, items, options) {
+  const dt = getDocType(docTypeKey)
+  if (!dt) throw new Error(`Невідомий тип документа: ${docTypeKey}`)
+  const enriched = await enrichContractorSigner(contractor)
+  const company = await getCompany()
+  const seller = dt.direction === 'incoming' ? enriched : company
+  const buyer = dt.direction === 'incoming' ? company : enriched
+  const docDef = dt.template.pdf(seller, buyer, cleanItems(items), options)
+  return getPdfBlob(docDef)
+}
+
 // ── Генерація та завантаження Excel ──
 export async function generateXlsx(docTypeKey, contractor, items, options) {
   const dt = getDocType(docTypeKey)

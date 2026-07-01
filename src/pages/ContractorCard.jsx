@@ -6,9 +6,10 @@ import { fmt, fmtInt } from '../lib/fmt'
 import { getContractorBalance } from '../lib/debts'
 import { fetchByEdrpou, isVkursiConfigured } from '../lib/vkursi'
 import { extractCompanyExtract } from '../lib/ai'
-import { getDocType, previewPdf } from '../lib/docgen'
+import { getDocType } from '../lib/docgen'
 import { ORDER_TYPES, TYPE_COLORS, statusLabel } from '../lib/orders'
 import DocModal from '../components/DocModal'
+import GeneratedDocModal from '../components/GeneratedDocModal'
 
 const TABS = [
   { id: 'details', label: 'Реквізити', icon: 'ti-id-badge-2' },
@@ -294,30 +295,15 @@ function DocumentsTab({ id }) {
   const { user } = useUser()
   const [rows, setRows] = useState(null)
   const [openDoc, setOpenDoc] = useState(null)
-  const [genErr, setGenErr] = useState(null)
+  const [genDoc, setGenDoc] = useState(null)
   const load = () => supabase.from('documents')
     .select('id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, ocr_data, source, generated_doc_id, contractors(name)')
     .eq('contractor_id', id).order('created_at', { ascending: false })
     .then(({ data }) => setRows(data || []))
   useEffect(() => { load() }, [id])
 
-  const openRow = async (d) => {
-    if (d.source === 'generated' && d.generated_doc_id) {
-      setGenErr(null)
-      try {
-        const { data: gd } = await supabase.from('generated_docs').select('*').eq('id', d.generated_doc_id).maybeSingle()
-        if (!gd) throw new Error('Згенерований документ не знайдено')
-        let contractor = { id: d.contractor_id, name: d.contractors?.name }
-        if (d.contractor_id) { const { data: c } = await supabase.from('contractors').select('*').eq('id', d.contractor_id).maybeSingle(); if (c) contractor = c }
-        const items = typeof gd.items === 'string' ? JSON.parse(gd.items || '[]') : (gd.items || [])
-        await previewPdf(gd.doc_type, contractor, items, {
-          docNumber: gd.doc_number, docDate: gd.doc_date, notes: gd.notes,
-          contractNum: gd.contract_num, contractDate: gd.contract_date, paymentDue: gd.payment_due, city: gd.city,
-          invoiceRef: gd.invoice_ref, invoiceRefDate: gd.invoice_ref_date, deliveryBasis: gd.delivery_basis, deliveryAddress: gd.delivery_address,
-        })
-      } catch (e) { setGenErr('Не вдалося відкрити документ: ' + e.message) }
-      return
-    }
+  const openRow = (d) => {
+    if (d.source === 'generated' && d.generated_doc_id) { setGenDoc(d); return }
     setOpenDoc(d)
   }
 
@@ -325,7 +311,6 @@ function DocumentsTab({ id }) {
   if (!rows.length) return <Empty text="Документів немає." />
   return (
     <>
-      {genErr && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 10 }}>{genErr}</div>}
       <Table head={['Тип', '№', 'Файл', 'Сума', 'Підписано', 'Дата']}>
         {rows.map(d => (
           <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => openRow(d)}>
@@ -338,6 +323,7 @@ function DocumentsTab({ id }) {
         ))}
       </Table>
       {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => { setOpenDoc(null); load() }} />}
+      {genDoc && <GeneratedDocModal doc={genDoc} onClose={() => setGenDoc(null)} />}
     </>
   )
 }

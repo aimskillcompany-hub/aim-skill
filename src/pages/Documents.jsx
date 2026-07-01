@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { fmt } from '../lib/fmt'
-import { DOCUMENT_TYPES, getDocType, previewPdf } from '../lib/docgen'
+import { DOCUMENT_TYPES, getDocType } from '../lib/docgen'
 import ContractorSelect from '../components/ui/ContractorSelect'
 import DocGenModal from '../components/DocGenModal'
 import DocModal from '../components/DocModal'
+import GeneratedDocModal from '../components/GeneratedDocModal'
 import { useSort, SortTh } from '../components/Sort'
 
 // Документ без метаданих — потребує розпізнавання
@@ -22,26 +23,10 @@ export default function Documents() {
   const [genContractor, setGenContractor] = useState(null)
   const [pickGen, setPickGen] = useState(false)
   const [openDoc, setOpenDoc] = useState(null) // { doc, autoOcr }
-  const [genErr, setGenErr] = useState(null)
+  const [genDoc, setGenDoc] = useState(null)   // згенерований документ (перегляд)
 
-  // Згенеровані документи не мають файлу у сховищі — відкриваємо регенерацією PDF
-  const openRow = async (d) => {
-    if (d.source === 'generated' && d.generated_doc_id) {
-      setGenErr(null)
-      try {
-        const { data: gd } = await supabase.from('generated_docs').select('*').eq('id', d.generated_doc_id).maybeSingle()
-        if (!gd) throw new Error('Згенерований документ не знайдено')
-        let contractor = { id: d.contractor_id, name: d.contractors?.name }
-        if (d.contractor_id) { const { data: c } = await supabase.from('contractors').select('*').eq('id', d.contractor_id).maybeSingle(); if (c) contractor = c }
-        const items = typeof gd.items === 'string' ? JSON.parse(gd.items || '[]') : (gd.items || [])
-        await previewPdf(gd.doc_type, contractor, items, {
-          docNumber: gd.doc_number, docDate: gd.doc_date, notes: gd.notes,
-          contractNum: gd.contract_num, contractDate: gd.contract_date, paymentDue: gd.payment_due, city: gd.city,
-          invoiceRef: gd.invoice_ref, invoiceRefDate: gd.invoice_ref_date, deliveryBasis: gd.delivery_basis, deliveryAddress: gd.delivery_address,
-        })
-      } catch (e) { setGenErr('Не вдалося відкрити документ: ' + e.message) }
-      return
-    }
+  const openRow = (d) => {
+    if (d.source === 'generated' && d.generated_doc_id) { setGenDoc(d); return }
     setOpenDoc({ doc: d, autoOcr: false })
   }
 
@@ -98,8 +83,6 @@ export default function Documents() {
         </select>
       </div>
 
-      {genErr && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 10 }}>{genErr}</div>}
-
       <div className="card">
         {loading ? <p style={{ color: 'var(--text3)' }}>Завантаження…</p> : (
           <div className="tbl-wrap" style={{ border: 'none' }}>
@@ -142,6 +125,7 @@ export default function Documents() {
 
       {showOcr && <DocModal user={user} onClose={() => setShowOcr(false)} onSaved={() => { setShowOcr(false); load() }} />}
       {openDoc && <DocModal user={user} existingDoc={openDoc.doc} autoOcr={openDoc.autoOcr} onClose={() => setOpenDoc(null)} onSaved={() => { setOpenDoc(null); load() }} />}
+      {genDoc && <GeneratedDocModal doc={genDoc} onClose={() => setGenDoc(null)} />}
       {pickGen && <PickContractorModal onClose={() => setPickGen(false)} onPick={(c) => { setPickGen(false); setGenContractor(c) }} />}
       {genContractor && <DocGenModal contractor={genContractor} userId={user?.id} onClose={() => setGenContractor(null)} onSaved={() => { setGenContractor(null); load() }} />}
     </div>
