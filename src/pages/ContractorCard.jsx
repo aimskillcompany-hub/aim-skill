@@ -6,7 +6,7 @@ import { fmt, fmtInt } from '../lib/fmt'
 import { getContractorBalance } from '../lib/debts'
 import { fetchByEdrpou, isVkursiConfigured } from '../lib/vkursi'
 import { extractCompanyExtract } from '../lib/ai'
-import { getDocType } from '../lib/docgen'
+import { getDocType, previewPdf } from '../lib/docgen'
 import { ORDER_TYPES, TYPE_COLORS, statusLabel } from '../lib/orders'
 import DocModal from '../components/DocModal'
 
@@ -294,18 +294,41 @@ function DocumentsTab({ id }) {
   const { user } = useUser()
   const [rows, setRows] = useState(null)
   const [openDoc, setOpenDoc] = useState(null)
+  const [genErr, setGenErr] = useState(null)
   const load = () => supabase.from('documents')
-    .select('id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, ocr_data, contractors(name)')
+    .select('id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, ocr_data, source, generated_doc_id, contractors(name)')
     .eq('contractor_id', id).order('created_at', { ascending: false })
     .then(({ data }) => setRows(data || []))
   useEffect(() => { load() }, [id])
+
+  const openRow = async (d) => {
+    if (d.source === 'generated' && d.generated_doc_id) {
+      setGenErr(null)
+      try {
+        const { data: gd } = await supabase.from('generated_docs').select('*').eq('id', d.generated_doc_id).maybeSingle()
+        if (!gd) throw new Error('Згенерований документ не знайдено')
+        let contractor = { id: d.contractor_id, name: d.contractors?.name }
+        if (d.contractor_id) { const { data: c } = await supabase.from('contractors').select('*').eq('id', d.contractor_id).maybeSingle(); if (c) contractor = c }
+        const items = typeof gd.items === 'string' ? JSON.parse(gd.items || '[]') : (gd.items || [])
+        await previewPdf(gd.doc_type, contractor, items, {
+          docNumber: gd.doc_number, docDate: gd.doc_date, notes: gd.notes,
+          contractNum: gd.contract_num, contractDate: gd.contract_date, paymentDue: gd.payment_due, city: gd.city,
+          invoiceRef: gd.invoice_ref, invoiceRefDate: gd.invoice_ref_date, deliveryBasis: gd.delivery_basis, deliveryAddress: gd.delivery_address,
+        })
+      } catch (e) { setGenErr('Не вдалося відкрити документ: ' + e.message) }
+      return
+    }
+    setOpenDoc(d)
+  }
+
   if (rows == null) return <Loading />
   if (!rows.length) return <Empty text="Документів немає." />
   return (
     <>
+      {genErr && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 10 }}>{genErr}</div>}
       <Table head={['Тип', '№', 'Файл', 'Сума', 'Підписано', 'Дата']}>
         {rows.map(d => (
-          <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => setOpenDoc(d)}>
+          <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => openRow(d)}>
             <td>{getDocType(d.type)?.label || d.type || '—'}</td>
             <td style={{ color: 'var(--text2)', fontSize: 12 }}>{d.doc_number || '—'}</td>
             <td><div className="trunc">{d.file_name || '—'}</div></td>
