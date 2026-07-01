@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { fmt, fmtInt } from '../lib/fmt'
 import { getContractorBalance } from '../lib/debts'
 import { fetchByEdrpou, isVkursiConfigured } from '../lib/vkursi'
+import { extractCompanyExtract } from '../lib/ai'
 import { getDocType } from '../lib/docgen'
 import { ORDER_TYPES, TYPE_COLORS, statusLabel } from '../lib/orders'
 import DocModal from '../components/DocModal'
@@ -116,7 +117,39 @@ function DetailsTab({ c, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [vk, setVk] = useState({ loading: false, msg: null, err: null })
+  const [edr, setEdr] = useState({ loading: false, msg: null, err: null })
+  const fileRef = useRef(null)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const onExtractFile = async (e) => {
+    const file = e.target.files?.[0]
+    if (e.target) e.target.value = ''
+    if (!file) return
+    setEdr({ loading: true, err: null, msg: null })
+    try {
+      const info = await extractCompanyExtract([file])
+      // зберегти файл у Storage
+      const path = `edr/${c.id}/${Date.now()}_${file.name}`.replace(/[^\w.\-/]/g, '_')
+      const { error: upErr } = await supabase.storage.from('documents').upload(path, file, { upsert: false })
+      if (upErr && !upErr.message.includes('exists')) throw upErr
+      // заповнити поля
+      const merged = { ...form }
+      for (const [k, v] of Object.entries(info)) {
+        if (v == null || v === '') continue
+        if (k === 'is_vat_payer') { merged.is_vat_payer = !!v; continue }
+        if (k in form) merged[k] = v
+      }
+      merged.edr_extract_path = path
+      merged.edr_extract_name = file.name
+      setForm(merged)
+      setEdr({ loading: false, err: null, msg: 'Витяг розпізнано і збережено. Перевірте поля і натисніть «Зберегти».' })
+    } catch (err) { setEdr({ loading: false, err: err.message, msg: null }) }
+  }
+
+  const openExtract = async () => {
+    const { data } = await supabase.storage.from('documents').createSignedUrl(form.edr_extract_path, 3600)
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank')
+  }
 
   const save = async () => {
     setSaving(true); setSaved(false)
@@ -153,12 +186,25 @@ function DetailsTab({ c, onSaved }) {
           <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={!!form.is_supplier} onChange={e => set('is_supplier', e.target.checked)} /> Постачальник</label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={!!form.is_vat_payer} onChange={e => set('is_vat_payer', e.target.checked)} /> Платник ПДВ</label>
         </div>
-        <button className="btn" onClick={pullVkursi} disabled={vk.loading} title={isVkursiConfigured() ? 'Vkursi' : 'Безкоштовний ЄДР (Vkursi не налаштовано)'}>
-          <i className="ti ti-download" /> {vk.loading ? '…' : 'Заповнити за ЄДРПОУ'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn" onClick={pullVkursi} disabled={vk.loading} title={isVkursiConfigured() ? 'Vkursi' : 'Безкоштовний ЄДР (Vkursi не налаштовано)'}>
+            <i className="ti ti-download" /> {vk.loading ? '…' : 'Заповнити за ЄДРПОУ'}
+          </button>
+          <button className="btn" onClick={() => fileRef.current?.click()} disabled={edr.loading} title="Завантажити витяг з ЄДР — AI розпізнає й заповнить реквізити">
+            <i className="ti ti-file-upload" /> {edr.loading ? 'Розпізнавання…' : 'Витяг з ЄДР (AI)'}
+          </button>
+          <input ref={fileRef} type="file" accept="image/*,.pdf,.heic" style={{ display: 'none' }} onChange={onExtractFile} />
+        </div>
       </div>
       {vk.err && <div style={{ color: 'var(--red)', fontSize: 12, marginBottom: 10 }}>{vk.err}</div>}
       {vk.msg && <div style={{ color: 'var(--green)', fontSize: 12, marginBottom: 10 }}>{vk.msg}</div>}
+      {edr.err && <div style={{ color: 'var(--red)', fontSize: 12, marginBottom: 10 }}>{edr.err}</div>}
+      {edr.msg && <div style={{ color: 'var(--green)', fontSize: 12, marginBottom: 10 }}>{edr.msg}</div>}
+      {form.edr_extract_path && (
+        <div style={{ fontSize: 12.5, marginBottom: 10 }}>
+          <i className="ti ti-file-check" style={{ color: 'var(--green)' }} /> Витяг з ЄДР: <a onClick={openExtract} style={{ color: 'var(--blue)', cursor: 'pointer' }}>{form.edr_extract_name || 'переглянути'}</a>
+        </div>
+      )}
 
       {FIELD_GROUPS.map(g => (
         <div key={g.title} style={{ marginBottom: 18 }}>

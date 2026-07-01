@@ -184,6 +184,56 @@ ${articles?.length ? articles.map(a => `- ${a.name} (${a.type})`).join('\n') : '
   }
 }
 
+// ── Розпізнати ВИТЯГ з ЄДР → реквізити компанії (для профілю контрагента) ──
+export async function extractCompanyExtract(files) {
+  if (!files?.length) throw new Error('Немає файлів')
+  const contentBlocks = []
+  const supported = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+  for (let file of files) {
+    file = await normalizeImage(file)
+    const base64 = await toBase64(file)
+    const isPDF = file.type === 'application/pdf'
+    if (!isPDF && !file.type.startsWith('image/')) throw new Error(`Непідтримуваний формат: ${file.name}`)
+    if (isPDF) contentBlocks.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } })
+    else contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: supported.includes(file.type) ? file.type : 'image/jpeg', data: base64 } })
+  }
+  contentBlocks.push({ type: 'text', text: 'Розпізнай цей витяг з ЄДР та поверни JSON з реквізитами компанії.' })
+
+  const systemPrompt = `Ти розпізнаєш дані компанії з витягу з Єдиного державного реєстру (ЄДР) України або подібного офіційного документа. Збери максимум відомих реквізитів з усіх сторінок.
+
+Поверни ТІЛЬКИ валідний JSON без markdown:
+{
+  "name": "повна офіційна назва (з орг.-правовою формою) або null",
+  "short_name": "коротка назва або null",
+  "edrpou": "код ЄДРПОУ (8 цифр) або null",
+  "ipn": "ІПН/номер платника ПДВ або null",
+  "legal_form": "організаційно-правова форма (напр. Товариство з обмеженою відповідальністю) або null",
+  "tax_system": "система оподаткування якщо вказано або null",
+  "is_vat_payer": true/false/null,
+  "legal_address": "повна юридична адреса одним рядком або null",
+  "postal_code": "поштовий індекс або null",
+  "city": "місто/населений пункт або null",
+  "region": "область або null",
+  "director": "ПІБ керівника/підписанта або null",
+  "director_position": "посада керівника (напр. Директор) або null",
+  "phone": "телефон або null",
+  "email": "email або null",
+  "website": "сайт або null",
+  "iban": "рахунок IBAN якщо вказано або null",
+  "bank_name": "назва банку або null",
+  "mfo": "МФО банку або null",
+  "kved": "основний КВЕД (код + опис) або null"
+}
+Якщо поле відсутнє — null. Не вигадуй дані.`
+
+  const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 1500, system: systemPrompt, messages: [{ role: 'user', content: contentBlocks }] })
+  let text = data.content?.find(b => b.type === 'text')?.text || ''
+  text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+  const m = text.match(/\{[\s\S]*\}/)
+  if (m) text = m[0]
+  try { return JSON.parse(text) } catch { throw new Error('Не вдалось розпізнати витяг. Спробуйте інший файл.') }
+}
+
 // ── Розпізнати реквізити компанії з тексту ──
 export async function parseCompanyFromText(text) {
   if (!USE_PROXY && !API_KEY) throw new Error('API ключ не налаштовано')
