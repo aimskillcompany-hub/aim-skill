@@ -5,10 +5,11 @@ import { fmt, fmtInt } from '../lib/fmt'
 import { assembleProduct, getAssembly, deleteAssembly, editAssembly } from '../lib/stockService'
 import { getDocType } from '../lib/docgen'
 import DocModal from '../components/DocModal'
+import GeneratedDocModal from '../components/GeneratedDocModal'
 import { useSort, SortTh } from '../components/Sort'
 
-// поля документа-джерела, потрібні для модалки DocModal
-const DOC_EMBED = 'documents(id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name))'
+// поля документа-джерела, потрібні для модалки DocModal / GeneratedDocModal
+const DOC_EMBED = 'documents(id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, source, generated_doc_id, contractors(name))'
 const SRC_LABEL = { document: 'з документа', manual: 'вручну', assembly: 'збірка', auto: 'авто' }
 const srcLabel = (s) => SRC_LABEL[s] || s || '—'
 
@@ -366,6 +367,7 @@ function ProductModal({ product, onClose }) {
   const [aliases, setAliases] = useState([])
   const [movs, setMovs] = useState([])
   const [openDoc, setOpenDoc] = useState(null)
+  const [genDoc, setGenDoc] = useState(null)
   const [linkMov, setLinkMov] = useState(null)
   const [allCats, setAllCats] = useState([])
   const [form, setForm] = useState(null)
@@ -481,12 +483,13 @@ function ProductModal({ product, onClose }) {
           <table><thead><tr><th>Дата</th><th>Тип</th><th style={{ textAlign: 'right' }}>К-сть</th><th style={{ textAlign: 'right' }}>Собівартість</th><th>Опис</th><th>Документ</th></tr></thead>
             <tbody>{movs.map(m => <tr key={m.id}><td style={{ fontSize: 12 }}>{m.date}</td><td>{m.type === 'in' ? 'Прихід' : m.type === 'out' ? 'Видаток' : m.type}</td><td style={{ textAlign: 'right' }}>{fmt(m.quantity)}</td><td style={{ textAlign: 'right' }}>{m.cost_price ? fmt(m.cost_price) : '—'}</td><td><div className="trunc">{m.description}</div></td>
               <td>{m.documents
-                ? <a onClick={() => setOpenDoc(m.documents)} style={{ color: 'var(--blue)', cursor: 'pointer', fontSize: 12 }}><i className="ti ti-file" /> {getDocType(m.documents.type)?.label || 'документ'}</a>
+                ? <a onClick={() => m.documents.source === 'generated' ? setGenDoc(m.documents) : setOpenDoc(m.documents)} style={{ color: 'var(--blue)', cursor: 'pointer', fontSize: 12 }}><i className="ti ti-file" /> {getDocType(m.documents.type)?.label || 'документ'}</a>
                 : <span style={{ color: 'var(--text3)', fontSize: 12 }}>{srcLabel(m.source)} <button className="btn" onClick={() => setLinkMov(m)} title="Прив'язати документ" style={{ padding: '0 6px' }}><i className="ti ti-link" /></button></span>}</td></tr>)}</tbody>
           </table>
         </div>
       </div>
       {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />}
+      {genDoc && <GeneratedDocModal doc={genDoc} onClose={() => setGenDoc(null)} />}
       {linkMov && <DocPickerModal title="Прив'язати документ до руху" match={{ date: linkMov.date }} onClose={() => setLinkMov(null)} onPick={linkDoc} />}
     </div>
   )
@@ -499,6 +502,7 @@ function MovementsTab() {
   const [loading, setLoading] = useState(true)
   const [type, setType] = useState('all')
   const [openDoc, setOpenDoc] = useState(null)
+  const [genDoc, setGenDoc] = useState(null)
   const [linkMov, setLinkMov] = useState(null)
   const load = () => {
     setLoading(true)
@@ -546,7 +550,7 @@ function MovementsTab() {
                     <td style={{ textAlign: 'right' }}>{m.cost_price ? fmt(m.cost_price) : '—'}</td>
                     <td style={{ fontSize: 12 }}>
                       {m.documents
-                        ? <a onClick={() => setOpenDoc(m.documents)} style={{ color: 'var(--blue)', cursor: 'pointer' }} title={m.documents.file_name}><i className="ti ti-file" /> {getDocType(m.documents.type)?.label || 'документ'}</a>
+                        ? <a onClick={() => m.documents.source === 'generated' ? setGenDoc(m.documents) : setOpenDoc(m.documents)} style={{ color: 'var(--blue)', cursor: 'pointer' }} title={m.documents.file_name}><i className="ti ti-file" /> {getDocType(m.documents.type)?.label || 'документ'}</a>
                         : <span style={{ color: 'var(--text3)' }}>{srcLabel(m.source)} <button className="btn" onClick={() => setLinkMov(m)} title="Прив'язати документ" style={{ padding: '0 6px', marginLeft: 4 }}><i className="ti ti-link" /></button></span>}
                     </td>
                   </tr>
@@ -558,6 +562,7 @@ function MovementsTab() {
         )}
       </div>
       {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />}
+      {genDoc && <GeneratedDocModal doc={genDoc} onClose={() => setGenDoc(null)} />}
       {linkMov && <DocPickerModal title="Прив'язати документ до руху" match={{ date: linkMov.date }} onClose={() => setLinkMov(null)} onPick={linkDoc} />}
     </div>
   )
