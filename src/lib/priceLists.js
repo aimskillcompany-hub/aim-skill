@@ -7,7 +7,8 @@ import { supabase } from './supabase'
 // Поля, які мапимо на колонки Excel (індекси)
 export const FIELDS = [
   { key: 'name', label: 'Найменування', required: true },
-  { key: 'sku', label: 'Артикул / Код' },
+  { key: 'sku', label: 'Артикул' },
+  { key: 'code', label: 'Код' },
   { key: 'uktzed', label: 'Код УКТЗД (ТН ЗЕД)' },
   { key: 'brand', label: 'Виробник / Бренд' },
   { key: 'category', label: 'Категорія' },
@@ -24,7 +25,8 @@ export const FIELDS = [
 // Ціна продажу / РРЦ тощо) у різних постачальників (ERC, MTI…).
 const HINTS = {
   name: /найменув|^назва|опис|product name|^name$/i,
-  sku: /артикул|sku|парт.?ном|p\/n|^код$|код товар/i,
+  sku: /артикул|sku|парт.?ном|p\/n/i,
+  code: /^код$|код товар|^код,|product.?code|^code$|код\s*(?:тов|прод|постач)/i,
   uktzed: /уктзед|укт\s?зед|тн\s?зед|тнзед|hs.?code/i,
   brand: /^бренд|виробник(?!.*краї)|brand|manufact|vendor/i,
   category: /^категор(?!.*рівн)/i,
@@ -144,7 +146,7 @@ export async function importPriceList({ supplierId, fileName, map, headerRow, ro
     const priceUah = orig == null ? null : (ccy === 'USD' && rate ? Math.round(orig * rate * 100) / 100 : orig)
     return {
       name: decode(col(r, 'name')),
-      sku: map.sku != null ? decode(col(r, 'sku')) || null : null,
+      sku: (map.sku != null ? decode(col(r, 'sku')) : '') || (map.code != null ? decode(col(r, 'code')) : '') || null,
       uktzed: map.uktzed != null ? decode(col(r, 'uktzed')) || null : null,
       brand: map.brand != null ? decode(col(r, 'brand')) || null : null,
       category: map.category != null ? decode(col(r, 'category')) || null : null,
