@@ -682,7 +682,7 @@ function AssemblyDetailModal({ id, user, onClose, onChanged }) {
         qty: qy ? (Number(it.quantity) || 0) / qy : Number(it.quantity) || 0,
       })))
     })
-    supabase.from('product_stock').select('id, name, unit, computed_stock').gt('computed_stock', 0).order('name').limit(1000).then(({ data }) => setStock(data || []))
+    supabase.from('product_stock').select('id, name, sku, unit, computed_stock').eq('status', 'active').order('name').limit(3000).then(({ data }) => setStock(data || []))
   }, [id])
 
   const addComp = (p) => { if (!comps.find(c => c.productId === p.id)) setComps(cs => [...cs, { productId: p.id, productName: p.name, unit: p.unit, qty: 1 }]); setQ('') }
@@ -708,7 +708,11 @@ function AssemblyDetailModal({ id, user, onClose, onChanged }) {
     onChanged()
   }
 
-  const found = q.trim() ? stock.filter(s => (s.name || '').toLowerCase().includes(q.trim().toLowerCase()) && !comps.find(c => c.productId === s.id)).slice(0, 8) : []
+  const found = (() => {
+    const t = q.trim().toLowerCase()
+    if (t.length < 2) return []
+    return stock.filter(s => !comps.find(c => c.productId === s.id) && ((s.name || '').toLowerCase().includes(t) || (s.sku || '').toLowerCase().includes(t))).slice(0, 12)
+  })()
 
   return (
     <div className="modal-bg" onClick={onClose}>
@@ -770,13 +774,14 @@ function AssemblyDetailModal({ id, user, onClose, onChanged }) {
                     </tbody>
                   </table>
                 </div>
-                <div style={{ position: 'relative', marginBottom: 12 }}>
-                  <input className="form-input" placeholder="Додати компонент зі складу…" value={q} onChange={e => setQ(e.target.value)} />
-                  {found.length > 0 && (
-                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, zIndex: 5, maxHeight: 220, overflow: 'auto' }}>
+                <div style={{ marginBottom: 12 }}>
+                  <input className="form-input" placeholder="Додати компонент за назвою або артикулом…" value={q} onChange={e => setQ(e.target.value)} />
+                  {q.trim().length >= 2 && (
+                    <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 6, maxHeight: 240, overflow: 'auto' }}>
+                      {found.length === 0 && <div style={{ padding: '8px 10px', fontSize: 13, color: 'var(--text3)' }}>Нічого не знайдено</div>}
                       {found.map(p => (
                         <div key={p.id} onClick={() => addComp(p)} style={{ padding: '8px 10px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--border)' }}>
-                          {p.name} <span style={{ color: 'var(--text3)', fontSize: 11 }}>· на складі {fmt(p.computed_stock)} {p.unit}</span>
+                          {p.name} <span style={{ color: 'var(--text3)', fontSize: 11 }}>· {p.sku ? `${p.sku} · ` : ''}на складі {fmt(p.computed_stock)} {p.unit}</span>
                         </div>
                       ))}
                     </div>
@@ -807,7 +812,7 @@ function NewAssemblyModal({ user, onClose, onSaved }) {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    supabase.from('product_stock').select('id, name, unit, computed_stock').gt('computed_stock', 0).order('name').limit(1000).then(({ data }) => setStock(data || []))
+    supabase.from('product_stock').select('id, name, sku, unit, computed_stock').eq('status', 'active').order('name').limit(3000).then(({ data }) => setStock(data || []))
   }, [])
 
   const addComp = (p) => {
@@ -832,7 +837,11 @@ function NewAssemblyModal({ user, onClose, onSaved }) {
     onSaved()
   }
 
-  const matches = q.trim().length >= 2 ? stock.filter(s => s.name.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 8) : []
+  const matches = (() => {
+    const t = q.trim().toLowerCase()
+    if (t.length < 2) return []
+    return stock.filter(s => !components.find(c => c.productId === s.id) && ((s.name || '').toLowerCase().includes(t) || (s.sku || '').toLowerCase().includes(t))).slice(0, 12)
+  })()
 
   return (
     <div className="modal-bg" onClick={onClose}>
@@ -844,13 +853,14 @@ function NewAssemblyModal({ user, onClose, onSaved }) {
         </div>
 
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 8 }}>Компоненти зі складу</div>
-        <div style={{ position: 'relative', marginBottom: 10 }}>
-          <input className="form-input" placeholder="Знайти товар…" value={q} onChange={e => setQ(e.target.value)} />
-          {matches.length > 0 && (
-            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, zIndex: 10, maxHeight: 220, overflowY: 'auto' }}>
+        <div style={{ marginBottom: 10 }}>
+          <input className="form-input" placeholder="Знайти товар за назвою або артикулом…" value={q} onChange={e => setQ(e.target.value)} />
+          {q.trim().length >= 2 && (
+            <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 6, maxHeight: 240, overflowY: 'auto' }}>
+              {matches.length === 0 && <div style={{ padding: '8px 12px', fontSize: 13, color: 'var(--text3)' }}>Нічого не знайдено</div>}
               {matches.map(m => (
                 <div key={m.id} onClick={() => addComp(m)} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--border)' }}>
-                  {m.name} <span style={{ color: 'var(--text3)' }}>· залишок {fmt(m.computed_stock)} {m.unit}</span>
+                  {m.name} <span style={{ color: 'var(--text3)' }}>· {m.sku ? `${m.sku} · ` : ''}залишок {fmt(m.computed_stock)} {m.unit}</span>
                 </div>
               ))}
             </div>
