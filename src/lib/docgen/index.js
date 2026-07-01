@@ -237,6 +237,14 @@ export async function createStockFromDoc(docId, docType, items, date, userId) {
 
   const { resolveProduct } = await import('../stockService')
 
+  // docId — це generated_docs.id. Для прив'язки руху до розділу «Документи»
+  // знаходимо дзеркальний рядок у documents (за generated_doc_id).
+  let mirrorId = null
+  if (docId) {
+    const { data: mirror } = await supabase.from('documents').select('id').eq('generated_doc_id', docId).maybeSingle()
+    mirrorId = mirror?.id || null
+  }
+
   for (const item of items) {
     if (!item.name?.trim()) continue
     const qty = parseFloat(item.quantity) || 0
@@ -271,6 +279,7 @@ export async function createStockFromDoc(docId, docType, items, date, userId) {
       price: unitPrice,
       total,
       cost_price: costPrice,
+      document_id: mirrorId,
       date: date || new Date().toISOString().split('T')[0],
       description: `${dt.label}: ${item.name}`,
       source: 'document',
