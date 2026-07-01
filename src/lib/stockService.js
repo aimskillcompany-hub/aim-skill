@@ -471,6 +471,48 @@ export async function assembleProduct({ name, resultProductId, quantity, compone
   return { assemblyId: assembly.id, productId, totalCost }
 }
 
+// ── Деталі збірки (виріб + компоненти з назвами) ──
+export async function getAssembly(id) {
+  const { data: a } = await supabase.from('assemblies').select('*, products(name, unit)').eq('id', id).maybeSingle()
+  if (!a) return null
+  const { data: items } = await supabase.from('assembly_items').select('product_id, quantity, cost_price, total, products(name, unit)').eq('assembly_id', id)
+  return { ...a, items: items || [] }
+}
+
+// ── Видалити збірку (реверс рухів: компоненти повертаються, виріб знімається) ──
+export async function deleteAssembly(id) {
+  await supabase.from('stock_movements').delete().eq('assembly_id', id)
+  await supabase.from('assembly_items').delete().eq('assembly_id', id)
+  const { error } = await supabase.from('assemblies').delete().eq('id', id)
+  return { error: error?.message || null }
+}
+
+// ── Редагувати збірку = реверс + перезбірка (з перевіркою залишків) ──
+export async function editAssembly(id, { name, quantity, components, date, notes, userId }) {
+  const { data: old } = await supabase.from('assemblies').select('result_product_id').eq('id', id).maybeSingle()
+  if (!old) return { error: 'Збірку не знайдено' }
+  const { data: oldItems } = await supabase.from('assembly_items').select('product_id, quantity').eq('assembly_id', id)
+  const oldConsumed = {}; (oldItems || []).forEach(i => { oldConsumed[i.product_id] = (oldConsumed[i.product_id] || 0) + Number(i.quantity) })
+
+  // Перевірка залишків з урахуванням повернення старих компонентів
+  for (const comp of components) {
+    const need = (Number(comp.qty) || 0) * (Number(quantity) || 0)
+    const { data: sd } = await supabase.from('product_stock').select('computed_stock').eq('id', comp.productId).maybeSingle()
+    const avail = (Number(sd?.computed_stock) || 0) + (oldConsumed[comp.productId] || 0)
+    if (avail < need) return { error: `Недостатньо "${comp.productName || comp.productId}": потрібно ${need}, буде доступно ${avail}` }
+  }
+
+  // Реверс
+  await supabase.from('stock_movements').delete().eq('assembly_id', id)
+  await supabase.from('assembly_items').delete().eq('assembly_id', id)
+  await supabase.from('assemblies').delete().eq('id', id)
+
+  // Перезбірка на той самий виріб
+  const res = await assembleProduct({ resultProductId: old.result_product_id, name, quantity, components, date, notes, userId })
+  if (res?.error) return { error: 'Перезбірка не вдалася: ' + res.error }
+  return { ok: true, assemblyId: res.assemblyId }
+}
+
 // ── Обробити всі позиції документа: resolve + movement ──
 export async function processDocumentItems(savedItems, {
   docType, docRole, bankTransactionId, date, userId

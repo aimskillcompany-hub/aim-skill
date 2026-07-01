@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { fmt, fmtInt } from '../lib/fmt'
-import { assembleProduct } from '../lib/stockService'
+import { assembleProduct, getAssembly, deleteAssembly, editAssembly } from '../lib/stockService'
 import { getDocType } from '../lib/docgen'
 import DocModal from '../components/DocModal'
 import { useSort, SortTh } from '../components/Sort'
@@ -622,6 +622,7 @@ function AssembliesTab() {
   const { user } = useUser()
   const [rows, setRows] = useState([])
   const [showNew, setShowNew] = useState(false)
+  const [detail, setDetail] = useState(null)
   const load = () => supabase.from('assemblies').select('id, name, quantity, total_cost, assembled_at, products(name)').order('assembled_at', { ascending: false }).then(({ data }) => setRows(data || []))
   useEffect(() => { load() }, [])
 
@@ -636,7 +637,7 @@ function AssembliesTab() {
             <thead><tr><th>Виріб</th><th style={{ textAlign: 'right' }}>К-сть</th><th style={{ textAlign: 'right' }}>Собівартість</th><th style={{ textAlign: 'right' }}>За од.</th><th>Дата</th></tr></thead>
             <tbody>
               {rows.map(a => (
-                <tr key={a.id}><td><div className="trunc" style={{ fontWeight: 500 }}>{a.products?.name || a.name}</div></td>
+                <tr key={a.id} style={{ cursor: 'pointer' }} onClick={() => setDetail(a)}><td><div className="trunc" style={{ fontWeight: 500 }}>{a.products?.name || a.name}</div></td>
                   <td style={{ textAlign: 'right' }}>{fmt(a.quantity)}</td>
                   <td style={{ textAlign: 'right' }}>{fmt(a.total_cost)}</td>
                   <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{a.quantity ? fmt(a.total_cost / a.quantity) : '—'}</td>
@@ -648,6 +649,150 @@ function AssembliesTab() {
         </div>
       </div>
       {showNew && <NewAssemblyModal user={user} onClose={() => setShowNew(false)} onSaved={() => { setShowNew(false); load() }} />}
+      {detail && <AssemblyDetailModal id={detail.id} user={user} onClose={() => setDetail(null)} onChanged={() => { setDetail(null); load() }} />}
+    </div>
+  )
+}
+
+// Перегляд/редагування/видалення збірки
+function AssemblyDetailModal({ id, user, onClose, onChanged }) {
+  const [a, setA] = useState(null)
+  const [edit, setEdit] = useState(false)
+  const [name, setName] = useState('')
+  const [quantity, setQuantity] = useState(1)
+  const [date, setDate] = useState('')
+  const [notes, setNotes] = useState('')
+  const [comps, setComps] = useState([])       // { productId, productName, unit, qty } — qty ЗА ОДИНИЦЮ виробу
+  const [stock, setStock] = useState([])
+  const [q, setQ] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+
+  useEffect(() => {
+    getAssembly(id).then(data => {
+      if (!data) { setErr('Збірку не знайдено'); return }
+      setA(data)
+      const qy = Number(data.quantity) || 1
+      setName(data.name || data.products?.name || '')
+      setQuantity(qy)
+      setDate(data.assembled_at || '')
+      setNotes(data.notes || '')
+      setComps((data.items || []).map(it => ({
+        productId: it.product_id, productName: it.products?.name || '', unit: it.products?.unit || 'шт',
+        qty: qy ? (Number(it.quantity) || 0) / qy : Number(it.quantity) || 0,
+      })))
+    })
+    supabase.from('product_stock').select('id, name, unit, computed_stock').gt('computed_stock', 0).order('name').limit(1000).then(({ data }) => setStock(data || []))
+  }, [id])
+
+  const addComp = (p) => { if (!comps.find(c => c.productId === p.id)) setComps(cs => [...cs, { productId: p.id, productName: p.name, unit: p.unit, qty: 1 }]); setQ('') }
+  const setQty = (pid, v) => setComps(cs => cs.map(c => c.productId === pid ? { ...c, qty: v } : c))
+  const removeComp = (pid) => setComps(cs => cs.filter(c => c.productId !== pid))
+
+  const save = async () => {
+    if (!name.trim()) { setErr('Вкажіть назву'); return }
+    if (!comps.length) { setErr('Додайте компоненти'); return }
+    setBusy(true); setErr(null)
+    const res = await editAssembly(id, { name: name.trim(), quantity: Number(quantity) || 1, components: comps.map(c => ({ productId: c.productId, productName: c.productName, qty: Number(c.qty) || 0 })), date, notes, userId: user?.id })
+    setBusy(false)
+    if (res.error) { setErr(res.error); return }
+    onChanged()
+  }
+
+  const del = async () => {
+    if (!confirm('Видалити збірку? Компоненти повернуться на склад, виріб — знімається. Дію не можна скасувати.')) return
+    setBusy(true)
+    const res = await deleteAssembly(id)
+    setBusy(false)
+    if (res.error) { setErr(res.error); return }
+    onChanged()
+  }
+
+  const found = q.trim() ? stock.filter(s => (s.name || '').toLowerCase().includes(q.trim().toLowerCase()) && !comps.find(c => c.productId === s.id)).slice(0, 8) : []
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal modal-lg" onClick={e => e.stopPropagation()} style={{ maxWidth: 720 }}>
+        <div className="modal-header"><h2>{a?.products?.name || a?.name || 'Збірка'}</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
+        {!a ? <p style={{ color: 'var(--text3)' }}>{err || 'Завантаження…'}</p> : (
+          <>
+            {!edit ? (
+              <>
+                <div className="kpi-grid" style={{ marginBottom: 16 }}>
+                  <div className="kpi"><div className="kpi-label">Кількість</div><div className="kpi-value" style={{ fontSize: 18 }}>{fmt(a.quantity)}</div></div>
+                  <div className="kpi"><div className="kpi-label">Собівартість</div><div className="kpi-value" style={{ fontSize: 18 }}>{fmt(a.total_cost)}</div></div>
+                  <div className="kpi"><div className="kpi-label">За одиницю</div><div className="kpi-value" style={{ fontSize: 18 }}>{a.quantity ? fmt(a.total_cost / a.quantity) : '—'}</div></div>
+                </div>
+                {a.notes && <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 12 }}>{a.notes}</div>}
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 6 }}>Складається з ({a.items.length})</div>
+                <div className="tbl-wrap" style={{ border: 'none' }}>
+                  <table>
+                    <thead><tr><th>Компонент</th><th style={{ textAlign: 'right' }}>К-сть</th><th style={{ textAlign: 'right' }}>Собівартість/од</th><th style={{ textAlign: 'right' }}>Сума</th></tr></thead>
+                    <tbody>
+                      {a.items.map((it, i) => (
+                        <tr key={i}>
+                          <td><div className="trunc">{it.products?.name || '—'}</div></td>
+                          <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{fmt(it.quantity)} {it.products?.unit || 'шт'}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{fmt(it.cost_price)}</td>
+                          <td style={{ textAlign: 'right' }}>{fmt(it.total)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 10 }}>{err}</div>}
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 16 }}>
+                  <button className="btn" onClick={del} disabled={busy} style={{ color: 'var(--red)' }}><i className="ti ti-trash" /> Видалити</button>
+                  <button className="btn btn-primary" onClick={() => setEdit(true)}><i className="ti ti-edit" /> Редагувати</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="form-grid" style={{ marginBottom: 12 }}>
+                  <div className="form-group full"><label>Назва виробу</label><input className="form-input" value={name} onChange={e => setName(e.target.value)} /></div>
+                  <div className="form-group"><label>Кількість виробів</label><input className="form-input" type="number" min="1" value={quantity} onChange={e => setQuantity(e.target.value)} /></div>
+                  <div className="form-group"><label>Дата</label><input className="form-input" type="date" value={date || ''} onChange={e => setDate(e.target.value)} /></div>
+                  <div className="form-group full"><label>Примітка</label><input className="form-input" value={notes} onChange={e => setNotes(e.target.value)} /></div>
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 6 }}>Компоненти (к-сть за 1 виріб)</div>
+                <div className="tbl-wrap" style={{ border: 'none', marginBottom: 8 }}>
+                  <table>
+                    <thead><tr><th>Компонент</th><th style={{ width: 110, textAlign: 'right' }}>К-сть/од</th><th /></tr></thead>
+                    <tbody>
+                      {comps.map(c => (
+                        <tr key={c.productId}>
+                          <td><div className="trunc">{c.productName}</div></td>
+                          <td style={{ textAlign: 'right' }}><input className="form-input" type="number" min="0" step="any" value={c.qty} onChange={e => setQty(c.productId, e.target.value)} style={{ width: 90, textAlign: 'right' }} /></td>
+                          <td style={{ textAlign: 'right' }}><button className="btn" onClick={() => removeComp(c.productId)} style={{ color: 'var(--red)', padding: '2px 8px' }}><i className="ti ti-x" /></button></td>
+                        </tr>
+                      ))}
+                      {comps.length === 0 && <tr><td colSpan={3} style={{ color: 'var(--text3)', fontSize: 13 }}>Немає компонентів</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ position: 'relative', marginBottom: 12 }}>
+                  <input className="form-input" placeholder="Додати компонент зі складу…" value={q} onChange={e => setQ(e.target.value)} />
+                  {found.length > 0 && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, zIndex: 5, maxHeight: 220, overflow: 'auto' }}>
+                      {found.map(p => (
+                        <div key={p.id} onClick={() => addComp(p)} style={{ padding: '8px 10px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--border)' }}>
+                          {p.name} <span style={{ color: 'var(--text3)', fontSize: 11 }}>· на складі {fmt(p.computed_stock)} {p.unit}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {err && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
+                <div style={{ fontSize: 11.5, color: 'var(--text3)', marginBottom: 10 }}>Збереження перезбере виріб: старі компоненти повернуться на склад, нові — спишуться (перевіряється наявність).</div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                  <button className="btn" onClick={() => { setEdit(false); setErr(null) }}>Скасувати</button>
+                  <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? '…' : 'Зберегти зміни'}</button>
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
     </div>
   )
 }
