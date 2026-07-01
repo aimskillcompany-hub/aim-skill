@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { fmt } from '../lib/fmt'
-import { DOCUMENT_TYPES, getDocType } from '../lib/docgen'
+import { DOCUMENT_TYPES, getDocType, previewPdf } from '../lib/docgen'
 import ContractorSelect from '../components/ui/ContractorSelect'
 import DocGenModal from '../components/DocGenModal'
 import DocModal from '../components/DocModal'
@@ -22,11 +22,33 @@ export default function Documents() {
   const [genContractor, setGenContractor] = useState(null)
   const [pickGen, setPickGen] = useState(false)
   const [openDoc, setOpenDoc] = useState(null) // { doc, autoOcr }
+  const [genErr, setGenErr] = useState(null)
+
+  // Згенеровані документи не мають файлу у сховищі — відкриваємо регенерацією PDF
+  const openRow = async (d) => {
+    if (d.source === 'generated' && d.generated_doc_id) {
+      setGenErr(null)
+      try {
+        const { data: gd } = await supabase.from('generated_docs').select('*').eq('id', d.generated_doc_id).maybeSingle()
+        if (!gd) throw new Error('Згенерований документ не знайдено')
+        let contractor = { id: d.contractor_id, name: d.contractors?.name }
+        if (d.contractor_id) { const { data: c } = await supabase.from('contractors').select('*').eq('id', d.contractor_id).maybeSingle(); if (c) contractor = c }
+        const items = typeof gd.items === 'string' ? JSON.parse(gd.items || '[]') : (gd.items || [])
+        await previewPdf(gd.doc_type, contractor, items, {
+          docNumber: gd.doc_number, docDate: gd.doc_date, notes: gd.notes,
+          contractNum: gd.contract_num, contractDate: gd.contract_date, paymentDue: gd.payment_due, city: gd.city,
+          invoiceRef: gd.invoice_ref, invoiceRefDate: gd.invoice_ref_date, deliveryBasis: gd.delivery_basis, deliveryAddress: gd.delivery_address,
+        })
+      } catch (e) { setGenErr('Не вдалося відкрити документ: ' + e.message) }
+      return
+    }
+    setOpenDoc({ doc: d, autoOcr: false })
+  }
 
   const load = async () => {
     setLoading(true)
     const { data } = await supabase.from('documents')
-      .select('id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, direction, created_at, contractor_id, storage_path, file_path, file_type, doc_role, ocr_data, contractors(name)')
+      .select('id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, direction, created_at, contractor_id, storage_path, file_path, file_type, doc_role, ocr_data, source, generated_doc_id, contractors(name)')
       .order('created_at', { ascending: false }).limit(500)
     setRows(data || [])
     setLoading(false)
@@ -76,6 +98,8 @@ export default function Documents() {
         </select>
       </div>
 
+      {genErr && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 10 }}>{genErr}</div>}
+
       <div className="card">
         {loading ? <p style={{ color: 'var(--text3)' }}>Завантаження…</p> : (
           <div className="tbl-wrap" style={{ border: 'none' }}>
@@ -93,7 +117,7 @@ export default function Documents() {
               </tr></thead>
               <tbody>
                 {view.map(d => (
-                  <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => setOpenDoc({ doc: d, autoOcr: false })}>
+                  <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => openRow(d)}>
                     <td style={{ fontSize: 13 }}>{getDocType(d.type)?.label || d.type || '—'}</td>
                     <td style={{ fontSize: 13, color: 'var(--text2)' }}>{d.doc_number || '—'}</td>
                     <td><div className="trunc">{d.contractors?.name || '—'}</div></td>
