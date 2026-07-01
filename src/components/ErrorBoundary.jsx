@@ -10,6 +10,17 @@ export default class ErrorBoundary extends Component {
     return { hasError: true, error }
   }
 
+  componentDidCatch(error) {
+    // Застарілий чанк після деплою — перезавантажити один раз
+    const msg = error?.message || ''
+    if (/dynamically imported module|Importing a module script failed|Failed to fetch/i.test(msg)) {
+      if (!sessionStorage.getItem('chunkReload')) {
+        sessionStorage.setItem('chunkReload', String(Date.now()))
+        window.location.reload()
+      }
+    }
+  }
+
   render() {
     if (this.state.hasError) {
       return (
@@ -19,10 +30,7 @@ export default class ErrorBoundary extends Component {
           <p style={{ color: 'var(--text2)', fontSize: 14, marginBottom: 16 }}>
             {this.state.error?.message || 'Невідома помилка'}
           </p>
-          <button
-            className="btn btn-primary"
-            onClick={() => this.setState({ hasError: false, error: null })}
-          >
+          <button className="btn btn-primary" onClick={() => window.location.reload()}>
             Спробувати знову
           </button>
         </div>

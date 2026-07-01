@@ -6,19 +6,34 @@ import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 
+// Ліниве завантаження з одноразовим перезавантаженням при застарілому чанку після деплою
+// (стара index.html посилається на видалені хеші → "Failed to fetch dynamically imported module")
+const lazyPage = (factory) => lazy(() =>
+  factory()
+    .then(m => { sessionStorage.removeItem('chunkReload'); return m })
+    .catch(err => {
+      if (!sessionStorage.getItem('chunkReload')) {
+        sessionStorage.setItem('chunkReload', String(Date.now()))
+        window.location.reload()
+        return new Promise(() => {}) // не рендерити під час перезавантаження
+      }
+      throw err
+    })
+)
+
 // Code-split: кожна сторінка — окремий чанк (важкий pdfmake лишається в чанку Документів)
-const Orders = lazy(() => import('./pages/Orders'))
-const OrderCard = lazy(() => import('./pages/OrderCard'))
-const Contractors = lazy(() => import('./pages/Contractors'))
-const ContractorCard = lazy(() => import('./pages/ContractorCard'))
-const BankCash = lazy(() => import('./pages/BankCash'))
-const Warehouse = lazy(() => import('./pages/Warehouse'))
-const PriceLists = lazy(() => import('./pages/PriceLists'))
-const Documents = lazy(() => import('./pages/Documents'))
-const Mail = lazy(() => import('./pages/Mail'))
-const Analytics = lazy(() => import('./pages/Analytics'))
-const Budget = lazy(() => import('./pages/Budget'))
-const Settings = lazy(() => import('./pages/Settings'))
+const Orders = lazyPage(() => import('./pages/Orders'))
+const OrderCard = lazyPage(() => import('./pages/OrderCard'))
+const Contractors = lazyPage(() => import('./pages/Contractors'))
+const ContractorCard = lazyPage(() => import('./pages/ContractorCard'))
+const BankCash = lazyPage(() => import('./pages/BankCash'))
+const Warehouse = lazyPage(() => import('./pages/Warehouse'))
+const PriceLists = lazyPage(() => import('./pages/PriceLists'))
+const Documents = lazyPage(() => import('./pages/Documents'))
+const Mail = lazyPage(() => import('./pages/Mail'))
+const Analytics = lazyPage(() => import('./pages/Analytics'))
+const Budget = lazyPage(() => import('./pages/Budget'))
+const Settings = lazyPage(() => import('./pages/Settings'))
 
 const Loading = () => <div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Завантаження…</div>
 
