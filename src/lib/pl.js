@@ -170,7 +170,23 @@ export async function salesProfitReport(year, month) {
   const docMap = {}; (docs || []).forEach(d => { docMap[d.id] = d })
   const prodMap = {}; (prods || []).forEach(p => { prodMap[p.id] = p })
 
-  const calcRow = (name, qty, sellUnitNet, costUnitNet) => {
+  // Джерело закупівлі по товару: постачальник + № прихідної (найсвіжіший прихід із документом)
+  const purchaseByProd = {}
+  if (prodIds.length) {
+    const { data: inMovs } = await supabase.from('stock_movements')
+      .select('product_id, date, document_id').eq('type', 'in').in('product_id', prodIds).not('document_id', 'is', null)
+      .order('date', { ascending: false })
+    const inDocIds = [...new Set((inMovs || []).map(m => m.document_id))]
+    const { data: inDocs } = inDocIds.length ? await supabase.from('documents').select('id, doc_number, doc_date, contractors(name)').in('id', inDocIds) : { data: [] }
+    const inDocMap = {}; (inDocs || []).forEach(d => { inDocMap[d.id] = d })
+    ;(inMovs || []).forEach(m => {
+      if (purchaseByProd[m.product_id]) return
+      const d = inDocMap[m.document_id]; if (!d) return
+      purchaseByProd[m.product_id] = { supplier: d.contractors?.name || '', ref: `${d.doc_number || ''}${d.doc_date ? ', ' + d.doc_date.slice(0, 10) : ''}` }
+    })
+  }
+
+  const calcRow = (name, qty, sellUnitNet, costUnitNet, purchase) => {
     const sellNet = qty * sellUnitNet, costNet = qty * costUnitNet
     const gross = sellNet - costNet            // Валовий прибуток
     const marginGross = gross * 1.2            // Маржа з ПДВ
@@ -184,6 +200,7 @@ export async function salesProfitReport(year, month) {
       marginUnit: qty ? marginGross / qty : 0, marginSum: marginGross,
       marginPct: sellNet ? gross / sellNet : 0,
       vat, gross, tax, net,
+      supplier: purchase?.supplier || '', purchaseRef: purchase?.ref || '',
     }
   }
 
@@ -194,6 +211,7 @@ export async function salesProfitReport(year, month) {
     byDoc[m.document_id].rows.push(calcRow(
       prodMap[m.product_id]?.name || (m.description || '').replace(/^.*?:\s*/, '') || '—',
       Number(m.quantity) || 0, Number(m.price) || 0, Number(m.cost_price) || 0,
+      purchaseByProd[m.product_id],
     ))
   }
 

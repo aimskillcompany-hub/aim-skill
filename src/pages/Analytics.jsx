@@ -297,27 +297,34 @@ function ProfitView() {
   const [year, setYear] = useState(NOW.getFullYear())
   const [month, setMonth] = useState(0)
   const [data, setData] = useState(null)
+  const [open, setOpen] = useState(() => new Set()) // розгорнуті накладні (doc.id)
 
-  useEffect(() => { setData(null); salesProfitReport(year, month || null).then(setData) }, [year, month])
+  useEffect(() => { setData(null); setOpen(new Set()); salesProfitReport(year, month || null).then(setData) }, [year, month])
 
-  const COLS = ['Найменування', 'К-сть', 'Ціна прод./од (з ПДВ)', 'Сума прод.', 'Ціна закуп./од', 'Сума закуп.', 'Маржа/од', 'Маржа сума', 'Маржин. %', 'ПДВ', 'Валовий прибуток', 'Податок 18%', 'Чистий прибуток']
-  const rowVals = r => [r.name, r.qty, r.sellUnit, r.sellSum, r.costUnit, r.costSum, r.marginUnit, r.marginSum, r.marginPct, r.vat, r.gross, r.tax, r.net]
+  const toggle = (id) => setOpen(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const allOpen = data?.groups?.length && data.groups.every(g => open.has(g.doc.id))
+  const toggleAll = () => setOpen(allOpen ? new Set() : new Set(data.groups.map(g => g.doc.id)))
+  const docLabel = (d) => `${getDocType(d.type)?.label || d.type} №${d.doc_number || ''} від ${(d.doc_date || '').slice(0, 10)}`
 
   const exportXlsx = () => {
     if (!data) return
+    const COLS = ['Найменування', 'Постачальник', 'Джерело закупівлі', 'К-сть', 'Ціна прод./од (з ПДВ)', 'Сума прод.', 'Ціна закуп./од', 'Сума закуп.', 'Маржа/од', 'Маржа сума', 'Маржин. %', 'ПДВ', 'Валовий прибуток', 'Податок 18%', 'Чистий прибуток']
+    const n2 = v => typeof v === 'number' ? Math.round(v * 100) / 100 : v
     const aoa = [COLS]
     data.groups.forEach(g => {
-      aoa.push([`${getDocType(g.doc.type)?.label || g.doc.type} №${g.doc.doc_number || ''} від ${(g.doc.doc_date || '').slice(0, 10)} · ${g.doc.contractors?.name || ''}`])
-      g.rows.forEach(r => aoa.push(rowVals(r).map((v, i) => i === 8 ? Math.round(v * 1000) / 10 : typeof v === 'number' ? Math.round(v * 100) / 100 : v)))
+      aoa.push([`${docLabel(g.doc)} · ${g.doc.contractors?.name || ''}`])
+      g.rows.forEach(r => aoa.push([r.name, r.supplier, r.purchaseRef, r.qty, n2(r.sellUnit), n2(r.sellSum), n2(r.costUnit), n2(r.costSum), n2(r.marginUnit), n2(r.marginSum), Math.round(r.marginPct * 1000) / 10, n2(r.vat), n2(r.gross), n2(r.tax), n2(r.net)]))
       const t = g.totals
-      aoa.push(['Разом по накладній', '', '', Math.round(t.sellSum * 100) / 100, '', Math.round(t.costSum * 100) / 100, '', Math.round(t.marginSum * 100) / 100, '', Math.round(t.vat * 100) / 100, Math.round(t.gross * 100) / 100, Math.round(t.tax * 100) / 100, Math.round(t.net * 100) / 100])
+      aoa.push(['Разом по накладній', '', '', '', '', n2(t.sellSum), '', n2(t.costSum), '', n2(t.marginSum), '', n2(t.vat), n2(t.gross), n2(t.tax), n2(t.net)])
       aoa.push([])
     })
-    if (data.grand) { const g = data.grand; aoa.push(['ВСЬОГО', '', '', Math.round(g.sellSum * 100) / 100, '', Math.round(g.costSum * 100) / 100, '', Math.round(g.marginSum * 100) / 100, '', Math.round(g.vat * 100) / 100, Math.round(g.gross * 100) / 100, Math.round(g.tax * 100) / 100, Math.round(g.net * 100) / 100]) }
+    if (data.grand) { const g = data.grand; aoa.push(['ВСЬОГО', '', '', '', '', n2(g.sellSum), '', n2(g.costSum), '', n2(g.marginSum), '', n2(g.vat), n2(g.gross), n2(g.tax), n2(g.net)]) }
     const ws = XLSX.utils.aoa_to_sheet(aoa)
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Рентабельність')
     XLSX.writeFile(wb, `Рентабельність_${year}${month ? '-' + String(month).padStart(2, '0') : ''}.xlsx`)
   }
+
+  const DCOLS = ['Найменування', 'Постачальник', 'Джерело', 'К-сть', 'Сума прод.', 'Сума закуп.', 'Маржа', '%', 'Чистий']
 
   return (
     <div>
@@ -326,6 +333,7 @@ function ProfitView() {
         <select className="form-input" value={month} onChange={e => setMonth(Number(e.target.value))} style={{ width: 130 }}>
           <option value={0}>Весь рік</option>{MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
         </select>
+        {data?.groups?.length > 0 && <button className="btn" onClick={toggleAll}><i className={`ti ${allOpen ? 'ti-fold' : 'ti-fold-down'}`} /> {allOpen ? 'Згорнути всі' : 'Розгорнути всі'}</button>}
         <button className="btn" onClick={exportXlsx} disabled={!data?.groups?.length} style={{ marginLeft: 'auto' }}><i className="ti ti-file-spreadsheet" /> Експорт Excel</button>
       </div>
       {!data ? <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
@@ -340,48 +348,48 @@ function ProfitView() {
                 <Kpi label="Чистий прибуток" value={data.grand.net} color="var(--blue)" />
               </div>
             )}
-            <div className="tbl-wrap" style={{ border: 'none', overflowX: 'auto' }}>
-              <table style={{ fontSize: 12 }}>
-                <thead><tr>{COLS.map((c, i) => <th key={i} style={{ textAlign: i === 0 ? 'left' : 'right', whiteSpace: 'nowrap' }}>{c}</th>)}</tr></thead>
-                <tbody>
-                  {data.groups.map((g, gi) => (
-                    <Fragment key={gi}>
-                      <tr style={{ background: 'var(--surface2)' }}>
-                        <td colSpan={COLS.length} style={{ fontWeight: 700 }}>{getDocType(g.doc.type)?.label || g.doc.type} №{g.doc.doc_number} від {(g.doc.doc_date || '').slice(0, 10)} · {g.doc.contractors?.name || '—'}</td>
-                      </tr>
-                      {g.rows.map((r, ri) => (
-                        <tr key={ri}>
-                          <td>{r.name}</td>
-                          <td style={{ textAlign: 'right' }}>{fmt(r.qty)}</td>
-                          <td style={{ textAlign: 'right' }}>{fmtInt(r.sellUnit)}</td>
-                          <td style={{ textAlign: 'right' }}>{fmtInt(r.sellSum)}</td>
-                          <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{fmtInt(r.costUnit)}</td>
-                          <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{fmtInt(r.costSum)}</td>
-                          <td style={{ textAlign: 'right' }}>{fmtInt(r.marginUnit)}</td>
-                          <td style={{ textAlign: 'right', color: r.marginSum >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtInt(r.marginSum)}</td>
-                          <td style={{ textAlign: 'right' }}>{(r.marginPct * 100).toFixed(1)}%</td>
-                          <td style={{ textAlign: 'right', color: 'var(--text3)' }}>{fmtInt(r.vat)}</td>
-                          <td style={{ textAlign: 'right' }}>{fmtInt(r.gross)}</td>
-                          <td style={{ textAlign: 'right', color: 'var(--text3)' }}>{fmtInt(r.tax)}</td>
-                          <td style={{ textAlign: 'right', fontWeight: 600, color: r.net >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtInt(r.net)}</td>
-                        </tr>
-                      ))}
-                      <tr style={{ fontWeight: 600, borderTop: '1px solid var(--border)' }}>
-                        <td colSpan={3} style={{ color: 'var(--text3)' }}>Разом по накладній</td>
-                        <td style={{ textAlign: 'right' }}>{fmtInt(g.totals.sellSum)}</td>
-                        <td /><td style={{ textAlign: 'right', color: 'var(--text2)' }}>{fmtInt(g.totals.costSum)}</td>
-                        <td /><td style={{ textAlign: 'right', color: 'var(--green)' }}>{fmtInt(g.totals.marginSum)}</td>
-                        <td /><td style={{ textAlign: 'right', color: 'var(--text3)' }}>{fmtInt(g.totals.vat)}</td>
-                        <td style={{ textAlign: 'right' }}>{fmtInt(g.totals.gross)}</td>
-                        <td style={{ textAlign: 'right', color: 'var(--text3)' }}>{fmtInt(g.totals.tax)}</td>
-                        <td style={{ textAlign: 'right', color: 'var(--blue)' }}>{fmtInt(g.totals.net)}</td>
-                      </tr>
-                    </Fragment>
-                  ))}
-                </tbody>
-              </table>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {data.groups.map(g => {
+                const isOpen = open.has(g.doc.id)
+                return (
+                  <div key={g.doc.id} style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                    <div onClick={() => toggle(g.doc.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', cursor: 'pointer', background: 'var(--surface2)', flexWrap: 'wrap' }}>
+                      <i className={`ti ${isOpen ? 'ti-chevron-down' : 'ti-chevron-right'}`} style={{ color: 'var(--text3)' }} />
+                      <span style={{ fontWeight: 600, fontSize: 13 }}>{docLabel(g.doc)}</span>
+                      <span style={{ color: 'var(--text2)', fontSize: 12 }}>{g.doc.contractors?.name || '—'}</span>
+                      <span style={{ marginLeft: 'auto', display: 'flex', gap: 14, fontSize: 12, whiteSpace: 'nowrap' }}>
+                        <span style={{ color: 'var(--text3)' }}>Продаж <b style={{ color: 'var(--text)' }}>{fmtInt(g.totals.sellSum)}</b></span>
+                        <span style={{ color: 'var(--text3)' }}>Маржа <b style={{ color: 'var(--green)' }}>{fmtInt(g.totals.marginSum)}</b></span>
+                        <span style={{ color: 'var(--text3)' }}>Чистий <b style={{ color: 'var(--blue)' }}>{fmtInt(g.totals.net)}</b></span>
+                      </span>
+                    </div>
+                    {isOpen && (
+                      <div className="tbl-wrap" style={{ border: 'none', overflowX: 'auto' }}>
+                        <table style={{ fontSize: 12 }}>
+                          <thead><tr>{DCOLS.map((c, i) => <th key={i} style={{ textAlign: i === 0 || i === 1 || i === 2 ? 'left' : 'right', whiteSpace: 'nowrap' }}>{c}</th>)}</tr></thead>
+                          <tbody>
+                            {g.rows.map((r, ri) => (
+                              <tr key={ri}>
+                                <td><div className="trunc" title={r.name} style={{ maxWidth: 260 }}>{r.name}</div></td>
+                                <td style={{ color: 'var(--text2)' }}><div className="trunc" style={{ maxWidth: 130 }}>{r.supplier || '—'}</div></td>
+                                <td style={{ color: 'var(--text3)', fontSize: 11 }}><div className="trunc" style={{ maxWidth: 140 }}>{r.purchaseRef || '—'}</div></td>
+                                <td style={{ textAlign: 'right' }}>{fmt(r.qty)}</td>
+                                <td style={{ textAlign: 'right' }}>{fmtInt(r.sellSum)}</td>
+                                <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{fmtInt(r.costSum)}</td>
+                                <td style={{ textAlign: 'right', color: r.marginSum >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtInt(r.marginSum)}</td>
+                                <td style={{ textAlign: 'right' }}>{(r.marginPct * 100).toFixed(1)}%</td>
+                                <td style={{ textAlign: 'right', fontWeight: 600, color: r.net >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtInt(r.net)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
-            <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>Собівартість — FIFO зі складських рухів. ПДВ 20%, податок на дохід 18% (Чистий = Валовий / 1.18).</p>
+            <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 12 }}>Собівартість — FIFO зі складу. ПДВ 20%, податок 18% (Чистий = Валовий/1.18). Повний набір колонок (ПДВ, валовий, податок, ціни за од.) — в експорті Excel.</p>
           </div>
         )}
     </div>
