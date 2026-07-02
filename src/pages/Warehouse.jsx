@@ -434,6 +434,12 @@ function ProductModal({ product, onClose }) {
     setLinkMov(null); loadMovs()
   }
 
+  const delMov = async (m) => {
+    if (!confirm(`Видалити рух: ${m.type === 'in' ? 'Прихід' : m.type === 'out' ? 'Видаток' : m.type} ${m.quantity} від ${m.date}? Залишок перерахується.`)) return
+    await supabase.from('stock_movements').delete().eq('id', m.id)
+    loadMovs(); loadStock()
+  }
+
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
@@ -487,11 +493,12 @@ function ProductModal({ product, onClose }) {
         </div>
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 6 }}>Рухи</div>
         <div className="tbl-wrap" style={{ border: 'none', maxHeight: 280, overflowY: 'auto' }}>
-          <table><thead><tr><th>Дата</th><th>Тип</th><th style={{ textAlign: 'right' }}>К-сть</th><th style={{ textAlign: 'right' }}>Собівартість</th><th>Опис</th><th>Документ</th></tr></thead>
+          <table><thead><tr><th>Дата</th><th>Тип</th><th style={{ textAlign: 'right' }}>К-сть</th><th style={{ textAlign: 'right' }}>Собівартість</th><th>Опис</th><th>Документ</th><th /></tr></thead>
             <tbody>{movs.map(m => <tr key={m.id}><td style={{ fontSize: 12 }}>{m.date}</td><td>{m.type === 'in' ? 'Прихід' : m.type === 'out' ? 'Видаток' : m.type}</td><td style={{ textAlign: 'right' }}>{fmt(m.quantity)}</td><td style={{ textAlign: 'right' }}>{m.cost_price ? fmt(m.cost_price) : '—'}</td><td><div className="trunc">{m.description}</div></td>
               <td>{m.documents
                 ? <a onClick={() => m.documents.source === 'generated' ? setGenDoc(m.documents) : setOpenDoc(m.documents)} style={{ color: 'var(--blue)', cursor: 'pointer', fontSize: 12 }}><i className="ti ti-file" /> {getDocType(m.documents.type)?.label || 'документ'}</a>
-                : <span style={{ color: 'var(--text3)', fontSize: 12 }}>{srcLabel(m.source)} <button className="btn" onClick={() => setLinkMov(m)} title="Прив'язати документ" style={{ padding: '0 6px' }}><i className="ti ti-link" /></button></span>}</td></tr>)}</tbody>
+                : <span style={{ color: 'var(--text3)', fontSize: 12 }}>{srcLabel(m.source)} <button className="btn" onClick={() => setLinkMov(m)} title="Прив'язати документ" style={{ padding: '0 6px' }}><i className="ti ti-link" /></button></span>}</td>
+              <td style={{ textAlign: 'right' }}><button className="btn" onClick={() => delMov(m)} title="Видалити рух" style={{ padding: '0 6px', color: 'var(--red)' }}><i className="ti ti-trash" /></button></td></tr>)}</tbody>
           </table>
         </div>
       </div>
