@@ -29,6 +29,7 @@ const TABS = [
 
 export default function OrderCard() {
   const { id } = useParams()
+  const { user } = useUser()
   const navigate = useNavigate()
   const [o, setO] = useState(null)
   const [lastSent, setLastSent] = useState(null)
@@ -67,6 +68,29 @@ export default function OrderCard() {
     setBusy(''); load()
   }
 
+  // Копіювати замовлення разом з товарами
+  const copyOrder = async () => {
+    setBusy('copy'); setMsg(null)
+    try {
+      const { count } = await supabase.from('orders').select('id', { count: 'exact', head: true })
+      const order_number = String((count || 0) + 1).padStart(4, '0')
+      const { data: no, error } = await supabase.from('orders').insert({
+        order_number, type: o.type, status: 'new', client_id: o.client_id,
+        description: o.description || null, procurement_type: o.procurement_type || null,
+        total: o.total || 0, created_by: user?.id || null,
+      }).select('id').single()
+      if (error) throw error
+      const { data: items } = await supabase.from('order_items').select('*').eq('order_id', id)
+      if (items?.length) {
+        const copies = items.map(({ id: _i, order_id: _o, created_at: _c, ...rest }) => ({ ...rest, order_id: no.id }))
+        const { error: iErr } = await supabase.from('order_items').insert(copies)
+        if (iErr) throw iErr
+      }
+      navigate(`/orders/${no.id}`)
+    } catch (e) { setMsg('Помилка копіювання: ' + e.message) }
+    setBusy('')
+  }
+
   // Жорстке видалення дозволене лише за відсутності прив'язаних документів
   // (реальні облікові дані). Інакше — пропонуємо архівування.
   const del = async () => {
@@ -101,6 +125,9 @@ export default function OrderCard() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn" onClick={copyOrder} disabled={!!busy} title="Створити копію замовлення з тими самими товарами">
+              <i className="ti ti-copy" /> {busy === 'copy' ? '…' : 'Копіювати'}
+            </button>
             <button className="btn" onClick={toggleArchive} disabled={!!busy}>
               <i className={`ti ${o.archived_at ? 'ti-archive-off' : 'ti-archive'}`} /> {o.archived_at ? 'Відновити' : 'Архівувати'}
             </button>
