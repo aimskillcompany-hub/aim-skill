@@ -156,23 +156,9 @@ export async function resolveProduct(name, unit, price, userId, sku = null) {
     return { productId: alias.product_id, isNew: false }
   }
 
-  // 2. Нечіткий збіг по aliases (для варіацій назви від AI)
-  const { data: allAliases } = await supabase
-    .from('product_aliases')
-    .select('product_id, normalized')
-
-  const fuzzyHit = (allAliases || []).find(a => fuzzyMatch(normalized, a.normalized))
-  if (fuzzyHit?.product_id) {
-    // Записати новий alias для цього продукту
-    await supabase.from('product_aliases').upsert({
-      product_id: fuzzyHit.product_id,
-      alias: name.trim(),
-      normalized,
-    }, { onConflict: 'normalized', ignoreDuplicates: true })
-
-    await backfill(fuzzyHit.product_id)
-    return { productId: fuzzyHit.product_id, isNew: false }
-  }
+  // 2. (ВИМКНЕНО) Нечіткий збіг по aliases — призводив до зліплювання РІЗНИХ моделей
+  //    (напр. Ajax DoorProtect/FireProtect/MotionProtect мають багато спільних слів).
+  //    Покладаємось на артикул (0), точний синонім (1) і точну назву (3).
 
   // 3. Пошук по назві продукту (fallback для старих продуктів без aliases)
   const { data: existing } = await supabase
