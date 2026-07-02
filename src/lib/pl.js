@@ -165,7 +165,7 @@ export async function salesProfitReport(year, month) {
   const prodIds = [...new Set(movs.map(m => m.product_id).filter(Boolean))]
   const [{ data: docs }, { data: prods }] = await Promise.all([
     supabase.from('documents').select('id, type, doc_number, doc_date, contractors(name)').in('id', docIds),
-    prodIds.length ? supabase.from('products').select('id, name').in('id', prodIds) : Promise.resolve({ data: [] }),
+    prodIds.length ? supabase.from('products').select('id, name, product_type').in('id', prodIds) : Promise.resolve({ data: [] }),
   ])
   const docMap = {}; (docs || []).forEach(d => { docMap[d.id] = d })
   const prodMap = {}; (prods || []).forEach(p => { prodMap[p.id] = p })
@@ -208,9 +208,12 @@ export async function salesProfitReport(year, month) {
   for (const m of movs) {
     const d = docMap[m.document_id]; if (!d) continue
     ;(byDoc[m.document_id] ||= { doc: d, rows: [] })
+    const prod = prodMap[m.product_id]
+    // Послуги не мають собівартості (COGS) — уся сума є маржею/доходом
+    const cost = prod?.product_type === 'service' ? 0 : Number(m.cost_price) || 0
     byDoc[m.document_id].rows.push(calcRow(
-      prodMap[m.product_id]?.name || (m.description || '').replace(/^.*?:\s*/, '') || '—',
-      Number(m.quantity) || 0, Number(m.price) || 0, Number(m.cost_price) || 0,
+      prod?.name || (m.description || '').replace(/^.*?:\s*/, '') || '—',
+      Number(m.quantity) || 0, Number(m.price) || 0, cost,
       purchaseByProd[m.product_id],
     ))
   }
