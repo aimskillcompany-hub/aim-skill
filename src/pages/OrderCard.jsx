@@ -429,6 +429,7 @@ function ItemsTab({ o, onChange, onDirty }) {
 function ProposalsTab({ o, onChange }) {
   const [rows, setRows] = useState([])
   const [editing, setEditing] = useState(null) // new proposal draft
+  const [stampCP, setStampCP] = useState(false) // печатка на КП
   const load = () => supabase.from('commercial_proposals').select('*').eq('order_id', o.id).order('version', { ascending: false }).then(({ data }) => setRows(data || []))
   useEffect(() => { load() }, [o.id])
 
@@ -474,7 +475,7 @@ function ProposalsTab({ o, onChange }) {
         return { name: it.name, quantity: Number(it.qty) || 0, unit: 'шт', unitPrice: net, vatRate: vr }
       })
       const today = new Date().toISOString().slice(0, 10)
-      const opts = { docNumber: `КП-${o.order_number || o.id.slice(0, 6)}-v${p.version}`, docDate: today }
+      const opts = { docNumber: `КП-${o.order_number || o.id.slice(0, 6)}-v${p.version}`, docDate: today, withStamp: stampCP }
       await previewPdf('commercialProposal', c || { name: o.contractors?.name }, items, opts)
     } catch (e) { alert('Помилка формування: ' + e.message) }
     setGenId(null)
@@ -482,9 +483,15 @@ function ProposalsTab({ o, onChange }) {
 
   return (
     <div className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, alignItems: 'center' }}>
         <div className="card-title" style={{ marginBottom: 0 }}>Комерційні пропозиції</div>
-        {!editing && <button className="btn btn-primary" onClick={startNew}><i className="ti ti-plus" /> Нова версія</button>}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', color: stampCP ? 'var(--green)' : 'var(--text2)', userSelect: 'none' }} title="Накласти печатку при перегляді КП">
+            <input type="checkbox" checked={stampCP} onChange={e => setStampCP(e.target.checked)} />
+            <i className="ti ti-rubber-stamp" style={{ fontSize: 16 }} /> З печаткою
+          </label>
+          {!editing && <button className="btn btn-primary" onClick={startNew}><i className="ti ti-plus" /> Нова версія</button>}
+        </div>
       </div>
 
       {editing && (

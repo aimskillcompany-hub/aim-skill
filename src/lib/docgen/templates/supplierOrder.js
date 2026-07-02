@@ -2,6 +2,7 @@
 // Від кого: наша компанія; Кому: постачальник; Для клієнта: клієнт замовлення.
 import { formatDateLong } from '../formatUtils'
 import { LOGO_BASE64 } from '../logo'
+import { stampOverlay } from '../stamp'
 
 const BLACK = '#0A0A0A'
 const DARK = '#1C1C1E'
@@ -119,6 +120,7 @@ export function pdf(company, supplier, items, options) {
         { text: 'ЗАМОВИВ', fontSize: 6.5, letterSpacing: 2, color: G2, margin: [0, 0, 0, 12] },
         { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 0.5, lineColor: G3 }] },
         { text: `${company.directorPosition || 'Директор'} ${company.director || ''}`, fontSize: 9, color: G1, margin: [0, 3, 0, 0] },
+        stampOverlay(options),
       ] },
     ],
   }

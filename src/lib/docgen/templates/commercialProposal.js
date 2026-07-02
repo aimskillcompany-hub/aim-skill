@@ -2,6 +2,7 @@
 import { formatMoney, formatDate, formatDateLong, calcTotals } from '../formatUtils'
 import { createWorkbook, addSheet } from '../xlsxBuilder'
 import { LOGO_BASE64 } from '../logo'
+import { stampOverlay } from '../stamp'
 
 const BLACK = '#0A0A0A'
 const DARK = '#1C1C1E'
@@ -237,6 +238,7 @@ export function pdf(company, contractor, items, options) {
           { text: 'ПІДГОТУВАВ', fontSize: 6.5, letterSpacing: 2, color: G2, margin: [0, 0, 0, 12] },
           { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 0.5, lineColor: G3 }] },
           { text: `${company.directorPosition || 'Директор'} ${company.director || ''}`, fontSize: 9, color: G1, margin: [0, 3, 0, 0] },
+          stampOverlay(options),
         ],
       },
     ],

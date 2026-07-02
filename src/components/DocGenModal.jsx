@@ -45,6 +45,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
   const [uploadedFiles, setUploadedFiles] = useState([])
   const [priceMode, setPriceMode] = useState('net') // 'net' = без ПДВ, 'gross' = з ПДВ
   const [writeOffStock, setWriteOffStock] = useState(true) // списувати зі складу для видаткових (OUT)
+  const [withStamp, setWithStamp] = useState(false) // накладати печатку на PDF
 
   // Завантажити товари зі складу + договори контрагента
   useEffect(() => {
@@ -177,8 +178,8 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
           })
         }
       }
-      if (andDownload === 'pdf') await generatePdf(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress })
-      if (andDownload === 'xlsx') await generateXlsx(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress })
+      if (andDownload === 'pdf') await generatePdf(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress, withStamp })
+      if (andDownload === 'xlsx') await generateXlsx(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress, withStamp })
       onSaved?.()
       if (!andDownload) onClose()
     } catch (e) { setError(e.message) }
@@ -187,8 +188,8 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
 
   const handleDownloadOnly = async (format) => {
     try {
-      if (format === 'pdf') await generatePdf(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress })
-      else await generateXlsx(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress })
+      if (format === 'pdf') await generatePdf(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress, withStamp })
+      else await generateXlsx(docType, contractor, items, { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress, withStamp })
     } catch (e) { setError(e.message) }
   }
 
@@ -653,9 +654,15 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
 
         {/* Кнопки */}
         <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'space-between', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
             {step > 1 && (
               <button className="btn btn-secondary" onClick={() => setStep(s => s - 1)}>← Назад</button>
+            )}
+            {step === 3 && DOCUMENT_TYPES.find(t => t.key === docType)?.direction !== 'incoming' && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', color: withStamp ? 'var(--green)' : 'var(--text2)', userSelect: 'none' }}>
+                <input type="checkbox" checked={withStamp} onChange={e => setWithStamp(e.target.checked)} />
+                <i className="ti ti-rubber-stamp" style={{ fontSize: 16 }} /> З печаткою
+              </label>
             )}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
