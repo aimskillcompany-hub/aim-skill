@@ -1,6 +1,10 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
+import { useUser } from '../lib/auth'
 import { getDocType } from '../lib/docgen'
+import DocModal from '../components/DocModal'
+import GeneratedDocModal from '../components/GeneratedDocModal'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts'
 import { fmt, fmtInt } from '../lib/fmt'
 import { PL_ORDER, PL_LABELS } from '../lib/articles'
@@ -294,12 +298,24 @@ function DrillModal({ drill, year, month, onClose }) {
 
 // ───────── Рентабельність по видаткових ─────────
 function ProfitView() {
+  const { user } = useUser()
   const [year, setYear] = useState(NOW.getFullYear())
   const [month, setMonth] = useState(0)
   const [data, setData] = useState(null)
   const [open, setOpen] = useState(() => new Set()) // розгорнуті накладні (doc.id)
+  const [openDoc, setOpenDoc] = useState(null)
+  const [genDoc, setGenDoc] = useState(null)
 
   useEffect(() => { setData(null); setOpen(new Set()); salesProfitReport(year, month || null).then(setData) }, [year, month])
+
+  // Відкрити документ-джерело (видаткову або прихідну) — регенерований чи завантажений
+  const openDocById = async (id) => {
+    if (!id) return
+    const { data: d } = await supabase.from('documents').select('*, contractors(name)').eq('id', id).maybeSingle()
+    if (!d) return
+    if (d.source === 'generated' && d.generated_doc_id) setGenDoc(d)
+    else setOpenDoc(d)
+  }
 
   const toggle = (id) => setOpen(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
   const allOpen = data?.groups?.length && data.groups.every(g => open.has(g.doc.id))
@@ -355,7 +371,7 @@ function ProfitView() {
                   <div key={g.doc.id} style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
                     <div onClick={() => toggle(g.doc.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', cursor: 'pointer', background: 'var(--surface2)', flexWrap: 'wrap' }}>
                       <i className={`ti ${isOpen ? 'ti-chevron-down' : 'ti-chevron-right'}`} style={{ color: 'var(--text3)' }} />
-                      <span style={{ fontWeight: 600, fontSize: 13 }}>{docLabel(g.doc)}</span>
+                      <span onClick={(e) => { e.stopPropagation(); openDocById(g.doc.id) }} title="Відкрити документ" style={{ fontWeight: 600, fontSize: 13, color: 'var(--blue)', cursor: 'pointer' }}><i className="ti ti-file" /> {docLabel(g.doc)}</span>
                       <span style={{ color: 'var(--text2)', fontSize: 12 }}>{g.doc.contractors?.name || '—'}</span>
                       <span style={{ marginLeft: 'auto', display: 'flex', gap: 14, fontSize: 12, whiteSpace: 'nowrap' }}>
                         <span style={{ color: 'var(--text3)' }}>Продаж <b style={{ color: 'var(--text)' }}>{fmtInt(g.totals.sellSum)}</b></span>
@@ -372,7 +388,9 @@ function ProfitView() {
                               <tr key={ri}>
                                 <td><div className="trunc" title={r.name} style={{ maxWidth: 260 }}>{r.name}</div></td>
                                 <td style={{ color: 'var(--text2)' }}><div className="trunc" style={{ maxWidth: 130 }}>{r.supplier || '—'}</div></td>
-                                <td style={{ color: 'var(--text3)', fontSize: 11 }}><div className="trunc" style={{ maxWidth: 140 }}>{r.purchaseRef || '—'}</div></td>
+                                <td style={{ fontSize: 11 }}>{r.purchaseDocId
+                                  ? <a onClick={() => openDocById(r.purchaseDocId)} title="Відкрити прихідну накладну" style={{ color: 'var(--blue)', cursor: 'pointer' }}><div className="trunc" style={{ maxWidth: 140 }}>{r.purchaseRef}</div></a>
+                                  : <div className="trunc" style={{ maxWidth: 140, color: 'var(--text3)' }}>{r.purchaseRef || '—'}</div>}</td>
                                 <td style={{ textAlign: 'right' }}>{fmt(r.qty)}</td>
                                 <td style={{ textAlign: 'right' }}>{fmtInt(r.sellSum)}</td>
                                 <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{fmtInt(r.costSum)}</td>
@@ -392,6 +410,8 @@ function ProfitView() {
             <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 12 }}>Собівартість — FIFO зі складу. ПДВ 20%, податок 18% (Чистий = Валовий/1.18). Повний набір колонок (ПДВ, валовий, податок, ціни за од.) — в експорті Excel.</p>
           </div>
         )}
+      {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />}
+      {genDoc && <GeneratedDocModal doc={genDoc} onClose={() => setGenDoc(null)} />}
     </div>
   )
 }

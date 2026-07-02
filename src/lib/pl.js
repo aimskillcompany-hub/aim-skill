@@ -182,7 +182,7 @@ export async function salesProfitReport(year, month) {
     ;(inMovs || []).forEach(m => {
       if (purchaseByProd[m.product_id]) return
       const d = inDocMap[m.document_id]; if (!d) return
-      purchaseByProd[m.product_id] = { supplier: d.contractors?.name || '', ref: `${d.doc_number || ''}${d.doc_date ? ', ' + d.doc_date.slice(0, 10) : ''}` }
+      purchaseByProd[m.product_id] = { supplier: d.contractors?.name || '', ref: `${d.doc_number || ''}${d.doc_date ? ', ' + d.doc_date.slice(0, 10) : ''}`, docId: d.id }
     })
   }
 
@@ -200,7 +200,7 @@ export async function salesProfitReport(year, month) {
       marginUnit: qty ? marginGross / qty : 0, marginSum: marginGross,
       marginPct: sellNet ? gross / sellNet : 0,
       vat, gross, tax, net,
-      supplier: purchase?.supplier || '', purchaseRef: purchase?.ref || '',
+      supplier: purchase?.supplier || '', purchaseRef: purchase?.ref || '', purchaseDocId: purchase?.docId || null,
     }
   }
 
