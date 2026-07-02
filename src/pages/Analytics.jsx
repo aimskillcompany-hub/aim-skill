@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { getDocType } from '../lib/docgen'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts'
 import { fmt, fmtInt } from '../lib/fmt'
 import { PL_ORDER, PL_LABELS } from '../lib/articles'
-import { computePL, computePLBreakdown, computeAging, dashboardStats, plDrill } from '../lib/pl'
+import * as XLSX from 'xlsx'
+import { computePL, computePLBreakdown, computeAging, dashboardStats, plDrill, salesProfitReport } from '../lib/pl'
 
 const NOW = new Date()
 const YEARS = [NOW.getFullYear(), NOW.getFullYear() - 1, NOW.getFullYear() - 2]
@@ -45,12 +47,13 @@ export default function Analytics() {
     <div>
       <div className="page-header"><h1>Аналітика</h1></div>
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 18, overflowX: 'auto' }}>
-        {[['overview', 'Огляд', 'ti-dashboard'], ['pl', 'P&L', 'ti-report-money'], ['aging', 'Борги', 'ti-clock-dollar']].map(([id, lbl, icon]) => (
+        {[['overview', 'Огляд', 'ti-dashboard'], ['pl', 'P&L', 'ti-report-money'], ['profit', 'Рентабельність', 'ti-percentage'], ['aging', 'Борги', 'ti-clock-dollar']].map(([id, lbl, icon]) => (
           <button key={id} onClick={() => setTab(id)} style={tabStyle(tab === id)}><i className={`ti ${icon}`} style={{ fontSize: 15 }} />{lbl}</button>
         ))}
       </div>
       {tab === 'overview' && <Overview />}
       {tab === 'pl' && <PLView />}
+      {tab === 'profit' && <ProfitView />}
       {tab === 'aging' && <AgingView />}
     </div>
   )
@@ -285,6 +288,102 @@ function DrillModal({ drill, year, month, onClose }) {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ───────── Рентабельність по видаткових ─────────
+function ProfitView() {
+  const [year, setYear] = useState(NOW.getFullYear())
+  const [month, setMonth] = useState(0)
+  const [data, setData] = useState(null)
+
+  useEffect(() => { setData(null); salesProfitReport(year, month || null).then(setData) }, [year, month])
+
+  const COLS = ['Найменування', 'К-сть', 'Ціна прод./од (з ПДВ)', 'Сума прод.', 'Ціна закуп./од', 'Сума закуп.', 'Маржа/од', 'Маржа сума', 'Маржин. %', 'ПДВ', 'Валовий прибуток', 'Податок 18%', 'Чистий прибуток']
+  const rowVals = r => [r.name, r.qty, r.sellUnit, r.sellSum, r.costUnit, r.costSum, r.marginUnit, r.marginSum, r.marginPct, r.vat, r.gross, r.tax, r.net]
+
+  const exportXlsx = () => {
+    if (!data) return
+    const aoa = [COLS]
+    data.groups.forEach(g => {
+      aoa.push([`${getDocType(g.doc.type)?.label || g.doc.type} №${g.doc.doc_number || ''} від ${(g.doc.doc_date || '').slice(0, 10)} · ${g.doc.contractors?.name || ''}`])
+      g.rows.forEach(r => aoa.push(rowVals(r).map((v, i) => i === 8 ? Math.round(v * 1000) / 10 : typeof v === 'number' ? Math.round(v * 100) / 100 : v)))
+      const t = g.totals
+      aoa.push(['Разом по накладній', '', '', Math.round(t.sellSum * 100) / 100, '', Math.round(t.costSum * 100) / 100, '', Math.round(t.marginSum * 100) / 100, '', Math.round(t.vat * 100) / 100, Math.round(t.gross * 100) / 100, Math.round(t.tax * 100) / 100, Math.round(t.net * 100) / 100])
+      aoa.push([])
+    })
+    if (data.grand) { const g = data.grand; aoa.push(['ВСЬОГО', '', '', Math.round(g.sellSum * 100) / 100, '', Math.round(g.costSum * 100) / 100, '', Math.round(g.marginSum * 100) / 100, '', Math.round(g.vat * 100) / 100, Math.round(g.gross * 100) / 100, Math.round(g.tax * 100) / 100, Math.round(g.net * 100) / 100]) }
+    const ws = XLSX.utils.aoa_to_sheet(aoa)
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Рентабельність')
+    XLSX.writeFile(wb, `Рентабельність_${year}${month ? '-' + String(month).padStart(2, '0') : ''}.xlsx`)
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <select className="form-input" value={year} onChange={e => setYear(Number(e.target.value))} style={{ width: 110 }}>{YEARS.map(y => <option key={y} value={y}>{y}</option>)}</select>
+        <select className="form-input" value={month} onChange={e => setMonth(Number(e.target.value))} style={{ width: 130 }}>
+          <option value={0}>Весь рік</option>{MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+        </select>
+        <button className="btn" onClick={exportXlsx} disabled={!data?.groups?.length} style={{ marginLeft: 'auto' }}><i className="ti ti-file-spreadsheet" /> Експорт Excel</button>
+      </div>
+      {!data ? <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
+        : data.groups.length === 0 ? <div className="card"><p style={{ color: 'var(--text3)' }}>Немає видаткових зі складськими рухами за період.</p></div>
+        : (
+          <div className="card">
+            {data.grand && (
+              <div className="kpi-grid" style={{ marginBottom: 16 }}>
+                <Kpi label="Продаж (з ПДВ)" value={data.grand.sellSum} color="var(--text)" />
+                <Kpi label="Маржа (з ПДВ)" value={data.grand.marginSum} color="var(--green)" />
+                <Kpi label="Валовий прибуток" value={data.grand.gross} color="var(--green)" />
+                <Kpi label="Чистий прибуток" value={data.grand.net} color="var(--blue)" />
+              </div>
+            )}
+            <div className="tbl-wrap" style={{ border: 'none', overflowX: 'auto' }}>
+              <table style={{ fontSize: 12 }}>
+                <thead><tr>{COLS.map((c, i) => <th key={i} style={{ textAlign: i === 0 ? 'left' : 'right', whiteSpace: 'nowrap' }}>{c}</th>)}</tr></thead>
+                <tbody>
+                  {data.groups.map((g, gi) => (
+                    <Fragment key={gi}>
+                      <tr style={{ background: 'var(--surface2)' }}>
+                        <td colSpan={COLS.length} style={{ fontWeight: 700 }}>{getDocType(g.doc.type)?.label || g.doc.type} №{g.doc.doc_number} від {(g.doc.doc_date || '').slice(0, 10)} · {g.doc.contractors?.name || '—'}</td>
+                      </tr>
+                      {g.rows.map((r, ri) => (
+                        <tr key={ri}>
+                          <td>{r.name}</td>
+                          <td style={{ textAlign: 'right' }}>{fmt(r.qty)}</td>
+                          <td style={{ textAlign: 'right' }}>{fmtInt(r.sellUnit)}</td>
+                          <td style={{ textAlign: 'right' }}>{fmtInt(r.sellSum)}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{fmtInt(r.costUnit)}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{fmtInt(r.costSum)}</td>
+                          <td style={{ textAlign: 'right' }}>{fmtInt(r.marginUnit)}</td>
+                          <td style={{ textAlign: 'right', color: r.marginSum >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtInt(r.marginSum)}</td>
+                          <td style={{ textAlign: 'right' }}>{(r.marginPct * 100).toFixed(1)}%</td>
+                          <td style={{ textAlign: 'right', color: 'var(--text3)' }}>{fmtInt(r.vat)}</td>
+                          <td style={{ textAlign: 'right' }}>{fmtInt(r.gross)}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--text3)' }}>{fmtInt(r.tax)}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 600, color: r.net >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtInt(r.net)}</td>
+                        </tr>
+                      ))}
+                      <tr style={{ fontWeight: 600, borderTop: '1px solid var(--border)' }}>
+                        <td colSpan={3} style={{ color: 'var(--text3)' }}>Разом по накладній</td>
+                        <td style={{ textAlign: 'right' }}>{fmtInt(g.totals.sellSum)}</td>
+                        <td /><td style={{ textAlign: 'right', color: 'var(--text2)' }}>{fmtInt(g.totals.costSum)}</td>
+                        <td /><td style={{ textAlign: 'right', color: 'var(--green)' }}>{fmtInt(g.totals.marginSum)}</td>
+                        <td /><td style={{ textAlign: 'right', color: 'var(--text3)' }}>{fmtInt(g.totals.vat)}</td>
+                        <td style={{ textAlign: 'right' }}>{fmtInt(g.totals.gross)}</td>
+                        <td style={{ textAlign: 'right', color: 'var(--text3)' }}>{fmtInt(g.totals.tax)}</td>
+                        <td style={{ textAlign: 'right', color: 'var(--blue)' }}>{fmtInt(g.totals.net)}</td>
+                      </tr>
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>Собівартість — FIFO зі складських рухів. ПДВ 20%, податок на дохід 18% (Чистий = Валовий / 1.18).</p>
+          </div>
+        )}
     </div>
   )
 }

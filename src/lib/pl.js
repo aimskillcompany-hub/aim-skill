@@ -151,6 +151,63 @@ export async function plDrill(year, month, bucketKey, articleNames, opts = {}) {
   return (data || []).filter(t => t.direction !== 'Інше' && t.direction !== 'ПФД')
 }
 
+// ── Звіт рентабельності по видаткових накладних (реалізація) ──
+// Джерело: складські OUT-рухи, прив'язані до документа. price = ціна продажу/од (net),
+// cost_price = FIFO собівартість/од (net). ПДВ 20% для колонок «з ПДВ». Податок на дохід 18%.
+export async function salesProfitReport(year, month) {
+  const { from, to } = periodRange(year, month)
+  const { data: movs } = await supabase.from('stock_movements')
+    .select('product_id, document_id, quantity, price, cost_price, date, description')
+    .eq('type', 'out').not('document_id', 'is', null).gte('date', from).lte('date', to)
+  if (!movs?.length) return { groups: [], grand: null }
+
+  const docIds = [...new Set(movs.map(m => m.document_id))]
+  const prodIds = [...new Set(movs.map(m => m.product_id).filter(Boolean))]
+  const [{ data: docs }, { data: prods }] = await Promise.all([
+    supabase.from('documents').select('id, type, doc_number, doc_date, contractors(name)').in('id', docIds),
+    prodIds.length ? supabase.from('products').select('id, name').in('id', prodIds) : Promise.resolve({ data: [] }),
+  ])
+  const docMap = {}; (docs || []).forEach(d => { docMap[d.id] = d })
+  const prodMap = {}; (prods || []).forEach(p => { prodMap[p.id] = p })
+
+  const calcRow = (name, qty, sellUnitNet, costUnitNet) => {
+    const sellNet = qty * sellUnitNet, costNet = qty * costUnitNet
+    const gross = sellNet - costNet            // Валовий прибуток
+    const marginGross = gross * 1.2            // Маржа з ПДВ
+    const vat = gross * 0.2                     // ПДВ (з маржі)
+    const net = gross / 1.18                    // Чистий
+    const tax = gross - net                     // Податок на дохід (18%)
+    return {
+      name, qty,
+      sellUnit: sellUnitNet * 1.2, sellSum: sellNet * 1.2,
+      costUnit: costUnitNet * 1.2, costSum: costNet * 1.2,
+      marginUnit: qty ? marginGross / qty : 0, marginSum: marginGross,
+      marginPct: sellNet ? gross / sellNet : 0,
+      vat, gross, tax, net,
+    }
+  }
+
+  const byDoc = {}
+  for (const m of movs) {
+    const d = docMap[m.document_id]; if (!d) continue
+    ;(byDoc[m.document_id] ||= { doc: d, rows: [] })
+    byDoc[m.document_id].rows.push(calcRow(
+      prodMap[m.product_id]?.name || (m.description || '').replace(/^.*?:\s*/, '') || '—',
+      Number(m.quantity) || 0, Number(m.price) || 0, Number(m.cost_price) || 0,
+    ))
+  }
+
+  const sum = (rows, k) => rows.reduce((s, r) => s + (r[k] || 0), 0)
+  const groups = Object.values(byDoc).map(g => ({
+    doc: g.doc, rows: g.rows,
+    totals: { sellSum: sum(g.rows, 'sellSum'), costSum: sum(g.rows, 'costSum'), marginSum: sum(g.rows, 'marginSum'), vat: sum(g.rows, 'vat'), gross: sum(g.rows, 'gross'), tax: sum(g.rows, 'tax'), net: sum(g.rows, 'net') },
+  })).sort((a, b) => (a.doc.doc_date || '').localeCompare(b.doc.doc_date || ''))
+
+  const allRows = groups.flatMap(g => g.rows)
+  const grand = { sellSum: sum(allRows, 'sellSum'), costSum: sum(allRows, 'costSum'), marginSum: sum(allRows, 'marginSum'), vat: sum(allRows, 'vat'), gross: sum(allRows, 'gross'), tax: sum(allRows, 'tax'), net: sum(allRows, 'net') }
+  return { groups, grand }
+}
+
 // ── Борги (Aging): по документах мінус прив'язані транзакції ──
 const BUCKETS = [['0-7', 0, 7], ['8-14', 8, 14], ['15-30', 15, 30], ['30+', 31, Infinity]]
 
