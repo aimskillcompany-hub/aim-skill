@@ -341,6 +341,8 @@ function ProfitView() {
   }
 
   const DCOLS = ['Найменування', 'Постачальник', 'Джерело', 'К-сть', 'Сума прод.', 'Сума закуп.', 'Маржа', '%', 'Чистий']
+  const si = v => (v < 0 ? '−' : '') + fmtInt(v)          // ціле зі знаком
+  const col = v => (v >= 0 ? 'var(--green)' : 'var(--red)')
 
   return (
     <div>
@@ -358,10 +360,9 @@ function ProfitView() {
           <div className="card">
             {data.grand && (
               <div className="kpi-grid" style={{ marginBottom: 16 }}>
-                <Kpi label="Продаж (з ПДВ)" value={data.grand.sellSum} color="var(--text)" />
-                <Kpi label="Маржа (з ПДВ)" value={data.grand.marginSum} color="var(--green)" />
-                <Kpi label="Валовий прибуток" value={data.grand.gross} color="var(--green)" />
-                <Kpi label="Чистий прибуток" value={data.grand.net} color="var(--blue)" />
+                {[['Продаж (з ПДВ)', data.grand.sellSum, false], ['Маржа (з ПДВ)', data.grand.marginSum, true], ['Валовий прибуток', data.grand.gross, true], ['Чистий прибуток', data.grand.net, true]].map(([lbl, val, signed]) => (
+                  <div className="kpi" key={lbl}><div className="kpi-label">{lbl}</div><div className="kpi-value" style={{ color: signed ? col(val) : 'var(--text)' }}>{signed ? si(val) : fmtInt(val)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>грн</span></div></div>
+                ))}
               </div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -375,8 +376,8 @@ function ProfitView() {
                       <span style={{ color: 'var(--text2)', fontSize: 12 }}>{g.doc.contractors?.name || '—'}</span>
                       <span style={{ marginLeft: 'auto', display: 'flex', gap: 14, fontSize: 12, whiteSpace: 'nowrap' }}>
                         <span style={{ color: 'var(--text3)' }}>Продаж <b style={{ color: 'var(--text)' }}>{fmtInt(g.totals.sellSum)}</b></span>
-                        <span style={{ color: 'var(--text3)' }}>Маржа <b style={{ color: 'var(--green)' }}>{fmtInt(g.totals.marginSum)}</b></span>
-                        <span style={{ color: 'var(--text3)' }}>Чистий <b style={{ color: 'var(--blue)' }}>{fmtInt(g.totals.net)}</b></span>
+                        <span style={{ color: 'var(--text3)' }}>Маржа <b style={{ color: col(g.totals.marginSum) }}>{si(g.totals.marginSum)}</b></span>
+                        <span style={{ color: 'var(--text3)' }}>Чистий <b style={{ color: col(g.totals.net) }}>{si(g.totals.net)}</b></span>
                       </span>
                     </div>
                     {isOpen && (
@@ -394,9 +395,9 @@ function ProfitView() {
                                 <td style={{ textAlign: 'right' }}>{fmt(r.qty)}</td>
                                 <td style={{ textAlign: 'right' }}>{fmtInt(r.sellSum)}</td>
                                 <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{fmtInt(r.costSum)}</td>
-                                <td style={{ textAlign: 'right', color: r.marginSum >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtInt(r.marginSum)}</td>
-                                <td style={{ textAlign: 'right' }}>{(r.marginPct * 100).toFixed(1)}%</td>
-                                <td style={{ textAlign: 'right', fontWeight: 600, color: r.net >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtInt(r.net)}</td>
+                                <td style={{ textAlign: 'right', color: col(r.marginSum) }}>{si(r.marginSum)}</td>
+                                <td style={{ textAlign: 'right', color: col(r.marginSum) }}>{(r.marginPct * 100).toFixed(1)}%</td>
+                                <td style={{ textAlign: 'right', fontWeight: 600, color: col(r.net) }}>{si(r.net)}</td>
                               </tr>
                             ))}
                           </tbody>
