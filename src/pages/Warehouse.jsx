@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { fmt, fmtInt } from '../lib/fmt'
-import { assembleProduct, getAssembly, deleteAssembly, editAssembly } from '../lib/stockService'
+import { assembleProduct, getAssembly, deleteAssembly, editAssembly, mergeProducts } from '../lib/stockService'
 import { getDocType } from '../lib/docgen'
 import DocModal from '../components/DocModal'
 import GeneratedDocModal from '../components/GeneratedDocModal'
@@ -375,6 +375,9 @@ function ProductModal({ product, onClose }) {
   const [stock, setStock] = useState(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
+  const [showMove, setShowMove] = useState(false)
+  const [showMerge, setShowMerge] = useState(false)
+  const loadStock = () => supabase.from('product_stock').select('computed_stock, total_in, total_out, unit, product_type').eq('id', product.id).maybeSingle().then(({ data }) => setStock(data))
   const loadMovs = () => supabase.from('stock_movements').select(`id, type, quantity, cost_price, date, description, source, document_id, ${DOC_EMBED}`).eq('product_id', product.id).order('date', { ascending: false }).limit(50).then(({ data }) => setMovs(data || []))
   useEffect(() => {
     supabase.from('product_stock').select('computed_stock, total_in, total_out, unit, product_type').eq('id', product.id).maybeSingle().then(({ data }) => setStock(data))
@@ -478,6 +481,10 @@ function ProductModal({ product, onClose }) {
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{aliases.slice(0, 20).map((a, i) => <span key={i} style={{ background: 'var(--surface2)', borderRadius: 6, padding: '2px 8px', fontSize: 12 }}>{a.alias}</span>)}</div>
           </div>
         )}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <button className="btn" onClick={() => setShowMove(true)}><i className="ti ti-plus" /> Ручний рух</button>
+          <button className="btn" onClick={() => setShowMerge(true)}><i className="ti ti-arrows-join" /> Об'єднати з товаром</button>
+        </div>
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 6 }}>Рухи</div>
         <div className="tbl-wrap" style={{ border: 'none', maxHeight: 280, overflowY: 'auto' }}>
           <table><thead><tr><th>Дата</th><th>Тип</th><th style={{ textAlign: 'right' }}>К-сть</th><th style={{ textAlign: 'right' }}>Собівартість</th><th>Опис</th><th>Документ</th></tr></thead>
@@ -491,6 +498,125 @@ function ProductModal({ product, onClose }) {
       {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />}
       {genDoc && <GeneratedDocModal doc={genDoc} onClose={() => setGenDoc(null)} />}
       {linkMov && <DocPickerModal title="Прив'язати документ до руху" match={{ date: linkMov.date }} onClose={() => setLinkMov(null)} onPick={linkDoc} />}
+      {showMove && <ManualMoveModal product={product} stock={stock} user={user} onClose={() => setShowMove(false)} onDone={() => { setShowMove(false); loadMovs(); loadStock() }} />}
+      {showMerge && <MergeProductModal product={product} onClose={() => setShowMerge(false)} onDone={() => { setShowMerge(false); loadMovs(); loadStock() }} />}
+    </div>
+  )
+}
+
+// Ручний складський рух (прихід/видача/встановити залишок)
+function ManualMoveModal({ product, stock, user, onClose, onDone }) {
+  const [kind, setKind] = useState('in') // in | out | set
+  const [qty, setQty] = useState('')
+  const [cost, setCost] = useState('')
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const cur = Number(stock?.computed_stock) || 0
+
+  const save = async () => {
+    setBusy(true); setErr(null)
+    let type = kind, quantity = Number(qty) || 0
+    if (kind === 'set') {
+      const target = Number(qty)
+      if (Number.isNaN(target)) { setErr('Вкажіть цільовий залишок'); setBusy(false); return }
+      const delta = target - cur
+      if (delta === 0) { onDone(); return }
+      type = delta > 0 ? 'in' : 'out'; quantity = Math.abs(delta)
+    }
+    if (quantity <= 0) { setErr('Кількість має бути > 0'); setBusy(false); return }
+    const price = cost === '' ? null : Number(cost)
+    const { error } = await supabase.from('stock_movements').insert({
+      product_id: product.id, type, quantity, price, cost_price: price,
+      date, source: 'manual', description: note.trim() || (kind === 'set' ? 'Коригування залишку' : type === 'in' ? 'Ручний прихід' : 'Ручне списання'), created_by: user?.id || null,
+    })
+    setBusy(false)
+    if (error) { setErr(error.message); return }
+    onDone()
+  }
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
+        <div className="modal-header"><h2 style={{ fontSize: 16 }}>Ручний рух</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
+        <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 12 }}>{product.name} · поточний залишок {fmt(cur)} {stock?.unit || ''}</div>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          {[['in', 'Прихід +'], ['out', 'Видача −'], ['set', 'Встановити залишок']].map(([k, l]) => (
+            <button key={k} className="btn" onClick={() => setKind(k)} style={{ flex: 1, background: kind === k ? 'var(--blue)' : 'var(--surface)', color: kind === k ? '#fff' : 'var(--text2)', border: '1px solid var(--border)', fontSize: 12 }}>{l}</button>
+          ))}
+        </div>
+        <div className="form-grid">
+          <div className="form-group"><label>{kind === 'set' ? 'Цільовий залишок' : 'Кількість'}</label><input className="form-input" type="number" step="any" value={qty} onChange={e => setQty(e.target.value)} autoFocus /></div>
+          {kind !== 'out' && <div className="form-group"><label>Собівартість/од</label><input className="form-input" type="number" step="any" value={cost} onChange={e => setCost(e.target.value)} /></div>}
+          <div className="form-group"><label>Дата</label><input className="form-input" type="date" value={date} onChange={e => setDate(e.target.value)} /></div>
+          <div className="form-group full"><label>Примітка</label><input className="form-input" value={note} onChange={e => setNote(e.target.value)} placeholder="напр. інвентаризація / коригування" /></div>
+        </div>
+        {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 8 }}>{err}</div>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+          <button className="btn" onClick={onClose}>Скасувати</button>
+          <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? '…' : 'Зберегти рух'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Об'єднати поточний товар з іншим (поєднати закупівлю і реалізацію)
+function MergeProductModal({ product, onClose, onDone }) {
+  const [q, setQ] = useState('')
+  const [rows, setRows] = useState([])
+  const [pick, setPick] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+
+  useEffect(() => {
+    const t = q.trim()
+    if (t.length < 2) { setRows([]); return }
+    supabase.from('product_stock').select('id, name, sku, computed_stock').eq('status', 'active').or(`name.ilike.%${t}%,sku.ilike.%${t}%`).limit(15)
+      .then(({ data }) => setRows((data || []).filter(r => r.id !== product.id)))
+  }, [q])
+
+  const doMerge = async () => {
+    if (!pick) return
+    setBusy(true); setErr(null)
+    const res = await mergeProducts(product.id, pick.id) // все з pick → у поточний
+    setBusy(false)
+    if (res.error) { setErr(res.error); return }
+    onDone()
+  }
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 560 }}>
+        <div className="modal-header"><h2 style={{ fontSize: 16 }}>Об'єднати з товаром</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
+        <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 10 }}>Залишити: <b>{product.name}</b>. Обраний товар буде <b>приєднано сюди</b> (усі рухи перенесуться, назва стане синонімом, дубль — в архів).</div>
+        {!pick ? (
+          <>
+            <input className="form-input" placeholder="Знайти товар-дубль (назва або артикул)…" value={q} onChange={e => setQ(e.target.value)} autoFocus />
+            <div style={{ border: q.trim().length >= 2 ? '1px solid var(--border)' : 'none', borderRadius: 8, marginTop: 6, maxHeight: 260, overflow: 'auto' }}>
+              {rows.map(r => (
+                <div key={r.id} onClick={() => setPick(r)} style={{ padding: '8px 10px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                  <span className="trunc">{r.name} {r.sku ? <span style={{ color: 'var(--text3)', fontSize: 11 }}>· {r.sku}</span> : ''}</span>
+                  <span style={{ color: r.computed_stock < 0 ? 'var(--red)' : 'var(--green)', flexShrink: 0 }}>{fmt(r.computed_stock)}</span>
+                </div>
+              ))}
+              {q.trim().length >= 2 && rows.length === 0 && <div style={{ padding: 10, color: 'var(--text3)', fontSize: 13 }}>Нічого не знайдено</div>}
+            </div>
+          </>
+        ) : (
+          <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: 12, fontSize: 13 }}>
+            Приєднати <b>«{pick.name}»</b> (залишок {fmt(pick.computed_stock)}) до <b>«{product.name}»</b>?
+            <div style={{ color: 'var(--text3)', marginTop: 6 }}>Після об'єднання залишок складеться (напр. закупівля + реалізація = 0).</div>
+            <button className="btn" onClick={() => setPick(null)} style={{ marginTop: 8 }}>← Обрати інший</button>
+          </div>
+        )}
+        {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 10 }}>{err}</div>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+          <button className="btn" onClick={onClose}>Скасувати</button>
+          <button className="btn btn-primary" onClick={doMerge} disabled={busy || !pick}>{busy ? '…' : 'Об\'єднати'}</button>
+        </div>
+      </div>
     </div>
   )
 }

@@ -493,6 +493,21 @@ async function reverseAssemblyMovements(id) {
   }
 }
 
+// ── Об'єднати два товари: перенести все з dup у keep, dup — в архів ──
+// (напр. поєднати запис-закупівлю і запис-реалізацію одного товару)
+export async function mergeProducts(keepId, dupId) {
+  if (!keepId || !dupId || keepId === dupId) return { error: 'Оберіть інший товар' }
+  const { data: dup } = await supabase.from('products').select('name').eq('id', dupId).maybeSingle()
+  if (!dup) return { error: 'Товар для об\'єднання не знайдено' }
+  await supabase.from('stock_movements').update({ product_id: keepId }).eq('product_id', dupId)
+  for (const t of ['order_items', 'transaction_items', 'assembly_items']) await supabase.from(t).update({ product_id: keepId }).eq('product_id', dupId).then(() => {}, () => {})
+  await supabase.from('assemblies').update({ result_product_id: keepId }).eq('result_product_id', dupId).then(() => {}, () => {})
+  await supabase.from('product_aliases').update({ product_id: keepId }).eq('product_id', dupId).then(() => {}, () => {})
+  await supabase.from('product_aliases').upsert({ product_id: keepId, alias: dup.name.trim(), normalized: normalizeName(dup.name) }, { onConflict: 'normalized', ignoreDuplicates: true }).then(() => {}, () => {})
+  const { error } = await supabase.from('products').update({ status: 'archived' }).eq('id', dupId)
+  return error ? { error: error.message } : { ok: true }
+}
+
 // ── Видалити збірку (реверс рухів: компоненти повертаються, виріб знімається) ──
 export async function deleteAssembly(id) {
   await reverseAssemblyMovements(id)
