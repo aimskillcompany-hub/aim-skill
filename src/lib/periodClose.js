@@ -215,6 +215,7 @@ export async function computePeriodDetail(year, month) {
   // Транзакції (джерело P&L)
   const tx = await fetchAll('bank_transactions', 'amount, direction, is_validated, article', q => q.gte('date', from).lte('date', to).eq('is_ignored', false))
   let income = 0, expense = 0, unvalidated = 0, noArticle = 0
+  const grp = {}
   tx.forEach(t => {
     const a = Math.abs(Number(t.amount) || 0)
     if (!t.is_validated) unvalidated++
@@ -222,7 +223,14 @@ export async function computePeriodDetail(year, month) {
     if (t.is_validated && t.direction !== 'Інше' && t.direction !== 'ПФД') {
       if (t.direction === 'Доходи') income += a; else if (t.direction === 'Витрати') expense += a
     }
+    // розбивка за напрямом+статтею (усі валідовані, включно з ПФД/Інше — для повноти)
+    if (t.is_validated) {
+      const key = `${t.direction || '—'} · ${t.article || 'без статті'}`
+      const b = (grp[key] ||= { key, dir: t.direction, n: 0, sum: 0 })
+      b.n++; b.sum += Number(t.amount) || 0
+    }
   })
+  const txBreakdown = Object.values(grp).sort((a, b) => a.sum - b.sum)
 
   const sum = (arr, k) => arr.reduce((s, d) => s + (d[k] || 0), 0)
   return {
@@ -231,7 +239,7 @@ export async function computePeriodDetail(year, month) {
       salesAmount: sum(sales, 'amount'), salesVat: sum(sales, 'vat'),
       purchAmount: sum(purchases, 'amount'), purchVat: sum(purchases, 'vat'),
     },
-    tx: { count: tx.length, income, expense, unvalidated, noArticle },
+    tx: { count: tx.length, income, expense, unvalidated, noArticle, breakdown: txBreakdown },
   }
 }
 

@@ -203,6 +203,23 @@ function PeriodDetail({ detail }) {
         <b>Транзакції (Банк/Каса):</b> {tx.count} шт · надходження <span style={{ color: 'var(--green)' }}>+{fmt(tx.income)}</span> · витрати <span style={{ color: 'var(--red)' }}>−{fmt(tx.expense)}</span>
         {tx.unvalidated > 0 && <span style={{ color: 'var(--amber, #d97706)' }}> · {tx.unvalidated} некласифікованих</span>}
         <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Це джерело «Дохід / Витрати / Чистий P&L» — реальні гроші по банку (з ПДВ). «Маржа» рахується окремо — по проданих товарах.</div>
+        {tx.breakdown?.length > 0 && (
+          <details style={{ marginTop: 8 }}>
+            <summary style={{ cursor: 'pointer', color: 'var(--text2)' }}>Куди пішли гроші — розбивка за статтями ({tx.breakdown.length})</summary>
+            <table style={{ width: '100%', fontSize: 12, marginTop: 6 }}>
+              <tbody>
+                {tx.breakdown.map(b => (
+                  <tr key={b.key}>
+                    <td>{b.key}</td>
+                    <td style={{ textAlign: 'right', color: 'var(--text3)', whiteSpace: 'nowrap' }}>{b.n} тр</td>
+                    <td style={{ textAlign: 'right', color: b.sum >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600, whiteSpace: 'nowrap' }}>{b.sum >= 0 ? '+' : '−'}{fmt(b.sum)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>Податки, зарплата, оренда, комісії, ПФД, відсотки — це рухи грошей <b>без товарних документів</b> (це нормально). Накладна потрібна лише для купівлі/продажу товару.</div>
+          </details>
+        )}
       </div>
     </div>
   )
