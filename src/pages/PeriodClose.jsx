@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useUser } from '../lib/auth'
 import { fmt } from '../lib/fmt'
-import { listClosings, periodStatus, runChecklist, computeSnapshot, closePeriod, reopenPeriod, computeContinuity, snapshotDiff } from '../lib/periodClose'
+import { listClosings, periodStatus, runChecklist, computeSnapshot, closePeriod, reopenPeriod, computeContinuity, snapshotDiff, computePeriodDetail } from '../lib/periodClose'
 
 const MONTHS = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень', 'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень']
 const si = v => (v < 0 ? '−' : '') + fmt(v)
@@ -23,6 +23,7 @@ export default function PeriodClose() {
   const [check, setCheck] = useState(null)
   const [snap, setSnap] = useState(null)
   const [cont, setCont] = useState(null)
+  const [detail, setDetail] = useState(null)
   const [busy, setBusy] = useState('')
   const [err, setErr] = useState(null)
 
@@ -31,7 +32,7 @@ export default function PeriodClose() {
 
   const rowFor = (m) => closings.find(c => c.period_year === year && c.period_month === m)
   const openMonth = async (m) => {
-    setSel(m); setCheck(null); setSnap(null); setCont(null); setErr(null)
+    setSel(m); setCheck(null); setSnap(null); setCont(null); setDetail(null); setErr(null)
     const r = rowFor(m)
     if (r?.status === 'closed') { setSnap(r.snapshot) }
   }
@@ -39,6 +40,11 @@ export default function PeriodClose() {
   const doCont = async () => {
     setBusy('cont'); setErr(null)
     try { setCont(await computeContinuity(year, sel)) } catch (e) { setErr(e.message) }
+    setBusy('')
+  }
+  const doDetail = async () => {
+    setBusy('detail'); setErr(null)
+    try { setDetail(await computePeriodDetail(year, sel)) } catch (e) { setErr(e.message) }
     setBusy('')
   }
 
@@ -111,6 +117,9 @@ export default function PeriodClose() {
               <button className="btn" onClick={doCont} disabled={busy === 'cont'}>
                 <i className="ti ti-arrows-exchange" /> {busy === 'cont' ? '…' : 'Рух за період'}
               </button>
+              <button className="btn" onClick={doDetail} disabled={busy === 'detail'}>
+                <i className="ti ti-file-invoice" /> {busy === 'detail' ? '…' : 'Документи й операції'}
+              </button>
               {selStatus !== 'closed' && <>
                 <button className="btn" onClick={doCheck} disabled={busy === 'check'}>
                   <i className="ti ti-checklist" /> {busy === 'check' ? '…' : 'Перевірити готовність'}
@@ -139,10 +148,57 @@ export default function PeriodClose() {
 
           {check && <Checklist check={check} />}
           {snap?._prev && <SnapDiff snap={snap} />}
+          {detail && <PeriodDetail detail={detail} />}
           {cont && <Continuity cont={cont} />}
           {snap && <Snapshot snap={snap} frozen={selStatus === 'closed'} />}
         </div>
       )}
+    </div>
+  )
+}
+
+function PeriodDetail({ detail }) {
+  const { totals: t, tx } = detail
+  const DocList = ({ title, docs, totalAmt, totalVat, color }) => (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ fontWeight: 700, marginBottom: 8, color }}>
+        {title} ({docs.length}) — {fmt(totalAmt)} з ПДВ · у т.ч. ПДВ {fmt(totalVat)}
+      </div>
+      {docs.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 13 }}>немає</div>}
+      {docs.map(d => (
+        <details key={d.id} style={{ borderBottom: '1px solid var(--border)', padding: '6px 0' }}>
+          <summary style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13 }}>
+            <span>№{d.doc_number || '—'} · {d.doc_date?.slice(0, 10)} · {d.contractor || '—'}
+              {!d.hasVat && <span style={{ fontSize: 10, color: 'var(--amber, #d97706)', marginLeft: 6 }}>без ПДВ</span>}</span>
+            <b style={{ whiteSpace: 'nowrap' }}>{fmt(d.amount)}</b>
+          </summary>
+          {d.items.length > 0 ? (
+            <table style={{ width: '100%', fontSize: 12, margin: '6px 0 6px 16px' }}>
+              <tbody>
+                {d.items.map((it, i) => (
+                  <tr key={i}>
+                    <td>{it.name?.slice(0, 50)}</td>
+                    <td style={{ textAlign: 'right', color: 'var(--text3)' }}>{it.qty} × {fmt(it.price)}</td>
+                    <td style={{ textAlign: 'right' }}>{fmt(it.qty * it.price)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : <div style={{ fontSize: 11, color: 'var(--text3)', margin: '4px 0 4px 16px' }}>позиції не заведені на склад</div>}
+        </details>
+      ))}
+    </div>
+  )
+  return (
+    <div style={{ marginBottom: 18, border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+      <div style={{ fontWeight: 700, marginBottom: 12 }}>Документи й операції періоду</div>
+      <DocList title="Продажі (видаткові / акти)" docs={detail.sales} totalAmt={t.salesAmount} totalVat={t.salesVat} color="var(--green)" />
+      <DocList title="Закупівлі (прихідні)" docs={detail.purchases} totalAmt={t.purchAmount} totalVat={t.purchVat} color="var(--red)" />
+      <div style={{ fontSize: 13, marginTop: 8, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+        <b>Транзакції (Банк/Каса):</b> {tx.count} шт · надходження <span style={{ color: 'var(--green)' }}>+{fmt(tx.income)}</span> · витрати <span style={{ color: 'var(--red)' }}>−{fmt(tx.expense)}</span>
+        {tx.unvalidated > 0 && <span style={{ color: 'var(--amber, #d97706)' }}> · {tx.unvalidated} некласифікованих</span>}
+        <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Це джерело «Дохід / Витрати / Чистий P&L» — реальні гроші по банку (з ПДВ). «Маржа» рахується окремо — по проданих товарах.</div>
+      </div>
     </div>
   )
 }
@@ -277,14 +333,14 @@ function Snapshot({ snap, frozen }) {
   const t = snap.pl?.totals || {}
   const m = snap.margin || {}
   const kpi = [
-    { label: 'Дохід (P&L)', v: t.revenue, c: 'var(--green)' },
-    { label: 'Витрати', v: (t.cogs || 0) + (t.opex || 0), c: 'var(--red)' },
-    { label: 'Чистий P&L', v: t.net, c: col(t.net || 0) },
-    { label: 'Маржа (реалізація)', v: m.marginSum, c: col(m.marginSum || 0) },
-    { label: 'Оцінка складу', v: snap.stock?.totalValue, c: 'var(--text)' },
-    { label: 'Гроші (Банк+Каса)', v: snap.cashBankTotal, c: 'var(--text)' },
-    { label: 'Дебіторка', v: snap.receivable, c: 'var(--green)' },
-    { label: 'Кредиторка', v: snap.payable, c: 'var(--red)' },
+    { label: 'Дохід (P&L)', v: t.revenue, c: 'var(--green)', sub: 'гроші по банку, з ПДВ' },
+    { label: 'Витрати', v: (t.cogs || 0) + (t.opex || 0), c: 'var(--red)', sub: 'гроші по банку, з ПДВ' },
+    { label: 'Чистий P&L', v: t.net, c: col(t.net || 0), sub: 'грошовий потік за місяць' },
+    { label: 'Маржа (реалізація)', v: m.marginSum, c: col(m.marginSum || 0), sub: 'по проданих товарах, з ПДВ' },
+    { label: 'Оцінка складу', v: snap.stock?.totalValue, c: 'var(--text)', sub: 'собівартість, без ПДВ' },
+    { label: 'Гроші (Банк+Каса)', v: snap.cashBankTotal, c: 'var(--text)', sub: 'залишок на кінець' },
+    { label: 'Дебіторка', v: snap.receivable, c: 'var(--green)', sub: 'неоплачені продажі' },
+    { label: 'Кредиторка', v: snap.payable, c: 'var(--red)', sub: 'неоплачені закупівлі' },
   ]
   return (
     <div>
@@ -294,6 +350,7 @@ function Snapshot({ snap, frozen }) {
           <div key={k.label} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
             <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 4 }}>{k.label}</div>
             <div style={{ fontSize: 18, fontWeight: 700, color: k.c }}>{si(k.v || 0)}</div>
+            {k.sub && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3 }}>{k.sub}</div>}
           </div>
         ))}
       </div>

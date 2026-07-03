@@ -172,6 +172,69 @@ export async function isDateInClosedPeriod(dateStr) {
   return !!data
 }
 
+// ── Деталізація: документи й операції періоду (джерела цифр знімка) ──
+export async function computePeriodDetail(year, month) {
+  const { from, to } = periodRange(year, month)
+
+  const docs = await fetchAll('documents', 'id, type, doc_number, doc_date, amount, vat_amount, direction, contractor_id, generated_doc_id, source', q => q.gte('doc_date', from).lte('doc_date', to))
+  const cids = [...new Set(docs.map(d => d.contractor_id).filter(Boolean))]
+  const cons = {}
+  for (let i = 0; i < cids.length; i += 100) {
+    const { data } = await supabase.from('contractors').select('id, name').in('id', cids.slice(i, i + 100))
+    ;(data || []).forEach(c => cons[c.id] = c.name)
+  }
+
+  // Позиції по документах (зі stock_movements, прив'язаних до цих документів)
+  const docIds = docs.map(d => d.id)
+  const itemsByDoc = {}
+  for (let i = 0; i < docIds.length; i += 100) {
+    const { data: mv } = await supabase.from('stock_movements')
+      .select('document_id, product_id, type, quantity, price, description').in('document_id', docIds.slice(i, i + 100))
+    ;(mv || []).forEach(m => { (itemsByDoc[m.document_id] ||= []).push(m) })
+  }
+  const allPids = [...new Set(Object.values(itemsByDoc).flat().map(m => m.product_id).filter(Boolean))]
+  const pn = {}
+  for (let i = 0; i < allPids.length; i += 200) {
+    const { data } = await supabase.from('products').select('id, name').in('id', allPids.slice(i, i + 200))
+    ;(data || []).forEach(p => pn[p.id] = p.name)
+  }
+
+  const enrich = d => ({
+    id: d.id, type: d.type, doc_number: d.doc_number, doc_date: d.doc_date,
+    amount: Number(d.amount) || 0, vat: Number(d.vat_amount) || 0, hasVat: Number(d.vat_amount) > 0,
+    contractor: cons[d.contractor_id] || '', generated_doc_id: d.generated_doc_id, source: d.source,
+    items: (itemsByDoc[d.id] || []).map(m => ({
+      name: pn[m.product_id] || (m.description || '').replace(/^.*?:\s*/, '') || '—',
+      qty: Number(m.quantity) || 0, price: Number(m.price) || 0,
+    })),
+  })
+  const isPurchase = d => d.direction === 'payable' || d.type === 'incomingWaybill'
+  const purchases = docs.filter(isPurchase).map(enrich).sort((a, b) => (a.doc_date || '').localeCompare(b.doc_date || ''))
+  const sales = docs.filter(d => !isPurchase(d)).map(enrich).sort((a, b) => (a.doc_date || '').localeCompare(b.doc_date || ''))
+
+  // Транзакції (джерело P&L)
+  const tx = await fetchAll('bank_transactions', 'amount, direction, is_validated, article', q => q.gte('date', from).lte('date', to).eq('is_ignored', false))
+  let income = 0, expense = 0, unvalidated = 0, noArticle = 0
+  tx.forEach(t => {
+    const a = Math.abs(Number(t.amount) || 0)
+    if (!t.is_validated) unvalidated++
+    if (!t.article) noArticle++
+    if (t.is_validated && t.direction !== 'Інше' && t.direction !== 'ПФД') {
+      if (t.direction === 'Доходи') income += a; else if (t.direction === 'Витрати') expense += a
+    }
+  })
+
+  const sum = (arr, k) => arr.reduce((s, d) => s + (d[k] || 0), 0)
+  return {
+    purchases, sales,
+    totals: {
+      salesAmount: sum(sales, 'amount'), salesVat: sum(sales, 'vat'),
+      purchAmount: sum(purchases, 'amount'), purchVat: sum(purchases, 'vat'),
+    },
+    tx: { count: tx.length, income, expense, unvalidated, noArticle },
+  }
+}
+
 // ── Безперервність залишків: на початок + рух = на кінець (склад + гроші) ──
 export async function computeContinuity(year, month) {
   const { from, to } = periodRange(year, month)
