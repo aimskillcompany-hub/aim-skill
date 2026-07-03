@@ -26,9 +26,9 @@ export async function runChecklist(year, month) {
   const negIds = Object.entries(bal).filter(([, q]) => q < -0.0001).map(([id]) => id)
   let negativeStock = []
   if (negIds.length) {
-    const { data: prods } = await supabase.from('products').select('id, name').in('id', negIds)
-    const pn = {}; (prods || []).forEach(p => pn[p.id] = p.name)
-    negativeStock = negIds.map(id => ({ id, name: pn[id] || id, qty: bal[id] }))
+    const { data: prods } = await supabase.from('products').select('id, name, product_type').in('id', negIds)
+    const pm = {}; (prods || []).forEach(p => pm[p.id] = p)
+    negativeStock = negIds.filter(id => (pm[id]?.product_type || 'goods') === 'goods').map(id => ({ id, name: pm[id]?.name || id, qty: bal[id] }))
   }
 
   // 2. Документи періоду без суми
@@ -57,15 +57,15 @@ export async function computeSnapshot(year, month) {
   const pids = Object.keys(bal)
   const prodMap = {}
   for (let i = 0; i < pids.length; i += 200) {
-    const { data } = await supabase.from('products').select('id, name, buy_price').in('id', pids.slice(i, i + 200))
+    const { data } = await supabase.from('products').select('id, name, buy_price, product_type').in('id', pids.slice(i, i + 200))
     ;(data || []).forEach(p => prodMap[p.id] = p)
   }
-  let stockValue = 0
+  // Оцінка складу — лише товари (goods). Послуги/роботи/розхідники не є залишком.
   const stockItems = pids.map(id => {
-    const qty = bal[id], unit = Number(prodMap[id]?.buy_price) || 0, value = qty * unit
-    stockValue += value
-    return { product_id: id, name: prodMap[id]?.name || id, qty, unit_cost: unit, value }
-  }).filter(x => Math.abs(x.qty) > 0.0001).sort((a, b) => b.value - a.value)
+    const p = prodMap[id] || {}, qty = bal[id], unit = Number(p.buy_price) || 0
+    return { product_id: id, name: p.name || id, product_type: p.product_type, qty, unit_cost: unit, value: qty * unit }
+  }).filter(x => Math.abs(x.qty) > 0.0001 && (x.product_type || 'goods') === 'goods').sort((a, b) => b.value - a.value)
+  const stockValue = stockItems.reduce((s, x) => s + x.value, 0)
 
   // Баланси рахунків станом на кінець періоду
   const [{ data: accs }, txs] = await Promise.all([
@@ -188,13 +188,13 @@ export async function computeContinuity(year, month) {
   const pids = Object.keys(acc)
   const prodMap = {}
   for (let i = 0; i < pids.length; i += 200) {
-    const { data } = await supabase.from('products').select('id, name, buy_price').in('id', pids.slice(i, i + 200))
+    const { data } = await supabase.from('products').select('id, name, buy_price, product_type').in('id', pids.slice(i, i + 200))
     ;(data || []).forEach(p => prodMap[p.id] = p)
   }
   const stockItems = pids.map(id => {
-    const a = acc[id], cost = Number(prodMap[id]?.buy_price) || 0, close = a.open + a.inQ - a.outQ
-    return { product_id: id, name: prodMap[id]?.name || id, open: a.open, inQ: a.inQ, outQ: a.outQ, close, cost, openVal: a.open * cost, closeVal: close * cost }
-  }).filter(x => x.open || x.inQ || x.outQ || x.close).sort((a, b) => Math.abs(b.closeVal) - Math.abs(a.closeVal))
+    const a = acc[id], p = prodMap[id] || {}, cost = Number(p.buy_price) || 0, close = a.open + a.inQ - a.outQ
+    return { product_id: id, name: p.name || id, product_type: p.product_type, open: a.open, inQ: a.inQ, outQ: a.outQ, close, cost, openVal: a.open * cost, closeVal: close * cost }
+  }).filter(x => (x.open || x.inQ || x.outQ || x.close) && (x.product_type || 'goods') === 'goods').sort((a, b) => Math.abs(b.closeVal) - Math.abs(a.closeVal))
   const stockTot = stockItems.reduce((s, x) => ({ openVal: s.openVal + x.openVal, closeVal: s.closeVal + x.closeVal }), { openVal: 0, closeVal: 0 })
 
   // Гроші (Банк/Каса)
