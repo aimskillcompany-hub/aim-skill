@@ -131,6 +131,51 @@ export async function isDateInClosedPeriod(dateStr) {
   return !!data
 }
 
+// ── Безперервність залишків: на початок + рух = на кінець (склад + гроші) ──
+export async function computeContinuity(year, month) {
+  const { from, to } = periodRange(year, month)
+
+  // Склад
+  const sm = await fetchAll('stock_movements', 'product_id, type, quantity, date', q => q.lte('date', to))
+  const acc = {}
+  sm.forEach(m => {
+    const q = Number(m.quantity) || 0
+    const a = (acc[m.product_id] ||= { open: 0, inQ: 0, outQ: 0 })
+    if (m.date < from) a.open += (m.type === 'in' ? q : -q)
+    else if (m.type === 'in') a.inQ += q; else a.outQ += q
+  })
+  const pids = Object.keys(acc)
+  const prodMap = {}
+  for (let i = 0; i < pids.length; i += 200) {
+    const { data } = await supabase.from('products').select('id, name, buy_price').in('id', pids.slice(i, i + 200))
+    ;(data || []).forEach(p => prodMap[p.id] = p)
+  }
+  const stockItems = pids.map(id => {
+    const a = acc[id], cost = Number(prodMap[id]?.buy_price) || 0, close = a.open + a.inQ - a.outQ
+    return { product_id: id, name: prodMap[id]?.name || id, open: a.open, inQ: a.inQ, outQ: a.outQ, close, cost, openVal: a.open * cost, closeVal: close * cost }
+  }).filter(x => x.open || x.inQ || x.outQ || x.close).sort((a, b) => Math.abs(b.closeVal) - Math.abs(a.closeVal))
+  const stockTot = stockItems.reduce((s, x) => ({ openVal: s.openVal + x.openVal, closeVal: s.closeVal + x.closeVal }), { openVal: 0, closeVal: 0 })
+
+  // Гроші (Банк/Каса)
+  const { data: accs } = await supabase.from('accounts').select('id, name, type, opening_balance, opening_balance_date, sort_order').order('sort_order')
+  const txs = await fetchAll('bank_transactions', 'account_id, amount, date', q => q.eq('is_ignored', false).lte('date', to))
+  const cash = (accs || []).map(a => {
+    let openMove = 0, inflow = 0, outflow = 0
+    txs.forEach(t => {
+      if (t.account_id !== a.id) return
+      if (a.opening_balance_date && t.date && t.date < a.opening_balance_date) return
+      const amt = Number(t.amount) || 0
+      if (t.date < from) openMove += amt
+      else if (amt >= 0) inflow += amt; else outflow += -amt
+    })
+    const opening = (Number(a.opening_balance) || 0) + openMove
+    return { id: a.id, name: a.name, type: a.type, opening, inflow, outflow, closing: opening + inflow - outflow }
+  })
+  const cashTot = cash.reduce((s, c) => ({ opening: s.opening + c.opening, inflow: s.inflow + c.inflow, outflow: s.outflow + c.outflow, closing: s.closing + c.closing }), { opening: 0, inflow: 0, outflow: 0, closing: 0 })
+
+  return { stock: { items: stockItems, ...stockTot }, cash, cashTot }
+}
+
 // helper: посторінкова вибірка
 async function fetchAll(table, cols, mod) {
   let from = 0, all = []

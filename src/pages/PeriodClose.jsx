@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useUser } from '../lib/auth'
 import { fmt } from '../lib/fmt'
-import { listClosings, periodStatus, runChecklist, computeSnapshot, closePeriod, reopenPeriod } from '../lib/periodClose'
+import { listClosings, periodStatus, runChecklist, computeSnapshot, closePeriod, reopenPeriod, computeContinuity } from '../lib/periodClose'
 
 const MONTHS = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень', 'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень']
 const si = v => (v < 0 ? '−' : '') + fmt(v)
@@ -22,6 +22,7 @@ export default function PeriodClose() {
   const [sel, setSel] = useState(null) // month 1..12
   const [check, setCheck] = useState(null)
   const [snap, setSnap] = useState(null)
+  const [cont, setCont] = useState(null)
   const [busy, setBusy] = useState('')
   const [err, setErr] = useState(null)
 
@@ -30,9 +31,15 @@ export default function PeriodClose() {
 
   const rowFor = (m) => closings.find(c => c.period_year === year && c.period_month === m)
   const openMonth = async (m) => {
-    setSel(m); setCheck(null); setSnap(null); setErr(null)
+    setSel(m); setCheck(null); setSnap(null); setCont(null); setErr(null)
     const r = rowFor(m)
     if (r?.status === 'closed') { setSnap(r.snapshot) }
+  }
+
+  const doCont = async () => {
+    setBusy('cont'); setErr(null)
+    try { setCont(await computeContinuity(year, sel)) } catch (e) { setErr(e.message) }
+    setBusy('')
   }
 
   const doCheck = async () => {
@@ -100,7 +107,10 @@ export default function PeriodClose() {
         <div className="card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
             <h2 style={{ margin: 0 }}>{MONTHS[sel - 1]} {year}</h2>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn" onClick={doCont} disabled={busy === 'cont'}>
+                <i className="ti ti-arrows-exchange" /> {busy === 'cont' ? '…' : 'Рух за період'}
+              </button>
               {selStatus !== 'closed' && <>
                 <button className="btn" onClick={doCheck} disabled={busy === 'check'}>
                   <i className="ti ti-checklist" /> {busy === 'check' ? '…' : 'Перевірити готовність'}
@@ -128,9 +138,62 @@ export default function PeriodClose() {
           )}
 
           {check && <Checklist check={check} />}
+          {cont && <Continuity cont={cont} />}
           {snap && <Snapshot snap={snap} frozen={selStatus === 'closed'} />}
         </div>
       )}
+    </div>
+  )
+}
+
+function Continuity({ cont }) {
+  const c = cont.cashTot
+  return (
+    <div style={{ marginBottom: 18, border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+      <div style={{ fontWeight: 700, marginBottom: 10 }}>Гроші: на початок + рух = на кінець</div>
+      <table style={{ width: '100%', fontSize: 13 }}>
+        <thead><tr style={{ color: 'var(--text3)', textAlign: 'right' }}>
+          <th style={{ textAlign: 'left' }}>Рахунок</th><th>На початок</th><th>Надходження</th><th>Витрати</th><th>На кінець</th></tr></thead>
+        <tbody>
+          {cont.cash.map(a => (
+            <tr key={a.id} style={{ textAlign: 'right' }}>
+              <td style={{ textAlign: 'left' }}>{a.name}</td>
+              <td>{si(a.opening)}</td>
+              <td style={{ color: 'var(--green)' }}>{a.inflow ? '+' + fmt(a.inflow) : '—'}</td>
+              <td style={{ color: 'var(--red)' }}>{a.outflow ? '−' + fmt(a.outflow) : '—'}</td>
+              <td><b>{si(a.closing)}</b></td>
+            </tr>
+          ))}
+          <tr style={{ textAlign: 'right', borderTop: '2px solid var(--border)', fontWeight: 700 }}>
+            <td style={{ textAlign: 'left' }}>Разом</td>
+            <td>{si(c.opening)}</td><td style={{ color: 'var(--green)' }}>+{fmt(c.inflow)}</td>
+            <td style={{ color: 'var(--red)' }}>−{fmt(c.outflow)}</td><td>{si(c.closing)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style={{ fontWeight: 700, margin: '18px 0 8px' }}>
+        Склад (оцінка за собівартістю): на початок {fmt(cont.stock.openVal)} → на кінець <b>{fmt(cont.stock.closeVal)}</b>
+      </div>
+      <details>
+        <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--text2)' }}>Товари ({cont.stock.items.length}): к-сть на початок + прихід − видаток = на кінець</summary>
+        <table style={{ width: '100%', fontSize: 12, marginTop: 8 }}>
+          <thead><tr style={{ color: 'var(--text3)', textAlign: 'right' }}>
+            <th style={{ textAlign: 'left' }}>Товар</th><th>Початок</th><th>Прихід</th><th>Видаток</th><th>Кінець</th><th>Вартість кін.</th></tr></thead>
+          <tbody>
+            {cont.stock.items.slice(0, 100).map(it => (
+              <tr key={it.product_id} style={{ textAlign: 'right' }}>
+                <td style={{ textAlign: 'left' }}>{it.name?.slice(0, 42)}</td>
+                <td>{it.open}</td>
+                <td style={{ color: 'var(--green)' }}>{it.inQ ? '+' + it.inQ : '—'}</td>
+                <td style={{ color: 'var(--red)' }}>{it.outQ ? '−' + it.outQ : '—'}</td>
+                <td style={{ color: it.close < 0 ? 'var(--red)' : 'inherit' }}><b>{it.close}</b></td>
+                <td>{fmt(it.closeVal)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </details>
     </div>
   )
 }
