@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useUser } from '../lib/auth'
 import { fmt } from '../lib/fmt'
+import { supabase } from '../lib/supabase'
+import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import { listClosings, periodStatus, runChecklist, computeSnapshot, closePeriod, reopenPeriod, computeContinuity, snapshotDiff, computePeriodDetail } from '../lib/periodClose'
+
+const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД']
 
 const MONTHS = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень', 'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень']
 const si = v => (v < 0 ? '−' : '') + fmt(v)
@@ -26,9 +30,10 @@ export default function PeriodClose() {
   const [detail, setDetail] = useState(null)
   const [busy, setBusy] = useState('')
   const [err, setErr] = useState(null)
+  const [grouped, setGrouped] = useState({})
 
   const load = async () => setClosings(await listClosings())
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(); fetchArticles().then(a => setGrouped(groupByType(a))) }, [])
 
   const rowFor = (m) => closings.find(c => c.period_year === year && c.period_month === m)
   const openMonth = async (m) => {
@@ -146,7 +151,7 @@ export default function PeriodClose() {
             </div>
           )}
 
-          {check && <Checklist check={check} />}
+          {check && <Checklist check={check} grouped={grouped} onClassified={doCheck} />}
           {snap?._prev && <SnapDiff snap={snap} />}
           {detail && <PeriodDetail detail={detail} />}
           {cont && <Continuity cont={cont} />}
@@ -303,8 +308,10 @@ function Continuity({ cont }) {
   )
 }
 
-function Checklist({ check }) {
+function Checklist({ check, grouped, onClassified }) {
   const ok = check.blockers === 0
+  const [openTx, setOpenTx] = useState(false)
+  const nTx = check.unclassifiedTx
   return (
     <div style={{ marginBottom: 18, border: `1px solid ${ok ? 'var(--green)' : 'var(--red)'}`, borderRadius: 10, padding: 14 }}>
       <div style={{ fontWeight: 700, marginBottom: 10, color: ok ? 'var(--green)' : 'var(--red)' }}>
@@ -317,8 +324,53 @@ function Checklist({ check }) {
       ))}
       <Row bad={check.docsNoAmount.length > 0} label="Документи без суми"
         val={check.docsNoAmount.length ? `${check.docsNoAmount.length} шт` : 'немає'} />
-      <Row bad={false} warn={check.unclassifiedTx > 0} label="Некласифіковані транзакції (не блокує)"
-        val={check.unclassifiedTx ? `${check.unclassifiedTx} шт` : 'немає'} />
+
+      <div onClick={() => nTx && setOpenTx(o => !o)}
+        style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13, cursor: nTx ? 'pointer' : 'default' }}>
+        <span><i className={`ti ${nTx ? 'ti-alert-triangle' : 'ti-check'}`} style={{ color: nTx ? 'var(--amber, #d97706)' : 'var(--green)', marginRight: 6 }} />Некласифіковані транзакції (не блокує)</span>
+        <b>{nTx ? `${nTx} шт ${openTx ? '▴' : '▾'}` : 'немає'}</b>
+      </div>
+      {openTx && (check.unclassifiedList || []).map(tx => (
+        <TxClassify key={tx.id} tx={tx} grouped={grouped} onDone={onClassified} />
+      ))}
+    </div>
+  )
+}
+
+function TxClassify({ tx, grouped, onDone }) {
+  const [dir, setDir] = useState(tx.direction || (tx.amount >= 0 ? 'Доходи' : 'Витрати'))
+  const [art, setArt] = useState(tx.article || '')
+  const [busy, setBusy] = useState(false)
+  const save = async () => {
+    setBusy(true)
+    const article = Object.values(grouped).flat().find(a => a.name === art)
+    await supabase.from('bank_transactions').update({
+      direction: dir || null, article: art || null, article_id: article?.id || null, is_validated: true,
+    }).eq('id', tx.id)
+    setBusy(false); onDone()
+  }
+  const ignore = async () => { setBusy(true); await supabase.from('bank_transactions').update({ is_ignored: true }).eq('id', tx.id); setBusy(false); onDone() }
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10, margin: '8px 0 8px 24px', fontSize: 13 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, gap: 10 }}>
+        <span style={{ color: 'var(--text2)' }}>{tx.date} · {(tx.counterparty || tx.description || '').slice(0, 45)}</span>
+        <b style={{ color: tx.amount >= 0 ? 'var(--green)' : 'var(--red)', whiteSpace: 'nowrap' }}>{tx.amount >= 0 ? '+' : ''}{fmt(tx.amount)}</b>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <select className="form-input" value={dir} onChange={e => setDir(e.target.value)} style={{ width: 120 }}>
+          {DIRECTIONS.map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <select className="form-input" value={art} onChange={e => setArt(e.target.value)} style={{ flex: '1 1 180px', minWidth: 160 }}>
+          <option value="">— стаття —</option>
+          {Object.entries(grouped).map(([type, arts]) => (
+            <optgroup key={type} label={TYPE_LABELS[type] || type}>
+              {arts.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+            </optgroup>
+          ))}
+        </select>
+        <button className="btn btn-primary" onClick={save} disabled={busy || !dir}><i className="ti ti-check" /> Підтвердити</button>
+        <button className="btn" onClick={ignore} disabled={busy} style={{ color: 'var(--text3)' }} title="Ігнорувати">✕</button>
+      </div>
     </div>
   )
 }

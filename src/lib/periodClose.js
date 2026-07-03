@@ -35,13 +35,13 @@ export async function runChecklist(year, month) {
   const { data: docsNoAmount } = await supabase.from('documents')
     .select('id, doc_number, type').gte('doc_date', from).lte('doc_date', to).is('amount', null)
 
-  // 3. Невалідовані (некласифіковані) транзакції періоду
-  const { count: unclassifiedTx } = await supabase.from('bank_transactions')
-    .select('id', { count: 'exact', head: true })
-    .gte('date', from).lte('date', to).eq('is_ignored', false).eq('is_validated', false)
+  // 3. Невалідовані (некласифіковані) транзакції періоду — з даними для класифікації
+  const { data: unclassifiedList } = await supabase.from('bank_transactions')
+    .select('id, date, amount, counterparty, description, direction, article, account_id')
+    .gte('date', from).lte('date', to).eq('is_ignored', false).eq('is_validated', false).order('date')
 
   const blockers = negativeStock.length + (docsNoAmount?.length || 0)
-  return { negativeStock, docsNoAmount: docsNoAmount || [], unclassifiedTx: unclassifiedTx || 0, blockers }
+  return { negativeStock, docsNoAmount: docsNoAmount || [], unclassifiedTx: (unclassifiedList || []).length, unclassifiedList: unclassifiedList || [], blockers }
 }
 
 // ── Знімок цифр станом на кінець періоду ──
