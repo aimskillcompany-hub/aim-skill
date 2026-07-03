@@ -177,13 +177,14 @@ export async function salesProfitReport(year, month) {
       .select('product_id, date, document_id').eq('type', 'in').in('product_id', prodIds).not('document_id', 'is', null)
       .order('date', { ascending: false })
     const inDocIds = [...new Set((inMovs || []).map(m => m.document_id))]
-    const { data: inDocs } = inDocIds.length ? await supabase.from('documents').select('id, doc_number, doc_date, contractors(name, is_vat_payer)').in('id', inDocIds) : { data: [] }
+    const { data: inDocs } = inDocIds.length ? await supabase.from('documents').select('id, doc_number, doc_date, vat_amount, contractors(name, is_vat_payer)').in('id', inDocIds) : { data: [] }
     const inDocMap = {}; (inDocs || []).forEach(d => { inDocMap[d.id] = d })
     ;(inMovs || []).forEach(m => {
       if (purchaseByProd[m.product_id]) return
       const d = inDocMap[m.document_id]; if (!d) return
-      // costHasVat=false, якщо остання закупівля була в неплатника ПДВ — тоді собівартість без ПДВ
-      purchaseByProd[m.product_id] = { supplier: d.contractors?.name || '', ref: `${d.doc_number || ''}${d.doc_date ? ', ' + d.doc_date.slice(0, 10) : ''}`, docId: d.id, costHasVat: d.contractors?.is_vat_payer !== false }
+      // Без ПДВ лише коли І документ без ПДВ, І постачальник неплатник (надійніше за самий прапорець)
+      const noVat = (Number(d.vat_amount) || 0) === 0 && d.contractors?.is_vat_payer === false
+      purchaseByProd[m.product_id] = { supplier: d.contractors?.name || '', ref: `${d.doc_number || ''}${d.doc_date ? ', ' + d.doc_date.slice(0, 10) : ''}`, docId: d.id, costHasVat: !noVat }
     })
   }
 
