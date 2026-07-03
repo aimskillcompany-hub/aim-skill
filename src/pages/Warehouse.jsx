@@ -49,16 +49,19 @@ function StockTab() {
   const [sel, setSel] = useState(() => new Set()) // обрані товари для масового присвоєння
   const [bulkCat, setBulkCat] = useState('')
   const [bulkBusy, setBulkBusy] = useState(false)
+  const [showArchived, setShowArchived] = useState(false)
 
   const load = async () => {
     setLoading(true)
-    const { data } = await supabase.from('product_stock')
-      .select('id, name, sku, unit, category, buy_price, sell_price, computed_stock, total_in, total_out')
-      .eq('status', 'active').eq('product_type', 'goods').order('name').limit(2000)
+    let query = supabase.from('product_stock')
+      .select('id, name, sku, unit, category, buy_price, sell_price, computed_stock, total_in, total_out, status')
+      .eq('product_type', 'goods').order('name').limit(2000)
+    if (!showArchived) query = query.eq('status', 'active')
+    const { data } = await query
     setRows(data || [])
     setLoading(false)
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [showArchived])
 
   const categories = useMemo(() => {
     const set = new Set()
@@ -129,7 +132,7 @@ function StockTab() {
         <td style={{ width: 34 }} onClick={e => { e.stopPropagation(); toggleSel(r.id) }}>
           <input type="checkbox" checked={sel.has(r.id)} onChange={() => {}} style={{ display: 'block' }} />
         </td>
-        <td><div className="trunc" style={{ fontWeight: 500 }}>{r.name}</div></td>
+        <td><div className="trunc" style={{ fontWeight: 500 }}>{r.name}{r.status === 'archived' && <span style={{ fontSize: 10, color: 'var(--text3)', border: '1px solid var(--border)', borderRadius: 4, padding: '0 4px', marginLeft: 6 }}>архів</span>}</div></td>
         <td style={{ color: 'var(--text2)', fontSize: 12 }}>{r.sku || '—'}</td>
         <td style={{ textAlign: 'right', color: stockColor, fontWeight: stock !== 0 ? 600 : 400 }}>{fmt(stock)} {r.unit}</td>
         <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{r.buy_price ? fmt(r.buy_price) : '—'}</td>
@@ -150,6 +153,7 @@ function StockTab() {
         </select>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}><input type="checkbox" checked={grouped} onChange={e => setGrouped(e.target.checked)} /> Групувати</label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}><input type="checkbox" checked={onlyStock} onChange={e => setOnlyStock(e.target.checked)} /> Тільки з залишком</label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}><input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} /> Показати архівні</label>
         <span style={{ marginLeft: 'auto', color: 'var(--text2)', fontSize: 13 }}>{filtered.length} товарів · вартість запасу ≈ {fmtInt(totalValue)} грн</span>
       </div>
       {sel.size > 0 && (
@@ -199,10 +203,13 @@ function ServicesTab() {
   const [rows, setRows] = useState(null)
   const [q, setQ] = useState('')
   const [detail, setDetail] = useState(null)
+  const [showArchived, setShowArchived] = useState(false)
 
   const load = async () => {
-    const { data: prods } = await supabase.from('product_stock')
-      .select('id, name, category').eq('status', 'active').eq('product_type', 'service').order('name').limit(2000)
+    let pq = supabase.from('product_stock')
+      .select('id, name, category, status').eq('product_type', 'service').order('name').limit(2000)
+    if (!showArchived) pq = pq.eq('status', 'active')
+    const { data: prods } = await pq
     const ids = (prods || []).map(p => p.id)
     let movs = []
     if (ids.length) {
@@ -217,7 +224,7 @@ function ServicesTab() {
     })
     setRows((prods || []).map(p => ({ ...p, ...(agg[p.id] || { inQty: 0, inVal: 0, outQty: 0, outVal: 0 }) })))
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [showArchived])
 
   if (!rows) return <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
   const t = q.trim().toLowerCase()
@@ -239,7 +246,7 @@ function ServicesTab() {
             <tbody>
               {list.map(r => (
                 <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setDetail(r)}>
-                  <td><div className="trunc" style={{ fontWeight: 500 }}>{r.name}</div>{r.category && <div style={{ fontSize: 11, color: 'var(--text3)' }}>{r.category}</div>}</td>
+                  <td><div className="trunc" style={{ fontWeight: 500 }}>{r.name}{r.status === 'archived' && <span style={{ fontSize: 10, color: 'var(--text3)', border: '1px solid var(--border)', borderRadius: 4, padding: '0 4px', marginLeft: 6 }}>архів</span>}</div>{r.category && <div style={{ fontSize: 11, color: 'var(--text3)' }}>{r.category}</div>}</td>
                   <td style={{ textAlign: 'right' }}>{fmt(r[qtyKey])}</td>
                   <td style={{ textAlign: 'right', fontWeight: 600, color }}>{fmtInt(r[valKey])}</td>
                 </tr>
@@ -253,7 +260,10 @@ function ServicesTab() {
 
   return (
     <div>
-      <input className="form-input" placeholder="Пошук послуги…" value={q} onChange={e => setQ(e.target.value)} style={{ maxWidth: 360, marginBottom: 14 }} />
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+        <input className="form-input" placeholder="Пошук послуги…" value={q} onChange={e => setQ(e.target.value)} style={{ maxWidth: 360 }} />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}><input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} /> Показати архівні</label>
+      </div>
       <Section title="Вихідні послуги (надаємо)" list={out} qtyKey="outQty" valKey="outVal" color="var(--green)" />
       <Section title="Вхідні послуги (отримуємо)" list={inc} qtyKey="inQty" valKey="inVal" color="var(--red)" />
       {both.length > 0 && (
@@ -276,13 +286,16 @@ function ConsumablesTab() {
   const [q, setQ] = useState('')
   const [consume, setConsume] = useState(null)
   const [detail, setDetail] = useState(null)
+  const [showArchived, setShowArchived] = useState(false)
 
   const load = async () => {
-    const { data } = await supabase.from('product_stock')
-      .select('id, name, unit, computed_stock, total_in, total_out').eq('status', 'active').eq('product_type', 'expense').order('name').limit(2000)
+    let query = supabase.from('product_stock')
+      .select('id, name, unit, computed_stock, total_in, total_out, status').eq('product_type', 'expense').order('name').limit(2000)
+    if (!showArchived) query = query.eq('status', 'active')
+    const { data } = await query
     setRows(data || [])
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [showArchived])
 
   if (!rows) return <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
   const t = q.trim().toLowerCase()
@@ -290,7 +303,10 @@ function ConsumablesTab() {
 
   return (
     <div>
-      <input className="form-input" placeholder="Пошук матеріалу…" value={q} onChange={e => setQ(e.target.value)} style={{ maxWidth: 360, marginBottom: 14 }} />
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+        <input className="form-input" placeholder="Пошук матеріалу…" value={q} onChange={e => setQ(e.target.value)} style={{ maxWidth: 360 }} />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}><input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} /> Показати архівні</label>
+      </div>
       <div className="card">
         <div className="tbl-wrap" style={{ border: 'none' }}>
           <table>
@@ -301,7 +317,7 @@ function ConsumablesTab() {
                 const c = bal > 0 ? 'var(--green)' : bal < 0 ? 'var(--red)' : 'var(--text3)'
                 return (
                   <tr key={r.id}>
-                    <td onClick={() => setDetail(r)} style={{ cursor: 'pointer' }}><div className="trunc" style={{ fontWeight: 500, color: 'var(--blue)' }}>{r.name}</div></td>
+                    <td onClick={() => setDetail(r)} style={{ cursor: 'pointer' }}><div className="trunc" style={{ fontWeight: 500, color: 'var(--blue)' }}>{r.name}{r.status === 'archived' && <span style={{ fontSize: 10, color: 'var(--text3)', border: '1px solid var(--border)', borderRadius: 4, padding: '0 4px', marginLeft: 6 }}>архів</span>}</div></td>
                     <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{fmt(r.total_in)}</td>
                     <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{fmt(r.total_out)}</td>
                     <td style={{ textAlign: 'right', color: c, fontWeight: 600 }}>{fmt(bal)} {r.unit}</td>
