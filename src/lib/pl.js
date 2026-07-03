@@ -177,12 +177,13 @@ export async function salesProfitReport(year, month) {
       .select('product_id, date, document_id').eq('type', 'in').in('product_id', prodIds).not('document_id', 'is', null)
       .order('date', { ascending: false })
     const inDocIds = [...new Set((inMovs || []).map(m => m.document_id))]
-    const { data: inDocs } = inDocIds.length ? await supabase.from('documents').select('id, doc_number, doc_date, contractors(name)').in('id', inDocIds) : { data: [] }
+    const { data: inDocs } = inDocIds.length ? await supabase.from('documents').select('id, doc_number, doc_date, contractors(name, is_vat_payer)').in('id', inDocIds) : { data: [] }
     const inDocMap = {}; (inDocs || []).forEach(d => { inDocMap[d.id] = d })
     ;(inMovs || []).forEach(m => {
       if (purchaseByProd[m.product_id]) return
       const d = inDocMap[m.document_id]; if (!d) return
-      purchaseByProd[m.product_id] = { supplier: d.contractors?.name || '', ref: `${d.doc_number || ''}${d.doc_date ? ', ' + d.doc_date.slice(0, 10) : ''}`, docId: d.id }
+      // costHasVat=false, якщо остання закупівля була в неплатника ПДВ — тоді собівартість без ПДВ
+      purchaseByProd[m.product_id] = { supplier: d.contractors?.name || '', ref: `${d.doc_number || ''}${d.doc_date ? ', ' + d.doc_date.slice(0, 10) : ''}`, docId: d.id, costHasVat: d.contractors?.is_vat_payer !== false }
     })
   }
 
@@ -193,10 +194,11 @@ export async function salesProfitReport(year, month) {
     const vat = gross * 0.2                     // ПДВ (з маржі)
     const net = gross / 1.18                    // Чистий
     const tax = gross - net                     // Податок на дохід (18%)
+    const costMult = purchase?.costHasVat === false ? 1 : 1.2  // закупівля без ПДВ — собівартість не множимо
     return {
       name, qty,
       sellUnit: sellUnitNet * 1.2, sellSum: sellNet * 1.2,
-      costUnit: costUnitNet * 1.2, costSum: costNet * 1.2,
+      costUnit: costUnitNet * costMult, costSum: costNet * costMult,
       marginUnit: qty ? marginGross / qty : 0, marginSum: marginGross,
       marginPct: sellNet ? gross / sellNet : 0,
       vat, gross, tax, net,
