@@ -153,6 +153,27 @@ function DetailsTab({ c, onSaved }) {
     if (data?.signedUrl) window.open(data.signedUrl, '_blank')
   }
 
+  // Перерозпізнати вже збережений витяг (без повторного завантаження файлу)
+  const reRecognize = async () => {
+    if (!form.edr_extract_path) return
+    setEdr({ loading: true, err: null, msg: null })
+    try {
+      const { data: blob, error } = await supabase.storage.from('documents').download(form.edr_extract_path)
+      if (error) throw error
+      const file = new File([blob], form.edr_extract_name || 'edr.pdf', { type: blob.type || 'application/pdf' })
+      const info = await extractCompanyExtract([file])
+      const merged = { ...form }
+      for (const [k, v] of Object.entries(info)) {
+        if (v == null || v === '') continue
+        if (k === 'is_vat_payer') { merged.is_vat_payer = !!v; continue }
+        const key = k === 'kved' ? 'primary_kved' : k
+        if (key in form) merged[key] = v
+      }
+      setForm(merged)
+      setEdr({ loading: false, err: null, msg: 'Витяг перерозпізнано. Перевірте поля і натисніть «Зберегти».' })
+    } catch (err) { setEdr({ loading: false, err: err.message, msg: null }) }
+  }
+
   const save = async () => {
     setSaving(true); setSaved(false); setEdr(s => ({ ...s, err: null }))
     const upd = { ...form }
@@ -210,8 +231,11 @@ function DetailsTab({ c, onSaved }) {
       {edr.err && <div style={{ color: 'var(--red)', fontSize: 12, marginBottom: 10 }}>{edr.err}</div>}
       {edr.msg && <div style={{ color: 'var(--green)', fontSize: 12, marginBottom: 10 }}>{edr.msg}</div>}
       {form.edr_extract_path && (
-        <div style={{ fontSize: 12.5, marginBottom: 10 }}>
-          <i className="ti ti-file-check" style={{ color: 'var(--green)' }} /> Витяг з ЄДР: <a onClick={openExtract} style={{ color: 'var(--blue)', cursor: 'pointer' }}>{form.edr_extract_name || 'переглянути'}</a>
+        <div style={{ fontSize: 12.5, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span><i className="ti ti-file-check" style={{ color: 'var(--green)' }} /> Витяг з ЄДР: <a onClick={openExtract} style={{ color: 'var(--blue)', cursor: 'pointer' }}>{form.edr_extract_name || 'переглянути'}</a></span>
+          <button className="btn" onClick={reRecognize} disabled={edr.loading} style={{ fontSize: 12, padding: '3px 10px' }} title="Розпізнати реквізити зі збереженого витягу (без повторного завантаження)">
+            <i className="ti ti-robot" /> {edr.loading ? 'Розпізнавання…' : 'Розпізнати ще раз'}
+          </button>
         </div>
       )}
 
