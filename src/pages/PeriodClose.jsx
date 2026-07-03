@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useUser } from '../lib/auth'
 import { fmt } from '../lib/fmt'
-import { listClosings, periodStatus, runChecklist, computeSnapshot, closePeriod, reopenPeriod, computeContinuity } from '../lib/periodClose'
+import { listClosings, periodStatus, runChecklist, computeSnapshot, closePeriod, reopenPeriod, computeContinuity, snapshotDiff } from '../lib/periodClose'
 
 const MONTHS = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень', 'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень']
 const si = v => (v < 0 ? '−' : '') + fmt(v)
@@ -138,10 +138,59 @@ export default function PeriodClose() {
           )}
 
           {check && <Checklist check={check} />}
+          {snap?._prev && <SnapDiff snap={snap} />}
           {cont && <Continuity cont={cont} />}
           {snap && <Snapshot snap={snap} frozen={selStatus === 'closed'} />}
         </div>
       )}
+    </div>
+  )
+}
+
+function SnapDiff({ snap }) {
+  const diff = snapshotDiff(snap)
+  if (!diff) return null
+  const sd = v => (v > 0 ? '+' : v < 0 ? '−' : '') + fmt(v)
+  const dc = v => Math.abs(v) < 0.5 ? 'var(--text3)' : v > 0 ? 'var(--green)' : 'var(--red)'
+  const items = [
+    ['Чистий P&L', diff.totals.plNet], ['Дохід', diff.totals.revenue], ['Витрати', diff.totals.expense],
+    ['Маржа', diff.totals.marginSum], ['Оцінка складу', diff.totals.stockValue],
+    ['Гроші', diff.totals.cashBank], ['Дебіторка', diff.totals.receivable], ['Кредиторка', diff.totals.payable],
+  ]
+  return (
+    <div style={{ marginBottom: 18, border: '1px solid var(--amber, #d97706)', borderRadius: 10, padding: 14 }}>
+      <div style={{ fontWeight: 700, marginBottom: 10 }}>
+        🔁 Зміни з попереднього закриття{diff.prevClosedAt ? ` (${diff.prevClosedAt.slice(0, 10)})` : ''}
+      </div>
+      {!diff.changed && <div style={{ color: 'var(--text3)', fontSize: 13 }}>Нічого не змінилось — цифри збіглися з попереднім закриттям.</div>}
+      {diff.changed && <>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px,1fr))', gap: 8, marginBottom: 12 }}>
+          {items.filter(([, v]) => Math.abs(v) > 0.5).map(([label, v]) => (
+            <div key={label} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10 }}>
+              <div style={{ fontSize: 12, color: 'var(--text3)' }}>{label}</div>
+              <div style={{ fontWeight: 700, color: dc(v) }}>{sd(v)}</div>
+            </div>
+          ))}
+        </div>
+        {diff.products.length > 0 && (
+          <details>
+            <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--text2)' }}>Змінені товари ({diff.products.length})</summary>
+            <table style={{ width: '100%', fontSize: 12, marginTop: 8 }}>
+              <thead><tr style={{ color: 'var(--text3)', textAlign: 'right' }}>
+                <th style={{ textAlign: 'left' }}>Товар</th><th>Було</th><th>Стало</th><th>Δ вартість</th></tr></thead>
+              <tbody>
+                {diff.products.slice(0, 80).map(p => (
+                  <tr key={p.product_id} style={{ textAlign: 'right' }}>
+                    <td style={{ textAlign: 'left' }}>{p.name?.slice(0, 42)}</td>
+                    <td>{p.prevQty}</td><td><b>{p.curQty}</b></td>
+                    <td style={{ color: dc(p.valD) }}>{sd(p.valD)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </details>
+        )}
+      </>}
     </div>
   )
 }

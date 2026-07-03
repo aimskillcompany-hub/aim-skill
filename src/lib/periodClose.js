@@ -100,15 +100,56 @@ export async function computeSnapshot(year, month) {
   }
 }
 
+// Компактний підсумок знімка (для збереження як _prev при повторному закритті)
+function snapshotSummary(s, closedAt) {
+  const t = s?.pl?.totals || {}
+  return {
+    closed_at: closedAt || null,
+    plNet: t.net || 0, revenue: t.revenue || 0, expense: (t.cogs || 0) + (t.opex || 0),
+    marginSum: s?.margin?.marginSum || 0, stockValue: s?.stock?.totalValue || 0,
+    cashBank: s?.cashBankTotal || 0, receivable: s?.receivable || 0, payable: s?.payable || 0,
+    stock: (s?.stock?.items || []).map(i => ({ product_id: i.product_id, name: i.name, qty: i.qty, value: i.value })),
+  }
+}
+
+// Діф поточного знімка з попереднім закриттям (_prev). null, якщо періоду не переоткривали.
+export function snapshotDiff(snap) {
+  const prev = snap?._prev
+  if (!prev) return null
+  const cur = snapshotSummary(snap)
+  const d = (a, b) => (a || 0) - (b || 0)
+  const totals = {
+    plNet: d(cur.plNet, prev.plNet), revenue: d(cur.revenue, prev.revenue), expense: d(cur.expense, prev.expense),
+    marginSum: d(cur.marginSum, prev.marginSum), stockValue: d(cur.stockValue, prev.stockValue),
+    cashBank: d(cur.cashBank, prev.cashBank), receivable: d(cur.receivable, prev.receivable), payable: d(cur.payable, prev.payable),
+  }
+  const pm = {}; (prev.stock || []).forEach(i => pm[i.product_id] = i)
+  const cm = {}; (cur.stock || []).forEach(i => cm[i.product_id] = i)
+  const ids = new Set([...Object.keys(pm), ...Object.keys(cm)])
+  const products = []
+  ids.forEach(id => {
+    const p = pm[id], c = cm[id]
+    const qtyD = (c?.qty || 0) - (p?.qty || 0), valD = (c?.value || 0) - (p?.value || 0)
+    if (Math.abs(qtyD) > 0.001 || Math.abs(valD) > 0.5)
+      products.push({ product_id: id, name: c?.name || p?.name || id, prevQty: p?.qty || 0, curQty: c?.qty || 0, qtyD, valD })
+  })
+  products.sort((a, b) => Math.abs(b.valD) - Math.abs(a.valD))
+  const changed = Object.values(totals).some(v => Math.abs(v) > 0.5) || products.length > 0
+  return { prevClosedAt: prev.closed_at, totals, products, changed }
+}
+
 // ── Закрити період ──
 export async function closePeriod(year, month, userId, { notes } = {}) {
+  const { data: existing } = await supabase.from('period_closings')
+    .select('snapshot, closed_at').eq('period_year', year).eq('period_month', month).maybeSingle()
   const snapshot = await computeSnapshot(year, month)
+  // Якщо період уже закривався — зберегти компактний попередній знімок для діфу
+  if (existing?.snapshot) snapshot._prev = snapshotSummary(existing.snapshot, existing.closed_at)
   const payload = {
     period_year: year, period_month: month, status: 'closed',
     snapshot, notes: notes || null, closed_by: userId || null,
     closed_at: new Date().toISOString(), reopened_at: null, reopened_by: null,
   }
-  // upsert по унікальному (рік,місяць) — повторне закриття перезаписує знімок
   const { error } = await supabase.from('period_closings').upsert(payload, { onConflict: 'period_year,period_month' })
   if (error) throw new Error(error.message)
   return snapshot
