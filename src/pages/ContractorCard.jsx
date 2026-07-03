@@ -138,7 +138,8 @@ function DetailsTab({ c, onSaved }) {
       for (const [k, v] of Object.entries(info)) {
         if (v == null || v === '') continue
         if (k === 'is_vat_payer') { merged.is_vat_payer = !!v; continue }
-        if (k in form) merged[k] = v
+        const key = k === 'kved' ? 'primary_kved' : k // AI віддає kved, колонка — primary_kved
+        if (key in form) merged[key] = v
       }
       merged.edr_extract_path = path
       merged.edr_extract_name = file.name
@@ -153,13 +154,20 @@ function DetailsTab({ c, onSaved }) {
   }
 
   const save = async () => {
-    setSaving(true); setSaved(false)
+    setSaving(true); setSaved(false); setEdr(s => ({ ...s, err: null }))
     const upd = { ...form }
     delete upd.id; delete upd.created_at; delete upd.created_by
     if (form.payment_delay_days === '') upd.payment_delay_days = 0
-    const { error } = await supabase.from('contractors').update(upd).eq('id', c.id)
+    let { error } = await supabase.from('contractors').update(upd).eq('id', c.id)
+    // Колонки витягу (edr_extract_*) можуть ще не існувати в БД (міграція 024) —
+    // тоді зберігаємо реквізити без них, щоб розпізнані дані не губились.
+    if (error && /edr_extract/.test(error.message || '')) {
+      delete upd.edr_extract_path; delete upd.edr_extract_name
+      ;({ error } = await supabase.from('contractors').update(upd).eq('id', c.id))
+    }
     setSaving(false)
-    if (!error) { setSaved(true); onSaved({ ...c, ...form }); setTimeout(() => setSaved(false), 2500) }
+    if (error) { setEdr({ loading: false, msg: null, err: 'Помилка збереження: ' + error.message }); return }
+    setSaved(true); onSaved({ ...c, ...form }); setTimeout(() => setSaved(false), 2500)
   }
 
   const pullVkursi = async () => {
