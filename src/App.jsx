@@ -34,6 +34,7 @@ const Mail = lazyPage(() => import('./pages/Mail'))
 const Analytics = lazyPage(() => import('./pages/Analytics'))
 const Budget = lazyPage(() => import('./pages/Budget'))
 const Settings = lazyPage(() => import('./pages/Settings'))
+const PeriodClose = lazyPage(() => import('./pages/PeriodClose'))
 
 const Loading = () => <div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Завантаження…</div>
 
@@ -58,6 +59,7 @@ export default function App() {
               <Route path="/mail" element={<Mail />} />
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/budget" element={<Budget />} />
+              <Route path="/period-close" element={<PeriodClose />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<Navigate to="/orders" replace />} />
             </Route>

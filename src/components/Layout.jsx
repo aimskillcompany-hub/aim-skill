@@ -14,7 +14,8 @@ const NAV = [
   { to: '/mail',        label: 'Пошта',        icon: 'ti-mail' },
   { to: '/analytics',   label: 'Аналітика',    icon: 'ti-chart-dots-3',   section: 'Аналіз' },
   { to: '/budget',      label: 'Бюджет',       icon: 'ti-calendar-stats' },
-  { to: '/settings',    label: 'Налаштування', icon: 'ti-settings',       section: 'Система' },
+  { to: '/period-close', label: 'Закриття періоду', icon: 'ti-lock-square', section: 'Система' },
+  { to: '/settings',    label: 'Налаштування', icon: 'ti-settings' },
 ]
 
 const MOBILE_NAV = [
