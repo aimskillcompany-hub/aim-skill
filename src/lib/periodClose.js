@@ -213,7 +213,7 @@ export async function computePeriodDetail(year, month) {
   const sales = docs.filter(d => !isPurchase(d)).map(enrich).sort((a, b) => (a.doc_date || '').localeCompare(b.doc_date || ''))
 
   // Транзакції (джерело P&L)
-  const tx = await fetchAll('bank_transactions', 'amount, direction, is_validated, article', q => q.gte('date', from).lte('date', to).eq('is_ignored', false))
+  const tx = await fetchAll('bank_transactions', 'date, amount, direction, is_validated, article, counterparty, description', q => q.gte('date', from).lte('date', to).eq('is_ignored', false))
   let income = 0, expense = 0, unvalidated = 0, noArticle = 0
   const grp = {}
   tx.forEach(t => {
@@ -226,11 +226,13 @@ export async function computePeriodDetail(year, month) {
     // розбивка за напрямом+статтею (усі валідовані, включно з ПФД/Інше — для повноти)
     if (t.is_validated) {
       const key = `${t.direction || '—'} · ${t.article || 'без статті'}`
-      const b = (grp[key] ||= { key, dir: t.direction, n: 0, sum: 0 })
+      const b = (grp[key] ||= { key, dir: t.direction, n: 0, sum: 0, items: [] })
       b.n++; b.sum += Number(t.amount) || 0
+      b.items.push({ date: t.date, name: t.counterparty || t.description || '', amount: Number(t.amount) || 0 })
     }
   })
   const txBreakdown = Object.values(grp).sort((a, b) => a.sum - b.sum)
+  txBreakdown.forEach(b => b.items.sort((x, y) => x.amount - y.amount))
 
   const sum = (arr, k) => arr.reduce((s, d) => s + (d[k] || 0), 0)
   return {

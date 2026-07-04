@@ -208,18 +208,28 @@ function PeriodDetail({ detail }) {
         {tx.breakdown?.length > 0 && (
           <details style={{ marginTop: 8 }}>
             <summary style={{ cursor: 'pointer', color: 'var(--text2)' }}>Куди пішли гроші — розбивка за статтями ({tx.breakdown.length})</summary>
-            <table style={{ width: '100%', fontSize: 12, marginTop: 6 }}>
-              <tbody>
-                {tx.breakdown.map(b => (
-                  <tr key={b.key}>
-                    <td>{b.key}</td>
-                    <td style={{ textAlign: 'right', color: 'var(--text3)', whiteSpace: 'nowrap' }}>{b.n} тр</td>
-                    <td style={{ textAlign: 'right', color: b.sum >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600, whiteSpace: 'nowrap' }}>{b.sum >= 0 ? '+' : '−'}{fmt(b.sum)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>Податки, зарплата, оренда, комісії, ПФД, відсотки — це рухи грошей <b>без товарних документів</b> (це нормально). Накладна потрібна лише для купівлі/продажу товару.</div>
+            <div style={{ marginTop: 6 }}>
+              {tx.breakdown.map(b => (
+                <details key={b.key} style={{ borderBottom: '1px solid var(--border)', padding: '5px 0' }}>
+                  <summary style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12.5 }}>
+                    <span>{b.key} <span style={{ color: 'var(--text3)' }}>· {b.n} тр</span></span>
+                    <b style={{ color: b.sum >= 0 ? 'var(--green)' : 'var(--red)', whiteSpace: 'nowrap' }}>{b.sum >= 0 ? '+' : '−'}{fmt(b.sum)}</b>
+                  </summary>
+                  <table style={{ width: '100%', fontSize: 11.5, margin: '4px 0 6px 16px' }}>
+                    <tbody>
+                      {b.items.map((it, i) => (
+                        <tr key={i}>
+                          <td style={{ color: 'var(--text3)', whiteSpace: 'nowrap', verticalAlign: 'top' }}>{it.date}</td>
+                          <td style={{ paddingLeft: 8 }}>{it.name?.slice(0, 48) || '—'}</td>
+                          <td style={{ textAlign: 'right', color: it.amount >= 0 ? 'var(--green)' : 'var(--red)', whiteSpace: 'nowrap', fontWeight: 600 }}>{it.amount >= 0 ? '+' : '−'}{fmt(it.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </details>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>Клікни на статтю — розкриються транзакції, з яких вона складається. Податки/зарплата/оренда/ПФД/відсотки — рухи грошей <b>без товарних документів</b> (це нормально).</div>
           </details>
         )}
       </div>
