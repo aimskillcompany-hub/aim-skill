@@ -189,7 +189,9 @@ function PeriodDetail({ detail }) {
                 ))}
               </tbody>
             </table>
-          ) : <div style={{ fontSize: 11, color: 'var(--text3)', margin: '4px 0 4px 16px' }}>позиції не заведені на склад</div>}
+          ) : (d.type === 'serviceAct' || d.type === 'invoice')
+            ? <div style={{ fontSize: 11, color: 'var(--text3)', margin: '4px 0 4px 16px' }}>послуга / рахунок — складських позицій не потребує</div>
+            : <div style={{ fontSize: 11, color: 'var(--amber, #d97706)', margin: '4px 0 4px 16px' }}>⚠ товарна накладна без позицій на складі — перевірте оприбуткування</div>}
         </details>
       ))}
     </div>
