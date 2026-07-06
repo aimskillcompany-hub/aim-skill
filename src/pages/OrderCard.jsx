@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { fmt } from '../lib/fmt'
-import { getDocType, previewPdf, generatePdf, supplierOrderPdf } from '../lib/docgen'
+import { getDocType, previewPdf, generatePdf, supplierOrderPdf, investorReportPdf } from '../lib/docgen'
 import { resolveProduct } from '../lib/stockService'
 import DocModal from '../components/DocModal'
 import DocGenModal from '../components/DocGenModal'
@@ -416,6 +416,11 @@ function ItemsTab({ o, onChange, onDirty }) {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {saved && <span style={{ color: 'var(--green)', fontSize: 13 }}>Збережено!</span>}
+          {rows.length > 0 && (
+            <button className="btn" onClick={() => investorReportPdf(o, rows)} title="PDF-розрахунок рентабельності для інвестора">
+              <i className="ti ti-chart-pie" /> Розрахунок для інвестора
+            </button>
+          )}
           <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? '…' : 'Зберегти'}</button>
         </div>
       </div>

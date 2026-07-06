@@ -72,6 +72,16 @@ export async function generateOrderDoc(docTypeKey, contractor, items, options, {
   if (insErr) throw insErr
 }
 
+// ── Інвестиційний розрахунок по замовленню (PDF): рентабельність, капітал, ROI ──
+export async function investorReportPdf(order, items, { download } = {}) {
+  const investorReport = await import('./templates/investorReport')
+  const company = await getCompany()
+  const docDef = investorReport.pdf(company, order, items || [], {})
+  const fileName = `Інвест-розрахунок_${order?.order_number || (order?.id || '').slice(0, 6)}.pdf`
+  if (download) downloadPdf(docDef, fileName)
+  else openPdf(docDef)
+}
+
 // ── Замовлення постачальнику (PDF): від компанії, постачальнику, для клієнта ──
 export async function supplierOrderPdf(supplier, items, options, { download } = {}) {
   const supplierOrder = await import('./templates/supplierOrder')
