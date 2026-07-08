@@ -64,7 +64,7 @@ export function pdf(company, contractor, items, options) {
       {
         text: [
           { text: contractor.name || contractor.short_name || '________', bold: true },
-          { text: `, в особі ${contractor.contact_position || 'директора'} ${contractor.contact_person || '________'}` },
+          { text: `, в особі ${contractor.contact_position || contractor.director_position || 'директора'} ${contractor.contact_person || contractor.director || '________'}` },
           { text: ', що діє на підставі Статуту, надалі ' },
           { text: '«Позикодавець»', bold: true },
           { text: ', з однієї сторони, та\n' },

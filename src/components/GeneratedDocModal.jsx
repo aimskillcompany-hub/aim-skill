@@ -5,13 +5,14 @@ import { getDocType, generatedDocBlob, previewPdf, generatePdf } from '../lib/do
 
 // Перегляд згенерованого документа: зліва прев'ю PDF (регенерація в blob), справа — інформація.
 // Файлу у сховищі немає — PDF будується з даних generated_docs.
-export default function GeneratedDocModal({ doc, onClose }) {
+export default function GeneratedDocModal({ doc, onClose, onDeleted }) {
   const [gd, setGd] = useState(null)
   const [contractor, setContractor] = useState(null)
   const [items, setItems] = useState([])
   const [blobUrl, setBlobUrl] = useState(null)
   const [state, setState] = useState('loading') // loading | ready | fallback
   const [err, setErr] = useState(null)
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => () => { if (blobUrl) URL.revokeObjectURL(blobUrl) }, [blobUrl])
 
@@ -40,6 +41,23 @@ export default function GeneratedDocModal({ doc, onClose }) {
 
   const openTab = () => gd && previewPdf(gd.doc_type, contractor, items, optsOf(gd)).catch(e => setErr(e.message))
   const download = () => gd && generatePdf(gd.doc_type, contractor, items, optsOf(gd)).catch(e => setErr(e.message))
+
+  const deleteDoc = async () => {
+    if (!confirm(`Видалити «${label}${gd?.doc_number ? ' №' + gd.doc_number : ''}»?\nЦе прибере і згенерований документ, і його запис у Документах, і пов'язані складські рухи.`)) return
+    setBusy(true); setErr(null)
+    try {
+      const gid = doc.generated_doc_id
+      if (doc.id) await supabase.from('stock_movements').delete().eq('document_id', doc.id)
+      const { error: dErr } = await supabase.from('documents').delete().eq('generated_doc_id', gid)
+      if (dErr) throw dErr
+      const { error: gErr } = await supabase.from('generated_docs').delete().eq('id', gid)
+      if (gErr) throw gErr
+      ;(onDeleted || onClose)()
+    } catch (e) {
+      const msg = /PERIOD_CLOSED/.test(e.message) ? e.message.replace(/^.*PERIOD_CLOSED:\s*/, '') : e.message
+      setErr('Не вдалося видалити: ' + msg); setBusy(false)
+    }
+  }
 
   const label = getDocType(doc.type || gd?.doc_type)?.label || doc.type || 'Документ'
 
@@ -104,9 +122,12 @@ export default function GeneratedDocModal({ doc, onClose }) {
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap', alignItems: 'center' }}>
               <button className="btn" onClick={openTab}><i className="ti ti-external-link" /> Відкрити у вкладці</button>
               <button className="btn" onClick={download}><i className="ti ti-file-download" /> Завантажити</button>
+              <button className="btn" onClick={deleteDoc} disabled={busy} style={{ marginLeft: 'auto', color: 'var(--red)' }} title="Видалити документ">
+                <i className="ti ti-trash" /> {busy ? '…' : 'Видалити'}
+              </button>
             </div>
           </div>
         </div>
