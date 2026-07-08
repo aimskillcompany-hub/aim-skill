@@ -17,16 +17,18 @@ function cleanItems(items) {
 // ── Підтягнути підписанта з contractor_contacts ──
 async function enrichContractorSigner(contractor) {
   if (!contractor?.id) return contractor
+  // Повні реквізити контрагента з БД (адреса, IBAN, банк, директор, ІПН тощо) —
+  // щоб шаблони мали все, навіть якщо переданий об'єкт неповний (напр. лише id/назва/ЄДРПОУ).
+  const { data: full } = await supabase.from('contractors').select('*').eq('id', contractor.id).maybeSingle()
+  let merged = full ? { ...contractor, ...full } : contractor
   const { data } = await supabase.from('contractor_contacts')
     .select('name, position')
     .eq('contractor_id', contractor.id)
     .eq('is_signer', true)
     .limit(1)
     .maybeSingle()
-  if (data) {
-    return { ...contractor, contact_person: data.name, contact_position: data.position || '' }
-  }
-  return contractor
+  if (data) merged = { ...merged, contact_person: data.name, contact_position: data.position || '' }
+  return merged
 }
 
 // ── Генерація та завантаження PDF ──

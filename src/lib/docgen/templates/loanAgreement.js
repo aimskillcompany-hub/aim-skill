@@ -156,7 +156,7 @@ export function pdf(company, contractor, items, options) {
 
 function partyReq(title, entity, isCompany) {
   const name = isCompany ? (entity.shortName || entity.name) : (entity.short_name || entity.name || '—')
-  const director = isCompany ? entity.director : entity.contact_person
+  const director = isCompany ? entity.director : (entity.contact_person || entity.director)
   const position = isCompany ? (entity.directorPosition || 'Директор') : (entity.contact_position || 'Директор')
   const dirShort = director ? director.split(' ').map((w, i) => i === 0 ? w[0] + '.' + w.slice(1) : w[0] + '.').reverse().join(' ').split('.').reverse().join('.') : ''
 
@@ -168,7 +168,7 @@ function partyReq(title, entity, isCompany) {
       entity.edrpou ? { text: `ЄДРПОУ ${entity.edrpou}`, fontSize: 9, color: G1, margin: [0, 0, 0, 2] } : {},
       (isCompany ? entity.address : (entity.legal_address || entity.address)) ? { text: `Юридична адреса: ${isCompany ? entity.address : (entity.legal_address || entity.address)}`, fontSize: 9, color: G1, margin: [0, 0, 0, 2] } : {},
       (isCompany ? entity.iban : entity.iban) ? { text: `IBAN: ${isCompany ? entity.iban : entity.iban}`, fontSize: 9, color: G1, margin: [0, 0, 0, 2] } : {},
-      isCompany && entity.bankName ? { text: `Банк: ${entity.bankName}`, fontSize: 9, color: G1, margin: [0, 0, 0, 2] } : {},
+      (isCompany ? entity.bankName : entity.bank_name) ? { text: `Банк: ${isCompany ? entity.bankName : entity.bank_name}${!isCompany && entity.mfo ? ', МФО ' + entity.mfo : ''}`, fontSize: 9, color: G1, margin: [0, 0, 0, 2] } : {},
       { text: '', margin: [0, 16] },
       { text: position, fontSize: 10, color: G1 },
       { text: '', margin: [0, 10] },
