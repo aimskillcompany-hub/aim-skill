@@ -257,7 +257,7 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `025_suborder_item_ordered.sql` | Субзамовлення: `supplier_order_items.ordered` (помітка «замовлено») | ✅ застосовано (звірено 2026-07-14) |
 | `026_period_closings.sql` | Закриття періоду: `period_closings` + тригери-блокувачі `guard_period_by_date`/`guard_period_by_docdate` | ✅ застосовано (LIVE) |
 | `027_generated_docs_refs.sql` | Генерація: `generated_docs.invoice_ref`/`invoice_ref_date`/`delivery_basis`/`delivery_address` (щоб поля видаткової/акту не «злітали» при редагуванні) | ✅ застосовано (звірено 2026-07-14) |
-| `028_orders_outcome.sql` | Замовлення: `orders.outcome` ('won'\|'lost'\|null) — результат при архівуванні | ⏳ **запустити вручну** |
+| `028_orders_outcome.sql` | Замовлення: `orders.outcome` ('won'\|'lost'\|null) — результат при архівуванні | ✅ застосовано (звірено 2026-07-14) |
 | `validate.mjs` | Перевірка цілісності Фази 1 (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 | `probe.mjs` | Звірка наявності колонок/таблиць усіх міграцій у БД (`SUPABASE_SERVICE_KEY=... node migrations/probe.mjs`) | — |
 
