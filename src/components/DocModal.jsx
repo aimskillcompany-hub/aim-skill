@@ -5,6 +5,7 @@ import { fetchArticles } from '../lib/articles'
 import { getContractorMatcher } from '../lib/contractorMatch'
 import { resolveProduct, createStockMovement } from '../lib/stockService'
 import { DOCUMENT_TYPES, getDocType } from '../lib/docgen'
+import { fmt } from '../lib/fmt'
 import ContractorSelect from './ui/ContractorSelect'
 import MailSendModal from './MailSendModal'
 
@@ -35,8 +36,28 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
   const [stockOn, setStockOn] = useState(false)   // оприбуткувати/списати позиції на склад
   const [stockDir, setStockDir] = useState('in')  // 'in' = прихід, 'out' = видача (FIFO)
   const [verified, setVerified] = useState(!!existingDoc?.is_verified) // документ перевірено (звірка скан↔поля)
+  const [docMovements, setDocMovements] = useState(null) // фактично створені складські рухи цього документа
 
   useEffect(() => { if (existingDoc) recognizeExisting(autoOcr) }, [])
+
+  // Завантажити фактичні складські рухи документа (цифровий аналог: що потрапило на склад)
+  useEffect(() => {
+    if (!existingDoc?.id) return
+    let cancelled = false
+    ;(async () => {
+      const { data: mv } = await supabase.from('stock_movements')
+        .select('id, type, quantity, price, cost_price, product_id, source, description')
+        .eq('document_id', existingDoc.id).order('date')
+      const pids = [...new Set((mv || []).map(m => m.product_id).filter(Boolean))]
+      let pn = {}
+      if (pids.length) {
+        const { data: prods } = await supabase.from('products').select('id, name').in('id', pids)
+        ;(prods || []).forEach(p => pn[p.id] = p.name)
+      }
+      if (!cancelled) setDocMovements((mv || []).map(m => ({ ...m, productName: pn[m.product_id] || null })))
+    })()
+    return () => { cancelled = true }
+  }, [existingDoc?.id])
 
   // Позначити «Перевірено» / зняти позначку (звірено скан↔розпізнані поля/ПДВ/рухи)
   const toggleVerified = async () => {
@@ -299,6 +320,80 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
                         <option value="out">Видача (списання за FIFO)</option>
                       </select>
                       <span style={{ fontSize: 12, color: 'var(--text3)' }}>при збереженні</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Цифровий аналог документа: розпізнані позиції */}
+              {(form.items || []).length > 0 && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 6 }}>
+                    Розпізнані позиції ({form.items.length})
+                  </div>
+                  <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+                    <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                      <thead><tr style={{ background: 'var(--surface2)' }}>
+                        <th style={{ textAlign: 'left', padding: '5px 8px' }}>Назва</th>
+                        <th style={{ padding: '5px 6px' }}>К-сть</th>
+                        <th style={{ padding: '5px 6px', textAlign: 'right' }}>Ціна</th>
+                        <th style={{ padding: '5px 6px', textAlign: 'right' }}>Сума</th>
+                      </tr></thead>
+                      <tbody>
+                        {form.items.map((it, i) => {
+                          const qty = Number(it.quantity ?? it.qty) || 0
+                          const price = Number(it.unit_price ?? it.unitPrice ?? it.price) || 0
+                          const amt = Number(it.amount) || qty * price
+                          return (
+                            <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+                              <td style={{ padding: '5px 8px' }}>{it.name || '—'}{it.sku ? <span style={{ color: 'var(--text3)' }}> · {it.sku}</span> : ''}{it.brand ? <span style={{ color: 'var(--text3)' }}> · {it.brand}</span> : ''}</td>
+                              <td style={{ padding: '5px 6px', textAlign: 'center' }}>{qty} {it.unit || 'шт'}</td>
+                              <td style={{ padding: '5px 6px', textAlign: 'right' }}>{fmt(price)}</td>
+                              <td style={{ padding: '5px 6px', textAlign: 'right', fontWeight: 500 }}>{fmt(amt)}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Цифровий аналог: фактично створені складські рухи */}
+              {existingDoc && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 6 }}>
+                    Складські рухи {docMovements ? `(${docMovements.length})` : ''}
+                  </div>
+                  {docMovements === null ? (
+                    <div style={{ fontSize: 12, color: 'var(--text3)' }}>Завантаження…</div>
+                  ) : docMovements.length === 0 ? (
+                    <div style={{ fontSize: 12.5, color: 'var(--amber, #b45309)', background: 'var(--surface2)', borderRadius: 8, padding: '8px 12px' }}>
+                      <i className="ti ti-alert-circle" /> Рухів на складі з цього документа немає{(form.items || []).length > 0 ? ' — хоча позиції розпізнані. Увімкни «Рух на складі» і збережи.' : '.'}
+                    </div>
+                  ) : (
+                    <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+                      <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                        <thead><tr style={{ background: 'var(--surface2)' }}>
+                          <th style={{ textAlign: 'left', padding: '5px 8px' }}>Товар</th>
+                          <th style={{ padding: '5px 6px' }}>Напрям</th>
+                          <th style={{ padding: '5px 6px' }}>К-сть</th>
+                          <th style={{ padding: '5px 6px', textAlign: 'right' }}>Ціна</th>
+                        </tr></thead>
+                        <tbody>
+                          {docMovements.map(m => (
+                            <tr key={m.id} style={{ borderTop: '1px solid var(--border)' }}>
+                              <td style={{ padding: '5px 8px' }}>
+                                {m.productName || <span style={{ color: 'var(--red)' }}>⚠ товар не прив'язаний</span>}
+                                {m.source === 'assembly' && <span style={{ color: 'var(--text3)' }}> · збірка</span>}
+                              </td>
+                              <td style={{ padding: '5px 6px', textAlign: 'center', color: m.type === 'in' ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{m.type === 'in' ? 'Прихід' : 'Видача'}</td>
+                              <td style={{ padding: '5px 6px', textAlign: 'center' }}>{Number(m.quantity) || 0}</td>
+                              <td style={{ padding: '5px 6px', textAlign: 'right' }}>{fmt(Number(m.price) || 0)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   )}
                 </div>
