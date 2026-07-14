@@ -115,6 +115,7 @@ const FIELD_GROUPS = [
 
 function DetailsTab({ c, onSaved }) {
   const [form, setForm] = useState(c)
+  const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [vk, setVk] = useState({ loading: false, msg: null, err: null })
@@ -188,8 +189,10 @@ function DetailsTab({ c, onSaved }) {
     }
     setSaving(false)
     if (error) { setEdr({ loading: false, msg: null, err: 'Помилка збереження: ' + error.message }); return }
-    setSaved(true); onSaved({ ...c, ...form }); setTimeout(() => setSaved(false), 2500)
+    setSaved(true); onSaved({ ...c, ...form }); setEditing(false); setTimeout(() => setSaved(false), 2500)
   }
+
+  const cancel = () => { setForm(c); setEditing(false); setVk({ loading: false, msg: null, err: null }); setEdr({ loading: false, msg: null, err: null }) }
 
   const pullVkursi = async () => {
     if (!form.edrpou?.trim()) { setVk({ loading: false, err: 'Вкажіть ЄДРПОУ', msg: null }); return }
@@ -208,6 +211,57 @@ function DetailsTab({ c, onSaved }) {
     }
   }
 
+  // ─── Режим ПЕРЕГЛЯДУ (за замовчуванням) — компактно, лише заповнені поля ───
+  if (!editing) {
+    const badges = [
+      form.is_client && ['Клієнт', 'var(--blue-bg)', 'var(--blue)'],
+      form.is_supplier && ['Постачальник', 'var(--surface2)', 'var(--text2)'],
+      form.is_vat_payer && ['Платник ПДВ', 'var(--green-bg, #e7f7ec)', 'var(--green)'],
+    ].filter(Boolean)
+    return (
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.2 }}>{form.short_name || form.name || 'Без назви'}</div>
+            {form.name && form.name !== form.short_name && <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 2 }}>{form.name}</div>}
+            <div style={{ fontSize: 12.5, color: 'var(--text3)', marginTop: 6, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+              {form.edrpou && <span>ЄДРПОУ: <b style={{ color: 'var(--text2)' }}>{form.edrpou}</b></span>}
+              {form.ipn && <span>ІПН: <b style={{ color: 'var(--text2)' }}>{form.ipn}</b></span>}
+              {form.legal_form && <span>{form.legal_form}</span>}
+            </div>
+            {badges.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+                {badges.map(([t, bg, col]) => <span key={t} style={tag(bg, col)}>{t}</span>)}
+              </div>
+            )}
+          </div>
+          <button className="btn btn-primary" onClick={() => setEditing(true)}><i className="ti ti-pencil" /> Редагувати</button>
+        </div>
+
+        {form.edr_extract_path && (
+          <div style={{ fontSize: 12.5, marginBottom: 12 }}>
+            <i className="ti ti-file-check" style={{ color: 'var(--green)' }} /> Витяг з ЄДР: <a onClick={openExtract} style={{ color: 'var(--blue)', cursor: 'pointer' }}>{form.edr_extract_name || 'переглянути'}</a>
+          </div>
+        )}
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '12px 24px' }}>
+          {FIELD_GROUPS.flatMap(g => g.fields)
+            .filter(([key]) => { const v = form[key]; return v != null && v !== '' })
+            .map(([key, label]) => (
+              <div key={key} style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 1 }}>{label}</div>
+                <div style={{ fontSize: 13.5, wordBreak: 'break-word' }}>{String(form[key])}</div>
+              </div>
+            ))}
+        </div>
+
+        <Contacts contractorId={c.id} readOnly />
+        <Contracts contractorId={c.id} readOnly />
+      </div>
+    )
+  }
+
+  // ─── Режим РЕДАГУВАННЯ (за кнопкою) ───
   return (
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
@@ -260,13 +314,14 @@ function DetailsTab({ c, onSaved }) {
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 16 }}>
         <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? '…' : 'Зберегти'}</button>
+        <button className="btn" onClick={cancel} disabled={saving}>Скасувати</button>
         {saved && <span style={{ color: 'var(--green)', fontSize: 13 }}>Збережено!</span>}
       </div>
     </div>
   )
 }
 
-function Contacts({ contractorId }) {
+function Contacts({ contractorId, readOnly }) {
   const [rows, setRows] = useState([])
   const [add, setAdd] = useState({ name: '', role: '', phone: '', email: '' })
   const load = () => supabase.from('contractor_contacts').select('*').eq('contractor_id', contractorId).order('created_at').then(({ data }) => setRows(data || []))
@@ -279,30 +334,32 @@ function Contacts({ contractorId }) {
   }
   const remove = async (cid) => { await supabase.from('contractor_contacts').delete().eq('id', cid); load() }
 
+  if (readOnly && rows.length === 0) return null
+
   return (
-    <div style={{ marginTop: 8 }}>
+    <div style={{ marginTop: readOnly ? 20 : 8 }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10 }}>Контактні особи</div>
       {rows.map(r => (
         <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 14 }}>
           <div style={{ flex: 1 }}><b>{r.name}</b>{r.role && <span style={{ color: 'var(--text2)' }}> · {r.role}</span>}</div>
           <div style={{ color: 'var(--text2)', fontSize: 13 }}>{r.phone}</div>
           <div style={{ color: 'var(--text2)', fontSize: 13 }}>{r.email}</div>
-          <button className="btn" onClick={() => remove(r.id)} style={{ padding: '2px 8px' }}><i className="ti ti-trash" /></button>
+          {!readOnly && <button className="btn" onClick={() => remove(r.id)} style={{ padding: '2px 8px' }}><i className="ti ti-trash" /></button>}
         </div>
       ))}
-      <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+      {!readOnly && <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
         <input className="form-input" placeholder="Ім'я" value={add.name} onChange={e => setAdd(a => ({ ...a, name: e.target.value }))} style={{ flex: '1 1 140px' }} />
         <input className="form-input" placeholder="Роль" value={add.role} onChange={e => setAdd(a => ({ ...a, role: e.target.value }))} style={{ flex: '1 1 120px' }} />
         <input className="form-input" placeholder="Телефон" value={add.phone} onChange={e => setAdd(a => ({ ...a, phone: e.target.value }))} style={{ flex: '1 1 120px' }} />
         <input className="form-input" placeholder="Email" value={add.email} onChange={e => setAdd(a => ({ ...a, email: e.target.value }))} style={{ flex: '1 1 140px' }} />
         <button className="btn" onClick={create}><i className="ti ti-plus" /> Додати</button>
-      </div>
+      </div>}
     </div>
   )
 }
 
 // ───────────────────────── Договори ─────────────────────────
-function Contracts({ contractorId }) {
+function Contracts({ contractorId, readOnly }) {
   const [rows, setRows] = useState([])
   const [add, setAdd] = useState({ number: '', date: '', subject: '' })
   const load = () => supabase.from('contractor_contracts').select('*').eq('contractor_id', contractorId).order('date', { ascending: false }).then(({ data }) => setRows(data || []))
@@ -317,23 +374,25 @@ function Contracts({ contractorId }) {
   }
   const remove = async (cid) => { await supabase.from('contractor_contracts').delete().eq('id', cid); load() }
 
+  if (readOnly && rows.length === 0) return null
+
   return (
     <div style={{ marginTop: 20 }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10 }}>Договори</div>
-      {rows.length === 0 && <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 8 }}>Договорів ще немає. Додаються тут або автоматично при генерації документа з номером договору.</div>}
+      {!readOnly && rows.length === 0 && <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 8 }}>Договорів ще немає. Додаються тут або автоматично при генерації документа з номером договору.</div>}
       {rows.map(r => (
         <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 14 }}>
           <div style={{ flex: 1 }}><b>№{r.number}</b>{r.date && <span style={{ color: 'var(--text2)' }}> від {r.date}</span>}{r.subject && <span style={{ color: 'var(--text2)' }}> · {r.subject}</span>}</div>
           {r.status && r.status !== 'active' && <span style={{ fontSize: 12, color: 'var(--text3)' }}>{r.status}</span>}
-          <button className="btn" onClick={() => remove(r.id)} style={{ padding: '2px 8px' }}><i className="ti ti-trash" /></button>
+          {!readOnly && <button className="btn" onClick={() => remove(r.id)} style={{ padding: '2px 8px' }}><i className="ti ti-trash" /></button>}
         </div>
       ))}
-      <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+      {!readOnly && <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
         <input className="form-input" placeholder="Номер договору" value={add.number} onChange={e => setAdd(a => ({ ...a, number: e.target.value }))} style={{ flex: '1 1 140px' }} />
         <input className="form-input" type="date" placeholder="Дата" value={add.date} onChange={e => setAdd(a => ({ ...a, date: e.target.value }))} style={{ flex: '1 1 130px' }} />
         <input className="form-input" placeholder="Предмет" value={add.subject} onChange={e => setAdd(a => ({ ...a, subject: e.target.value }))} style={{ flex: '1 1 160px' }} />
         <button className="btn" onClick={create}><i className="ti ti-plus" /> Додати</button>
-      </div>
+      </div>}
     </div>
   )
 }
