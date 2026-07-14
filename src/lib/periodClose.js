@@ -322,3 +322,37 @@ async function fetchAll(table, cols, mod) {
   }
   return all
 }
+
+// ── Звіт ПДВ за рік: по місяцях зобов'язання (продажі) / кредит (закупівлі) / до сплати ──
+export async function vatReport(year) {
+  const docs = await fetchAll('documents',
+    'id, doc_number, doc_date, doc_role, direction, type, amount, vat_amount, contractor_id',
+    q => q.gte('doc_date', `${year}-01-01`).lte('doc_date', `${year}-12-31`))
+  const cids = [...new Set(docs.map(d => d.contractor_id).filter(Boolean))]
+  const cn = {}
+  for (let i = 0; i < cids.length; i += 100) {
+    const { data } = await supabase.from('contractors').select('id, name').in('id', cids.slice(i, i + 100))
+    ;(data || []).forEach(c => cn[c.id] = c.name)
+  }
+  const isPurch = d => d.direction === 'payable' || d.doc_role === 'incoming' || d.type === 'incomingWaybill'
+  const num = x => Number(x) || 0
+
+  const months = Array.from({ length: 12 }, (_, i) => ({
+    month: i + 1, outVat: 0, inVat: 0, salesGross: 0, purchGross: 0, sales: [], purchases: [], noVat: 0,
+  }))
+  for (const d of docs) {
+    if (!d.doc_date) continue
+    const m = months[Number(d.doc_date.slice(5, 7)) - 1]
+    if (!m) continue
+    const row = { id: d.id, doc_number: d.doc_number, doc_date: d.doc_date, contractor: cn[d.contractor_id] || '—', amount: num(d.amount), vat: num(d.vat_amount), type: d.type }
+    if (!row.vat) m.noVat++
+    if (isPurch(d)) { m.inVat += row.vat; m.purchGross += row.amount; m.purchases.push(row) }
+    else { m.outVat += row.vat; m.salesGross += row.amount; m.sales.push(row) }
+  }
+  months.forEach(m => { m.net = m.outVat - m.inVat })
+  const totals = months.reduce((t, m) => ({
+    outVat: t.outVat + m.outVat, inVat: t.inVat + m.inVat, net: t.net + m.net,
+    salesGross: t.salesGross + m.salesGross, purchGross: t.purchGross + m.purchGross, noVat: t.noVat + m.noVat,
+  }), { outVat: 0, inVat: 0, net: 0, salesGross: 0, purchGross: 0, noVat: 0 })
+  return { year, months, totals }
+}

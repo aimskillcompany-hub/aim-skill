@@ -10,6 +10,7 @@ import { fmt, fmtInt } from '../lib/fmt'
 import { PL_ORDER, PL_LABELS } from '../lib/articles'
 import * as XLSX from 'xlsx'
 import { computePL, computePLBreakdown, computeAging, dashboardStats, plDrill, salesProfitReport } from '../lib/pl'
+import { vatReport } from '../lib/periodClose'
 
 const NOW = new Date()
 const YEARS = [NOW.getFullYear(), NOW.getFullYear() - 1, NOW.getFullYear() - 2]
@@ -51,13 +52,14 @@ export default function Analytics() {
     <div>
       <div className="page-header"><h1>Аналітика</h1></div>
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 18, overflowX: 'auto' }}>
-        {[['overview', 'Огляд', 'ti-dashboard'], ['pl', 'P&L', 'ti-report-money'], ['profit', 'Рентабельність', 'ti-percentage'], ['aging', 'Борги', 'ti-clock-dollar']].map(([id, lbl, icon]) => (
+        {[['overview', 'Огляд', 'ti-dashboard'], ['pl', 'P&L', 'ti-report-money'], ['profit', 'Рентабельність', 'ti-percentage'], ['vat', 'ПДВ', 'ti-receipt-tax'], ['aging', 'Борги', 'ti-clock-dollar']].map(([id, lbl, icon]) => (
           <button key={id} onClick={() => setTab(id)} style={tabStyle(tab === id)}><i className={`ti ${icon}`} style={{ fontSize: 15 }} />{lbl}</button>
         ))}
       </div>
       {tab === 'overview' && <Overview />}
       {tab === 'pl' && <PLView />}
       {tab === 'profit' && <ProfitView />}
+      {tab === 'vat' && <VatView />}
       {tab === 'aging' && <AgingView />}
     </div>
   )
@@ -413,6 +415,119 @@ function ProfitView() {
         )}
       {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />}
       {genDoc && <GeneratedDocModal doc={genDoc} onClose={() => setGenDoc(null)} />}
+    </div>
+  )
+}
+
+// ───────── ПДВ ─────────
+function VatView() {
+  const { user } = useUser()
+  const [year, setYear] = useState(NOW.getFullYear())
+  const [data, setData] = useState(null)
+  const [openM, setOpenM] = useState(null) // розгорнутий місяць
+  const [openDoc, setOpenDoc] = useState(null)
+
+  useEffect(() => { setData(null); vatReport(year).then(setData) }, [year])
+
+  const openDocById = async (id) => {
+    const { data: d } = await supabase.from('documents')
+      .select('*, contractors(name)').eq('id', id).single()
+    if (d) setOpenDoc(d)
+  }
+
+  if (!data) return <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
+  const t = data.totals
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+        <select className="form-input" value={year} onChange={e => setYear(Number(e.target.value))} style={{ width: 120 }}>
+          {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        {t.noVat > 0 && <span style={{ fontSize: 12.5, color: AMBER }}><i className="ti ti-alert-circle" /> {t.noVat} документ(ів) без ПДВ — можливо, ПДВ не захоплено</span>}
+      </div>
+
+      <div className="kpi-grid" style={{ marginBottom: 18 }}>
+        <Kpi label="Податкове зобов'язання (рік)" value={`${fmtInt(t.outVat)} грн`} color={GREEN} />
+        <Kpi label="Податковий кредит (рік)" value={`${fmtInt(t.inVat)} грн`} color={RED} />
+        <Kpi label="ПДВ до сплати (рік)" value={`${fmtInt(t.net)} грн`} color={t.net >= 0 ? 'var(--text)' : GREEN} />
+      </div>
+
+      <div className="card">
+        <div className="tbl-wrap" style={{ border: 'none' }}>
+          <table>
+            <thead><tr>
+              <th>Місяць</th>
+              <th style={{ textAlign: 'right' }}>Зобов'язання (ПДВ з продажів)</th>
+              <th style={{ textAlign: 'right' }}>Кредит (ПДВ із закупівель)</th>
+              <th style={{ textAlign: 'right' }}>До сплати</th>
+              <th style={{ textAlign: 'right' }}>Продажі з ПДВ</th>
+              <th style={{ textAlign: 'right' }}>Закупівлі з ПДВ</th>
+            </tr></thead>
+            <tbody>
+              {data.months.map(m => {
+                const has = m.sales.length + m.purchases.length > 0
+                const isOpen = openM === m.month
+                return (
+                  <Fragment key={m.month}>
+                    <tr style={{ cursor: has ? 'pointer' : 'default', background: isOpen ? 'var(--surface2)' : undefined }}
+                      onClick={() => has && setOpenM(isOpen ? null : m.month)}>
+                      <td style={{ fontWeight: 500 }}>{has && <i className={`ti ti-chevron-${isOpen ? 'down' : 'right'}`} style={{ fontSize: 12, marginRight: 4, color: 'var(--text3)' }} />}{MONTHS[m.month - 1]}</td>
+                      <td style={{ textAlign: 'right', color: m.outVat ? GREEN : 'var(--text3)' }}>{m.outVat ? fmt(m.outVat) : '—'}</td>
+                      <td style={{ textAlign: 'right', color: m.inVat ? RED : 'var(--text3)' }}>{m.inVat ? fmt(m.inVat) : '—'}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 600, color: m.net < 0 ? GREEN : 'var(--text)' }}>{(m.outVat || m.inVat) ? fmt(m.net) : '—'}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{m.salesGross ? fmt(m.salesGross) : '—'}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{m.purchGross ? fmt(m.purchGross) : '—'}</td>
+                    </tr>
+                    {isOpen && (
+                      <tr><td colSpan={6} style={{ background: 'var(--surface2)', padding: '4px 12px 12px' }}>
+                        <VatDocs title="Продажі (зобов'язання)" docs={m.sales} color={GREEN} onOpen={openDocById} />
+                        <VatDocs title="Закупівлі (кредит)" docs={m.purchases} color={RED} onOpen={openDocById} />
+                      </td></tr>
+                    )}
+                  </Fragment>
+                )
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700 }}>
+                <td>Разом {year}</td>
+                <td style={{ textAlign: 'right', color: GREEN }}>{fmt(t.outVat)}</td>
+                <td style={{ textAlign: 'right', color: RED }}>{fmt(t.inVat)}</td>
+                <td style={{ textAlign: 'right' }}>{fmt(t.net)}</td>
+                <td style={{ textAlign: 'right' }}>{fmt(t.salesGross)}</td>
+                <td style={{ textAlign: 'right' }}>{fmt(t.purchGross)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 8 }}>
+          Управлінський огляд за документами (з <code>documents.vat_amount</code>). «До сплати» = зобов'язання − кредит; від'ємне — кредит перевищує зобов'язання (до відшкодування/переносу). Клікни місяць — розкриються документи.
+        </div>
+      </div>
+
+      {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />}
+    </div>
+  )
+}
+
+function VatDocs({ title, docs, color, onOpen }) {
+  if (!docs.length) return null
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color, marginBottom: 4 }}>{title} ({docs.length})</div>
+      <table style={{ width: '100%', fontSize: 12 }}>
+        <tbody>
+          {docs.map(d => (
+            <tr key={d.id} style={{ cursor: 'pointer', borderBottom: '1px solid var(--border)' }} onClick={() => onOpen(d.id)} title="Відкрити документ">
+              <td style={{ color: 'var(--text3)', whiteSpace: 'nowrap' }}>{d.doc_date}</td>
+              <td style={{ paddingLeft: 8 }}>{getDocType(d.type)?.label || d.type} №{d.doc_number || '—'} · {d.contractor}</td>
+              <td style={{ textAlign: 'right', color: 'var(--text2)', whiteSpace: 'nowrap' }}>{fmt(d.amount)} з ПДВ</td>
+              <td style={{ textAlign: 'right', fontWeight: 500, whiteSpace: 'nowrap', color: d.vat ? color : AMBER }}>{d.vat ? `ПДВ ${fmt(d.vat)}` : 'без ПДВ'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
