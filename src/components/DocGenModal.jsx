@@ -26,6 +26,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
   const [deliveryAddress, setDeliveryAddress] = useState(editDoc?.delivery_address || contractor?.delivery_address || '')
   const [contractsList, setContractsList] = useState([])
   const [selectedContract, setSelectedContract] = useState('')
+  const [invoicesList, setInvoicesList] = useState([]) // наявні рахунки контрагента (для вибору «Рахунок №»)
 
   const INCOTERMS = ['EXW', 'FCA', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP', 'FAS', 'FOB', 'CFR', 'CIF']
   const [editId] = useState(editDoc?.id || null)
@@ -55,6 +56,10 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
     if (contractor?.id) {
       supabase.from('contractor_contracts').select('*').eq('contractor_id', contractor.id).eq('status', 'active').order('date', { ascending: false })
         .then(({ data }) => setContractsList(data || []))
+      // Наявні рахунки цього контрагента — щоб у видатковій/акті обрати рахунок, а не вводити вручну
+      supabase.from('generated_docs').select('id, doc_number, doc_date, total')
+        .eq('contractor_id', contractor.id).eq('doc_type', 'invoice').order('doc_date', { ascending: false })
+        .then(({ data }) => setInvoicesList(data || []))
     }
   }, [])
 
@@ -135,6 +140,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
           docNumber, docDate, items,
           subtotal: totals.subtotal, vatAmount: totals.vatAmount, total: totals.total,
           notes, contractNum, contractDate, paymentDue, city,
+          invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress,
         })
       } else {
         // Створити новий
@@ -143,7 +149,9 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
           contractorId: contractor.id,
           contractorName: contractor.short_name || contractor.name,
           items, subtotal: totals.subtotal, vatAmount: totals.vatAmount, total: totals.total,
-          notes, contractNum, contractDate, paymentDue, city, parentDocId, contractId: selectedContract || null, orderId: orderId || null, userId,
+          notes, contractNum, contractDate, paymentDue, city,
+          invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress,
+          parentDocId, contractId: selectedContract || null, orderId: orderId || null, userId,
         })
         // Списання зі складу для видаткових (OUT) — saveDoc авто-створює лише для IN
         const dtSave = DOCUMENT_TYPES.find(t => t.key === docType)
@@ -282,6 +290,20 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
               </div>
               {(docType === 'serviceAct' || docType === 'waybill') && (
                 <>
+                  {invoicesList.length > 0 && (
+                    <div className="form-group full">
+                      <label>Обрати рахунок</label>
+                      <select className="form-input" value={invoicesList.find(iv => iv.doc_number === invoiceRef)?.id || ''} onChange={e => {
+                        const iv = invoicesList.find(x => x.id === e.target.value)
+                        if (iv) { setInvoiceRef(iv.doc_number); setInvoiceRefDate(iv.doc_date || '') }
+                      }}>
+                        <option value="">— Обрати наявний або ввести вручну нижче —</option>
+                        {invoicesList.map(iv => (
+                          <option key={iv.id} value={iv.id}>№{iv.doc_number}{iv.doc_date ? ` від ${iv.doc_date}` : ''}{iv.total != null ? ` — ${formatMoney(iv.total)} грн` : ''}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div className="form-group">
                     <label>Рахунок №</label>
                     <input className="form-input" value={invoiceRef} onChange={e => setInvoiceRef(e.target.value)} placeholder="Номер рахунку" />

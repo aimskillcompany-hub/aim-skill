@@ -256,6 +256,8 @@ function DetailsTab({ c, onSaved }) {
 
       <Contacts contractorId={c.id} />
 
+      <Contracts contractorId={c.id} />
+
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 16 }}>
         <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? '…' : 'Зберегти'}</button>
         {saved && <span style={{ color: 'var(--green)', fontSize: 13 }}>Збережено!</span>}
@@ -293,6 +295,43 @@ function Contacts({ contractorId }) {
         <input className="form-input" placeholder="Роль" value={add.role} onChange={e => setAdd(a => ({ ...a, role: e.target.value }))} style={{ flex: '1 1 120px' }} />
         <input className="form-input" placeholder="Телефон" value={add.phone} onChange={e => setAdd(a => ({ ...a, phone: e.target.value }))} style={{ flex: '1 1 120px' }} />
         <input className="form-input" placeholder="Email" value={add.email} onChange={e => setAdd(a => ({ ...a, email: e.target.value }))} style={{ flex: '1 1 140px' }} />
+        <button className="btn" onClick={create}><i className="ti ti-plus" /> Додати</button>
+      </div>
+    </div>
+  )
+}
+
+// ───────────────────────── Договори ─────────────────────────
+function Contracts({ contractorId }) {
+  const [rows, setRows] = useState([])
+  const [add, setAdd] = useState({ number: '', date: '', subject: '' })
+  const load = () => supabase.from('contractor_contracts').select('*').eq('contractor_id', contractorId).order('date', { ascending: false }).then(({ data }) => setRows(data || []))
+  useEffect(() => { load() }, [contractorId])
+
+  const create = async () => {
+    if (!add.number.trim()) return
+    await supabase.from('contractor_contracts').insert({
+      contractor_id: contractorId, number: add.number.trim(), date: add.date || null, subject: add.subject || null, status: 'active',
+    })
+    setAdd({ number: '', date: '', subject: '' }); load()
+  }
+  const remove = async (cid) => { await supabase.from('contractor_contracts').delete().eq('id', cid); load() }
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10 }}>Договори</div>
+      {rows.length === 0 && <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 8 }}>Договорів ще немає. Додаються тут або автоматично при генерації документа з номером договору.</div>}
+      {rows.map(r => (
+        <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 14 }}>
+          <div style={{ flex: 1 }}><b>№{r.number}</b>{r.date && <span style={{ color: 'var(--text2)' }}> від {r.date}</span>}{r.subject && <span style={{ color: 'var(--text2)' }}> · {r.subject}</span>}</div>
+          {r.status && r.status !== 'active' && <span style={{ fontSize: 12, color: 'var(--text3)' }}>{r.status}</span>}
+          <button className="btn" onClick={() => remove(r.id)} style={{ padding: '2px 8px' }}><i className="ti ti-trash" /></button>
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+        <input className="form-input" placeholder="Номер договору" value={add.number} onChange={e => setAdd(a => ({ ...a, number: e.target.value }))} style={{ flex: '1 1 140px' }} />
+        <input className="form-input" type="date" placeholder="Дата" value={add.date} onChange={e => setAdd(a => ({ ...a, date: e.target.value }))} style={{ flex: '1 1 130px' }} />
+        <input className="form-input" placeholder="Предмет" value={add.subject} onChange={e => setAdd(a => ({ ...a, subject: e.target.value }))} style={{ flex: '1 1 160px' }} />
         <button className="btn" onClick={create}><i className="ti ti-plus" /> Додати</button>
       </div>
     </div>

@@ -189,9 +189,15 @@ export async function getNextDocNumber(docTypeKey) {
   return `${prefix}-${String(nextNum).padStart(4, '0')}`
 }
 
+// Колонки-реквізити з міграції 027 можуть ще не існувати — на помилку про них
+// повторюємо запит без них, щоб збереження не падало до застосування міграції.
+function isMissingRefsColumn(msg = '') {
+  return /invoice_ref|delivery_basis|delivery_address/.test(msg)
+}
+
 // ── Зберегти документ в БД ──
-export async function saveDoc({ docType, docNumber, docDate, contractorId, contractorName, items, subtotal, vatAmount, total, notes, contractNum, contractDate, paymentDue, city, parentDocId, contractId, orderId, userId }) {
-  const { data, error } = await supabase.from('generated_docs').insert({
+export async function saveDoc({ docType, docNumber, docDate, contractorId, contractorName, items, subtotal, vatAmount, total, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress, parentDocId, contractId, orderId, userId }) {
+  const base = {
     doc_type: docType,
     doc_number: docNumber,
     doc_date: docDate,
@@ -208,7 +214,17 @@ export async function saveDoc({ docType, docNumber, docDate, contractorId, contr
     contract_id: contractId || null,
     order_id: orderId || null,
     created_by: userId,
-  }).select('id').single()
+  }
+  const refs = {
+    invoice_ref: invoiceRef || null,
+    invoice_ref_date: invoiceRefDate || null,
+    delivery_basis: deliveryBasis || null,
+    delivery_address: deliveryAddress || null,
+  }
+  let { data, error } = await supabase.from('generated_docs').insert({ ...base, ...refs }).select('id').single()
+  if (error && isMissingRefsColumn(error.message)) {
+    ;({ data, error } = await supabase.from('generated_docs').insert(base).select('id').single())
+  }
 
   if (error) throw new Error(error.message)
 
@@ -301,8 +317,8 @@ export async function createStockFromDoc(docId, docType, items, date, userId) {
 }
 
 // ── Оновити документ ──
-export async function updateDoc(id, { docNumber, docDate, items, subtotal, vatAmount, total, notes, contractNum, contractDate, paymentDue, city }) {
-  const { error } = await supabase.from('generated_docs').update({
+export async function updateDoc(id, { docNumber, docDate, items, subtotal, vatAmount, total, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress }) {
+  const base = {
     doc_number: docNumber,
     doc_date: docDate,
     items: JSON.stringify(cleanItems(items)),
@@ -312,7 +328,17 @@ export async function updateDoc(id, { docNumber, docDate, items, subtotal, vatAm
     contract_date: contractDate || null,
     payment_due: paymentDue || null,
     city: city || null,
-  }).eq('id', id)
+  }
+  const refs = {
+    invoice_ref: invoiceRef || null,
+    invoice_ref_date: invoiceRefDate || null,
+    delivery_basis: deliveryBasis || null,
+    delivery_address: deliveryAddress || null,
+  }
+  let { error } = await supabase.from('generated_docs').update({ ...base, ...refs }).eq('id', id)
+  if (error && isMissingRefsColumn(error.message)) {
+    ;({ error } = await supabase.from('generated_docs').update(base).eq('id', id))
+  }
   if (error) throw new Error(error.message)
   // Синхронізувати дзеркальний рядок у documents (сума/номер/дата)
   await supabase.from('documents').update({ doc_number: docNumber, doc_date: docDate, amount: total ?? null, vat_amount: vatAmount ?? null }).eq('generated_doc_id', id)
