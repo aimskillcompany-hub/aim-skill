@@ -621,7 +621,14 @@ function DocumentsTab({ o }) {
   const loadGen = () => supabase.from('generated_docs').select('*').eq('order_id', o.id).order('created_at', { ascending: false }).then(({ data }) => setGenDocs(data || []))
   useEffect(() => { load(); loadGen() }, [o.id])
   const unlink = async (d) => { await supabase.from('documents').update({ order_id: null }).eq('id', d.id); load() }
-  const delGen = async (d) => { await supabase.from('generated_docs').delete().eq('id', d.id); loadGen() }
+  const delGen = async (d) => {
+    // Спершу прибрати складські рухи дзеркального документа (FK = SET NULL, тож каскад їх не видалить),
+    // потім сам згенерований — каскад (міграція 017) прибере дзеркало в documents.
+    const { data: mirror } = await supabase.from('documents').select('id').eq('generated_doc_id', d.id).maybeSingle()
+    if (mirror?.id) await supabase.from('stock_movements').delete().eq('document_id', mirror.id).neq('source', 'assembly')
+    await supabase.from('generated_docs').delete().eq('id', d.id)
+    loadGen()
+  }
 
   // Перегляд / завантаження вже згенерованого документа (регенерація з даних generated_docs)
   const genItems = (d) => (typeof d.items === 'string' ? JSON.parse(d.items || '[]') : (d.items || []))

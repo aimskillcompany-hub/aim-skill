@@ -186,13 +186,23 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
   }
 
   const del = async () => {
-    if (!confirm('Видалити цей документ? Дію не можна скасувати.')) return
+    if (!confirm('Видалити цей документ? Будуть видалені й пов\'язані складські рухи (склад відкотиться). Дію не можна скасувати.')) return
     setBusy(true); setError(null)
-    const { data, error } = await supabase.from('documents').delete().eq('id', existingDoc.id).select('id')
+    try {
+      // Рухи цього документа треба зібрати ДО видалення: FK stock_movements.document_id = ON DELETE SET NULL,
+      // тож після видалення документа рухи лишаються (осиротілі), а склад не відкочується. Прибираємо їх явно
+      // (крім збірок — їх source='assembly'). Спершу видаляємо документ (перевірка прав/періоду), потім рухи.
+      const { data: mvs } = await supabase.from('stock_movements').select('id').eq('document_id', existingDoc.id).neq('source', 'assembly')
+      const { data, error } = await supabase.from('documents').delete().eq('id', existingDoc.id).select('id')
+      if (error) throw error
+      if (!data?.length) { setError('Документ не видалено (недостатньо прав). Видалення доступне ролям admin/accountant.'); setBusy(false); return }
+      if (mvs?.length) await supabase.from('stock_movements').delete().in('id', mvs.map(m => m.id))
+      onSaved()
+    } catch (e) {
+      const msg = /PERIOD_CLOSED/.test(e.message) ? e.message.replace(/^.*PERIOD_CLOSED:\s*/, '') : e.message
+      setError('Не вдалося видалити: ' + msg)
+    }
     setBusy(false)
-    if (error) { setError(error.message); return }
-    if (!data?.length) { setError('Документ не видалено (недостатньо прав). Видалення доступне ролям admin/accountant.'); return }
-    onSaved()
   }
 
   return (
