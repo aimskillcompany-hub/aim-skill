@@ -327,39 +327,67 @@ async function fetchAll(table, cols, mod) {
   return all
 }
 
-// ── Звіт ПДВ за рік: по місяцях зобов'язання (продажі) / кредит (закупівлі) / до сплати ──
+// ── Звіт ПДВ за рік: зобов'язання / кредит / до сплати з ПЕРЕНОСОМ від'ємного значення ──
+// Від'ємне значення (кредит > зобов'язання) переноситься й зменшує ПДВ до сплати наступних місяців —
+// накопичення рахується по всій історії (в т.ч. з попередніх років), повертаються 12 місяців обраного року.
 export async function vatReport(year) {
   const docs = await fetchAll('documents',
     'id, doc_number, doc_date, doc_role, direction, type, amount, vat_amount, contractor_id',
-    q => q.gte('doc_date', `${year}-01-01`).lte('doc_date', `${year}-12-31`))
-  const cids = [...new Set(docs.map(d => d.contractor_id).filter(Boolean))]
+    q => q.not('doc_date', 'is', null))
+  const num = x => Number(x) || 0
+  const isPurch = d => d.direction === 'payable' || d.doc_role === 'incoming' || d.type === 'incomingWaybill'
+
+  // імена контрагентів — лише для документів обраного року (для розшифровки)
+  const cidsYear = [...new Set(docs.filter(d => (d.doc_date || '').slice(0, 4) === String(year)).map(d => d.contractor_id).filter(Boolean))]
   const cn = {}
-  for (let i = 0; i < cids.length; i += 100) {
-    const { data } = await supabase.from('contractors').select('id, name').in('id', cids.slice(i, i + 100))
+  for (let i = 0; i < cidsYear.length; i += 100) {
+    const { data } = await supabase.from('contractors').select('id, name').in('id', cidsYear.slice(i, i + 100))
     ;(data || []).forEach(c => cn[c.id] = c.name)
   }
-  const isPurch = d => d.direction === 'payable' || d.doc_role === 'incoming' || d.type === 'incomingWaybill'
-  const num = x => Number(x) || 0
 
-  const months = Array.from({ length: 12 }, (_, i) => ({
-    month: i + 1, outVat: 0, inVat: 0, salesGross: 0, purchGross: 0, sales: [], purchases: [], noVat: 0,
-  }))
+  // бакети по YYYY-MM (лише реалізовані документи — не задвоювати рахунок+накладну)
+  const bucket = {}
+  const mk = () => ({ outVat: 0, inVat: 0, salesGross: 0, purchGross: 0, sales: [], purchases: [], noVat: 0 })
   for (const d of docs) {
-    if (!d.doc_date) continue
-    // Лише реалізовані документи (накладні/акти). Рахунки/замовлення/договори/КП
-    // не формують ні зобов'язання, ні кредит — інакше рахунок+накладна задвоюють ПДВ.
-    if (!countsAsDebt(d.type)) continue
-    const m = months[Number(d.doc_date.slice(5, 7)) - 1]
-    if (!m) continue
+    if (!d.doc_date || !countsAsDebt(d.type)) continue
+    const key = d.doc_date.slice(0, 7)
+    const b = (bucket[key] ||= mk())
     const row = { id: d.id, doc_number: d.doc_number, doc_date: d.doc_date, contractor: cn[d.contractor_id] || '—', amount: num(d.amount), vat: num(d.vat_amount), type: d.type }
-    if (!row.vat) m.noVat++
-    if (isPurch(d)) { m.inVat += row.vat; m.purchGross += row.amount; m.purchases.push(row) }
-    else { m.outVat += row.vat; m.salesGross += row.amount; m.sales.push(row) }
+    if (!row.vat) b.noVat++
+    if (isPurch(d)) { b.inVat += row.vat; b.purchGross += row.amount; b.purchases.push(row) }
+    else { b.outVat += row.vat; b.salesGross += row.amount; b.sales.push(row) }
   }
-  months.forEach(m => { m.net = m.outVat - m.inVat })
+
+  // всі місяці від найранішого до грудня обраного року (щоб перенос протікав і через порожні місяці)
+  const keys = Object.keys(bucket)
+  const first = keys.length ? keys.sort()[0] : `${year}-01`
+  const startY = Number(first.slice(0, 4)), startM = Number(first.slice(5, 7))
+  let carry = 0 // накопичений невикористаний кредит (>=0)
+  const perKey = {}
+  for (let y = startY; y <= year; y++) {
+    for (let mo = (y === startY ? startM : 1); mo <= 12; mo++) {
+      const key = `${y}-${String(mo).padStart(2, '0')}`
+      const b = bucket[key] || mk()
+      const net = b.outVat - b.inVat            // місяць окремо
+      const carryIn = carry
+      const avail = b.inVat + carryIn           // доступний кредит з переносом
+      const toPay = Math.max(0, b.outVat - avail)          // фактично до сплати
+      const carryOut = Math.max(0, avail - b.outVat)        // переноситься далі
+      perKey[key] = { ...b, net, carryIn, toPay, carryOut }
+      carry = carryOut
+      if (y > year) break
+    }
+  }
+
+  const months = Array.from({ length: 12 }, (_, i) => {
+    const key = `${year}-${String(i + 1).padStart(2, '0')}`
+    return { month: i + 1, ...(perKey[key] || { ...mk(), net: 0, carryIn: 0, toPay: 0, carryOut: 0 }) }
+  })
   const totals = months.reduce((t, m) => ({
     outVat: t.outVat + m.outVat, inVat: t.inVat + m.inVat, net: t.net + m.net,
-    salesGross: t.salesGross + m.salesGross, purchGross: t.purchGross + m.purchGross, noVat: t.noVat + m.noVat,
-  }), { outVat: 0, inVat: 0, net: 0, salesGross: 0, purchGross: 0, noVat: 0 })
+    toPay: t.toPay + m.toPay, salesGross: t.salesGross + m.salesGross, purchGross: t.purchGross + m.purchGross, noVat: t.noVat + m.noVat,
+  }), { outVat: 0, inVat: 0, net: 0, toPay: 0, salesGross: 0, purchGross: 0, noVat: 0 })
+  totals.carryOut = months[11]?.carryOut || 0 // невикористаний кредит на кінець року
+  totals.carryIn = months[0]?.carryIn || 0    // перенесено з попередніх періодів на початок року
   return { year, months, totals }
 }

@@ -451,10 +451,11 @@ function VatView() {
       <div className="kpi-grid" style={{ marginBottom: 18 }}>
         <Kpi label="Податкове зобов'язання (рік)" value={t.outVat} color={GREEN} />
         <Kpi label="Податковий кредит (рік)" value={t.inVat} color={RED} />
+        <Kpi label="ПДВ до сплати (рік, з переносом)" value={t.toPay} color={'var(--text)'} />
         <div className="kpi">
-          <div className="kpi-label">ПДВ до сплати (рік)</div>
-          <div className="kpi-value" style={{ color: t.net >= 0 ? 'var(--text)' : GREEN }}>{si(t.net)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>грн</span></div>
-          {t.net < 0 && <div style={{ fontSize: 11, color: GREEN }}>кредит перевищує зобов'язання (до відшкодування/переносу)</div>}
+          <div className="kpi-label">Залишок кредиту (перенос далі)</div>
+          <div className="kpi-value" style={{ color: GREEN }}>{fmtInt(t.carryOut)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>грн</span></div>
+          {t.carryIn > 0 && <div style={{ fontSize: 11, color: 'var(--text3)' }}>на початок року перенесено {fmt(t.carryIn)}</div>}
         </div>
       </div>
 
@@ -463,16 +464,17 @@ function VatView() {
           <table>
             <thead><tr>
               <th>Місяць</th>
-              <th style={{ textAlign: 'right' }}>Зобов'язання (ПДВ з продажів)</th>
-              <th style={{ textAlign: 'right' }}>Кредит (ПДВ із закупівель)</th>
+              <th style={{ textAlign: 'right' }}>Зобов'язання</th>
+              <th style={{ textAlign: 'right' }}>Кредит</th>
+              <th style={{ textAlign: 'right' }}>Перенос з мин.</th>
               <th style={{ textAlign: 'right' }}>До сплати</th>
-              <th style={{ textAlign: 'right' }}>Продажі з ПДВ</th>
-              <th style={{ textAlign: 'right' }}>Закупівлі з ПДВ</th>
+              <th style={{ textAlign: 'right' }}>Залишок кредиту →</th>
             </tr></thead>
             <tbody>
               {data.months.map(m => {
                 const has = m.sales.length + m.purchases.length > 0
                 const isOpen = openM === m.month
+                const active = m.outVat || m.inVat || m.carryIn
                 return (
                   <Fragment key={m.month}>
                     <tr style={{ cursor: has ? 'pointer' : 'default', background: isOpen ? 'var(--surface2)' : undefined }}
@@ -480,9 +482,9 @@ function VatView() {
                       <td style={{ fontWeight: 500 }}>{has && <i className={`ti ti-chevron-${isOpen ? 'down' : 'right'}`} style={{ fontSize: 12, marginRight: 4, color: 'var(--text3)' }} />}{MONTHS[m.month - 1]}</td>
                       <td style={{ textAlign: 'right', color: m.outVat ? GREEN : 'var(--text3)' }}>{m.outVat ? fmt(m.outVat) : '—'}</td>
                       <td style={{ textAlign: 'right', color: m.inVat ? RED : 'var(--text3)' }}>{m.inVat ? fmt(m.inVat) : '—'}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 600, color: m.net < 0 ? GREEN : 'var(--text)' }}>{(m.outVat || m.inVat) ? si(m.net) : '—'}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{m.salesGross ? fmt(m.salesGross) : '—'}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{m.purchGross ? fmt(m.purchGross) : '—'}</td>
+                      <td style={{ textAlign: 'right', color: m.carryIn ? GREEN : 'var(--text3)' }}>{m.carryIn ? fmt(m.carryIn) : '—'}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 600, color: m.toPay > 0 ? 'var(--text)' : 'var(--text3)' }}>{active ? fmt(m.toPay) : '—'}</td>
+                      <td style={{ textAlign: 'right', color: m.carryOut ? GREEN : 'var(--text3)' }}>{m.carryOut ? fmt(m.carryOut) : '—'}</td>
                     </tr>
                     {isOpen && (
                       <tr><td colSpan={6} style={{ background: 'var(--surface2)', padding: '4px 12px 12px' }}>
@@ -499,15 +501,15 @@ function VatView() {
                 <td>Разом {year}</td>
                 <td style={{ textAlign: 'right', color: GREEN }}>{fmt(t.outVat)}</td>
                 <td style={{ textAlign: 'right', color: RED }}>{fmt(t.inVat)}</td>
-                <td style={{ textAlign: 'right', color: t.net < 0 ? GREEN : 'var(--text)' }}>{si(t.net)}</td>
-                <td style={{ textAlign: 'right' }}>{fmt(t.salesGross)}</td>
-                <td style={{ textAlign: 'right' }}>{fmt(t.purchGross)}</td>
+                <td style={{ textAlign: 'right', color: 'var(--text3)' }}>{t.carryIn ? fmt(t.carryIn) : '—'}</td>
+                <td style={{ textAlign: 'right' }}>{fmt(t.toPay)}</td>
+                <td style={{ textAlign: 'right', color: GREEN }}>{t.carryOut ? fmt(t.carryOut) : '—'}</td>
               </tr>
             </tfoot>
           </table>
         </div>
         <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 8 }}>
-          Управлінський огляд за документами (з <code>documents.vat_amount</code>). «До сплати» = зобов'язання − кредит; від'ємне — кредит перевищує зобов'язання (до відшкодування/переносу). Клікни місяць — розкриються документи.
+          Управлінський огляд за реалізованими документами (накладні/акти; рахунки не рахуються). <b>Перенос кредиту:</b> якщо кредит перевищує зобов'язання, надлишок («Залишок кредиту →») переноситься й зменшує «До сплати» наступних місяців. Накопичення рахується по всій історії, тож січень може вже мати «Перенос з мин.» з попереднього року. Клікни місяць — розкриються документи.
         </div>
       </div>
 
