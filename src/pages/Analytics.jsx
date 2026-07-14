@@ -437,6 +437,7 @@ function VatView() {
 
   if (!data) return <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
   const t = data.totals
+  const si = v => (v < 0 ? '−' : '') + fmt(v) // fmt віддає abs, тож додаємо мінус вручну
 
   return (
     <div>
@@ -448,9 +449,13 @@ function VatView() {
       </div>
 
       <div className="kpi-grid" style={{ marginBottom: 18 }}>
-        <Kpi label="Податкове зобов'язання (рік)" value={`${fmtInt(t.outVat)} грн`} color={GREEN} />
-        <Kpi label="Податковий кредит (рік)" value={`${fmtInt(t.inVat)} грн`} color={RED} />
-        <Kpi label="ПДВ до сплати (рік)" value={`${fmtInt(t.net)} грн`} color={t.net >= 0 ? 'var(--text)' : GREEN} />
+        <Kpi label="Податкове зобов'язання (рік)" value={t.outVat} color={GREEN} />
+        <Kpi label="Податковий кредит (рік)" value={t.inVat} color={RED} />
+        <div className="kpi">
+          <div className="kpi-label">ПДВ до сплати (рік)</div>
+          <div className="kpi-value" style={{ color: t.net >= 0 ? 'var(--text)' : GREEN }}>{si(t.net)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>грн</span></div>
+          {t.net < 0 && <div style={{ fontSize: 11, color: GREEN }}>кредит перевищує зобов'язання (до відшкодування/переносу)</div>}
+        </div>
       </div>
 
       <div className="card">
@@ -475,7 +480,7 @@ function VatView() {
                       <td style={{ fontWeight: 500 }}>{has && <i className={`ti ti-chevron-${isOpen ? 'down' : 'right'}`} style={{ fontSize: 12, marginRight: 4, color: 'var(--text3)' }} />}{MONTHS[m.month - 1]}</td>
                       <td style={{ textAlign: 'right', color: m.outVat ? GREEN : 'var(--text3)' }}>{m.outVat ? fmt(m.outVat) : '—'}</td>
                       <td style={{ textAlign: 'right', color: m.inVat ? RED : 'var(--text3)' }}>{m.inVat ? fmt(m.inVat) : '—'}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 600, color: m.net < 0 ? GREEN : 'var(--text)' }}>{(m.outVat || m.inVat) ? fmt(m.net) : '—'}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 600, color: m.net < 0 ? GREEN : 'var(--text)' }}>{(m.outVat || m.inVat) ? si(m.net) : '—'}</td>
                       <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{m.salesGross ? fmt(m.salesGross) : '—'}</td>
                       <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{m.purchGross ? fmt(m.purchGross) : '—'}</td>
                     </tr>
@@ -494,7 +499,7 @@ function VatView() {
                 <td>Разом {year}</td>
                 <td style={{ textAlign: 'right', color: GREEN }}>{fmt(t.outVat)}</td>
                 <td style={{ textAlign: 'right', color: RED }}>{fmt(t.inVat)}</td>
-                <td style={{ textAlign: 'right' }}>{fmt(t.net)}</td>
+                <td style={{ textAlign: 'right', color: t.net < 0 ? GREEN : 'var(--text)' }}>{si(t.net)}</td>
                 <td style={{ textAlign: 'right' }}>{fmt(t.salesGross)}</td>
                 <td style={{ textAlign: 'right' }}>{fmt(t.purchGross)}</td>
               </tr>

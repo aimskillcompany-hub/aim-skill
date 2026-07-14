@@ -252,12 +252,16 @@ export async function computePeriodDetail(year, month) {
   txBreakdown.forEach(b => b.items.sort((x, y) => x.amount - y.amount))
 
   const sum = (arr, k) => arr.reduce((s, d) => s + (d[k] || 0), 0)
+  // ПДВ — лише з реалізованих документів (накладні/акти); рахунки/замовлення не рахуємо (не задвоювати)
+  const realSales = sales.filter(d => countsAsDebt(d.type))
+  const realPurch = purchases.filter(d => countsAsDebt(d.type))
+  const salesVat = sum(realSales, 'vat'), purchVat = sum(realPurch, 'vat')
   return {
     purchases, sales,
     totals: {
-      salesAmount: sum(sales, 'amount'), salesVat: sum(sales, 'vat'),
-      purchAmount: sum(purchases, 'amount'), purchVat: sum(purchases, 'vat'),
-      vatToPay: sum(sales, 'vat') - sum(purchases, 'vat'), // зобов'язання − кредит
+      salesAmount: sum(sales, 'amount'), salesVat,
+      purchAmount: sum(purchases, 'amount'), purchVat,
+      vatToPay: salesVat - purchVat, // зобов'язання − кредит
     },
     tx: { count: tx.length, income, expense, unvalidated, noArticle, breakdown: txBreakdown },
   }
@@ -342,6 +346,9 @@ export async function vatReport(year) {
   }))
   for (const d of docs) {
     if (!d.doc_date) continue
+    // Лише реалізовані документи (накладні/акти). Рахунки/замовлення/договори/КП
+    // не формують ні зобов'язання, ні кредит — інакше рахунок+накладна задвоюють ПДВ.
+    if (!countsAsDebt(d.type)) continue
     const m = months[Number(d.doc_date.slice(5, 7)) - 1]
     if (!m) continue
     const row = { id: d.id, doc_number: d.doc_number, doc_date: d.doc_date, contractor: cn[d.contractor_id] || '—', amount: num(d.amount), vat: num(d.vat_amount), type: d.type }
