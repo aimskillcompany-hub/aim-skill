@@ -19,6 +19,7 @@ export default function Documents() {
   const [q, setQ] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
   const [signedFilter, setSignedFilter] = useState('all')
+  const [verFilter, setVerFilter] = useState('all')
   const [showOcr, setShowOcr] = useState(false)
   const [genContractor, setGenContractor] = useState(null)
   const [pickGen, setPickGen] = useState(false)
@@ -32,9 +33,11 @@ export default function Documents() {
 
   const load = async () => {
     setLoading(true)
-    const { data } = await supabase.from('documents')
-      .select('id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, direction, created_at, contractor_id, storage_path, file_path, file_type, doc_role, ocr_data, source, generated_doc_id, contractors(name)')
+    const base = 'id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, direction, created_at, contractor_id, storage_path, file_path, file_type, doc_role, ocr_data, source, generated_doc_id, contractors(name)'
+    // is_verified — міграція 029; якщо колонки ще нема, вантажимо без неї (сторінка не ламається)
+    let { data, error } = await supabase.from('documents').select(base + ', is_verified')
       .order('created_at', { ascending: false }).limit(500)
+    if (error) ({ data } = await supabase.from('documents').select(base).order('created_at', { ascending: false }).limit(500))
     setRows(data || [])
     setLoading(false)
   }
@@ -46,10 +49,12 @@ export default function Documents() {
       if (typeFilter !== 'all' && d.type !== typeFilter) return false
       if (signedFilter === 'signed' && !d.is_signed) return false
       if (signedFilter === 'unsigned' && d.is_signed) return false
+      if (verFilter === 'verified' && !d.is_verified) return false
+      if (verFilter === 'unverified' && d.is_verified) return false
       if (!term) return true
       return (d.file_name || '').toLowerCase().includes(term) || (d.contractors?.name || '').toLowerCase().includes(term)
     })
-  }, [rows, q, typeFilter, signedFilter])
+  }, [rows, q, typeFilter, signedFilter, verFilter])
 
   const { sort, onSort, sorted } = useSort('date', 'desc')
   const view = sorted(filtered, {
@@ -81,6 +86,11 @@ export default function Documents() {
           <option value="signed">Підписані</option>
           <option value="unsigned">Без підпису</option>
         </select>
+        <select className="form-input" value={verFilter} onChange={e => setVerFilter(e.target.value)} style={{ width: 180 }}>
+          <option value="all">Перевірка: усі</option>
+          <option value="unverified">Неперевірені</option>
+          <option value="verified">Перевірені</option>
+        </select>
       </div>
 
       <div className="card">
@@ -95,6 +105,7 @@ export default function Documents() {
                 <SortTh label="Сума" k="amount" sort={sort} onSort={onSort} align="right" />
                 <SortTh label="ПДВ" k="vat_amount" sort={sort} onSort={onSort} />
                 <SortTh label="Підпис" k="is_signed" sort={sort} onSort={onSort} />
+                <th>Перевірка</th>
                 <SortTh label="Дата" k="date" sort={sort} onSort={onSort} />
                 <th></th>
               </tr></thead>
@@ -108,6 +119,9 @@ export default function Documents() {
                     <td style={{ textAlign: 'right' }}>{d.amount ? fmt(d.amount) : '—'}</td>
                     <td style={{ color: 'var(--text2)', fontSize: 12 }}>{d.vat_amount ? fmt(d.vat_amount) : '—'}</td>
                     <td>{d.is_signed ? <span style={{ color: 'var(--green)' }}><i className="ti ti-check" /></span> : <span style={{ color: 'var(--text3)' }}>—</span>}</td>
+                    <td>{d.is_verified
+                      ? <span style={{ color: 'var(--green)', fontSize: 12, fontWeight: 600 }}><i className="ti ti-checkbox" /> так</span>
+                      : <span style={{ color: 'var(--amber, #b45309)', fontSize: 12 }}><i className="ti ti-alert-circle" /> ні</span>}</td>
                     <td style={{ fontSize: 12, color: 'var(--text2)' }}>{(d.doc_date || d.created_at || '').slice(0, 10)}</td>
                     <td style={{ textAlign: 'right' }}>
                       {isIncomplete(d) && (d.storage_path || d.file_path) && (
@@ -116,7 +130,7 @@ export default function Documents() {
                     </td>
                   </tr>
                 ))}
-                {view.length === 0 && <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Документів немає</td></tr>}
+                {view.length === 0 && <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Документів немає</td></tr>}
               </tbody>
             </table>
           </div>

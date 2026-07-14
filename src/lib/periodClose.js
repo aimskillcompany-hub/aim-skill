@@ -40,8 +40,25 @@ export async function runChecklist(year, month) {
     .select('id, date, amount, counterparty, description, direction, article, account_id')
     .gte('date', from).lte('date', to).eq('is_ignored', false).eq('is_validated', false).order('date')
 
-  const blockers = negativeStock.length + (docsNoAmount?.length || 0)
-  return { negativeStock, docsNoAmount: docsNoAmount || [], unclassifiedTx: (unclassifiedList || []).length, unclassifiedList: unclassifiedList || [], blockers }
+  // 4. Неперевірені документи періоду (звірка скан↔поля/ПДВ/рухи). Колонка is_verified — міграція 029;
+  //    якщо її ще нема, вважаємо 0 неперевірених, щоб не ламати чек-лист до застосування міграції.
+  let unverifiedList = []
+  {
+    const r = await supabase.from('documents')
+      .select('id, doc_number, type, doc_date, amount, vat_amount, contractor_id, storage_path, file_path, file_type, file_name, ocr_data, is_signed, is_verified, doc_role, direction, source, contractors(name)')
+      .gte('doc_date', from).lte('doc_date', to).eq('is_verified', false).order('doc_date')
+    if (!r.error) unverifiedList = r.data || []
+  }
+
+  // Ворота: закриття лише коли перевірені ВСІ документи і валідовані ВСІ транзакції періоду.
+  const unclassifiedTx = (unclassifiedList || []).length
+  const blockers = negativeStock.length + (docsNoAmount?.length || 0) + unverifiedList.length + unclassifiedTx
+  return {
+    negativeStock, docsNoAmount: docsNoAmount || [],
+    unclassifiedTx, unclassifiedList: unclassifiedList || [],
+    unverifiedDocs: unverifiedList.length, unverifiedList,
+    blockers,
+  }
 }
 
 // ── Знімок цифр станом на кінець періоду ──
@@ -240,6 +257,7 @@ export async function computePeriodDetail(year, month) {
     totals: {
       salesAmount: sum(sales, 'amount'), salesVat: sum(sales, 'vat'),
       purchAmount: sum(purchases, 'amount'), purchVat: sum(purchases, 'vat'),
+      vatToPay: sum(sales, 'vat') - sum(purchases, 'vat'), // зобов'язання − кредит
     },
     tx: { count: tx.length, income, expense, unvalidated, noArticle, breakdown: txBreakdown },
   }

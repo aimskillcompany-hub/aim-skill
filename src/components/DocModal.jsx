@@ -34,8 +34,22 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
   const [showMail, setShowMail] = useState(false)
   const [stockOn, setStockOn] = useState(false)   // оприбуткувати/списати позиції на склад
   const [stockDir, setStockDir] = useState('in')  // 'in' = прихід, 'out' = видача (FIFO)
+  const [verified, setVerified] = useState(!!existingDoc?.is_verified) // документ перевірено (звірка скан↔поля)
 
   useEffect(() => { if (existingDoc) recognizeExisting(autoOcr) }, [])
+
+  // Позначити «Перевірено» / зняти позначку (звірено скан↔розпізнані поля/ПДВ/рухи)
+  const toggleVerified = async () => {
+    if (!existingDoc?.id) return
+    setBusy(true); setError(null)
+    const next = !verified
+    const { error } = await supabase.from('documents')
+      .update({ is_verified: next, verified_at: next ? new Date().toISOString() : null, verified_by: next ? (user?.id || null) : null })
+      .eq('id', existingDoc.id)
+    setBusy(false)
+    if (error) { setError(/is_verified/.test(error.message) ? 'Запусти міграцію 029 (поле «перевірено»).' : error.message); return }
+    setVerified(next); onSaved?.()
+  }
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }, [previewUrl])
   // Дефолти складського руху: для накладних — увімкнено за типом; для актів/рахунків — напрям за роллю, вимкнено (opt-in)
   useEffect(() => {
@@ -293,7 +307,14 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
               {error && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 12 }}>{error}</div>}
 
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  {existingDoc && (
+                    <button className="btn" onClick={toggleVerified} disabled={busy}
+                      style={verified ? { background: 'var(--green)', color: '#fff', borderColor: 'var(--green)' } : { color: 'var(--green)' }}
+                      title="Звірено скан ↔ розпізнані поля (ціни, ПДВ, рухи)">
+                      <i className={`ti ${verified ? 'ti-checkbox' : 'ti-square'}`} /> {verified ? 'Перевірено' : 'Позначити перевіреним'}
+                    </button>
+                  )}
                   {existingDoc && <button className="btn" onClick={del} disabled={busy} style={{ color: 'var(--red)' }}><i className="ti ti-trash" /> Видалити</button>}
                   {existingDoc && <button className="btn" onClick={() => setShowMail(true)} disabled={busy}><i className="ti ti-send" /> Надіслати email</button>}
                 </div>

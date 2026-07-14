@@ -4,6 +4,8 @@ import { fmt } from '../lib/fmt'
 import { supabase } from '../lib/supabase'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import { listClosings, periodStatus, runChecklist, computeSnapshot, closePeriod, reopenPeriod, computeContinuity, snapshotDiff, computePeriodDetail } from '../lib/periodClose'
+import { getDocType } from '../lib/docgen'
+import DocModal from '../components/DocModal'
 
 const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД']
 
@@ -31,6 +33,7 @@ export default function PeriodClose() {
   const [busy, setBusy] = useState('')
   const [err, setErr] = useState(null)
   const [grouped, setGrouped] = useState({})
+  const [openDoc, setOpenDoc] = useState(null) // документ для звірки (DocModal)
 
   const load = async () => setClosings(await listClosings())
   useEffect(() => { load(); fetchArticles().then(a => setGrouped(groupByType(a))) }, [])
@@ -151,12 +154,17 @@ export default function PeriodClose() {
             </div>
           )}
 
-          {check && <Checklist check={check} grouped={grouped} onClassified={doCheck} />}
+          {check && <Checklist check={check} grouped={grouped} onClassified={doCheck} onOpenDoc={setOpenDoc} />}
           {snap?._prev && <SnapDiff snap={snap} />}
           {detail && <PeriodDetail detail={detail} />}
           {cont && <Continuity cont={cont} />}
           {snap && <Snapshot snap={snap} frozen={selStatus === 'closed'} />}
         </div>
+      )}
+      {openDoc && (
+        <DocModal user={user} existingDoc={openDoc} autoOcr={false}
+          onClose={() => setOpenDoc(null)}
+          onSaved={() => { setOpenDoc(null); doCheck() }} />
       )}
     </div>
   )
@@ -201,6 +209,24 @@ function PeriodDetail({ detail }) {
       <div style={{ fontWeight: 700, marginBottom: 12 }}>Документи й операції періоду</div>
       <DocList title="Продажі (видаткові / акти)" docs={detail.sales} totalAmt={t.salesAmount} totalVat={t.salesVat} color="var(--green)" />
       <DocList title="Закупівлі (прихідні)" docs={detail.purchases} totalAmt={t.purchAmount} totalVat={t.purchVat} color="var(--red)" />
+
+      {/* ПДВ — управлінський огляд: зобов'язання (з продажів) − кредит (із закупівель) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 10, padding: '10px 12px', background: 'var(--surface2)', borderRadius: 8, fontSize: 13 }}>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>Податкове зобов'язання (ПДВ з продажів)</div>
+          <div style={{ fontWeight: 600, color: 'var(--green)' }}>{fmt(t.salesVat)} грн</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>Податковий кредит (ПДВ із закупівель)</div>
+          <div style={{ fontWeight: 600, color: 'var(--red)' }}>{fmt(t.purchVat)} грн</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>ПДВ до сплати за період</div>
+          <div style={{ fontWeight: 700, fontSize: 15, color: (t.vatToPay ?? 0) >= 0 ? 'var(--text)' : 'var(--green)' }}>{fmt(t.vatToPay ?? (t.salesVat - t.purchVat))} грн</div>
+        </div>
+        <div style={{ gridColumn: '1 / -1', fontSize: 11, color: 'var(--text3)' }}>Управлінський огляд за документами періоду (зобов'язання − кредит). Від'ємне значення — кредит перевищує зобов'язання (до відшкодування/переносу).</div>
+      </div>
+
       <div style={{ fontSize: 13, marginTop: 8, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
         <b>Транзакції (Банк/Каса):</b> {tx.count} шт · надходження <span style={{ color: 'var(--green)' }}>+{fmt(tx.income)}</span> · витрати <span style={{ color: 'var(--red)' }}>−{fmt(tx.expense)}</span>
         {tx.unvalidated > 0 && <span style={{ color: 'var(--amber, #d97706)' }}> · {tx.unvalidated} некласифікованих</span>}
@@ -337,10 +363,12 @@ function Continuity({ cont }) {
   )
 }
 
-function Checklist({ check, grouped, onClassified }) {
+function Checklist({ check, grouped, onClassified, onOpenDoc }) {
   const ok = check.blockers === 0
   const [openTx, setOpenTx] = useState(false)
+  const [openDocs, setOpenDocs] = useState(false)
   const nTx = check.unclassifiedTx
+  const nUnver = check.unverifiedDocs || 0
   return (
     <div style={{ marginBottom: 18, border: `1px solid ${ok ? 'var(--green)' : 'var(--red)'}`, borderRadius: 10, padding: 14 }}>
       <div style={{ fontWeight: 700, marginBottom: 10, color: ok ? 'var(--green)' : 'var(--red)' }}>
@@ -354,10 +382,25 @@ function Checklist({ check, grouped, onClassified }) {
       <Row bad={check.docsNoAmount.length > 0} label="Документи без суми"
         val={check.docsNoAmount.length ? `${check.docsNoAmount.length} шт` : 'немає'} />
 
+      {/* Неперевірені документи — блокер: клік відкриває документ (скан+поля) для звірки */}
+      <div onClick={() => nUnver && setOpenDocs(o => !o)}
+        style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13, cursor: nUnver ? 'pointer' : 'default' }}>
+        <span><i className={`ti ${nUnver ? 'ti-alert-circle' : 'ti-check'}`} style={{ color: nUnver ? 'var(--red)' : 'var(--green)', marginRight: 6 }} />Неперевірені документи (блокує закриття)</span>
+        <b style={{ color: nUnver ? 'var(--red)' : undefined }}>{nUnver ? `${nUnver} шт ${openDocs ? '▴' : '▾'}` : 'усі перевірені'}</b>
+      </div>
+      {openDocs && (check.unverifiedList || []).map(d => (
+        <div key={d.id} onClick={() => onOpenDoc(d)}
+          style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12.5, padding: '5px 0 5px 24px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+          title="Відкрити для звірки скану й полів">
+          <span><i className="ti ti-file-search" style={{ marginRight: 4, color: 'var(--blue)' }} />{getDocType(d.type)?.label || d.type} №{d.doc_number || '—'} · {d.contractors?.name || '—'}</span>
+          <span style={{ color: 'var(--text3)', whiteSpace: 'nowrap' }}>{d.amount ? fmt(d.amount) : 'без суми'} · {d.doc_date}</span>
+        </div>
+      ))}
+
       <div onClick={() => nTx && setOpenTx(o => !o)}
         style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13, cursor: nTx ? 'pointer' : 'default' }}>
-        <span><i className={`ti ${nTx ? 'ti-alert-triangle' : 'ti-check'}`} style={{ color: nTx ? 'var(--amber, #d97706)' : 'var(--green)', marginRight: 6 }} />Некласифіковані транзакції (не блокує)</span>
-        <b>{nTx ? `${nTx} шт ${openTx ? '▴' : '▾'}` : 'немає'}</b>
+        <span><i className={`ti ${nTx ? 'ti-alert-circle' : 'ti-check'}`} style={{ color: nTx ? 'var(--red)' : 'var(--green)', marginRight: 6 }} />Невалідовані транзакції (блокує закриття)</span>
+        <b style={{ color: nTx ? 'var(--red)' : undefined }}>{nTx ? `${nTx} шт ${openTx ? '▴' : '▾'}` : 'усі валідовані'}</b>
       </div>
       {openTx && (check.unclassifiedList || []).map(tx => (
         <TxClassify key={tx.id} tx={tx} grouped={grouped} onDone={onClassified} />
