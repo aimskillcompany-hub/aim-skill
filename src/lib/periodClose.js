@@ -193,7 +193,7 @@ export async function isDateInClosedPeriod(dateStr) {
 export async function computePeriodDetail(year, month) {
   const { from, to } = periodRange(year, month)
 
-  const docs = await fetchAll('documents', 'id, type, doc_number, doc_date, amount, vat_amount, direction, contractor_id, generated_doc_id, source', q => q.gte('doc_date', from).lte('doc_date', to))
+  const docs = await fetchAll('documents', 'id, type, doc_number, doc_date, amount, vat_amount, direction, doc_role, contractor_id, generated_doc_id, source', q => q.gte('doc_date', from).lte('doc_date', to))
   const cids = [...new Set(docs.map(d => d.contractor_id).filter(Boolean))]
   const cons = {}
   for (let i = 0; i < cids.length; i += 100) {
@@ -225,7 +225,9 @@ export async function computePeriodDetail(year, month) {
       qty: Number(m.quantity) || 0, price: Number(m.price) || 0,
     })),
   })
-  const isPurchase = d => d.direction === 'payable' || d.type === 'incomingWaybill'
+  // Класифікація як у vatReport: вхідні (послуги/товари, які ОТРИМАЛИ) = закупівля.
+  // doc_role='incoming' — головний індикатор (напр. «Акт наданих послуг» від постачальника).
+  const isPurchase = d => d.doc_role === 'incoming' || d.direction === 'payable' || d.type === 'incomingWaybill'
   const purchases = docs.filter(isPurchase).map(enrich).sort((a, b) => (a.doc_date || '').localeCompare(b.doc_date || ''))
   const sales = docs.filter(d => !isPurchase(d)).map(enrich).sort((a, b) => (a.doc_date || '').localeCompare(b.doc_date || ''))
 
