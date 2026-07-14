@@ -11,7 +11,7 @@ import ProductSelect from '../components/ui/ProductSelect'
 import PricePickerModal from '../components/ui/PricePickerModal'
 import ContractorSelect from '../components/ui/ContractorSelect'
 import {
-  ORDER_TYPES, TYPE_COLORS, flowFor, stepFor, statusLabel, nextActionLabel,
+  ORDER_TYPES, TYPE_COLORS, OUTCOME, flowFor, stepFor, statusLabel, nextActionLabel,
   nextStatus, isOpen, needsAction, proposalOverdue,
 } from '../lib/orders'
 
@@ -36,6 +36,7 @@ export default function OrderCard() {
   const [tab, setTab] = useState('details')
   const [busy, setBusy] = useState('')
   const [confirmDel, setConfirmDel] = useState(false)
+  const [archiveMenu, setArchiveMenu] = useState(false)
   const [msg, setMsg] = useState(null)
   const [itemsDirty, setItemsDirty] = useState(false)
 
@@ -62,10 +63,32 @@ export default function OrderCard() {
     load()
   }
 
-  const toggleArchive = async () => {
+  // Архівувати з результатом (won/lost/null). Відновлення — archive(false).
+  const archive = async (outcome) => {
+    setBusy('archive'); setMsg(null); setArchiveMenu(false)
+    const upd = { archived_at: new Date().toISOString(), outcome: outcome || null }
+    let { error } = await supabase.from('orders').update(upd).eq('id', id)
+    // Колонка outcome може ще не існувати (міграція 028) — тоді архівуємо без неї
+    if (error && /outcome/.test(error.message || '')) {
+      ;({ error } = await supabase.from('orders').update({ archived_at: upd.archived_at }).eq('id', id))
+    }
+    setBusy('')
+    if (error) { setMsg('Помилка архівування: ' + error.message); return }
+    load()
+  }
+
+  const unarchive = async () => {
     setBusy('archive'); setMsg(null)
-    await supabase.from('orders').update({ archived_at: o.archived_at ? null : new Date().toISOString() }).eq('id', id)
+    await supabase.from('orders').update({ archived_at: null }).eq('id', id)
     setBusy(''); load()
+  }
+
+  // Змінити/проставити результат без зміни статусу архіву
+  const setOutcome = async (outcome) => {
+    setMsg(null)
+    const { error } = await supabase.from('orders').update({ outcome: outcome || null }).eq('id', id)
+    if (error) { setMsg('Помилка: ' + error.message); return }
+    load()
   }
 
   // Копіювати замовлення разом з товарами
@@ -122,15 +145,39 @@ export default function OrderCard() {
               <span style={{ color: 'var(--text2)', fontSize: 13 }}>{o.contractors?.name}</span>
               <span style={{ background: 'var(--surface2)', borderRadius: 6, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>{statusLabel(o)}</span>
               <span style={{ color: 'var(--text2)', fontSize: 13 }}>{fmt(o.total)} грн</span>
+              {OUTCOME[o.outcome] && (
+                <span style={{ background: OUTCOME[o.outcome].bg, color: OUTCOME[o.outcome].color, borderRadius: 6, padding: '2px 10px', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <i className={`ti ${OUTCOME[o.outcome].icon}`} /> {OUTCOME[o.outcome].label}
+                </span>
+              )}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button className="btn" onClick={copyOrder} disabled={!!busy} title="Створити копію замовлення з тими самими товарами">
               <i className="ti ti-copy" /> {busy === 'copy' ? '…' : 'Копіювати'}
             </button>
-            <button className="btn" onClick={toggleArchive} disabled={!!busy}>
-              <i className={`ti ${o.archived_at ? 'ti-archive-off' : 'ti-archive'}`} /> {o.archived_at ? 'Відновити' : 'Архівувати'}
-            </button>
+            {o.archived_at ? (
+              <button className="btn" onClick={unarchive} disabled={!!busy}>
+                <i className="ti ti-archive-off" /> {busy === 'archive' ? '…' : 'Відновити'}
+              </button>
+            ) : !archiveMenu ? (
+              <button className="btn" onClick={() => { setMsg(null); setArchiveMenu(true) }} disabled={!!busy}>
+                <i className="ti ti-archive" /> Архівувати
+              </button>
+            ) : (
+              <>
+                <button className="btn" onClick={() => archive('won')} disabled={busy === 'archive'} style={{ color: 'var(--green)' }} title="Замовлення виграно (тендер/конкурс)">
+                  <i className="ti ti-trophy" /> Виграно
+                </button>
+                <button className="btn" onClick={() => archive('lost')} disabled={busy === 'archive'} style={{ color: 'var(--red)' }} title="Замовлення програно">
+                  <i className="ti ti-mood-sad" /> Програно
+                </button>
+                <button className="btn" onClick={() => archive(null)} disabled={busy === 'archive'} title="Заархівувати без результату">
+                  <i className="ti ti-archive" /> Без результату
+                </button>
+                <button className="btn" onClick={() => setArchiveMenu(false)} disabled={busy === 'archive'}>Скасувати</button>
+              </>
+            )}
             {!confirmDel ? (
               <button className="btn" onClick={() => { setMsg(null); setConfirmDel(true) }} disabled={!!busy} style={{ color: 'var(--red)' }}>
                 <i className="ti ti-trash" /> Видалити
@@ -152,8 +199,17 @@ export default function OrderCard() {
       )}
 
       {o.archived_at && (
-        <div style={{ background: 'var(--surface2)', color: 'var(--text2)', borderRadius: 10, padding: '10px 16px', marginBottom: 14, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <i className="ti ti-archive" /> Замовлення в архіві (з {o.archived_at.slice(0, 10)}) — приховане з реєстру.
+        <div style={{ background: 'var(--surface2)', color: 'var(--text2)', borderRadius: 10, padding: '10px 16px', marginBottom: 14, fontSize: 13, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span><i className="ti ti-archive" /> Замовлення в архіві (з {o.archived_at.slice(0, 10)}) — приховане з реєстру.</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+            Результат:
+            {['won', 'lost', null].map((v, i) => (
+              <button key={i} className="btn" onClick={() => setOutcome(v)} disabled={(o.outcome || null) === v}
+                style={{ fontSize: 12, padding: '3px 10px', color: v ? OUTCOME[v].color : 'var(--text2)', fontWeight: (o.outcome || null) === v ? 700 : 400, opacity: (o.outcome || null) === v ? 1 : 0.75 }}>
+                {v ? <><i className={`ti ${OUTCOME[v].icon}`} /> {OUTCOME[v].label}</> : 'Без результату'}
+              </button>
+            ))}
+          </span>
         </div>
       )}
 

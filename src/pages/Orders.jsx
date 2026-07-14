@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { fmt, fmtInt } from '../lib/fmt'
 import {
-  ORDER_TYPES, TYPE_COLORS, statusLabel, nextActionLabel, isOpen, needsAction,
+  ORDER_TYPES, TYPE_COLORS, OUTCOME, statusLabel, nextActionLabel, isOpen, needsAction,
   proposalOverdue, paymentOverdue,
 } from '../lib/orders'
 import Kanban from '../components/Kanban'
@@ -109,6 +109,20 @@ export default function Orders() {
         </div>
       </div>
 
+      {filter === 'archived' && !loading && (() => {
+        const won = filtered.filter(o => o.outcome === 'won')
+        const lost = filtered.filter(o => o.outcome === 'lost')
+        const sum = arr => arr.reduce((s, o) => s + (Number(o.total) || 0), 0)
+        if (!won.length && !lost.length) return null
+        return (
+          <div style={{ display: 'flex', gap: 20, marginBottom: 14, flexWrap: 'wrap', fontSize: 13 }}>
+            <span style={{ color: OUTCOME.won.color, fontWeight: 600 }}><i className={`ti ${OUTCOME.won.icon}`} /> Виграно: {won.length} · {fmtInt(sum(won))} грн</span>
+            <span style={{ color: OUTCOME.lost.color, fontWeight: 600 }}><i className={`ti ${OUTCOME.lost.icon}`} /> Програно: {lost.length} · {fmtInt(sum(lost))} грн</span>
+            {won.length + lost.length > 0 && <span style={{ color: 'var(--text2)' }}>Win-rate: {Math.round(won.length / (won.length + lost.length) * 100)}%</span>}
+          </div>
+        )
+      })()}
+
       {loading ? (
         <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
       ) : view === 'kanban' ? (
@@ -131,7 +145,14 @@ export default function Orders() {
                     <td style={{ fontWeight: 500 }}>{o.order_number || o.id.slice(0, 6)}</td>
                     <td><div className="trunc">{o.clientName}</div></td>
                     <td><span style={{ color: TYPE_COLORS[o.type], fontSize: 12, fontWeight: 600 }}>{ORDER_TYPES[o.type]}</span></td>
-                    <td style={{ fontSize: 13 }}>{statusLabel(o)}</td>
+                    <td style={{ fontSize: 13 }}>
+                      {statusLabel(o)}
+                      {OUTCOME[o.outcome] && (
+                        <span style={{ marginLeft: 6, color: OUTCOME[o.outcome].color, fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' }}>
+                          <i className={`ti ${OUTCOME[o.outcome].icon}`} /> {OUTCOME[o.outcome].label}
+                        </span>
+                      )}
+                    </td>
                     <td style={{ fontSize: 13, color: o.overdue ? 'var(--red)' : needsAction(o) ? 'var(--text)' : 'var(--text2)', fontWeight: needsAction(o) ? 600 : 400 }}>
                       {o.overdue && <i className="ti ti-alert-triangle" style={{ marginRight: 4 }} />}{isOpen(o) ? nextActionLabel(o) : '—'}
                     </td>

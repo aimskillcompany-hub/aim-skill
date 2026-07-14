@@ -5,6 +5,12 @@
 export const ORDER_TYPES = { trade: 'Торгівля', service: 'Послуги', agent: 'Агент' }
 export const TYPE_COLORS = { trade: '#2563EB', service: '#7C3AED', agent: '#0D9488' }
 
+// Результат замовлення (тендер/конкурс) — задається при архівуванні
+export const OUTCOME = {
+  won: { label: 'Виграно', icon: 'ti-trophy', color: 'var(--green)', bg: 'var(--green-bg, #e7f7ec)' },
+  lost: { label: 'Програно', icon: 'ti-mood-sad', color: 'var(--red)', bg: 'var(--red-bg)' },
+}
+
 // act: 'do' — потребує дії менеджера; 'wait' — очікування; 'done' — закрито
 const FLOW = {
   trade: [
