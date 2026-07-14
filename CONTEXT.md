@@ -163,8 +163,8 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 ## 5. Відкриті задачі (checklist)
 
 ### 🔴 Міграції (звірено з БД 2026-07-14 через `migrations/probe.mjs`)
-- [ ] **Запустити `migrations/025_suborder_item_ordered.sql`** у Supabase Dashboard — колонки `supplier_order_items.ordered` немає в БД, а код помітки «Замовлено» у вкладці «Субзамовлення» уже LIVE → зараз ця дія падає.
-- [ ] **Запустити `migrations/027_generated_docs_refs.sql`** — без неї поля видаткової/акту (Рахунок №, дата, базис, адреса поставки) зберігаються з ґрейсфул-фолбеком (тобто не зберігаються) і далі «злітатимуть» при редагуванні. Решта міграцій 001–024, 026 — застосовані (звірено зондом 2026-07-14).
+- [x] ~~Запустити `migrations/025_suborder_item_ordered.sql`~~ — застосовано (звірено 2026-07-14, `supplier_order_items.ordered` є).
+- [x] ~~Запустити `migrations/027_generated_docs_refs.sql`~~ — застосовано (звірено 2026-07-14, усі 4 колонки є; поля видаткової/акту тепер зберігаються). Усі міграції 001–027 застосовані.
 
 ### Дії користувача (дані, не код)
 - [ ] Ввести **початковий залишок ПУМБ** станом на 2025-02-26 (Налаштування → Рахунки) — інакше баланс = лише рух.
@@ -252,9 +252,9 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `022_pricelist_source.sql` | Прайси: `supplier_price_lists.source` ('file'\|'brain_api') для API-синку Brain | ✅ застосовано (звірено 2026-07-14) |
 | `023_brain_categories.sql` | Прайси: `supplier_price_lists.categories` jsonb (обрані категорії Brain) | ✅ застосовано (звірено 2026-07-14) |
 | `024_contractor_edr_extract.sql` | Контрагенти: `edr_extract_path`/`edr_extract_name` (файл витягу з ЄДР) | ✅ застосовано (звірено 2026-07-14) |
-| `025_suborder_item_ordered.sql` | Субзамовлення: `supplier_order_items.ordered` (помітка «замовлено») | ❌ **НЕ застосовано** — колонки нема в БД (звірено 2026-07-14). Код фічі «Замовлено» LIVE → **запустити вручну** |
+| `025_suborder_item_ordered.sql` | Субзамовлення: `supplier_order_items.ordered` (помітка «замовлено») | ✅ застосовано (звірено 2026-07-14) |
 | `026_period_closings.sql` | Закриття періоду: `period_closings` + тригери-блокувачі `guard_period_by_date`/`guard_period_by_docdate` | ✅ застосовано (LIVE) |
-| `027_generated_docs_refs.sql` | Генерація: `generated_docs.invoice_ref`/`invoice_ref_date`/`delivery_basis`/`delivery_address` (щоб поля видаткової/акту не «злітали» при редагуванні) | ⏳ **запустити вручну** |
+| `027_generated_docs_refs.sql` | Генерація: `generated_docs.invoice_ref`/`invoice_ref_date`/`delivery_basis`/`delivery_address` (щоб поля видаткової/акту не «злітали» при редагуванні) | ✅ застосовано (звірено 2026-07-14) |
 | `validate.mjs` | Перевірка цілісності Фази 1 (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 | `probe.mjs` | Звірка наявності колонок/таблиць усіх міграцій у БД (`SUPABASE_SERVICE_KEY=... node migrations/probe.mjs`) | — |
 
