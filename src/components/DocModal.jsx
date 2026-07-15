@@ -150,10 +150,12 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
   }
 
   // Ідемпотентно синхронізувати складські рухи документа (замінити ВСІ рухи цього документа,
-  // крім збірок, і створити заново) — щоб перерозпізнавання не задвоювало склад
+  // крім збірок, і створити заново) — щоб перерозпізнавання не задвоювало склад.
+  // ВАЖЛИВО: якщо «Рух на складі» вимкнено — НЕ чіпаємо наявні рухи. Раніше видаляли завжди,
+  // тож просте збереження документа з порожніми позиціями стирало вже створений прихід/видаток.
   const syncDocStock = async (documentId) => {
-    await supabase.from('stock_movements').delete().eq('document_id', documentId).neq('source', 'assembly')
     if (!stockOn) return
+    await supabase.from('stock_movements').delete().eq('document_id', documentId).neq('source', 'assembly')
     for (const it of (form.items || [])) {
       const qty = Number(it.quantity ?? it.qty) || 0
       if (!qty || !it.name) continue
