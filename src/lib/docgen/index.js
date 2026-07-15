@@ -169,6 +169,9 @@ export async function generateXlsx(docTypeKey, contractor, items, options) {
 }
 
 // ── Авто-нумерація ──
+// Беремо МАКСИМАЛЬНИЙ номер у форматі PREFIX-NNNN серед генерованих документів цього типу
+// і додаємо 1. (Раніше брали номер ОСТАННЬОГО СТВОРЕНОГО — при ручних правках/видаленнях/
+// беквдейті останній міг мати менший номер → колізія, напр. два ВН-0003.)
 export async function getNextDocNumber(docTypeKey) {
   const dt = getDocType(docTypeKey)
   if (!dt) return '0001'
@@ -178,15 +181,14 @@ export async function getNextDocNumber(docTypeKey) {
     .from('generated_docs')
     .select('doc_number')
     .eq('doc_type', docTypeKey)
-    .order('created_at', { ascending: false })
-    .limit(1)
 
-  if (!data?.length) return `${prefix}-0001`
-
-  const last = data[0].doc_number
-  const numMatch = last.match(/(\d+)$/)
-  const nextNum = numMatch ? parseInt(numMatch[1]) + 1 : 1
-  return `${prefix}-${String(nextNum).padStart(4, '0')}`
+  const re = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-(\\d+)$`)
+  let max = 0
+  for (const row of (data || [])) {
+    const m = (row.doc_number || '').match(re)
+    if (m) max = Math.max(max, parseInt(m[1], 10))
+  }
+  return `${prefix}-${String(max + 1).padStart(4, '0')}`
 }
 
 // Колонки-реквізити з міграції 027 можуть ще не існувати — на помилку про них
