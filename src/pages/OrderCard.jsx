@@ -363,8 +363,9 @@ function ItemsTab({ o, onChange, onDirty }) {
   const netUnit = (r) => { const p = Number(r.unit_price) || 0; const v = rate(r); return r.price_includes_vat ? (v > 0 ? p / (1 + v / 100) : p) : p }
   const rowTotal = (r) => grossUnit(r) * (Number(r.qty) || 0)            // з ПДВ
   const rowNet = (r) => netUnit(r) * (Number(r.qty) || 0)               // без ПДВ
-  const rowMargin = (r) => ((Number(r.unit_price) || 0) - (Number(r.cost_price) || 0)) * (Number(r.qty) || 0)
-  const marginPct = (r) => { const p = Number(r.unit_price) || 0; return p > 0 ? ((p - (Number(r.cost_price) || 0)) / p) * 100 : 0 }
+  // Маржа — за ЧИСТОЮ ціною продажу (без ПДВ): ПДВ не дохід, а зобов'язання. Собівартість теж net.
+  const rowMargin = (r) => (netUnit(r) - (Number(r.cost_price) || 0)) * (Number(r.qty) || 0)
+  const marginPct = (r) => { const n = netUnit(r); return n > 0 ? ((n - (Number(r.cost_price) || 0)) / n) * 100 : 0 }
   const sum = (rows || []).reduce((s, r) => s + rowTotal(r), 0)         // всього з ПДВ
   const netSum = (rows || []).reduce((s, r) => s + rowNet(r), 0)         // без ПДВ
   const vatSum = sum - netSum                                            // ПДВ
