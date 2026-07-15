@@ -314,8 +314,8 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
                     <i className="ti ti-package" /> Рух на складі для {form.items.length} позицій
                   </label>
                   {stockOn && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                      <select className="form-input" value={stockDir} onChange={e => setStockDir(e.target.value)} style={{ width: 240, height: 38 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                      <select className="form-input" value={stockDir} onChange={e => setStockDir(e.target.value)} style={{ flex: '1 1 220px', maxWidth: 280 }}>
                         <option value="in">Прихід (оприбуткування)</option>
                         <option value="out">Видача (списання за FIFO)</option>
                       </select>
