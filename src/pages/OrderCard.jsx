@@ -366,6 +366,7 @@ function ItemsTab({ o, onChange, onDirty }) {
   // Маржа — net-to-net. «Тип ціни = ціна з ПДВ» стосується І продажу, І закупівлі:
   // тоді ПДВ віднімається з обох (собівартість теж введена з ПДВ). Інакше обидві вже net.
   const netCost = (r) => { const c = Number(r.cost_price) || 0; const v = rate(r); return r.price_includes_vat ? (v > 0 ? c / (1 + v / 100) : c) : c }
+  const grossCost = (r) => { const c = Number(r.cost_price) || 0; const v = rate(r); return r.price_includes_vat ? c : c * (1 + v / 100) }
   const rowMargin = (r) => (netUnit(r) - netCost(r)) * (Number(r.qty) || 0)
   const marginPct = (r) => { const n = netUnit(r); return n > 0 ? ((n - netCost(r)) / n) * 100 : 0 }
   const sum = (rows || []).reduce((s, r) => s + rowTotal(r), 0)         // всього з ПДВ
@@ -450,14 +451,20 @@ function ItemsTab({ o, onChange, onDirty }) {
           <input className="form-input" placeholder="Код" value={r.sku || ''} onChange={e => setRow(i, { sku: e.target.value })} style={{ width: 100 }} />
           <input className="form-input" type="number" placeholder="К-сть" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} style={{ width: 80 }} />
           <input className="form-input" placeholder="од." value={r.unit || ''} onChange={e => setRow(i, { unit: e.target.value })} style={{ width: 70 }} />
-          <input className="form-input" type="number" placeholder="Закупівля" value={r.cost_price ?? ''} onChange={e => setRow(i, { cost_price: e.target.value })} style={{ width: 110 }} />
-          <input className="form-input" type="number" placeholder="Ціна" value={r.unit_price} onChange={e => setRow(i, { unit_price: e.target.value })} style={{ width: 110 }} />
+          <div style={{ width: 110 }}>
+            <input className="form-input" type="number" placeholder="Закупівля" value={r.cost_price ?? ''} onChange={e => setRow(i, { cost_price: e.target.value })} style={{ width: '100%' }} />
+            {Number(r.cost_price) > 0 && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 1, textAlign: 'right' }}>{r.price_includes_vat ? `без ПДВ: ${fmt(netCost(r))}` : `з ПДВ: ${fmt(grossCost(r))}`}</div>}
+          </div>
+          <div style={{ width: 110 }}>
+            <input className="form-input" type="number" placeholder="Ціна" value={r.unit_price} onChange={e => setRow(i, { unit_price: e.target.value })} style={{ width: '100%' }} />
+            {Number(r.unit_price) > 0 && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 1, textAlign: 'right' }}>{r.price_includes_vat ? `без ПДВ: ${fmt(netUnit(r))}` : `з ПДВ: ${fmt(grossUnit(r))}`}</div>}
+          </div>
           <select className="form-input" value={Number(r.vat_rate) || 0} onChange={e => setRow(i, { vat_rate: Number(e.target.value) })} style={{ width: 72, padding: '8px 6px' }}>
             {VAT_RATES.map(v => <option key={v} value={v}>{v}%</option>)}
           </select>
-          <select className="form-input" value={r.price_includes_vat ? '1' : '0'} onChange={e => setRow(i, { price_includes_vat: e.target.value === '1' })} style={{ width: 110, padding: '8px 6px' }} title="Чи ціна вже містить ПДВ">
-            <option value="0">+ПДВ зверху</option>
-            <option value="1">ціна з ПДВ</option>
+          <select className="form-input" value={r.price_includes_vat ? '1' : '0'} onChange={e => setRow(i, { price_includes_vat: e.target.value === '1' })} style={{ width: 110, padding: '8px 6px' }} title="Як введені ціни закупівлі й продажу — з ПДВ чи без">
+            <option value="1">Ціни з ПДВ</option>
+            <option value="0">Ціни без ПДВ</option>
           </select>
           <div style={{ width: 120, textAlign: 'right', padding: '8px 0', fontSize: 13, color: mColor }}>{fmt(m)}<div style={{ fontSize: 11 }}>{mp.toFixed(0)}%</div></div>
           <div style={{ width: 110, textAlign: 'right', padding: '8px 0', fontSize: 13, fontWeight: 500 }}>{fmt(rowTotal(r))}</div>
@@ -470,8 +477,8 @@ function ItemsTab({ o, onChange, onDirty }) {
         <div style={{ fontWeight: 600 }}>
           <div style={{ fontSize: 13, fontWeight: 400, color: 'var(--text2)' }}>Без ПДВ: {fmt(netSum)} грн · ПДВ: {fmt(vatSum)} грн</div>
           Всього з ПДВ: {fmt(sum)} грн
-          {marginSum !== 0 && <span style={{ marginLeft: 12, fontSize: 13, fontWeight: 500, color: marginSum > 0 ? 'var(--green)' : 'var(--red)' }}>Маржа: {fmt(marginSum)} грн{sum > 0 ? ` (${((marginSum / sum) * 100).toFixed(0)}%)` : ''}</span>}
-          <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 400, marginTop: 2 }}>Ціна продажу — з ПДВ. «Сума» замовлення = всього з ПДВ.</div>
+          {marginSum !== 0 && <span style={{ marginLeft: 12, fontSize: 13, fontWeight: 500, color: marginSum > 0 ? 'var(--green)' : 'var(--red)' }}>Маржа: {fmt(marginSum)} грн{netSum > 0 ? ` (${((marginSum / netSum) * 100).toFixed(0)}%)` : ''}</span>}
+          <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 400, marginTop: 2 }}>Маржа рахується без ПДВ (чиста ціна − чиста собівартість). «Тип ціни» задає, як введені ціни — з ПДВ чи без. «Сума» замовлення = всього з ПДВ.</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {saved && <span style={{ color: 'var(--green)', fontSize: 13 }}>Збережено!</span>}
