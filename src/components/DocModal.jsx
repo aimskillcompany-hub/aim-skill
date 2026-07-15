@@ -356,6 +356,26 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
                       </tbody>
                     </table>
                   </div>
+                  {/* Розклад ПДВ: куди що падає (ціни позицій/складу — нетто; ПДВ — окремо в кредит) */}
+                  {(() => {
+                    const gross = Number(form.amount) || 0
+                    const vat = Number(form.vat_amount) || 0
+                    const net = gross - vat
+                    if (!gross) return null
+                    const incoming = (form.doc_role || existingDoc?.doc_role) === 'incoming' || getDocType(form.type)?.direction === 'incoming'
+                    return (
+                      <div style={{ marginTop: 8, background: 'var(--surface2)', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: 'var(--text2)' }}>
+                        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                          <span>Без ПДВ (склад/собівартість): <b>{fmt(net)}</b></span>
+                          <span>ПДВ: <b style={{ color: incoming ? 'var(--green)' : 'var(--amber, #b45309)' }}>{fmt(vat)}</b></span>
+                          <span>З ПДВ (гроші/борг): <b>{fmt(gross)}</b></span>
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+                          Ціни позицій і складу — <b>без ПДВ</b> (нетто). ПДВ {fmt(vat)} → {incoming ? 'податковий кредит (зменшує ПДВ до сплати)' : 'податкове зобовʼязання'}. Борг/гроші — з ПДВ ({fmt(gross)}).
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
 
