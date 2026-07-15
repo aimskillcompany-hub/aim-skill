@@ -174,7 +174,7 @@ export async function salesProfitReport(year, month) {
   const purchaseByProd = {}
   if (prodIds.length) {
     const { data: inMovs } = await supabase.from('stock_movements')
-      .select('product_id, date, document_id').eq('type', 'in').in('product_id', prodIds).not('document_id', 'is', null)
+      .select('product_id, date, document_id, price, cost_price').eq('type', 'in').in('product_id', prodIds).not('document_id', 'is', null)
       .order('date', { ascending: false })
     const inDocIds = [...new Set((inMovs || []).map(m => m.document_id))]
     const { data: inDocs } = inDocIds.length ? await supabase.from('documents').select('id, doc_number, doc_date, vat_amount, contractors(name, is_vat_payer)').in('id', inDocIds) : { data: [] }
@@ -184,7 +184,9 @@ export async function salesProfitReport(year, month) {
       const d = inDocMap[m.document_id]; if (!d) return
       // Без ПДВ лише коли І документ без ПДВ, І постачальник неплатник (надійніше за самий прапорець)
       const noVat = (Number(d.vat_amount) || 0) === 0 && d.contractors?.is_vat_payer === false
-      purchaseByProd[m.product_id] = { supplier: d.contractors?.name || '', ref: `${d.doc_number || ''}${d.doc_date ? ', ' + d.doc_date.slice(0, 10) : ''}`, docId: d.id, costHasVat: !noVat }
+      // lastInNet — ціна останньої закупівлі (net), фолбек собівартості коли cost_price руху порожній (рішення #16)
+      const lastInNet = Number(m.cost_price) || Number(m.price) || 0
+      purchaseByProd[m.product_id] = { supplier: d.contractors?.name || '', ref: `${d.doc_number || ''}${d.doc_date ? ', ' + d.doc_date.slice(0, 10) : ''}`, docId: d.id, costHasVat: !noVat, lastInNet }
     })
   }
 
@@ -212,8 +214,10 @@ export async function salesProfitReport(year, month) {
     const d = docMap[m.document_id]; if (!d) continue
     ;(byDoc[m.document_id] ||= { doc: d, rows: [] })
     const prod = prodMap[m.product_id]
-    // Послуги не мають собівартості (COGS) — уся сума є маржею/доходом
-    const cost = prod?.product_type === 'service' ? 0 : Number(m.cost_price) || 0
+    // Послуги не мають собівартості (COGS) — уся сума є маржею/доходом.
+    // Для товарів: cost_price руху, а якщо порожній — фолбек на останню закупівлю (рішення #16).
+    const cost = prod?.product_type === 'service' ? 0
+      : (Number(m.cost_price) || purchaseByProd[m.product_id]?.lastInNet || 0)
     byDoc[m.document_id].rows.push(calcRow(
       prod?.name || (m.description || '').replace(/^.*?:\s*/, '') || '—',
       Number(m.quantity) || 0, Number(m.price) || 0, cost,
