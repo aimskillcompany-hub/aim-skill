@@ -17,6 +17,7 @@ export async function callClaude(requestBody, { retries = 4 } = {}) {
     try { data = await res.json() } catch {}
     if (res.ok && data && !data.error) return data
 
+    if (res.status === 413) throw new Error('Файл завеликий для розпізнавання. Зменшіть роздільність фото або розділіть PDF на сторінки й спробуйте знову.')
     const errType = data?.error?.type || ''
     const msg = data?.error?.message || `HTTP ${res.status}`
     const transient = [429, 500, 502, 503, 529].includes(res.status) ||
@@ -28,40 +29,42 @@ export async function callClaude(requestBody, { retries = 4 } = {}) {
   throw lastErr
 }
 
-// Конвертуємо HEIC/HEIF → JPEG через canvas
+// Нормалізуємо зображення перед OCR: HEIC/HEIF → JPEG + зменшення великих фото
+// (проксі /api/ai має ліміт ~4.5МБ на тіло; фото з телефону + base64 його перевищують → HTTP 413).
+const OCR_MAX_DIM = 2200   // максимальний довший бік (тексту вистачає для розпізнавання)
+const OCR_JPEG_Q = 0.82
 async function normalizeImage(file) {
-  const isHeic = ['image/heic', 'image/heif'].includes(file.type.toLowerCase()) ||
-    /\.(heic|heif)$/i.test(file.name)
+  const isHeic = ['image/heic', 'image/heif'].includes(file.type.toLowerCase()) || /\.(heic|heif)$/i.test(file.name)
+  const isImage = isHeic || file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(file.name)
+  if (!isImage) return file  // PDF та інше — не чіпаємо
+  // Маленькі JPEG не переганяємо (щоб не втрачати якість зайвий раз)
+  if (!isHeic && file.type === 'image/jpeg' && file.size < 1_800_000) return file
 
-  if (!isHeic) return file
-
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file)
     const img = new Image()
     img.onload = () => {
       try {
+        const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height
+        const scale = Math.min(1, OCR_MAX_DIM / Math.max(w, h))
+        const cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale))
         const canvas = document.createElement('canvas')
-        canvas.width = img.naturalWidth || img.width
-        canvas.height = img.naturalHeight || img.height
-        const ctx = canvas.getContext('2d')
-        ctx.drawImage(img, 0, 0)
+        canvas.width = cw; canvas.height = ch
+        canvas.getContext('2d').drawImage(img, 0, 0, cw, ch)
         canvas.toBlob(blob => {
           URL.revokeObjectURL(url)
           if (blob) {
-            const newName = file.name.replace(/\.(heic|heif)$/i, '.jpg')
-            resolve(new File([blob], newName, { type: 'image/jpeg' }))
-          } else {
-            reject(new Error('Не вдалося конвертувати HEIC. Збережіть фото як JPEG або PNG і спробуйте знову.'))
-          }
-        }, 'image/jpeg', 0.92)
-      } catch(e) {
-        URL.revokeObjectURL(url)
-        reject(new Error('Не вдалося конвертувати HEIC. Збережіть фото як JPEG або PNG і спробуйте знову.'))
-      }
+            const newName = (file.name || 'photo').replace(/\.(heic|heif|png|webp|gif)$/i, '.jpg')
+            resolve(new File([blob], /\.jpe?g$/i.test(newName) ? newName : newName + '.jpg', { type: 'image/jpeg' }))
+          } else resolve(file)  // фолбек — оригінал
+        }, 'image/jpeg', OCR_JPEG_Q)
+      } catch { URL.revokeObjectURL(url); resolve(file) }
     }
     img.onerror = () => {
       URL.revokeObjectURL(url)
-      reject(new Error('Формат HEIC не підтримується вашим браузером. Збережіть фото як JPEG або PNG.'))
+      reject(new Error(isHeic
+        ? 'Формат HEIC не підтримується браузером. Збережіть фото як JPEG або PNG.'
+        : 'Не вдалося прочитати зображення. Збережіть як JPEG або PNG.'))
     }
     img.src = url
   })
