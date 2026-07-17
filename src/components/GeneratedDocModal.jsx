@@ -5,7 +5,7 @@ import { getDocType, generatedDocBlob, previewPdf, generatePdf } from '../lib/do
 
 // Перегляд згенерованого документа: зліва прев'ю PDF (регенерація в blob), справа — інформація.
 // Файлу у сховищі немає — PDF будується з даних generated_docs.
-export default function GeneratedDocModal({ doc, onClose, onDeleted }) {
+export default function GeneratedDocModal({ doc, onClose, onDeleted, onScanUploaded }) {
   const [gd, setGd] = useState(null)
   const [contractor, setContractor] = useState(null)
   const [items, setItems] = useState([])
@@ -41,6 +41,21 @@ export default function GeneratedDocModal({ doc, onClose, onDeleted }) {
 
   const openTab = () => gd && previewPdf(gd.doc_type, contractor, items, optsOf(gd)).catch(e => setErr(e.message))
   const download = () => gd && generatePdf(gd.doc_type, contractor, items, optsOf(gd)).catch(e => setErr(e.message))
+
+  // Прикріпити реальний скан/PDF (напр. підписаний) до згенерованого документа → далі як звичайний
+  const uploadScan = async (file) => {
+    if (!file || !doc.id) return
+    setBusy(true); setErr(null)
+    try {
+      const path = `${Date.now()}_${file.name}`.replace(/[^\w.\-/]/g, '_')
+      const { error: upErr } = await supabase.storage.from('documents').upload(path, file, { contentType: file.type, upsert: false })
+      if (upErr && !/exists/i.test(upErr.message)) throw upErr
+      const upd = { storage_path: path, file_path: path, file_name: file.name, file_type: file.type }
+      const { error } = await supabase.from('documents').update(upd).eq('id', doc.id)
+      if (error) throw error
+      onScanUploaded?.({ ...doc, ...upd })
+    } catch (e) { setErr('Не вдалося завантажити скан: ' + e.message); setBusy(false) }
+  }
 
   const deleteDoc = async () => {
     if (!confirm(`Видалити «${label}${gd?.doc_number ? ' №' + gd.doc_number : ''}»?\nЦе прибере і згенерований документ, і його запис у Документах, і пов'язані складські рухи.`)) return
@@ -80,10 +95,15 @@ export default function GeneratedDocModal({ doc, onClose, onDeleted }) {
             {state === 'fallback' && (
               <div style={{ padding: 24, textAlign: 'center', border: '1px dashed var(--border)', borderRadius: 8 }}>
                 <i className="ti ti-file-text" style={{ fontSize: 32, color: 'var(--text3)' }} />
-                <div style={{ fontSize: 13, color: 'var(--text2)', margin: '8px 0 14px' }}>Прев'ю недоступне — відкрийте документ у вкладці або завантажте.</div>
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                <div style={{ fontSize: 13, color: 'var(--text2)', margin: '8px 0 14px' }}>Прев'ю недоступне — відкрийте PDF у вкладці, завантажте, або прикріпіть підписаний скан.</div>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
                   <button className="btn btn-primary" onClick={openTab}><i className="ti ti-external-link" /> Відкрити</button>
                   <button className="btn" onClick={download}><i className="ti ti-file-download" /> Завантажити</button>
+                  <label className="btn" style={{ cursor: busy ? 'wait' : 'pointer' }} title="Прикріпити підписаний скан/PDF — далі як звичайний документ (прев'ю + розпізнавання)">
+                    <i className="ti ti-scan" /> {busy ? '…' : 'Завантажити скан'}
+                    <input type="file" accept=".pdf,image/*" style={{ display: 'none' }} disabled={busy}
+                      onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadScan(f) }} />
+                  </label>
                 </div>
               </div>
             )}
@@ -125,6 +145,11 @@ export default function GeneratedDocModal({ doc, onClose, onDeleted }) {
             <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap', alignItems: 'center' }}>
               <button className="btn" onClick={openTab}><i className="ti ti-external-link" /> Відкрити у вкладці</button>
               <button className="btn" onClick={download}><i className="ti ti-file-download" /> Завантажити</button>
+              <label className="btn" style={{ cursor: busy ? 'wait' : 'pointer' }} title="Прикріпити підписаний скан/PDF — далі як звичайний документ">
+                <i className="ti ti-scan" /> Скан
+                <input type="file" accept=".pdf,image/*" style={{ display: 'none' }} disabled={busy}
+                  onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadScan(f) }} />
+              </label>
               <button className="btn" onClick={deleteDoc} disabled={busy} style={{ marginLeft: 'auto', color: 'var(--red)' }} title="Видалити документ">
                 <i className="ti ti-trash" /> {busy ? '…' : 'Видалити'}
               </button>

@@ -26,8 +26,11 @@ export default function Documents() {
   const [openDoc, setOpenDoc] = useState(null) // { doc, autoOcr }
   const [genDoc, setGenDoc] = useState(null)   // згенерований документ (перегляд)
 
+  // Генерований документ БЕЗ прикріпленого реального скану → GeneratedDocModal (рендер з даних).
+  // Якщо до нього прикріпили скан (storage_path не з 'generated/') → відкриваємо як звичайний.
+  const hasRealScan = (d) => d.storage_path && !/^generated\//.test(d.storage_path)
   const openRow = (d) => {
-    if (d.source === 'generated' && d.generated_doc_id) { setGenDoc(d); return }
+    if (d.source === 'generated' && d.generated_doc_id && !hasRealScan(d)) { setGenDoc(d); return }
     setOpenDoc({ doc: d, autoOcr: false })
   }
 
@@ -139,7 +142,8 @@ export default function Documents() {
 
       {showOcr && <DocModal user={user} onClose={() => setShowOcr(false)} onSaved={() => { setShowOcr(false); load() }} />}
       {openDoc && <DocModal user={user} existingDoc={openDoc.doc} autoOcr={openDoc.autoOcr} onClose={() => setOpenDoc(null)} onSaved={() => { setOpenDoc(null); load() }} />}
-      {genDoc && <GeneratedDocModal doc={genDoc} onClose={() => setGenDoc(null)} onDeleted={() => { setGenDoc(null); load() }} />}
+      {genDoc && <GeneratedDocModal doc={genDoc} onClose={() => setGenDoc(null)} onDeleted={() => { setGenDoc(null); load() }}
+        onScanUploaded={(d) => { setGenDoc(null); load(); setOpenDoc({ doc: d, autoOcr: false }) }} />}
       {pickGen && <PickContractorModal onClose={() => setPickGen(false)} onPick={(c) => { setPickGen(false); setGenContractor(c) }} />}
       {genContractor && <DocGenModal contractor={genContractor} userId={user?.id} onClose={() => setGenContractor(null)} onSaved={() => { setGenContractor(null); load() }} />}
     </div>
