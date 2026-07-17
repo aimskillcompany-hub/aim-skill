@@ -1,3 +1,4 @@
+import { unzipSync, strFromU8 } from 'fflate'
 // API key тепер на сервері — виклики через /api/ai proxy
 const USE_PROXY = !import.meta.env.DEV // В dev режимі fallback на прямий доступ
 const API_KEY = import.meta.env.VITE_ANTHROPIC_KEY
@@ -185,6 +186,63 @@ ${articles?.length ? articles.map(a => `- ${a.name} (${a.type})`).join('\n') : '
     console.error('AI response:', text)
     throw new Error('Не вдалось розпізнати документ. Спробуйте ще раз або введіть дані вручну.')
   }
+}
+
+// ── .docx → простий текст (для AI-структурування специфікації) ──
+async function docxToText(file) {
+  const buf = new Uint8Array(await file.arrayBuffer())
+  const zip = unzipSync(buf)
+  const xml = zip['word/document.xml']
+  if (!xml) throw new Error('Не вдалося прочитати .docx (немає document.xml)')
+  let s = strFromU8(xml)
+  // межі абзаців/клітинок → роздільники, тоді прибрати теги
+  s = s.replace(/<\/w:p>/g, '\n').replace(/<\/w:tc>/g, ' | ').replace(/<[^>]+>/g, '')
+  return s.replace(/[ \t]+/g, ' ').replace(/\n{2,}/g, '\n').trim()
+}
+
+// ── Витягти ПОЗИЦІЇ товарів зі специфікації/договору (для завантаження в замовлення) ──
+// Приймає .docx (текст) + PDF/фото (через Claude). Повертає { priceIncludesVat, items:[...] }.
+export async function extractOrderItems(files) {
+  if (!files?.length) throw new Error('Немає файлів')
+  const supported = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+  const contentBlocks = []
+  let docxText = ''
+  for (let file of files) {
+    const isDocx = /\.docx$/i.test(file.name) || (file.type || '').includes('wordprocessingml')
+    if (isDocx) { docxText += (docxText ? '\n\n' : '') + await docxToText(file); continue }
+    file = await normalizeImage(file)
+    const base64 = await toBase64(file)
+    if (file.type === 'application/pdf') contentBlocks.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } })
+    else if (file.type.startsWith('image/')) contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: supported.includes(file.type) ? file.type : 'image/jpeg', data: base64 } })
+    else throw new Error(`Непідтримуваний формат: ${file.name}. Використай .docx, PDF або фото.`)
+  }
+  if (docxText) contentBlocks.push({ type: 'text', text: 'Текст документа (договір/специфікація):\n' + docxText.slice(0, 45000) })
+  contentBlocks.push({ type: 'text', text: 'Витягни позиції товарів зі специфікації і поверни JSON.' })
+
+  const systemPrompt = `Ти витягуєш ПОЗИЦІЇ ТОВАРІВ зі специфікації договору або накладної (українською).
+Знайди таблицю/перелік товарів (розділи «Специфікація», «Додаток №1» тощо). Кожен рядок таблиці — окремий товар.
+Поверни ТІЛЬКИ валідний JSON без markdown та пояснень:
+{
+  "priceIncludesVat": true|false,
+  "items": [
+    { "name": "повна назва товару як у документі", "sku": "артикул/код або null", "quantity": число, "unit": "шт|компл|м|кг|...", "unitPrice": число_або_null, "vatRate": 20 }
+  ]
+}
+Правила:
+- Береш ЛИШЕ товарні рядки. НЕ включай заголовки колонок, підсумки, «Загальна сума», «в т.ч. ПДВ», реквізити сторін.
+- name — повна назва з бренду/моделі (напр. «Автоматичний вимикач 3P 6kA C-40A 3M, Hager»).
+- unitPrice — ціна за одиницю з таблиці як є. Якщо колонка «Ціна без ПДВ» → priceIncludesVat=false; якщо «Ціна з ПДВ» → true. Якщо ціни нема — unitPrice=null.
+- vatRate зазвичай 20 (0 якщо явно без ПДВ).
+- Усі суми — додатні числа; невідоме — null.`
+
+  const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 4000, system: systemPrompt, messages: [{ role: 'user', content: contentBlocks }] })
+  const text = data.content?.find(b => b.type === 'text')?.text || ''
+  let clean = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+  const m = clean.match(/\{[\s\S]*\}/); if (m) clean = m[0]
+  try {
+    const r = JSON.parse(clean)
+    return { priceIncludesVat: !!r.priceIncludesVat, items: Array.isArray(r.items) ? r.items : [] }
+  } catch { throw new Error('Не вдалося розпізнати специфікацію. Спробуйте інший файл або додайте позиції вручну.') }
 }
 
 // ── Розпізнати ВИТЯГ з ЄДР → реквізити компанії (для профілю контрагента) ──

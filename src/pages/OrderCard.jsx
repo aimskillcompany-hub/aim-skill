@@ -5,6 +5,7 @@ import { useUser } from '../lib/auth'
 import { fmt } from '../lib/fmt'
 import { getDocType, previewPdf, generatePdf, supplierOrderPdf, investorReportPdf } from '../lib/docgen'
 import { resolveProduct } from '../lib/stockService'
+import { extractOrderItems } from '../lib/ai'
 import DocModal from '../components/DocModal'
 import DocGenModal from '../components/DocGenModal'
 import ProductSelect from '../components/ui/ProductSelect'
@@ -326,7 +327,30 @@ function ItemsTab({ o, onChange, onDirty }) {
   const [saved, setSaved] = useState(false)
   const [showPicker, setShowPicker] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiMsg, setAiMsg] = useState(null)
   const markDirty = () => { setDirty(true); onDirty?.(true) }
+
+  // AI-імпорт специфікації (.docx / PDF / фото) → позиції замовлення
+  const importSpec = async (files) => {
+    if (!files?.length) return
+    setAiLoading(true); setAiMsg(null)
+    try {
+      const { priceIncludesVat, items } = await extractOrderItems(Array.from(files))
+      if (!items.length) { setAiMsg('Не знайдено товарних позицій у документі.'); setAiLoading(false); return }
+      markDirty()
+      setRows(rs => [...(rs || []), ...items.map(it => ({
+        product_id: null, name: it.name || '', sku: it.sku || '', unit: it.unit || 'шт',
+        qty: Number(it.quantity) || 1, cost_price: 0,
+        unit_price: Number(it.unitPrice) || 0,
+        vat_rate: it.vatRate != null ? Number(it.vatRate) : 20,
+        price_includes_vat: !!priceIncludesVat,
+        supplier_id: null, supplier_name: null,
+      }))])
+      setAiMsg(`Додано позицій: ${items.length}. Перевірте ціни й собівартість (напр. «З прайсу»), тоді «Зберегти».`)
+    } catch (e) { setAiMsg(e.message) }
+    setAiLoading(false)
+  }
 
   const load = () => supabase.from('order_items').select('*, contractors(name)').eq('order_id', o.id).order('created_at')
     .then(({ data }) => { setRows((data || []).map(r => ({ ...r, supplier_name: r.contractors?.name || null }))); setDirty(false); onDirty?.(false) })
@@ -406,11 +430,18 @@ function ItemsTab({ o, onChange, onDirty }) {
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <div className="card-title" style={{ marginBottom: 0 }}>Товари замовлення</div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <label className="btn" style={{ cursor: aiLoading ? 'wait' : 'pointer' }} title="Завантажити договір/специфікацію (.docx, PDF, фото) — AI витягне товари">
+            {aiLoading ? <><i className="ti ti-loader-2" style={{ animation: 'spin 1s linear infinite' }} /> Розпізнаю…</> : <><i className="ti ti-file-import" /> Специфікація (AI)</>}
+            <input type="file" accept=".docx,.pdf,image/*" multiple style={{ display: 'none' }} disabled={aiLoading}
+              onChange={e => { const fs = e.target.files; e.target.value = ''; importSpec(fs) }} />
+          </label>
           <button className="btn" onClick={() => setShowPicker(true)}><i className="ti ti-tag" /> З прайсу</button>
           <button className="btn" onClick={addRow}><i className="ti ti-plus" /> Позиція</button>
         </div>
       </div>
+
+      {aiMsg && <div style={{ fontSize: 13, color: 'var(--text2)', background: 'var(--surface2)', borderRadius: 8, padding: '8px 12px', marginBottom: 12 }}><i className="ti ti-sparkles" style={{ color: 'var(--blue)' }} /> {aiMsg}</div>}
 
       {rows.length === 0 && <p style={{ color: 'var(--text3)', fontSize: 13 }}>Товарів немає. Додавайте їх, коли стане відомо, що саме входить у замовлення.</p>}
 
