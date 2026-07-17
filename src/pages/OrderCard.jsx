@@ -333,11 +333,11 @@ function ItemsTab({ o, onChange, onDirty }) {
 
   // AI-імпорт специфікації (.docx / PDF / фото) → позиції замовлення
   const importSpec = async (files) => {
-    if (!files?.length) return
-    setAiLoading(true); setAiMsg(null)
+    if (!files?.length) { setAiMsg('Файл не обрано.'); return }
+    setAiLoading(true); setAiMsg(`⏳ Аналізую «${files[0]?.name || 'документ'}»… це може зайняти 10–30 секунд.`)
     try {
       const { priceIncludesVat, items } = await extractOrderItems(Array.from(files))
-      if (!items.length) { setAiMsg('Не знайдено товарних позицій у документі.'); setAiLoading(false); return }
+      if (!items.length) { setAiMsg('Не знайдено товарних позицій у документі. Спробуй інший файл або додай вручну.'); setAiLoading(false); return }
       markDirty()
       setRows(rs => [...(rs || []), ...items.map(it => ({
         product_id: null, name: it.name || '', sku: it.sku || '', unit: it.unit || 'шт',
@@ -347,8 +347,8 @@ function ItemsTab({ o, onChange, onDirty }) {
         price_includes_vat: !!priceIncludesVat,
         supplier_id: null, supplier_name: null,
       }))])
-      setAiMsg(`Додано позицій: ${items.length}. Перевірте ціни й собівартість (напр. «З прайсу»), тоді «Зберегти».`)
-    } catch (e) { setAiMsg(e.message) }
+      setAiMsg(`✅ Додано позицій: ${items.length}. Перевірте ціни й собівартість (напр. «З прайсу»), тоді «Зберегти».`)
+    } catch (e) { setAiMsg('⚠️ ' + (e.message || 'Не вдалося розпізнати. Спробуй ще раз.')) }
     setAiLoading(false)
   }
 
