@@ -434,7 +434,7 @@ function ItemsTab({ o, onChange, onDirty }) {
           <label className="btn" style={{ cursor: aiLoading ? 'wait' : 'pointer' }} title="Завантажити договір/специфікацію (.docx, PDF, фото) — AI витягне товари">
             {aiLoading ? <><i className="ti ti-loader-2" style={{ animation: 'spin 1s linear infinite' }} /> Розпізнаю…</> : <><i className="ti ti-file-import" /> Специфікація (AI)</>}
             <input type="file" accept=".docx,.pdf,image/*" multiple style={{ display: 'none' }} disabled={aiLoading}
-              onChange={e => { const fs = e.target.files; e.target.value = ''; importSpec(fs) }} />
+              onChange={e => { const fs = Array.from(e.target.files || []); e.target.value = ''; importSpec(fs) }} />
           </label>
           <button className="btn" onClick={() => setShowPicker(true)}><i className="ti ti-tag" /> З прайсу</button>
           <button className="btn" onClick={addRow}><i className="ti ti-plus" /> Позиція</button>
