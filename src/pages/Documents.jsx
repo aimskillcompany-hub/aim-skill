@@ -141,7 +141,7 @@ export default function Documents() {
       </div>
 
       {showOcr && <DocModal user={user} onClose={() => setShowOcr(false)} onSaved={() => { setShowOcr(false); load() }} />}
-      {openDoc && <DocModal user={user} existingDoc={openDoc.doc} autoOcr={openDoc.autoOcr} onClose={() => setOpenDoc(null)} onSaved={() => { setOpenDoc(null); load() }} />}
+      {openDoc && <DocModal user={user} existingDoc={openDoc.doc} autoOcr={openDoc.autoOcr} onClose={() => { setOpenDoc(null); load() }} onSaved={() => { setOpenDoc(null); load() }} />}
       {genDoc && <GeneratedDocModal doc={genDoc} onClose={() => setGenDoc(null)} onDeleted={() => { setGenDoc(null); load() }}
         onScanUploaded={(d) => { setGenDoc(null); load(); setOpenDoc({ doc: d, autoOcr: false }) }} />}
       {pickGen && <PickContractorModal onClose={() => setPickGen(false)} onPick={(c) => { setPickGen(false); setGenContractor(c) }} />}

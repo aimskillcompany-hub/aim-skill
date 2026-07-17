@@ -48,6 +48,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
   const [stockOn, setStockOn] = useState(false)   // оприбуткувати/списати позиції на склад
   const [stockDir, setStockDir] = useState('in')  // 'in' = прихід, 'out' = видача (FIFO)
   const [verified, setVerified] = useState(!!existingDoc?.is_verified) // документ перевірено (звірка скан↔поля)
+  const [signedSaved, setSignedSaved] = useState(false) // індикатор авто-збереження «Підписаний»
   const [docMovements, setDocMovements] = useState(null) // фактично створені складські рухи цього документа
 
   useEffect(() => { if (existingDoc) recognizeExisting(autoOcr) }, [])
@@ -82,6 +83,17 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
     setBusy(false)
     if (error) { setError(/is_verified/.test(error.message) ? 'Запусти міграцію 029 (поле «перевірено»).' : error.message); return }
     setVerified(next); onSaved?.()
+  }
+
+  // Галочка «Підписаний» — авто-збереження (без «Зберегти документ»). Для нового документа — лише у формі.
+  const toggleSigned = async (checked) => {
+    setForm(f => ({ ...f, is_signed: checked }))
+    if (!existingDoc?.id) return
+    const { error } = await supabase.from('documents')
+      .update({ is_signed: checked, signed_scan_url: checked ? (existingDoc.storage_path || existingDoc.file_path || null) : null })
+      .eq('id', existingDoc.id)
+    if (error) { setError('Не вдалося зберегти «Підписаний»: ' + error.message); setForm(f => ({ ...f, is_signed: !checked })) }
+    else { setError(null); setSignedSaved(true); setTimeout(() => setSignedSaved(false), 1800) }
   }
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }, [previewUrl])
   // Дефолти складського руху: для накладних — увімкнено за типом; для актів/рахунків — напрям за роллю, вимкнено (opt-in)
@@ -329,8 +341,9 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
                 <div className="form-group"><label>Дата</label><input className="form-input" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} /></div>
                 <div className="form-group"><label>Підписаний</label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 44 }}>
-                    <input type="checkbox" checked={form.is_signed} onChange={e => setForm(f => ({ ...f, is_signed: e.target.checked }))} style={{ width: 18, height: 18 }} />
+                    <input type="checkbox" checked={!!form.is_signed} onChange={e => toggleSigned(e.target.checked)} style={{ width: 18, height: 18 }} />
                     <span style={{ fontSize: 14, color: 'var(--text2)' }}>{form.is_signed ? 'Так' : 'Ні'}</span>
+                    {existingDoc && signedSaved && <span style={{ fontSize: 12, color: 'var(--green)' }}><i className="ti ti-check" /> збережено</span>}
                   </div>
                 </div>
               </div>
