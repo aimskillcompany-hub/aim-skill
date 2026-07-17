@@ -23,6 +23,18 @@ export const typeFromOcr = (docType, docRole) => {
   return docRole === 'outgoing' ? 'waybill' : 'incomingWaybill'
 }
 
+// Зрозуміла назва файлу з розпізнаних даних: «Тип №Номер Контрагент Дата.ext»
+export function buildDocFileName({ type, docNumber, contractorName, date }, origName = '') {
+  const label = getDocType(type)?.label || 'Документ'
+  const num = docNumber ? `№${String(docNumber).trim()}` : ''
+  const cn = (contractorName || '').replace(/[«»"']/g, '').replace(/\s+/g, ' ').trim()
+  const base = [label, num, cn, date || ''].filter(Boolean).join(' ')
+    .replace(/[\/\\:*?<>|]+/g, '-').replace(/\s+/g, ' ').trim()
+  const ext = (origName.split('.').pop() || '').toLowerCase()
+  const cleanExt = /^(pdf|jpe?g|png|webp|gif|heic|heif)$/.test(ext) ? ext : 'jpg'
+  return base ? `${base}.${cleanExt}` : origName
+}
+
 // Універсальна модалка документа: завантаження+OCR (новий), розпізнавання (existingDoc+autoOcr),
 // перегляд/редагування/видалення (existingDoc, autoOcr=false). Прев'ю файлу зліва, поля справа.
 export default function DocModal({ user, existingDoc, autoOcr = true, onClose, onSaved }) {
@@ -130,12 +142,16 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
       const m = matcher({ counterparty: data.contractor, edrpou: data.edrpou, description: existingDoc?.file_name })
       const docRole = data.docRole || existingDoc?.doc_role || 'incoming'
       const defType = typeFromOcr(data.docType, docRole)
+      const contractorName = m?.contractor.name || data.contractor || ''
+      // Авто-нормалізація назви для нових завантажень: зрозуміла назва з розпізнаного
+      // (для existingDoc лишаємо наявну — не перейменовуємо при повторному розпізнаванні).
+      const autoName = buildDocFileName({ type: defType, docNumber: data.docNumber, contractorName, date: data.date }, arr[0]?.name || '')
       setForm({
         type: defType,
-        file_name: existingDoc?.file_name || arr[0]?.name || '',
+        file_name: existingDoc?.file_name || autoName || arr[0]?.name || '',
         doc_number: existingDoc?.doc_number || data.docNumber || '',
         contractor_id: m?.contractor.id || null,
-        contractorName: m?.contractor.name || data.contractor || '',
+        contractorName,
         edrpou: data.edrpou || '',
         // Повна сума З ПДВ (банк платить gross; борг = повна сума)
         amount: data.totalAmount ?? (data.amountNoVat != null ? Number(data.amountNoVat) + Number(data.vatAmount || 0) : (data.amount ?? '')),
@@ -286,7 +302,17 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
 
             <div style={{ flex: '1 1 360px', minWidth: 280 }}>
               <div className="form-grid">
-                <div className="form-group full"><label>Назва файлу</label><input className="form-input" value={form.file_name || ''} onChange={e => setForm(f => ({ ...f, file_name: e.target.value }))} /></div>
+                <div className="form-group full">
+                  <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Назва файлу</span>
+                    <button type="button" onClick={() => setForm(f => ({ ...f, file_name: buildDocFileName({ type: f.type, docNumber: f.doc_number, contractorName: f.contractorName, date: f.date }, f.file_name) }))}
+                      style={{ fontSize: 11, color: 'var(--blue)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
+                      title="Побудувати назву з типу/номера/контрагента/дати">
+                      <i className="ti ti-refresh" style={{ fontSize: 12 }} /> оновити назву
+                    </button>
+                  </label>
+                  <input className="form-input" value={form.file_name || ''} onChange={e => setForm(f => ({ ...f, file_name: e.target.value }))} />
+                </div>
                 <div className="form-group"><label>Номер документа</label><input className="form-input" value={form.doc_number || ''} onChange={e => setForm(f => ({ ...f, doc_number: e.target.value }))} /></div>
                 <div className="form-group"><label>Тип документа</label>
                   <select className="form-input" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
