@@ -34,9 +34,14 @@ function extractEdrpou(text) {
   return m ? m[1] : null
 }
 
+// ЄДРПОУ/ІПН транзакції: з поля edrpou, або витягнутий з опису/контрагента
+export function txEdrpou(tx) {
+  return (tx.edrpou && String(tx.edrpou).trim()) || extractEdrpou(tx.description) || extractEdrpou(tx.counterparty) || null
+}
+
 // Синхронний матч однієї транзакції проти попередньо завантажених контрагентів
 export function matchOne(tx, contractors) {
-  const code = (tx.edrpou && String(tx.edrpou).trim()) || extractEdrpou(tx.description) || extractEdrpou(tx.counterparty)
+  const code = txEdrpou(tx)
   // 1) ЄДРПОУ — точний збіг
   if (code) {
     const byCode = contractors.find(c => c.edrpou && String(c.edrpou).trim() === code)

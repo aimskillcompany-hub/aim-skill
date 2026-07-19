@@ -5,7 +5,7 @@ import { fmt, fmtInt } from '../lib/fmt'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import { parseStatement } from '../lib/statements'
 import { classifyBatch, classifyTransaction, resetClassifyCache } from '../lib/autoClassify'
-import { getContractorMatcher } from '../lib/contractorMatch'
+import { getContractorMatcher, txEdrpou, resetContractorMatchCache } from '../lib/contractorMatch'
 import { getAccountBalances } from '../lib/accounts'
 import { getDocType } from '../lib/docgen'
 import { matchScore, confidentMatch } from '../lib/docMatch'
@@ -529,6 +529,7 @@ function ImportTab({ accounts, onDone }) {
   const [parsed, setParsed] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [autoCreate, setAutoCreate] = useState(true) // авто-створення контрагентів за ЄДРПОУ
 
   useEffect(() => { if (accounts.length && !accId) setAccId(accounts[0].id) }, [accounts])
 
@@ -551,20 +552,55 @@ function ImportTab({ accounts, onDone }) {
   }
 
   const doImport = async () => {
-    setBusy(true)
-    const rows = parsed.map(t => ({
-      account_id: accId || null,
-      date: t.date, amount: t.amount,
-      counterparty: t.counterparty || null, description: t.description || null,
-      reference: t.reference || null, edrpou: t.edrpou || null,
-      bank_name: t._bank || null,
-      direction: t._auto?.direction || null, article: t._auto?.article || null,
-      contractor_id: t._auto?.contractor_id || null,
-      is_validated: false, is_ignored: false, imported_by: user?.id || null,
-    }))
+    setBusy(true); setError(null)
+    // Авто-створення контрагентів за ЄДРПОУ (для транзакцій без збігу), з дедуплікацією.
+    // Ключ — ЄДРПОУ (унікальний). Назву-збіг не використовуємо (у виписках пишеться по-різному).
+    const byCode = {} // edrpou -> contractor_id
+    if (autoCreate) {
+      const OWN = '45505924'
+      const need = new Map() // edrpou -> { name, direction }
+      for (const t of parsed) {
+        if (t._auto?.contractor_id) continue
+        const code = txEdrpou(t)
+        if (!code || code === OWN) continue
+        if (!need.has(code)) need.set(code, { name: (t.counterparty || '').trim() || null, direction: t._auto?.direction })
+      }
+      if (need.size) {
+        const codes = [...need.keys()]
+        // 1) дедуп: свіжа перевірка існуючих у БД (не лише кеш матчера)
+        const { data: existing } = await supabase.from('contractors').select('id, edrpou').in('edrpou', codes)
+        ;(existing || []).forEach(c => { if (c.edrpou) byCode[String(c.edrpou).trim()] = c.id })
+        // 2) створити лише відсутні (кожен ЄДРПОУ раз)
+        const toCreate = codes.filter(c => !byCode[c]).map(c => {
+          const info = need.get(c)
+          return {
+            name: info.name || `Контрагент ${c}`, edrpou: c,
+            is_supplier: info.direction === 'Витрати', is_client: info.direction === 'Доходи',
+          }
+        })
+        if (toCreate.length) {
+          const { data: created, error: cErr } = await supabase.from('contractors').insert(toCreate).select('id, edrpou')
+          if (cErr) { setError('Не вдалося створити контрагентів: ' + cErr.message); setBusy(false); return }
+          ;(created || []).forEach(c => { if (c.edrpou) byCode[String(c.edrpou).trim()] = c.id })
+        }
+      }
+    }
+    const rows = parsed.map(t => {
+      const code = txEdrpou(t)
+      return {
+        account_id: accId || null,
+        date: t.date, amount: t.amount,
+        counterparty: t.counterparty || null, description: t.description || null,
+        reference: t.reference || null, edrpou: t.edrpou || null,
+        bank_name: t._bank || null,
+        direction: t._auto?.direction || null, article: t._auto?.article || null,
+        contractor_id: t._auto?.contractor_id || (code ? byCode[code] : null) || null,
+        is_validated: false, is_ignored: false, imported_by: user?.id || null,
+      }
+    })
     const { error } = await supabase.from('bank_transactions').insert(rows)
     setBusy(false)
-    resetClassifyCache()
+    resetClassifyCache(); resetContractorMatchCache()
     if (error) { setError(error.message); return }
     onDone()
   }
@@ -590,13 +626,22 @@ function ImportTab({ accounts, onDone }) {
 
       {parsed && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, flexWrap: 'wrap', gap: 8 }}>
             <div style={{ fontWeight: 600 }}>Розпізнано {parsed.length} транзакцій</div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn" onClick={() => setParsed(null)}>Скасувати</button>
               <button className="btn btn-primary" onClick={doImport} disabled={busy}>{busy ? '…' : 'Імпортувати'}</button>
             </div>
           </div>
+          {(() => {
+            const codes = new Set(parsed.filter(t => !t._auto?.contractor_id).map(t => txEdrpou(t)).filter(c => c && c !== '45505924'))
+            return (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text2)', marginBottom: 12 }}>
+                <input type="checkbox" checked={autoCreate} onChange={e => setAutoCreate(e.target.checked)} style={{ width: 16, height: 16 }} />
+                Автоматично створювати контрагентів за ЄДРПОУ (з дедуплікацією){codes.size > 0 && <span style={{ color: 'var(--text3)' }}> · до {codes.size} нових/знайдених</span>}
+              </label>
+            )
+          })()}
           <div className="tbl-wrap" style={{ border: 'none', maxHeight: 400, overflowY: 'auto' }}>
             <table>
               <thead><tr><th>Дата</th><th>Контрагент</th><th style={{ textAlign: 'right' }}>Сума</th><th>Авто-стаття</th></tr></thead>
