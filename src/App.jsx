@@ -35,6 +35,7 @@ const Analytics = lazyPage(() => import('./pages/Analytics'))
 const Budget = lazyPage(() => import('./pages/Budget'))
 const Settings = lazyPage(() => import('./pages/Settings'))
 const PeriodClose = lazyPage(() => import('./pages/PeriodClose'))
+const Tasks = lazyPage(() => import('./pages/Tasks'))
 
 const Loading = () => <div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Завантаження…</div>
 
@@ -60,6 +61,7 @@ export default function App() {
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/budget" element={<Budget />} />
               <Route path="/period-close" element={<PeriodClose />} />
+              <Route path="/tasks" element={<Tasks />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<Navigate to="/orders" replace />} />
             </Route>

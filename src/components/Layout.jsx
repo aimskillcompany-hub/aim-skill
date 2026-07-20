@@ -6,6 +6,7 @@ import { useUser } from '../lib/auth'
 // Навігація per ТЗ 5.1 — 10 розділів
 const NAV = [
   { to: '/orders',      label: 'Замовлення',   icon: 'ti-shopping-cart',  section: 'Облік' },
+  { to: '/tasks',       label: 'Задачі',       icon: 'ti-checklist' },
   { to: '/contractors', label: 'Контрагенти',  icon: 'ti-users' },
   { to: '/bank',        label: 'Банк / Каса',  icon: 'ti-building-bank' },
   { to: '/inventory',   label: 'Склад',        icon: 'ti-package' },

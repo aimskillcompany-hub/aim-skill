@@ -64,7 +64,7 @@ async function createOrder(admin, s) {
 }
 
 // ── Тексти ──
-const MAIN_KB = { keyboard: [['➕ Нова заявка'], ['📋 Заявки', '🔍 Пошук'], ['💵 Операція (каса/банк)']], resize_keyboard: true }
+const MAIN_KB = { keyboard: [['➕ Нова заявка'], ['📋 Заявки', '🔍 Пошук'], ['✅ Задачі', '➕ Задача'], ['💵 Операція (каса/банк)']], resize_keyboard: true }
 const cancelKb = { inline_keyboard: [[{ text: '✖️ Скасувати', callback_data: 'cancel' }]] }
 const sourceKb = {
   inline_keyboard: [
@@ -150,6 +150,43 @@ async function sendDoc(admin, chatId, docId) {
   return tg('sendDocument', { chat_id: chatId, document: signed.signedUrl, caption })
 }
 
+// ── Задачі ──
+async function showTasks(admin, chatId) {
+  const today = new Date().toISOString().slice(0, 10)
+  const { data } = await admin.from('tasks').select('id, title, due_date, priority')
+    .eq('status', 'open').order('due_date', { nullsFirst: false }).limit(25)
+  if (!data?.length) return send(chatId, '✅ Активних задач немає. Додати — «➕ Задача».', { reply_markup: MAIN_KB })
+  const rows = data.map(t => {
+    const late = t.due_date && t.due_date < today
+    const mark = late ? '⚠️' : t.priority === 'high' ? '🔴' : '•'
+    const due = t.due_date ? ` · ${t.due_date}` : ''
+    return [{ text: `${mark} ${t.title}${due}`.slice(0, 62), callback_data: `taskview:${t.id}` }]
+  })
+  return send(chatId, '<b>Активні задачі</b> (натисни задачу):', { reply_markup: { inline_keyboard: rows } })
+}
+async function showTaskCard(admin, chatId, id) {
+  const { data: t } = await admin.from('tasks').select('*').eq('id', id).maybeSingle()
+  if (!t) return send(chatId, 'Задачу не знайдено.')
+  const txt = [`📌 <b>${t.title}</b>`, t.description ? t.description : null,
+    t.due_date ? `📅 Термін: ${t.due_date}` : null,
+    t.status === 'done' ? '✅ Виконано' : null].filter(Boolean).join('\n')
+  const kb = t.status === 'done'
+    ? [[{ text: '↩️ Повернути в роботу', callback_data: `taskopen:${id}` }, { text: '🗑 Видалити', callback_data: `taskdel:${id}` }]]
+    : [[{ text: '✅ Виконано', callback_data: `taskdone:${id}` }, { text: '🗑 Видалити', callback_data: `taskdel:${id}` }]]
+  return send(chatId, txt, { reply_markup: { inline_keyboard: kb } })
+}
+// Розбір дати з тексту: YYYY-MM-DD / сьогодні / завтра / +Nд / «-»
+function parseDue(text) {
+  const t = (text || '').trim().toLowerCase()
+  if (!t || t === '-' || t === 'без' || t === 'нема') return null
+  if (t === 'сьогодні') return new Date().toISOString().slice(0, 10)
+  if (t === 'завтра') { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10) }
+  const plus = t.match(/^\+?(\d+)\s*д/); if (plus) { const d = new Date(); d.setDate(d.getDate() + Number(plus[1])); return d.toISOString().slice(0, 10) }
+  const iso = t.match(/(\d{4})[-.\/](\d{1,2})[-.\/](\d{1,2})/); if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`
+  const dmy = t.match(/(\d{1,2})[-.\/](\d{1,2})[-.\/](\d{4})/); if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`
+  return undefined // не розпізнано
+}
+
 // ── Головний обробник ──
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(200).json({ ok: true })
@@ -193,6 +230,13 @@ export default async function handler(req, res) {
         await send(chatId, '👤 <b>Контактна особа</b> (або «-»):', { reply_markup: cancelKb })
         return res.json({ ok: true })
       }
+      // ── Задачі ──
+      if (data === 'tasks:0' || data === 'tasks') { await showTasks(admin, chatId); return res.json({ ok: true }) }
+      if (data.startsWith('taskview:')) { await showTaskCard(admin, chatId, data.slice(9)); return res.json({ ok: true }) }
+      if (data.startsWith('taskdone:')) { await admin.from('tasks').update({ status: 'done', done_at: new Date().toISOString() }).eq('id', data.slice(9)); await send(chatId, '✅ Задачу виконано.'); await showTasks(admin, chatId); return res.json({ ok: true }) }
+      if (data.startsWith('taskopen:')) { await admin.from('tasks').update({ status: 'open', done_at: null }).eq('id', data.slice(9)); await send(chatId, '↩️ Повернено в роботу.'); await showTasks(admin, chatId); return res.json({ ok: true }) }
+      if (data.startsWith('taskdel:')) { await admin.from('tasks').delete().eq('id', data.slice(8)); await send(chatId, '🗑 Задачу видалено.'); await showTasks(admin, chatId); return res.json({ ok: true }) }
+
       if (data.startsWith('order:')) { await showCard(admin, chatId, data.slice(6)); return res.json({ ok: true }) }
       if (data.startsWith('docs:')) { await showDocs(admin, chatId, data.slice(5)); return res.json({ ok: true }) }
       if (data.startsWith('doc:')) { await sendDoc(admin, chatId, data.slice(4)); return res.json({ ok: true }) }
@@ -247,6 +291,12 @@ export default async function handler(req, res) {
       return res.json({ ok: true })
     }
     if (text === '📋 Заявки' || text === '/orders') { await showList(admin, chatId, 0); return res.json({ ok: true }) }
+    if (text === '✅ Задачі' || text === '/tasks') { await showTasks(admin, chatId); return res.json({ ok: true }) }
+    if (text === '➕ Задача' || text === '/task') {
+      await setSession(admin, fromId, { flow: 'task', step: 'task_title' })
+      await send(chatId, '✏️ <b>Що зробити?</b> (текст задачі):', { reply_markup: cancelKb })
+      return res.json({ ok: true })
+    }
     if (text === '🔍 Пошук' || text === '/find') {
       await setSession(admin, fromId, { step: 'search' })
       await send(chatId, '🔍 Введіть <b>номер заявки</b> або <b>назву клієнта</b>:', { reply_markup: cancelKb })
@@ -294,6 +344,22 @@ export default async function handler(req, res) {
       await clearSession(admin, fromId)
       if (error) { await send(chatId, 'Помилка: ' + error.message, { reply_markup: MAIN_KB }); return res.json({ ok: true }) }
       await send(chatId, `✅ Операцію збережено: ${s.kind === 'in' ? '➕' : '➖'} ${Math.abs(s.amount)} грн.`, { reply_markup: MAIN_KB })
+      return res.json({ ok: true })
+    }
+
+    // Майстер задачі
+    if (s?.flow === 'task' && s.step === 'task_title') {
+      s.title = text; s.step = 'task_due'; await setSession(admin, fromId, s)
+      await send(chatId, '📅 <b>Термін?</b> Напр. <code>2026-07-25</code>, «сьогодні», «завтра», «+3д» або «-»:', { reply_markup: cancelKb })
+      return res.json({ ok: true })
+    }
+    if (s?.flow === 'task' && s.step === 'task_due') {
+      const due = parseDue(text)
+      if (due === undefined) { await send(chatId, 'Не зрозумів дату. Напиши <code>2026-07-25</code>, «сьогодні», «завтра», «+3д» або «-»:', { reply_markup: cancelKb }); return res.json({ ok: true }) }
+      const { error } = await admin.from('tasks').insert({ title: s.title, due_date: due, status: 'open', priority: 'normal', source: 'bot' })
+      await clearSession(admin, fromId)
+      if (error) { await send(chatId, 'Помилка: ' + error.message, { reply_markup: MAIN_KB }); return res.json({ ok: true }) }
+      await send(chatId, `✅ Задачу створено${due ? ` на <b>${due}</b>` : ''}.`, { reply_markup: MAIN_KB })
       return res.json({ ok: true })
     }
 

@@ -5,6 +5,7 @@
   ],
   "crons": [
     { "path": "/api/mail-sync", "schedule": "0 7 * * *" },
-    { "path": "/api/brain-sync", "schedule": "0 5 * * *" }
+    { "path": "/api/brain-sync", "schedule": "0 5 * * *" },
+    { "path": "/api/task-reminders", "schedule": "0 6 * * *" }
   ]
 }
