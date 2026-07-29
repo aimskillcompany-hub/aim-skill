@@ -46,9 +46,8 @@ export function pdf(company, supplier, items, options) {
     }),
 
     content: [
-      sectionTitle('ЗАМОВЛЕННЯ ПОСТАЧАЛЬНИКУ'),
-      { text: `від ${formatDateLong(docDate)}`, fontSize: 9, color: G1, margin: [0, 0, 0, 2] },
-      { text: `№ ${docNumber}`, fontSize: 22, bold: true, color: BLACK, margin: [0, 0, 0, 12] },
+      { text: 'ЗАМОВЛЕННЯ ПОСТАЧАЛЬНИКУ', fontSize: 19, bold: true, color: BLACK, margin: [0, 0, 0, 4] },
+      { text: `№ ${docNumber}  ·  від ${formatDateLong(docDate)}`, fontSize: 10.5, color: G1, margin: [0, 0, 0, 12] },
 
       {
         columns: [

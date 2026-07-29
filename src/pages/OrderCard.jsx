@@ -564,10 +564,10 @@ function ProposalsTab({ o, onChange }) {
 
   // Нова версія КП префілиться позиціями товарів замовлення (якщо є)
   const startNew = async () => {
-    const { data: items } = await supabase.from('order_items').select('name, qty, unit_price, vat_rate, price_includes_vat').eq('order_id', o.id).order('created_at')
+    const { data: items } = await supabase.from('order_items').select('name, unit, qty, unit_price, vat_rate, price_includes_vat').eq('order_id', o.id).order('created_at')
     const seed = (items || []).length
-      ? items.map(it => ({ name: it.name, qty: Number(it.qty) || 1, price: Number(it.unit_price) || 0, vat: Number(it.vat_rate) || 0, incl: !!it.price_includes_vat }))
-      : [{ name: '', qty: 1, price: 0, vat: 20, incl: false }]
+      ? items.map(it => ({ name: it.name, unit: it.unit || 'шт', qty: Number(it.qty) || 1, price: Number(it.unit_price) || 0, vat: Number(it.vat_rate) || 0, incl: !!it.price_includes_vat }))
+      : [{ name: '', unit: 'шт', qty: 1, price: 0, vat: 20, incl: false }]
     setEditing({ version: (rows[0]?.version || 0) + 1, items: seed })
   }
   // price трактується за i.incl (з прайсу = з ПДВ; вручну/склад = без ПДВ, ПДВ зверху)
@@ -597,11 +597,17 @@ function ProposalsTab({ o, onChange }) {
     setGenId(p.id)
     try {
       const { data: c } = await supabase.from('contractors').select('*').eq('id', o.client_id).single()
+      // Фолбек одиниці для старих КП, збережених без unit — за назвою з позицій замовлення
+      let unitByName = {}
+      if ((p.items || []).some(it => !it.unit)) {
+        const { data: oi } = await supabase.from('order_items').select('name, unit').eq('order_id', o.id)
+        unitByName = Object.fromEntries((oi || []).map(r => [r.name, r.unit]).filter(([, u]) => u))
+      }
       const items = (p.items || []).map(it => {
         const price = Number(it.price) || 0, vr = Number(it.vat) || 0
         // КП-шаблон чекає ціну БЕЗ ПДВ: якщо ціна вже з ПДВ — ділимо, якщо ні — лишаємо
         const net = it.incl ? (vr > 0 ? price / (1 + vr / 100) : price) : price
-        return { name: it.name, quantity: Number(it.qty) || 0, unit: 'шт', unitPrice: net, vatRate: vr }
+        return { name: it.name, quantity: Number(it.qty) || 0, unit: it.unit || unitByName[it.name] || 'шт', unitPrice: net, vatRate: vr }
       })
       const today = new Date().toISOString().slice(0, 10)
       const opts = { docNumber: `КП-${o.order_number || o.id.slice(0, 6)}-v${p.version}`, docDate: today, withStamp: stampCP }
@@ -630,6 +636,7 @@ function ProposalsTab({ o, onChange }) {
             <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
               <input className="form-input" placeholder="Найменування" value={it.name} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, name: e.target.value }; return { ...d, items } })} style={{ flex: 2 }} />
               <input className="form-input" type="number" placeholder="К-сть" value={it.qty} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, qty: e.target.value }; return { ...d, items } })} style={{ width: 80 }} />
+              <input className="form-input" placeholder="Од." value={it.unit || ''} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, unit: e.target.value }; return { ...d, items } })} style={{ width: 64 }} />
               <input className="form-input" type="number" placeholder="Ціна з ПДВ" value={it.price} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, price: e.target.value }; return { ...d, items } })} style={{ width: 110 }} />
               <select className="form-input" value={Number(it.vat) || 0} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, vat: Number(e.target.value) }; return { ...d, items } })} style={{ width: 72, padding: '8px 6px' }}>
                 {VAT_RATES.map(v => <option key={v} value={v}>{v}%</option>)}
@@ -641,7 +648,7 @@ function ProposalsTab({ o, onChange }) {
               <button className="btn" onClick={() => setEditing(d => ({ ...d, items: d.items.filter((_, j) => j !== i) }))}><i className="ti ti-x" /></button>
             </div>
           ))}
-          <button className="btn" onClick={() => setEditing(d => ({ ...d, items: [...d.items, { name: '', qty: 1, price: 0, vat: 20, incl: false }] }))} style={{ marginBottom: 10 }}><i className="ti ti-plus" /> Позиція</button>
+          <button className="btn" onClick={() => setEditing(d => ({ ...d, items: [...d.items, { name: '', unit: 'шт', qty: 1, price: 0, vat: 20, incl: false }] }))} style={{ marginBottom: 10 }}><i className="ti ti-plus" /> Позиція</button>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontWeight: 600 }}>Без ПДВ: {fmt(itemsNet(editing.items))} · ПДВ: {fmt(itemsTotal(editing.items) - itemsNet(editing.items))} · Всього з ПДВ: {fmt(itemsTotal(editing.items))} грн</div>
             <div style={{ display: 'flex', gap: 8 }}>

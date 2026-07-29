@@ -94,9 +94,8 @@ export function pdf(company, contractor, items, options) {
           {
             width: '*',
             stack: [
-              sectionTitle('КОМЕРЦІЙНА ПРОПОЗИЦІЯ'),
-              { text: `від ${formatDateLong(docDate)}`, fontSize: 9, color: G1, margin: [0, 0, 0, 2] },
-              { text: `№ ${docNumber}`, fontSize: 24, bold: true, color: BLACK },
+              { text: 'КОМЕРЦІЙНА ПРОПОЗИЦІЯ', fontSize: 19, bold: true, color: BLACK, margin: [0, 0, 0, 4] },
+              { text: `№ ${docNumber}  ·  від ${formatDateLong(docDate)}`, fontSize: 10.5, color: G1 },
             ],
           },
           {

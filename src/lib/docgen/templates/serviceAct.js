@@ -72,9 +72,8 @@ export function pdf(company, contractor, items, options) {
 
     content: [
       // ═══ НАЗВА ═══
-      sectionTitle('АКТ НАДАНИХ ПОСЛУГ'),
-      { text: `від ${formatDateLong(docDate)}${city ? '  ·  ' + city : ''}`, fontSize: 9, color: G1, margin: [0, 0, 0, 2] },
-      { text: `№ ${docNumber}`, fontSize: 24, bold: true, color: BLACK, margin: [0, 0, 0, 12] },
+      { text: 'АКТ НАДАНИХ ПОСЛУГ', fontSize: 19, bold: true, color: BLACK, margin: [0, 0, 0, 4] },
+      { text: `№ ${docNumber}  ·  від ${formatDateLong(docDate)}${city ? '  ·  ' + city : ''}`, fontSize: 10.5, color: G1, margin: [0, 0, 0, 12] },
 
       // ═══ ПРЕАМБУЛА ═══
       {
