@@ -530,15 +530,23 @@ function ImportTab({ accounts, onDone }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [autoCreate, setAutoCreate] = useState(true) // авто-створення контрагентів за ЄДРПОУ
+  const [detectedBank, setDetectedBank] = useState(null) // банк, визначений з виписки
 
   useEffect(() => { if (accounts.length && !accId) setAccId(accounts[0].id) }, [accounts])
 
   const onFile = async (file) => {
     if (!file) return
-    setBusy(true); setError(null); setParsed(null)
+    setBusy(true); setError(null); setParsed(null); setDetectedBank(null)
     try {
       const txs = await parseStatement(file)
       if (!txs.length) throw new Error('Не вдалося розпізнати транзакції у файлі')
+      // Авто-вибір рахунку за визначеним банком виписки (щоб Mono-виписка не пішла на ПУМБ)
+      const bank = txs.find(t => t._bank)?._bank || null
+      setDetectedBank(bank)
+      if (bank) {
+        const acc = accounts.find(a => (a.bank_name || '').toLowerCase() === bank.toLowerCase())
+        if (acc) setAccId(acc.id)
+      }
       const classified = await classifyBatch(txs)
       // Авто-матч контрагента по ЄДРПОУ/назві (пріоритетніше за класифікатор)
       const matcher = await getContractorMatcher()
@@ -607,11 +615,18 @@ function ImportTab({ accounts, onDone }) {
 
   return (
     <div className="card">
-      <div className="form-group" style={{ maxWidth: 280, marginBottom: 16 }}>
+      <div className="form-group" style={{ maxWidth: 320, marginBottom: 16 }}>
         <label>Рахунок виписки</label>
         <select className="form-input" value={accId} onChange={e => setAccId(e.target.value)}>
           {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
         </select>
+        {detectedBank && (() => {
+          const sel = accounts.find(a => a.id === accId)
+          const match = sel && (sel.bank_name || '').toLowerCase() === detectedBank.toLowerCase()
+          return match
+            ? <div style={{ fontSize: 12, color: 'var(--green)', marginTop: 4 }}><i className="ti ti-check" /> Виписку визначено як «{detectedBank}» — рахунок обрано автоматично</div>
+            : <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}><i className="ti ti-alert-triangle" /> Виписку визначено як «{detectedBank}», а обрано «{sel?.name || '—'}». Перевірте рахунок!</div>
+        })()}
       </div>
 
       {!parsed && (
