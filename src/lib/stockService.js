@@ -133,8 +133,12 @@ export async function resolveProduct(name, unit, price, userId, sku = null) {
     if (skuT) await supabase.from('products').update({ sku: skuT }).eq('id', id).is('sku', null)
   }
 
-  // 0. Збіг за артикулом (точний) — найнадійніший
-  if (skuT) {
+  // 0. Збіг за артикулом (точний) — найнадійніший.
+  //    ЗАХИСТ: матчимо лише якщо артикул схожий на реальний код (містить цифру).
+  //    Інакше бренд у полі артикулу (напр. AI поставив «Мега-Кабель» усім кабелям)
+  //    зліплює зовсім різні товари в один. Реальні артикули майже завжди мають цифру.
+  const skuLooksReal = skuT && /\d/.test(skuT)
+  if (skuLooksReal) {
     const { data: bySku } = await supabase.from('products')
       .select('id').eq('sku', skuT).eq('status', 'active').limit(1).maybeSingle()
     if (bySku?.id) {
