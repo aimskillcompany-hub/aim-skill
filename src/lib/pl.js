@@ -277,6 +277,62 @@ export async function computeAging() {
   }
 }
 
+// ── Прогноз: очікуваний результат з урахуванням майбутніх операцій ──
+// P&L лишається фактичним (лише is_validated). Це ОКРЕМА оцінка:
+//   очікуваний = фактичний Net + дебіторка (виписано, чекає оплати)
+//                + очікувана маржа з відкритих замовлень (ще без видаткової).
+// Замовлення, що вже мають видаткову/акт, у дебіторці — тож із pipeline виключаємо (без подвоєння).
+export async function computeForecast(year, month) {
+  const [pl, aging, ordersRes] = await Promise.all([
+    computePL(year, month),
+    computeAging(),
+    supabase.from('orders').select('id, total, status, archived_at, outcome').neq('status', 'closed').is('archived_at', null),
+  ])
+  const factNet = pl?.totals?.fact?.net || 0
+  const receivable = aging?.receivable?.total || 0
+
+  const openOrders = (ordersRes.data || []).filter(o => o.outcome !== 'lost')
+  const openIds = openOrders.map(o => o.id)
+
+  // Замовлення, що вже мають receivable-документ (видаткова/акт) → не рахуємо в pipeline
+  const withDoc = new Set()
+  if (openIds.length) {
+    const { data: docs } = await supabase.from('documents')
+      .select('order_id, type, direction').in('order_id', openIds)
+    ;(docs || []).forEach(d => {
+      if (d.order_id && d.direction === 'receivable' && countsAsDebt(d.type)) withDoc.add(d.order_id)
+    })
+  }
+  const pipeline = openOrders.filter(o => !withDoc.has(o.id))
+  const pipelineIds = pipeline.map(o => o.id)
+
+  // Позиції відкритих замовлень → очікувана маржа (net-to-net) + виручка (gross)
+  let pipelineMargin = 0, pipelineRevenue = 0
+  const withItems = new Set()
+  if (pipelineIds.length) {
+    const { data: items } = await supabase.from('order_items')
+      .select('order_id, qty, unit_price, cost_price, vat_rate, price_includes_vat').in('order_id', pipelineIds)
+    ;(items || []).forEach(it => {
+      const q = Number(it.qty) || 0, v = Number(it.vat_rate) || 0, incl = !!it.price_includes_vat
+      const sell = Number(it.unit_price) || 0, cost = Number(it.cost_price) || 0
+      const netSell = incl ? (v > 0 ? sell / (1 + v / 100) : sell) : sell
+      const netCost = incl ? (v > 0 ? cost / (1 + v / 100) : cost) : cost
+      const gross = incl ? sell : sell * (1 + v / 100)
+      pipelineMargin += (netSell - netCost) * q
+      pipelineRevenue += gross * q
+      if (it.order_id) withItems.add(it.order_id)
+    })
+  }
+  const pipelineNoItems = pipeline.filter(o => !withItems.has(o.id)).length
+
+  return {
+    factNet, receivable,
+    pipelineMargin, pipelineRevenue,
+    pipelineCount: pipeline.length, pipelineNoItems,
+    expected: factNet + receivable + pipelineMargin,
+  }
+}
+
 // ── Dashboard: KPI + помісячний ряд + топ клієнтів ──
 export async function dashboardStats(year) {
   const monthStart = new Date(); monthStart.setDate(1)

@@ -9,7 +9,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGri
 import { fmt, fmtInt } from '../lib/fmt'
 import { PL_ORDER, PL_LABELS } from '../lib/articles'
 import * as XLSX from 'xlsx'
-import { computePL, computePLBreakdown, computeAging, dashboardStats, plDrill, salesProfitReport } from '../lib/pl'
+import { computePL, computePLBreakdown, computeAging, computeForecast, dashboardStats, plDrill, salesProfitReport } from '../lib/pl'
 import { vatReport } from '../lib/periodClose'
 
 const NOW = new Date()
@@ -190,6 +190,8 @@ function PLView() {
         </div>
       </div>
 
+      <ForecastCard year={year} month={month || null} />
+
       <div className="card">
         {mode === 'fact' ? (
           !bd ? <p style={{ color: 'var(--text3)' }}>Завантаження…</p> : (
@@ -259,6 +261,42 @@ function PLView() {
         <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>У P&L враховуються лише підтверджені (is_validated) транзакції. Натисніть на цифру, щоб побачити операції.</p>
       </div>
       {drill && <DrillModal drill={drill} year={year} month={month || null} onClose={() => setDrill(null)} />}
+    </div>
+  )
+}
+
+// ───────── Прогноз: очікуваний результат з майбутніми операціями ─────────
+function ForecastCard({ year, month }) {
+  const [f, setF] = useState(null)
+  useEffect(() => { setF(null); computeForecast(year, month).then(setF) }, [year, month])
+  if (!f) return null
+  const line = (label, val, hint) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0' }}>
+      <span style={{ color: 'var(--text2)', fontSize: 13 }}>{label}{hint && <span style={{ color: 'var(--text3)', fontSize: 11, marginLeft: 6 }}>{hint}</span>}</span>
+      <span style={{ fontWeight: 600, color: val >= 0 ? GREEN : RED, fontVariantNumeric: 'tabular-nums' }}>{val >= 0 ? '+' : ''}{fmtInt(val)}</span>
+    </div>
+  )
+  return (
+    <div className="card" style={{ marginBottom: 16, background: 'var(--surface2)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ fontWeight: 700 }}>Очікуваний результат <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--text3)' }}>(з урахуванням майбутніх операцій)</span></div>
+      </div>
+      <div style={{ maxWidth: 520 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0' }}>
+          <span style={{ color: 'var(--text2)', fontSize: 13 }}>Фактичний результат (Net)</span>
+          <span style={{ fontWeight: 600, color: f.factNet >= 0 ? GREEN : RED, fontVariantNumeric: 'tabular-nums' }}>{fmtInt(f.factNet)}</span>
+        </div>
+        {line('Дебіторка — виписано, чекає оплати', f.receivable)}
+        {line('Очікувана маржа з відкритих замовлень', f.pipelineMargin, `${f.pipelineCount} зам.`)}
+        <div style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <span style={{ fontWeight: 700 }}>≈ Очікуваний результат</span>
+          <span style={{ fontWeight: 700, fontSize: 18, color: f.expected >= 0 ? GREEN : RED, fontVariantNumeric: 'tabular-nums' }}>{fmtInt(f.expected)} грн</span>
+        </div>
+      </div>
+      <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 10, marginBottom: 0 }}>
+        Оцінка, а не факт. Фактичний P&L — лише підтверджені гроші; сюди додано дебіторку (виписані видаткові/акти, ще не оплачені) та очікувану маржу з відкритих замовлень (без виданої видаткової — щоб не рахувати двічі).
+        {f.pipelineNoItems > 0 && ` У ${f.pipelineNoItems} відкритих зам. немає позицій — їхня маржа не врахована.`}
+      </p>
     </div>
   )
 }
