@@ -329,6 +329,7 @@ function ItemsTab({ o, onChange, onDirty }) {
   const [dirty, setDirty] = useState(false)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiMsg, setAiMsg] = useState(null)
+  const [bulkMarkup, setBulkMarkup] = useState('')
   const markDirty = () => { setDirty(true); onDirty?.(true) }
 
   // AI-імпорт специфікації (.docx / PDF / фото) → позиції замовлення
@@ -393,6 +394,19 @@ function ItemsTab({ o, onChange, onDirty }) {
   const grossCost = (r) => { const c = Number(r.cost_price) || 0; const v = rate(r); return r.price_includes_vat ? c : c * (1 + v / 100) }
   const rowMargin = (r) => (netUnit(r) - netCost(r)) * (Number(r.qty) || 0)
   const marginPct = (r) => { const n = netUnit(r); return n > 0 ? ((n - netCost(r)) / n) * 100 : 0 }
+  // Націнка (markup) = (ціна − закупівля) / закупівля. Рахуємо на введених значеннях —
+  // співвідношення однакове і для net, і для gross (обидві ціни в тому самому базисі).
+  const markupPct = (r) => { const c = Number(r.cost_price) || 0, p = Number(r.unit_price) || 0; return (c > 0 && p > 0) ? ((p - c) / c) * 100 : null }
+  const fmtMarkup = (r) => { const v = markupPct(r); if (v == null) return ''; return Math.abs(v % 1) < 0.05 ? String(Math.round(v)) : v.toFixed(1) }
+  // Задати ціну продажу з націнки над закупівлею: ціна = закупівля × (1 + %/100)
+  const priceFromMarkup = (cost, pct) => Math.round((Number(cost) || 0) * (1 + (Number(pct) || 0) / 100) * 100) / 100
+  const setMarkup = (i, val) => { const c = Number(rows[i]?.cost_price) || 0; if (c <= 0) return; setRow(i, { unit_price: priceFromMarkup(c, val) }) }
+  const applyBulkMarkup = () => {
+    const pct = Number(bulkMarkup)
+    if (bulkMarkup === '' || isNaN(pct)) return
+    markDirty()
+    setRows(rs => rs.map(r => { const c = Number(r.cost_price) || 0; return c > 0 ? { ...r, unit_price: priceFromMarkup(c, pct) } : r }))
+  }
   const sum = (rows || []).reduce((s, r) => s + rowTotal(r), 0)         // всього з ПДВ
   const netSum = (rows || []).reduce((s, r) => s + rowNet(r), 0)         // без ПДВ
   const vatSum = sum - netSum                                            // ПДВ
@@ -441,6 +455,15 @@ function ItemsTab({ o, onChange, onDirty }) {
         </div>
       </div>
 
+      {rows.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 12, fontSize: 13, color: 'var(--text2)' }}>
+          <i className="ti ti-percentage" style={{ color: 'var(--text3)' }} />
+          <span>Націнка на всі позиції:</span>
+          <input className="form-input" type="number" placeholder="%" value={bulkMarkup} onChange={e => setBulkMarkup(e.target.value)} style={{ width: 90 }} title="Ціна продажу = закупівля × (1 + %)" />
+          <button className="btn" onClick={applyBulkMarkup} title="Застосувати до всіх позицій із заповненою закупівлею">Застосувати</button>
+        </div>
+      )}
+
       {aiMsg && <div style={{ fontSize: 13, color: 'var(--text2)', background: 'var(--surface2)', borderRadius: 8, padding: '8px 12px', marginBottom: 12 }}><i className="ti ti-sparkles" style={{ color: 'var(--blue)' }} /> {aiMsg}</div>}
 
       {rows.length === 0 && <p style={{ color: 'var(--text3)', fontSize: 13 }}>Товарів немає. Додавайте їх, коли стане відомо, що саме входить у замовлення.</p>}
@@ -452,6 +475,7 @@ function ItemsTab({ o, onChange, onDirty }) {
           <div style={{ width: 80 }}>К-сть</div>
           <div style={{ width: 70 }}>Од.</div>
           <div style={{ width: 110 }}>Закупівля</div>
+          <div style={{ width: 76 }}>Націнка %</div>
           <div style={{ width: 110 }}>Ціна продажу</div>
           <div style={{ width: 72 }}>ПДВ %</div>
           <div style={{ width: 110 }}>Тип ціни</div>
@@ -485,6 +509,9 @@ function ItemsTab({ o, onChange, onDirty }) {
           <div style={{ width: 110 }}>
             <input className="form-input" type="number" placeholder="Закупівля" value={r.cost_price ?? ''} onChange={e => setRow(i, { cost_price: e.target.value })} style={{ width: '100%' }} />
             {Number(r.cost_price) > 0 && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 1, textAlign: 'right' }}>{r.price_includes_vat ? `без ПДВ: ${fmt(netCost(r))}` : `з ПДВ: ${fmt(grossCost(r))}`}</div>}
+          </div>
+          <div style={{ width: 76 }}>
+            <input className="form-input" type="number" placeholder="%" value={fmtMarkup(r)} onChange={e => setMarkup(i, e.target.value)} disabled={!(Number(r.cost_price) > 0)} style={{ width: '100%' }} title="Націнка над закупівлею — задає ціну продажу" />
           </div>
           <div style={{ width: 110 }}>
             <input className="form-input" type="number" placeholder="Ціна" value={r.unit_price} onChange={e => setRow(i, { unit_price: e.target.value })} style={{ width: '100%' }} />
