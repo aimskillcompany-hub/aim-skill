@@ -54,8 +54,23 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
       .eq('status', 'active').order('name')
       .then(({ data }) => setProducts(data || []))
     if (contractor?.id) {
-      supabase.from('contractor_contracts').select('*').eq('contractor_id', contractor.id).eq('status', 'active').order('date', { ascending: false })
-        .then(({ data }) => setContractsList(data || []))
+      // Договори з двох джерел: реєстр contractor_contracts + розпізнані документи-договори (documents)
+      const contractDocTypes = DOCUMENT_TYPES.filter(t => t.isContract).map(t => t.key)
+      Promise.all([
+        supabase.from('contractor_contracts').select('*').eq('contractor_id', contractor.id).eq('status', 'active').order('date', { ascending: false }),
+        supabase.from('documents').select('id, type, doc_number, doc_date').eq('contractor_id', contractor.id).in('type', contractDocTypes),
+      ]).then(([{ data: regs }, { data: docs }]) => {
+        const list = [...(regs || [])]
+        const seen = new Set(list.map(c => (c.number || '').trim()))
+        for (const d of docs || []) {
+          const num = (d.doc_number || '').trim()
+          if (!num || seen.has(num)) continue
+          seen.add(num)
+          list.push({ id: `doc:${d.id}`, number: d.doc_number, date: d.doc_date || null, subject: null, _fromDocument: true })
+        }
+        list.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+        setContractsList(list)
+      })
       // Наявні рахунки цього контрагента — щоб у видатковій/акті обрати рахунок, а не вводити вручну
       supabase.from('generated_docs').select('id, doc_number, doc_date, total')
         .eq('contractor_id', contractor.id).eq('doc_type', 'invoice').order('doc_date', { ascending: false })
@@ -132,6 +147,10 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
 
   const handleSave = async (andDownload) => {
     setSaving(true); setError(null)
+    // '__new__' — новий договір вручну; 'doc:*' — договір із розпізнаного документа (ще не в реєстрі).
+    // В обох випадках contract_id не пишемо — авто-реєстрація нижче створить рядок у contractor_contracts за номером.
+    const isRealContractId = selectedContract && selectedContract !== '__new__' && !selectedContract.startsWith('doc:')
+    const contractIdForSave = isRealContractId ? selectedContract : null
     try {
       if (editId) {
         // Оновити існуючий документ
@@ -151,7 +170,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
           items, subtotal: totals.subtotal, vatAmount: totals.vatAmount, total: totals.total,
           notes, contractNum, contractDate, paymentDue, city,
           invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress,
-          parentDocId, contractId: selectedContract || null, orderId: orderId || null, userId,
+          parentDocId, contractId: contractIdForSave, orderId: orderId || null, userId,
         })
         // Списання зі складу для видаткових (OUT) — saveDoc авто-створює лише для IN
         const dtSave = DOCUMENT_TYPES.find(t => t.key === docType)
@@ -173,7 +192,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
         }
       }
       // Автоматично створити договір якщо є номер і такого ще немає
-      if (contractNum && !selectedContract && contractor?.id) {
+      if (contractNum && !contractIdForSave && contractor?.id) {
         const { data: existing } = await supabase.from('contractor_contracts')
           .select('id').eq('contractor_id', contractor.id).eq('number', contractNum).maybeSingle()
         if (!existing) {
@@ -270,17 +289,30 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
               <div className="form-group" style={{ gridColumn: contractsList.length > 0 ? 'span 2' : undefined }}>
                 <label>Договір</label>
                 {contractsList.length > 0 ? (
-                  <select className="form-input" value={selectedContract} onChange={e => {
-                    setSelectedContract(e.target.value)
-                    const ct = contractsList.find(c => c.id === e.target.value)
-                    if (ct) { setContractNum(ct.number); setContractDate(ct.date || '') }
-                    else { setContractNum(''); setContractDate('') }
-                  }}>
-                    <option value="">— Без договору —</option>
-                    {contractsList.map(ct => (
-                      <option key={ct.id} value={ct.id}>№{ct.number}{ct.date ? ` від ${ct.date}` : ''}{ct.subject ? ` — ${ct.subject}` : ''}</option>
-                    ))}
-                  </select>
+                  <>
+                    <select className="form-input" value={selectedContract} onChange={e => {
+                      const val = e.target.value
+                      setSelectedContract(val)
+                      if (val === '__new__') { setContractNum(''); setContractDate('') }
+                      else {
+                        const ct = contractsList.find(c => c.id === val)
+                        if (ct) { setContractNum(ct.number); setContractDate(ct.date || '') }
+                        else { setContractNum(''); setContractDate('') }
+                      }
+                    }}>
+                      <option value="">— Без договору —</option>
+                      {contractsList.map(ct => (
+                        <option key={ct.id} value={ct.id}>№{ct.number}{ct.date ? ` від ${ct.date}` : ''}{ct.subject ? ` — ${ct.subject}` : ''}</option>
+                      ))}
+                      <option value="__new__">+ Інший договір…</option>
+                    </select>
+                    {selectedContract === '__new__' && (
+                      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                        <input className="form-input" value={contractNum} onChange={e => setContractNum(e.target.value)} placeholder="Номер" style={{ flex: 1 }} />
+                        <input type="date" className="form-input" value={contractDate} onChange={e => setContractDate(e.target.value)} style={{ flex: 1 }} />
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <div style={{ display: 'flex', gap: 6 }}>
                     <input className="form-input" value={contractNum} onChange={e => setContractNum(e.target.value)} placeholder="Номер" style={{ flex: 1 }} />
