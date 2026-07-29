@@ -531,12 +531,16 @@ function ImportTab({ accounts, onDone }) {
   const [error, setError] = useState(null)
   const [autoCreate, setAutoCreate] = useState(true) // авто-створення контрагентів за ЄДРПОУ
   const [detectedBank, setDetectedBank] = useState(null) // банк, визначений з виписки
+  const [result, setResult] = useState(null) // підсумок імпорту { added, skipped }
+
+  // Ключ дедуплікації рядка виписки: референс (унікальний у банку) або дата+сума+контрагент+опис
+  const compositeKey = (t) => [t.date, Number(t.amount).toFixed(2), (t.counterparty || '').trim(), (t.description || '').slice(0, 40)].join('¦')
 
   useEffect(() => { if (accounts.length && !accId) setAccId(accounts[0].id) }, [accounts])
 
   const onFile = async (file) => {
     if (!file) return
-    setBusy(true); setError(null); setParsed(null); setDetectedBank(null)
+    setBusy(true); setError(null); setParsed(null); setDetectedBank(null); setResult(null)
     try {
       const txs = await parseStatement(file)
       if (!txs.length) throw new Error('Не вдалося розпізнати транзакції у файлі')
@@ -561,13 +565,49 @@ function ImportTab({ accounts, onDone }) {
 
   const doImport = async () => {
     setBusy(true); setError(null)
+    // 0. Дедуплікація проти вже наявних транзакцій (щоб повторний імпорт не дублював).
+    //    Референс Monobank унікальний → перевіряємо глобально; для виписок без референсу
+    //    (напр. ПУМБ) — за композитним ключем у межах цього рахунку й діапазону дат.
+    const refs = [...new Set(parsed.map(t => (t.reference || '').trim()).filter(Boolean))]
+    const existingRefs = new Set()
+    if (refs.length) {
+      const { data: exR } = await supabase.from('bank_transactions').select('reference').in('reference', refs)
+      ;(exR || []).forEach(r => r.reference && existingRefs.add(String(r.reference).trim()))
+    }
+    const existingComposite = new Set()
+    const noRefRows = parsed.filter(t => !(t.reference || '').trim())
+    if (noRefRows.length && accId) {
+      const dates = noRefRows.map(t => t.date).filter(Boolean).sort()
+      if (dates.length) {
+        const { data: exC } = await supabase.from('bank_transactions')
+          .select('date, amount, counterparty, description').eq('account_id', accId)
+          .gte('date', dates[0]).lte('date', dates[dates.length - 1])
+        ;(exC || []).forEach(r => existingComposite.add(compositeKey(r)))
+      }
+    }
+    const seenBatch = new Set()
+    const parsedFresh = parsed.filter(t => {
+      const ref = (t.reference || '').trim()
+      const k = ref || compositeKey(t)
+      const isDup = ref ? existingRefs.has(ref) : existingComposite.has(k)
+      if (isDup || seenBatch.has(k)) return false
+      seenBatch.add(k)
+      return true
+    })
+    const skipped = parsed.length - parsedFresh.length
+    if (!parsedFresh.length) {
+      setBusy(false)
+      setResult({ added: 0, skipped })
+      setParsed(null)
+      return
+    }
     // Авто-створення контрагентів за ЄДРПОУ (для транзакцій без збігу), з дедуплікацією.
     // Ключ — ЄДРПОУ (унікальний). Назву-збіг не використовуємо (у виписках пишеться по-різному).
     const byCode = {} // edrpou -> contractor_id
     if (autoCreate) {
       const OWN = '45505924'
       const need = new Map() // edrpou -> { name, direction }
-      for (const t of parsed) {
+      for (const t of parsedFresh) {
         if (t._auto?.contractor_id) continue
         const code = txEdrpou(t)
         if (!code || code === OWN) continue
@@ -593,7 +633,7 @@ function ImportTab({ accounts, onDone }) {
         }
       }
     }
-    const rows = parsed.map(t => {
+    const rows = parsedFresh.map(t => {
       const code = txEdrpou(t)
       return {
         account_id: accId || null,
@@ -610,7 +650,8 @@ function ImportTab({ accounts, onDone }) {
     setBusy(false)
     resetClassifyCache(); resetContractorMatchCache()
     if (error) { setError(error.message); return }
-    onDone()
+    if (skipped > 0) { setResult({ added: rows.length, skipped }); setParsed(null) } // показати підсумок з дублями
+    else onDone()
   }
 
   return (
@@ -629,7 +670,20 @@ function ImportTab({ accounts, onDone }) {
         })()}
       </div>
 
-      {!parsed && (
+      {result && (
+        <div style={{ background: 'var(--surface2)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>
+            {result.added > 0 ? `Імпортовано нових транзакцій: ${result.added}` : 'Нових транзакцій не знайдено'}
+          </div>
+          {result.skipped > 0 && <div style={{ fontSize: 13, color: 'var(--text2)' }}><i className="ti ti-copy-off" /> Пропущено дублікатів (вже були в системі): {result.skipped}</div>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button className="btn btn-primary" onClick={() => { setResult(null); onDone() }}>До транзакцій</button>
+            <button className="btn" onClick={() => setResult(null)}>Імпортувати ще</button>
+          </div>
+        </div>
+      )}
+
+      {!parsed && !result && (
         <label style={{ display: 'block', border: '2px dashed var(--border)', borderRadius: 12, padding: 32, textAlign: 'center', cursor: 'pointer' }}>
           <i className="ti ti-file-spreadsheet" style={{ fontSize: 40, color: 'var(--blue)', display: 'block', marginBottom: 10 }} />
           <div style={{ fontWeight: 600 }}>{busy ? 'Обробка…' : 'Оберіть файл виписки'}</div>
