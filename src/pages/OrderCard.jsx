@@ -469,7 +469,9 @@ function ItemsTab({ o, onChange, onDirty }) {
       {rows.length === 0 && <p style={{ color: 'var(--text3)', fontSize: 13 }}>Товарів немає. Додавайте їх, коли стане відомо, що саме входить у замовлення.</p>}
 
       {rows.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 6, fontSize: 11, color: 'var(--text3)', fontWeight: 600 }}>
+      <div style={{ overflowX: 'auto', marginLeft: -4, marginRight: -4, paddingLeft: 4, paddingRight: 4 }}>
+      <div style={{ minWidth: 1264 }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 6, fontSize: 11, color: 'var(--text3)', fontWeight: 600, flexWrap: 'nowrap' }}>
           <div style={{ flex: '2 1 220px', minWidth: 180 }}>Товар</div>
           <div style={{ width: 100 }}>Код</div>
           <div style={{ width: 80 }}>К-сть</div>
@@ -483,13 +485,12 @@ function ItemsTab({ o, onChange, onDirty }) {
           <div style={{ width: 110, textAlign: 'right' }}>Сума з ПДВ</div>
           <div style={{ width: 38 }} />
         </div>
-      )}
 
       {rows.map((r, i) => {
         const m = rowMargin(r), mp = marginPct(r)
         const mColor = m > 0 ? 'var(--green)' : m < 0 ? 'var(--red)' : 'var(--text3)'
         return (
-        <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, paddingBottom: 8, alignItems: 'flex-start', flexWrap: 'nowrap', borderBottom: '1px solid var(--border)' }}>
           <div style={{ flex: '2 1 220px', minWidth: 180 }}>
             <ProductSelect
               value={r.name}
@@ -526,10 +527,13 @@ function ItemsTab({ o, onChange, onDirty }) {
           </select>
           <div style={{ width: 120, textAlign: 'right', padding: '8px 0', fontSize: 13, color: mColor }}>{fmt(m)}<div style={{ fontSize: 11 }}>{mp.toFixed(0)}%</div></div>
           <div style={{ width: 110, textAlign: 'right', padding: '8px 0', fontSize: 13, fontWeight: 500 }}>{fmt(rowTotal(r))}</div>
-          <button className="btn" onClick={() => removeRow(i)} title="Прибрати"><i className="ti ti-x" /></button>
+          <button className="btn" onClick={() => removeRow(i)} title="Прибрати" style={{ flexShrink: 0 }}><i className="ti ti-x" /></button>
         </div>
         )
       })}
+      </div>
+      </div>
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 14, flexWrap: 'wrap', gap: 10 }}>
         <div style={{ fontWeight: 600 }}>
