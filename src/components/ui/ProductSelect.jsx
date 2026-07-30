@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
+import AutoTextarea from './AutoTextarea'
 
 // Селектор товару з пошуком по довіднику products + можливістю ввести нову назву.
 // onSelect(product) — для існуючого: { id, name, unit, sell_price }
@@ -47,8 +48,7 @@ export default function ProductSelect({ value, onChange, onSelect, placeholder }
 
   return (
     <div ref={wrapRef} style={{ position: 'relative' }}>
-      <input
-        className="form-input"
+      <AutoTextarea
         value={query}
         onChange={e => search(e.target.value)}
         onFocus={() => { if (results.length > 0) setOpen(true) }}

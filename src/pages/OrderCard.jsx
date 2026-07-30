@@ -9,6 +9,7 @@ import { extractOrderItems } from '../lib/ai'
 import DocModal from '../components/DocModal'
 import DocGenModal from '../components/DocGenModal'
 import ProductSelect from '../components/ui/ProductSelect'
+import AutoTextarea from '../components/ui/AutoTextarea'
 import PricePickerModal from '../components/ui/PricePickerModal'
 import ContractorSelect from '../components/ui/ContractorSelect'
 import {
@@ -504,7 +505,7 @@ function ItemsTab({ o, onChange, onDirty }) {
               ? <div style={{ fontSize: 11, color: 'var(--blue)', marginTop: 2 }}><i className="ti ti-tag" /> {r.supplier_name}</div>
               : r.product_id && <div style={{ fontSize: 11, color: 'var(--green)', marginTop: 2 }}><i className="ti ti-link" /> з довідника</div>}
           </div>
-          <input className="form-input" placeholder="Код" value={r.sku || ''} onChange={e => setRow(i, { sku: e.target.value })} style={{ width: 100 }} />
+          <AutoTextarea placeholder="Код" value={r.sku || ''} onChange={e => setRow(i, { sku: e.target.value })} style={{ width: 100 }} />
           <input className="form-input" type="number" placeholder="К-сть" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} style={{ width: 80 }} />
           <input className="form-input" placeholder="од." value={r.unit || ''} onChange={e => setRow(i, { unit: e.target.value })} style={{ width: 70 }} />
           <div style={{ width: 110 }}>
