@@ -18,25 +18,39 @@ const pct = n => `${(n * 100).toFixed(1)}%`
 function compute(items) {
   const rows = (items || []).filter(it => (it.name || '').trim()).map(it => {
     const qty = Number(it.qty) || 0
-    const cost = Number(it.cost_price) || 0
-    const up = Number(it.unit_price) || 0
     const v = Number(it.vat_rate) || 0
-    const sellUnit = it.price_includes_vat ? up : up * (1 + v / 100)
-    const costSum = cost * qty
-    const sellSum = sellUnit * qty
+    const div = 1 + v / 100
+    const incl = !!it.price_includes_vat            // ціни введені з ПДВ (true) чи без (false)
+    const rawCost = Number(it.cost_price) || 0
+    const rawSale = Number(it.unit_price) || 0
+    // Зводимо закупівлю і продаж до ОДНІЄЇ бази (без ПДВ) — як маржа в картці замовлення.
+    // Раніше продаж догрослювався до з ПДВ, а закупівля лишалась без ПДВ → ПДВ з продажу
+    // потрапляв у «маржу» (6% → хибні 22%). Тепер обидві net-to-net.
+    const netCost = incl ? (v > 0 ? rawCost / div : rawCost) : rawCost
+    const netSale = incl ? (v > 0 ? rawSale / div : rawSale) : rawSale
+    const grossCost = incl ? rawCost : rawCost * div
+    const grossSale = incl ? rawSale : rawSale * div
+    const costSum = netCost * qty
+    const sellSum = netSale * qty
     const margin = sellSum - costSum
-    return { name: it.name, qty, cost, sellUnit, costSum, sellSum, margin, marginPct: sellSum ? margin / sellSum : 0 }
+    return {
+      name: it.name, qty, cost: netCost, sellUnit: netSale, costSum, sellSum,
+      grossCostSum: grossCost * qty, grossSaleSum: grossSale * qty,
+      margin, marginPct: sellSum ? margin / sellSum : 0,
+    }
   })
-  const capital = rows.reduce((s, r) => s + r.costSum, 0)
-  const revenue = rows.reduce((s, r) => s + r.sellSum, 0)
-  const marginGross = revenue - capital
-  const marginNet = marginGross / 1.2
-  const vatToPay = marginGross - marginNet
-  const incomeTax = marginNet * 0.18
+  const capital = rows.reduce((s, r) => s + r.costSum, 0)           // собівартість без ПДВ
+  const revenueNet = rows.reduce((s, r) => s + r.sellSum, 0)        // виручка без ПДВ
+  const revenue = rows.reduce((s, r) => s + r.grossSaleSum, 0)      // виручка з ПДВ
+  const capitalGross = rows.reduce((s, r) => s + r.grossCostSum, 0) // закупівля з ПДВ (кеш постачальнику)
+  const marginNet = revenueNet - capital                           // валова маржа (net-to-net)
+  // ПДВ до бюджету = ПДВ з продажів − ПДВ із закупівель (не є витратою для прибутку — pass-through)
+  const vatToPay = Math.max(0, (revenue - revenueNet) - (capitalGross - capital))
+  const incomeTax = marginNet > 0 ? marginNet * 0.18 : 0
   const netProfit = marginNet - incomeTax
   const roi = capital ? netProfit / capital : 0
-  const marginPct = revenue ? marginGross / revenue : 0
-  return { rows, capital, revenue, marginGross, marginNet, vatToPay, incomeTax, netProfit, roi, marginPct }
+  const marginPct = revenueNet ? marginNet / revenueNet : 0
+  return { rows, capital, revenue, revenueNet, capitalGross, marginGross: marginNet, marginNet, vatToPay, incomeTax, netProfit, roi, marginPct }
 }
 
 export function pdf(company, order, items, options = {}) {
@@ -44,19 +58,6 @@ export function pdf(company, order, items, options = {}) {
   const client = order?.contractors?.name || order?.client_name || '—'
   const orderNo = order?.order_number || (order?.id || '').slice(0, 6)
   const today = options.date || new Date().toISOString().slice(0, 10)
-
-  // Монохромна KPI-картка: тонка верхня лінія + підпис + велике значення
-  const kpi = (label, value, accent) => ({
-    table: { widths: ['*'], body: [[{
-      stack: [
-        { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 150, y2: 0, lineWidth: 1.5, lineColor: accent || BLACK }], margin: [0, 0, 0, 7] },
-        { text: label, fontSize: 7, color: G2, letterSpacing: 0.5, margin: [0, 0, 0, 4] },
-        { text: value, fontSize: 15, bold: true, color: accent || BLACK },
-      ],
-      margin: [0, 0, 0, 0],
-    }]] },
-    layout: 'noBorders',
-  })
 
   const th = (t, align) => ({ text: t, fontSize: 6.5, bold: true, color: G2, alignment: align || 'left', letterSpacing: 0.3, margin: [0, 3, 0, 5] })
   const td = (t, align, opt = {}) => ({ text: t, fontSize: 8.5, alignment: align || 'left', color: opt.color || G1, bold: opt.bold, margin: [0, 3, 0, 3] })
@@ -86,20 +87,10 @@ export function pdf(company, order, items, options = {}) {
 
       { text: 'ІНВЕСТИЦІЙНИЙ РОЗРАХУНОК', fontSize: 8, color: G2, bold: true, letterSpacing: 3 },
       { text: `Замовлення № ${orderNo}`, fontSize: 22, bold: true, color: BLACK, margin: [0, 3, 0, 3] },
-      { text: `Замовник: ${client}      Станом на ${formatDate(today)}`, fontSize: 9, color: G1, margin: [0, 0, 0, 18] },
-
-      // ── Ключові показники ──
-      { columns: [
-        kpi('ПОТРІБНИЙ КАПІТАЛ', money(m.capital), BLACK), { width: 14, text: '' },
-        kpi('ВИРУЧКА (з ПДВ)', money(m.revenue), BLACK),
-      ], margin: [0, 0, 0, 14] },
-      { columns: [
-        kpi('ЧИСТИЙ ПРИБУТОК', money(m.netProfit), GREEN), { width: 14, text: '' },
-        kpi('ROI (на капітал)', pct(m.roi), GREEN),
-      ], margin: [0, 0, 0, 20] },
+      { text: `Замовник: ${client}      Станом на ${formatDate(today)}`, fontSize: 9, color: G1, margin: [0, 0, 0, 20] },
 
       // ── Склад замовлення ──
-      { text: 'СКЛАД ЗАМОВЛЕННЯ', fontSize: 7.5, color: G2, bold: true, letterSpacing: 2, margin: [0, 0, 0, 4] },
+      { text: 'СКЛАД ЗАМОВЛЕННЯ  ·  ЦІНИ БЕЗ ПДВ', fontSize: 7.5, color: G2, bold: true, letterSpacing: 2, margin: [0, 0, 0, 4] },
       {
         table: {
           headerRows: 1,
@@ -131,31 +122,17 @@ export function pdf(company, order, items, options = {}) {
       { columns: [
         { width: '*', text: '' },
         { width: 288, margin: [0, 14, 0, 0], table: { widths: [172, 116], body: [
-          sumRow('Сума закупівлі (капітал)', money(m.capital)),
-          sumRow('Сума продажу (з ПДВ)', money(m.revenue)),
-          sumRow('Валова маржа', `${money(m.marginGross)}  ·  ${pct(m.marginPct)}`, { bold: true, color: GREEN }),
-          sumRow('ПДВ до сплати (з маржі)', money(m.vatToPay)),
-          sumRow('Прибуток до податку', money(m.marginNet)),
+          sumRow('Виручка з ПДВ', money(m.revenue)),
+          sumRow('Виручка без ПДВ', money(m.revenueNet)),
+          sumRow('Собівартість (капітал)', money(m.capital)),
+          sumRow('Валова маржа', `${money(m.marginNet)}  ·  ${pct(m.marginPct)}`, { bold: true, color: GREEN }),
           sumRow('Податок на прибуток 18%', `− ${money(m.incomeTax)}`, { color: RED }),
           sumRow('ЧИСТИЙ ПРИБУТОК', money(m.netProfit), { big: true, top: true, color: GREEN }),
+          sumRow('ROI (на капітал)', pct(m.roi), { bold: true, color: GREEN }),
         ] }, layout: { hLineWidth: (i, node) => i === node.table.body.length - 1 ? 1.2 : 0, vLineWidth: () => 0, hLineColor: () => BLACK, paddingLeft: () => 0, paddingRight: () => 0 } },
       ] },
 
-      // ── Висновок ──
-      { table: { widths: ['*'], body: [[{
-        stack: [
-          { text: 'ВИСНОВОК ДЛЯ РІШЕННЯ', fontSize: 7.5, bold: true, color: G2, letterSpacing: 2, margin: [0, 0, 0, 7] },
-          { text: [
-            { text: 'На кожну 1 грн капіталу — ', fontSize: 9.5, color: G1 },
-            { text: `${m.roi.toFixed(2)} грн `, fontSize: 9.5, bold: true, color: GREEN },
-            { text: `чистого прибутку (ROI ${pct(m.roi)}).  Маржинальність — ${pct(m.marginPct)}.`, fontSize: 9.5, color: G1 },
-          ] },
-          { text: `Залучити ${money(m.capital)} на закупівлю · очікуваний чистий прибуток ${money(m.netProfit)}.`, fontSize: 9.5, color: G1, margin: [0, 5, 0, 0] },
-        ],
-        margin: [14, 11, 14, 11],
-      }]] }, layout: { hLineWidth: () => 0, vLineWidth: (i) => i === 0 ? 2.5 : 0, vLineColor: () => GREEN, paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0 }, margin: [0, 20, 0, 0] },
-
-      { text: 'Розрахунок орієнтовний — на основі поточних цін закупівлі та продажу в замовленні. Не є фінансовою гарантією.', fontSize: 7, italics: true, color: G3, margin: [0, 14, 0, 0] },
+      { text: 'Розрахунок орієнтовний — на основі поточних цін закупівлі та продажу в замовленні. Не є фінансовою гарантією.', fontSize: 7, italics: true, color: G3, margin: [0, 20, 0, 0] },
     ],
   }
 }
