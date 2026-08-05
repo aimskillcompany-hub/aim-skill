@@ -318,6 +318,20 @@ function DetailsTab({ o, onSaved }) {
   )
 }
 
+// ── Зіставлення позицій замовлення з рядками рахунку постачальника (для AI-собівартості) ──
+const _normName = s => (s || '').toString().toLowerCase().replace(/[«»"'`]/g, '').replace(/[^0-9a-zа-яіїєґ]+/gi, ' ').replace(/\s+/g, ' ').trim()
+const _normSku = s => (s || '').toString().toLowerCase().replace(/[^0-9a-zа-яіїєґ]+/gi, '')
+const _tokens = s => { const set = new Set(); _normName(s).split(' ').forEach(t => { if (t.length >= 2) set.add(t) }); return set }
+const _jaccard = (a, b) => { if (!a.size || !b.size) return 0; let inter = 0; a.forEach(t => { if (b.has(t)) inter++ }); return inter / (a.size + b.size - inter) }
+// Собівартість зберігається в тій самій базі ПДВ, що й ціна рядка (price_includes_vat).
+// Ціна з рахунку постачальника може бути в іншій базі — конвертуємо.
+const _toCostBasis = (price, supInclVat, rowInclVat, vatRate) => {
+  let c = Number(price) || 0; const v = Number(vatRate) || 0
+  if (supInclVat && !rowInclVat && v > 0) c = c / (1 + v / 100)        // з ПДВ → без ПДВ
+  else if (!supInclVat && rowInclVat && v > 0) c = c * (1 + v / 100)   // без ПДВ → з ПДВ
+  return Math.round(c * 100) / 100
+}
+
 // ───────── Товари ─────────
 // Необов'язкові позиції замовлення. product_id прив'язує до довідника
 // (переюз у КП/документах/складі); name — знімок назви.
@@ -351,6 +365,48 @@ function ItemsTab({ o, onChange, onDirty }) {
       }))])
       setAiMsg(`✅ Додано позицій: ${items.length}. Перевірте ціни й собівартість (напр. «З прайсу»), тоді «Зберегти».`)
     } catch (e) { setAiMsg('⚠️ ' + (e.message || 'Не вдалося розпізнати. Спробуй ще раз.')) }
+    setAiLoading(false)
+  }
+
+  // AI-собівартість: завантажити рахунок/накладну постачальника → заповнити закупівлю позицій.
+  // Зіставляє рядки рахунку з наявними позиціями (за кодом, тоді за назвою) і проставляє cost_price.
+  // Нерозпізнані рядки додає новими позиціями (лише з собівартістю, ціну продажу задаєте самі).
+  const importCosts = async (files) => {
+    if (!files?.length) { setAiMsg('Файл не обрано.'); return }
+    setAiLoading(true); setAiMsg(`⏳ Читаю рахунок постачальника «${files[0]?.name || 'документ'}»… 10–30 секунд.`)
+    try {
+      const { priceIncludesVat, items } = await extractOrderItems(Array.from(files))
+      if (!items.length) { setAiMsg('Не знайдено позицій у рахунку. Спробуйте інший файл.'); setAiLoading(false); return }
+      const sup = items.map((it, idx) => ({ ...it, _idx: idx, _sku: _normSku(it.sku), _tok: _tokens(it.name) }))
+      const used = new Set()
+      const pickBest = (r) => {
+        const rsku = _normSku(r.sku)
+        if (rsku.length >= 3) { const m = sup.find(s => !used.has(s._idx) && s._sku.length >= 3 && s._sku === rsku); if (m) return m }
+        const rtok = _tokens(r.name)
+        let best = null, score = 0
+        for (const s of sup) { if (used.has(s._idx)) continue; const sc = _jaccard(rtok, s._tok); if (sc > score) { score = sc; best = s } }
+        return score >= 0.4 ? best : null
+      }
+      const cur = rows || []
+      let filled = 0
+      const nextRows = cur.map(r => {
+        const b = pickBest(r); if (!b) return r
+        used.add(b._idx); filled++
+        return { ...r, cost_price: _toCostBasis(b.unitPrice, priceIncludesVat, !!r.price_includes_vat, Number(r.vat_rate) || Number(b.vatRate) || 20) }
+      })
+      const extras = sup.filter(s => !used.has(s._idx)).map(s => ({
+        product_id: null, name: s.name || '', sku: s.sku || '', unit: s.unit || 'шт', qty: Number(s.quantity) || 1,
+        cost_price: Math.round((Number(s.unitPrice) || 0) * 100) / 100, unit_price: 0,
+        vat_rate: s.vatRate != null ? Number(s.vatRate) : 20, price_includes_vat: !!priceIncludesVat,
+        supplier_id: null, supplier_name: null,
+      }))
+      markDirty()
+      setRows([...nextRows, ...extras])
+      const parts = [`заповнено собівартість: ${filled}`]
+      if (extras.length) parts.push(`додано нових позицій: ${extras.length}`)
+      const unmatchedRows = nextRows.length - filled
+      setAiMsg(`✅ Рахунок оброблено — ${parts.join(', ')}. ${unmatchedRows > 0 ? `Без відповідника лишилось позицій: ${unmatchedRows}. ` : ''}Перевірте й «Зберегти».`)
+    } catch (e) { setAiMsg('⚠️ ' + (e.message || 'Не вдалося розпізнати рахунок. Спробуй ще раз.')) }
     setAiLoading(false)
   }
 
@@ -464,6 +520,11 @@ function ItemsTab({ o, onChange, onDirty }) {
             {aiLoading ? <><i className="ti ti-loader-2" style={{ animation: 'spin 1s linear infinite' }} /> Розпізнаю…</> : <><i className="ti ti-file-import" /> Специфікація (AI)</>}
             <input type="file" accept=".docx,.pdf,image/*" multiple style={{ display: 'none' }} disabled={aiLoading}
               onChange={e => { const fs = Array.from(e.target.files || []); e.target.value = ''; importSpec(fs) }} />
+          </label>
+          <label className="btn" style={{ cursor: aiLoading ? 'wait' : 'pointer' }} title="Завантажити рахунок/накладну постачальника (.docx, PDF, фото) — AI заповнить закупівлю (собівартість) позицій">
+            <i className="ti ti-receipt-tax" /> Собівартість (AI)
+            <input type="file" accept=".docx,.pdf,image/*" multiple style={{ display: 'none' }} disabled={aiLoading}
+              onChange={e => { const fs = Array.from(e.target.files || []); e.target.value = ''; importCosts(fs) }} />
           </label>
           <button className="btn" onClick={() => setShowPicker(true)}><i className="ti ti-tag" /> З прайсу</button>
           <button className="btn" onClick={addRow}><i className="ti ti-plus" /> Позиція</button>
