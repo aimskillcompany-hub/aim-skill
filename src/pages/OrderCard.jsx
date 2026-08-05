@@ -370,9 +370,11 @@ function ItemsTab({ o, onChange, onDirty }) {
 
   // AI-собівартість: завантажити рахунок/накладну постачальника → заповнити закупівлю позицій.
   // Зіставляє рядки рахунку з наявними позиціями (за кодом, тоді за назвою) і проставляє cost_price.
-  // Нерозпізнані рядки додає новими позиціями (лише з собівартістю, ціну продажу задаєте самі).
+  // НЕ додає нових позицій: рахунок може покривати кілька замовлень, тож зайві рядки ігноруються
+  // (заповнюємо лише те, що вже є в цьому замовленні).
   const importCosts = async (files) => {
     if (!files?.length) { setAiMsg('Файл не обрано.'); return }
+    if (!(rows || []).length) { setAiMsg('Спершу додайте позиції замовлення (вручну, «З прайсу» або «Специфікація (AI)») — тоді рахунок заповнить їхню собівартість.'); return }
     setAiLoading(true); setAiMsg(`⏳ Читаю рахунок постачальника «${files[0]?.name || 'документ'}»… 10–30 секунд.`)
     try {
       const { priceIncludesVat, items } = await extractOrderItems(Array.from(files))
@@ -394,18 +396,14 @@ function ItemsTab({ o, onChange, onDirty }) {
         used.add(b._idx); filled++
         return { ...r, cost_price: _toCostBasis(b.unitPrice, priceIncludesVat, !!r.price_includes_vat, Number(r.vat_rate) || Number(b.vatRate) || 20) }
       })
-      const extras = sup.filter(s => !used.has(s._idx)).map(s => ({
-        product_id: null, name: s.name || '', sku: s.sku || '', unit: s.unit || 'шт', qty: Number(s.quantity) || 1,
-        cost_price: Math.round((Number(s.unitPrice) || 0) * 100) / 100, unit_price: 0,
-        vat_rate: s.vatRate != null ? Number(s.vatRate) : 20, price_includes_vat: !!priceIncludesVat,
-        supplier_id: null, supplier_name: null,
-      }))
       markDirty()
-      setRows([...nextRows, ...extras])
-      const parts = [`заповнено собівартість: ${filled}`]
-      if (extras.length) parts.push(`додано нових позицій: ${extras.length}`)
-      const unmatchedRows = nextRows.length - filled
-      setAiMsg(`✅ Рахунок оброблено — ${parts.join(', ')}. ${unmatchedRows > 0 ? `Без відповідника лишилось позицій: ${unmatchedRows}. ` : ''}Перевірте й «Зберегти».`)
+      setRows(nextRows)
+      const notMatched = cur.length - filled
+      const extraLines = sup.length - used.size
+      setAiMsg(`✅ Рахунок оброблено — заповнено собівартість: ${filled} з ${cur.length}.` +
+        (notMatched > 0 ? ` Не знайдено відповідника у рахунку для ${notMatched} позицій.` : '') +
+        (extraLines > 0 ? ` Рядків рахунку без пари (можливо, з інших замовлень): ${extraLines} — не додані.` : '') +
+        ` Перевірте й «Зберегти».`)
     } catch (e) { setAiMsg('⚠️ ' + (e.message || 'Не вдалося розпізнати рахунок. Спробуй ще раз.')) }
     setAiLoading(false)
   }
@@ -521,7 +519,7 @@ function ItemsTab({ o, onChange, onDirty }) {
             <input type="file" accept=".docx,.pdf,image/*" multiple style={{ display: 'none' }} disabled={aiLoading}
               onChange={e => { const fs = Array.from(e.target.files || []); e.target.value = ''; importSpec(fs) }} />
           </label>
-          <label className="btn" style={{ cursor: aiLoading ? 'wait' : 'pointer' }} title="Завантажити рахунок/накладну постачальника (.docx, PDF, фото) — AI заповнить закупівлю (собівартість) позицій">
+          <label className="btn" style={{ cursor: aiLoading ? 'wait' : 'pointer' }} title="Завантажити рахунок/накладну постачальника (.docx, PDF, фото) — AI заповнить закупівлю (собівартість) НАЯВНИХ позицій. Нових не додає (рахунок може покривати кілька замовлень)">
             <i className="ti ti-receipt-tax" /> Собівартість (AI)
             <input type="file" accept=".docx,.pdf,image/*" multiple style={{ display: 'none' }} disabled={aiLoading}
               onChange={e => { const fs = Array.from(e.target.files || []); e.target.value = ''; importCosts(fs) }} />
