@@ -48,8 +48,9 @@ export function amountInWords(amount) {
   if (!amount || amount === 0) return 'нуль гривень 00 копійок'
 
   const abs = Math.abs(amount)
-  const hrn = Math.floor(abs)
-  const kop = Math.round((abs - hrn) * 100)
+  const totalKop = Math.round(abs * 100)
+  const hrn = Math.floor(totalKop / 100)
+  const kop = totalKop % 100
 
   const parts = []
 
