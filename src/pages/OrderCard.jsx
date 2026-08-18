@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
@@ -14,7 +14,7 @@ import AutoTextarea from '../components/ui/AutoTextarea'
 import PricePickerModal from '../components/ui/PricePickerModal'
 import ContractorSelect from '../components/ui/ContractorSelect'
 import {
-  ORDER_TYPES, TYPE_COLORS, OUTCOME, flowFor, statusLabel, proposalOverdue,
+  ORDER_TYPES, TYPE_COLORS, OUTCOME, flowFor, proposalOverdue,
 } from '../lib/orders'
 
 const VAT_RATES = [0, 20]
@@ -77,6 +77,15 @@ export default function OrderCard() {
     setBusy(''); load()
   }
 
+  // Зміна статусу зі степера в шапці (єдиний контрол стану)
+  const setStatus = async (s) => {
+    const upd = { status: s }
+    if (s === 'closed') upd.closed_at = o.closed_at || new Date().toISOString()
+    else if (o.status === 'closed') upd.closed_at = null // вихід із «Закрито» → скидаємо дату закриття
+    await supabase.from('orders').update(upd).eq('id', id)
+    load()
+  }
+
   // Змінити/проставити результат без зміни статусу архіву
   const setOutcome = async (outcome) => {
     setMsg(null)
@@ -135,7 +144,6 @@ export default function OrderCard() {
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <span style={{ color: TYPE_COLORS[o.type], fontWeight: 600, fontSize: 13 }}>{ORDER_TYPES[o.type]}</span>
               <span style={{ color: 'var(--text2)', fontSize: 13 }}>{o.contractors?.name}</span>
-              <span style={{ background: 'var(--surface2)', borderRadius: 6, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>{statusLabel(o)}</span>
               <span style={{ color: 'var(--text2)', fontSize: 13 }}>{fmt(o.total)} грн</span>
               {OUTCOME[o.outcome] && (
                 <span style={{ background: OUTCOME[o.outcome].bg, color: OUTCOME[o.outcome].color, borderRadius: 6, padding: '2px 10px', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -184,6 +192,8 @@ export default function OrderCard() {
         </div>
       </div>
 
+      <StatusStepper o={o} onChange={setStatus} />
+
       {msg && (
         <div style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 10, padding: '10px 16px', marginBottom: 14, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
           <i className="ti ti-alert-circle" /> {msg}
@@ -222,7 +232,7 @@ export default function OrderCard() {
         ))}
       </div>
 
-      {tab === 'details' && <DetailsTab o={o} onSaved={load} />}
+      {tab === 'details' && <DetailsTab key={`${o.status}|${o.closed_at || ''}`} o={o} onSaved={load} />}
       {tab === 'items' && <ItemsTab o={o} onChange={load} onDirty={setItemsDirty} />}
       {tab === 'proposals' && <ProposalsTab o={o} onChange={load} />}
       {tab === 'documents' && <DocumentsTab o={o} />}
@@ -233,26 +243,63 @@ export default function OrderCard() {
   )
 }
 
+// ───────── Степер статусів (у шапці, єдиний контрол стану) ─────────
+function StatusStepper({ o, onChange }) {
+  const steps = flowFor(o.type)
+  let cur = steps.findIndex(x => x.s === o.status)
+  if (cur < 0) cur = 0
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', overflowX: 'auto', marginBottom: 16, padding: '4px 2px' }}>
+      {steps.map((st, i) => {
+        const done = i < cur, active = i === cur
+        return (
+          <Fragment key={st.s}>
+            {i > 0 && <div style={{ flex: '1 1 16px', minWidth: 12, height: 2, background: i <= cur ? 'var(--green)' : 'var(--border)', marginTop: 14 }} />}
+            <button onClick={() => onChange(st.s)} title={`Перевести в «${st.label}»`}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: 0, flex: '0 0 auto' }}>
+              <span style={{
+                width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 13, fontWeight: 700,
+                background: active ? 'var(--blue)' : done ? 'var(--green)' : 'var(--surface2)',
+                color: active || done ? '#fff' : 'var(--text3)',
+              }}>{done ? <i className="ti ti-check" /> : i + 1}</span>
+              <span style={{ fontSize: 11, textAlign: 'center', lineHeight: 1.2, maxWidth: 92,
+                color: active ? 'var(--blue)' : done ? 'var(--text)' : 'var(--text3)', fontWeight: active ? 600 : 400 }}>{st.label}</span>
+            </button>
+          </Fragment>
+        )
+      })}
+    </div>
+  )
+}
+
 // ───────── Деталі ─────────
 function DetailsTab({ o, onSaved }) {
-  const [form, setForm] = useState({ total: o.total, description: o.description || '', status: o.status, procurement_type: o.procurement_type || 'direct', client_id: o.client_id || null, clientName: o.contractors?.name || '' })
-  const [itemsSum, setItemsSum] = useState(null)
-  const [hasItems, setHasItems] = useState(false)
+  const [form, setForm] = useState({
+    description: o.description || '',
+    procurement_type: o.procurement_type || 'direct',
+    procurement_id: o.procurement_id || '',
+    client_id: o.client_id || null,
+    clientName: o.contractors?.name || '',
+    closed_at: o.closed_at ? o.closed_at.slice(0, 10) : '',
+  })
   const [saved, setSaved] = useState(false)
-  const flow = flowFor(o.type)
 
-  useEffect(() => {
-    supabase.from('order_items').select('qty, unit_price').eq('order_id', o.id).then(({ data }) => {
-      setHasItems((data || []).length > 0)
-      setItemsSum((data || []).reduce((s, r) => s + (Number(r.qty) || 0) * (Number(r.unit_price) || 0), 0))
-    })
-  }, [o.id])
-
-  const effectiveTotal = hasItems ? (itemsSum || 0) : (Number(form.total) || 0)
   const save = async () => {
-    const upd = { total: effectiveTotal, description: form.description || null, status: form.status, procurement_type: form.procurement_type, client_id: form.client_id || null }
-    if (form.status === 'closed' && !o.closed_at) upd.closed_at = new Date().toISOString()
-    await supabase.from('orders').update(upd).eq('id', o.id)
+    const upd = {
+      description: form.description || null,
+      procurement_type: form.procurement_type,
+      procurement_id: form.procurement_type === 'tender' ? (form.procurement_id || null) : null,
+      client_id: form.client_id || null,
+      closed_at: form.closed_at ? new Date(form.closed_at).toISOString() : null,
+    }
+    let { error } = await supabase.from('orders').update(upd).eq('id', o.id)
+    // procurement_id може ще не існувати (міграція 033) — тоді зберігаємо без нього
+    if (error && /procurement_id/.test(error.message || '')) {
+      const { procurement_id, ...rest } = upd
+      ;({ error } = await supabase.from('orders').update(rest).eq('id', o.id))
+    }
+    if (error) { alert('Помилка збереження: ' + error.message); return }
     setSaved(true); setTimeout(() => setSaved(false), 2000); onSaved()
   }
   return (
@@ -270,21 +317,22 @@ function DetailsTab({ o, onSaved }) {
               }
             }} />
         </div>
-        <div className="form-group"><label>Сума</label>
-          {hasItems
-            ? <><input className="form-input" value={`${fmt(itemsSum || 0)} грн`} disabled style={{ background: 'var(--surface2)' }} /><div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>Рахується з цін продажу товарів (вкладка «Товари»)</div></>
-            : <input className="form-input" type="number" value={form.total} onChange={e => setForm(f => ({ ...f, total: e.target.value }))} />}
-        </div>
-        <div className="form-group"><label>Статус (ручне керування)</label>
-          <select className="form-input" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
-            {flow.map(s => <option key={s.s} value={s.s}>{s.label}</option>)}
-          </select>
-        </div>
         <div className="form-group"><label>Тип закупівлі</label>
           <select className="form-input" value={form.procurement_type} onChange={e => setForm(f => ({ ...f, procurement_type: e.target.value }))}>
             <option value="direct">Пряма закупівля</option>
             <option value="tender">Тендер</option>
           </select>
+        </div>
+        {form.procurement_type === 'tender' && (
+          <div className="form-group"><label>Ідентифікатор закупівлі</label>
+            <input className="form-input" placeholder="напр. UA-2026-01-000000-a" value={form.procurement_id} onChange={e => setForm(f => ({ ...f, procurement_id: e.target.value }))} />
+          </div>
+        )}
+        <div className="form-group"><label>Дата створення заявки</label>
+          <input className="form-input" value={o.created_at ? o.created_at.slice(0, 10) : '—'} disabled style={{ background: 'var(--surface2)' }} />
+        </div>
+        <div className="form-group"><label>Дата закриття заявки</label>
+          <input className="form-input" type="date" value={form.closed_at} onChange={e => setForm(f => ({ ...f, closed_at: e.target.value }))} />
         </div>
         <div className="form-group full"><label>Опис</label><input className="form-input" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></div>
       </div>
