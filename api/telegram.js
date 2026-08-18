@@ -2,7 +2,7 @@
 // Налаштування webhook (один раз):
 //   https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://aim-skill.vercel.app/api/telegram
 // Env: TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_IDS (через кому), TELEGRAM_OWNER_ID, APP_URL
-import { getAdmin } from './_lib.js'
+import { getAdmin, nextOrderNumber } from './_lib.js'
 
 const TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim()
 const ALLOWED = (process.env.TELEGRAM_ALLOWED_IDS || '').split(',').map(s => s.trim()).filter(Boolean)
@@ -48,8 +48,7 @@ const isAllowed = (id) => ALLOWED.length === 0 ? false : ALLOWED.includes(String
 
 // ── Створення заявки (клієнта НЕ створюємо автоматично) ──
 async function createOrder(admin, s) {
-  const { count } = await admin.from('orders').select('id', { count: 'exact', head: true })
-  const order_number = String((count || 0) + 1).padStart(4, '0')
+  const order_number = await nextOrderNumber(admin)
   const desc = [
     s.need,
     !s.clientId && s.company ? `Клієнт (не призначений): ${s.company}` : null,

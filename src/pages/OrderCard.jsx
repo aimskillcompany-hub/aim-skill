@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
+import { nextOrderNumber } from '../lib/orderNumber'
 import { fmt } from '../lib/fmt'
 import { getDocType, previewPdf, generatePdf, supplierOrderPdf, investorReportPdf } from '../lib/docgen'
 import { resolveProduct } from '../lib/stockService'
@@ -97,8 +98,7 @@ export default function OrderCard() {
   const copyOrder = async () => {
     setBusy('copy'); setMsg(null)
     try {
-      const { count } = await supabase.from('orders').select('id', { count: 'exact', head: true })
-      const order_number = String((count || 0) + 1).padStart(4, '0')
+      const order_number = await nextOrderNumber(supabase)
       const { data: no, error } = await supabase.from('orders').insert({
         order_number, type: o.type, status: 'new', client_id: o.client_id,
         description: o.description || null, procurement_type: o.procurement_type || null,

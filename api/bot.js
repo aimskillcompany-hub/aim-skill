@@ -1,7 +1,7 @@
 // API для Telegram-бота. Один ендпоінт, дії через body.action.
 // Авторизація: заголовок  Authorization: Bearer <BOT_API_TOKEN>  (env BOT_API_TOKEN).
 // Усі операції — service-role (обходить RLS). Тримати BOT_API_TOKEN у Vercel env.
-import { getAdmin } from './_lib.js'
+import { getAdmin, nextOrderNumber } from './_lib.js'
 
 const FLOW = {
   trade: ['new', 'proposal_sent', 'confirmed', 'contract_signed', 'invoiced', 'paid_partial',
@@ -99,8 +99,7 @@ export default async function handler(req, res) {
       case 'createOrder': {
         const type = VALID_TYPES.includes(p.type) ? p.type : 'trade'
         const clientId = await findOrCreateClient(admin, p.client || { id: p.clientId })
-        const { count } = await admin.from('orders').select('id', { count: 'exact', head: true })
-        const order_number = String((count || 0) + 1).padStart(4, '0')
+        const order_number = await nextOrderNumber(admin)
         // Опис: потреба клієнта + контактна особа
         const descParts = []
         if (p.description) descParts.push(p.description)

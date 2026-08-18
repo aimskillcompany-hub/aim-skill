@@ -1,6 +1,6 @@
 // Створити заявку (замовлення) з листа: AI аналізує текст + вкладення,
 // створює order, зберігає вкладення як документи замовлення (з OCR), прив'язує.
-import { getAdmin, verifyUser, ocrFromAttachments, extractOrderFromEmail, typeFromOcr, dirFromRole, matchContractor } from './_lib.js'
+import { getAdmin, nextOrderNumber, verifyUser, ocrFromAttachments, extractOrderFromEmail, typeFromOcr, dirFromRole, matchContractor } from './_lib.js'
 
 const VALID_TYPES = ['trade', 'service', 'agent']
 const MAX_OCR = 3                          // скільки вкладень розпізнавати OCR (решта — без метаданих)
@@ -66,8 +66,7 @@ export default async function handler(req, res) {
     }
 
     // Створюємо замовлення
-    const { count } = await admin.from('orders').select('id', { count: 'exact', head: true })
-    const order_number = String((count || 0) + 1).padStart(4, '0')
+    const order_number = await nextOrderNumber(admin)
     const descr = order.description || email.subject || 'Заявка з листа'
     const { data: ord, error: ordErr } = await admin.from('orders').insert({
       order_number, type, status: 'new', client_id: clientId,

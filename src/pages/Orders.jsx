@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
+import { nextOrderNumber } from '../lib/orderNumber'
 import { fmt, fmtInt } from '../lib/fmt'
 import {
   ORDER_TYPES, TYPE_COLORS, OUTCOME, statusLabel, nextActionLabel, isOpen, needsAction,
@@ -197,8 +198,7 @@ function NewOrderModal({ onClose, onCreated }) {
   const save = async () => {
     if (!clientId) { setError('Оберіть клієнта'); return }
     setSaving(true); setError(null)
-    const { count } = await supabase.from('orders').select('id', { count: 'exact', head: true })
-    const order_number = String((count || 0) + 1).padStart(4, '0')
+    const order_number = await nextOrderNumber(supabase)
     const { data, error } = await supabase.from('orders').insert({
       order_number, type, status: 'new', client_id: clientId,
       total: Number(total) || 0, description: description || null, created_by: user?.id || null,

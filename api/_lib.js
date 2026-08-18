@@ -12,6 +12,20 @@ export function getAdmin() {
   return createClient(URL, SERVICE, { auth: { persistSession: false, autoRefreshToken: false } })
 }
 
+// Атомна генерація номера замовлення. RPC next_order_number() (послідовність у БД,
+// міграція 031) — стійка до гонок і видалень. Фолбек — max+1 (не count+1), поки
+// міграцію не запущено. admin = service-role клієнт (getAdmin()).
+export async function nextOrderNumber(admin) {
+  const { data, error } = await admin.rpc('next_order_number')
+  if (!error && data) return data
+  const { data: rows } = await admin.from('orders').select('order_number')
+  const max = (rows || []).reduce((m, r) => {
+    const n = parseInt(String(r.order_number || '').replace(/\D/g, ''), 10)
+    return isNaN(n) ? m : Math.max(m, n)
+  }, 0)
+  return String(max + 1).padStart(4, '0')
+}
+
 // Перевірка JWT користувача з заголовка Authorization: Bearer <access_token>.
 // Повертає user або null.
 export async function verifyUser(req) {
