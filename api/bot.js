@@ -3,18 +3,17 @@
 // Усі операції — service-role (обходить RLS). Тримати BOT_API_TOKEN у Vercel env.
 import { getAdmin, nextOrderNumber } from './_lib.js'
 
-const FLOW = {
-  trade: ['new', 'proposal_sent', 'confirmed', 'contract_signed', 'invoiced', 'paid_partial',
-    'ordering_supplier', 'in_transit', 'ready_to_ship', 'shipped', 'docs_received', 'closed'],
-  service: ['new', 'invoiced', 'paid', 'closed'],
-  agent: ['new', 'client_transferred', 'deal_done', 'invoiced', 'closed'],
-}
+// Єдиний спрощений набір статусів для всіх типів (узгоджено з src/lib/orders.js)
+const STAGES = ['new', 'processing', 'ordering_supplier', 'shipped', 'paid', 'closed']
+const FLOW = { trade: STAGES, service: STAGES, agent: STAGES }
 const STATUS_LABEL = {
-  new: 'Новий', proposal_sent: 'КП надіслано', confirmed: 'Підтверджено', contract_signed: 'Договір підписано',
-  invoiced: 'Рахунок виставлено', paid_partial: 'Часткова оплата', ordering_supplier: 'Замовлення дистриб.',
-  in_transit: 'В дорозі', ready_to_ship: 'Готово до відправки', shipped: 'Відвантажено',
-  docs_received: 'Документи отримано', closed: 'Закрито', paid: 'Оплачено',
-  client_transferred: 'Клієнт переданий', deal_done: 'Угода закрита',
+  new: 'Новий', processing: 'В опрацюванні', ordering_supplier: 'Замовлення у дистрибютора',
+  shipped: 'Відвантажено', paid: 'Оплачено', closed: 'Закрито',
+  // легасі (до міграції 032)
+  proposal_sent: 'В опрацюванні', confirmed: 'В опрацюванні', contract_signed: 'В опрацюванні',
+  invoiced: 'В опрацюванні', paid_partial: 'В опрацюванні', in_transit: 'Замовлення у дистрибютора',
+  ready_to_ship: 'Замовлення у дистрибютора', docs_received: 'Відвантажено',
+  client_transferred: 'В опрацюванні', deal_done: 'В опрацюванні',
 }
 const VALID_TYPES = ['trade', 'service', 'agent']
 const APP_URL = process.env.APP_URL || 'https://aim-skill.vercel.app'

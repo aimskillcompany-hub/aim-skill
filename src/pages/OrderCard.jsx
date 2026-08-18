@@ -640,7 +640,7 @@ function ProposalsTab({ o, onChange }) {
   }
   const send = async (p) => {
     await supabase.from('commercial_proposals').update({ status: 'sent', sent_at: new Date().toISOString() }).eq('id', p.id)
-    if (o.type === 'trade' && o.status === 'new') await supabase.from('orders').update({ status: 'proposal_sent' }).eq('id', o.id)
+    if (o.status === 'new') await supabase.from('orders').update({ status: 'processing' }).eq('id', o.id)
     load(); onChange()
   }
   const setStatus = async (p, status) => { await supabase.from('commercial_proposals').update({ status }).eq('id', p.id); load() }

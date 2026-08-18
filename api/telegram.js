@@ -11,11 +11,13 @@ const APP_URL = process.env.APP_URL || 'https://aim-skill.vercel.app'
 const orderUrl = (id) => `${APP_URL}/#/orders/${id}`
 
 const STATUS_LABEL = {
-  new: 'Новий', proposal_sent: 'КП надіслано', confirmed: 'Підтверджено', contract_signed: 'Договір підписано',
-  invoiced: 'Рахунок виставлено', paid_partial: 'Часткова оплата', ordering_supplier: 'Замовлення дистриб.',
-  in_transit: 'В дорозі', ready_to_ship: 'Готово до відправки', shipped: 'Відвантажено',
-  docs_received: 'Документи отримано', closed: 'Закрито', paid: 'Оплачено',
-  client_transferred: 'Клієнт переданий', deal_done: 'Угода закрита',
+  new: 'Новий', processing: 'В опрацюванні', ordering_supplier: 'Замовлення у дистрибютора',
+  shipped: 'Відвантажено', paid: 'Оплачено', closed: 'Закрито',
+  // легасі (до міграції 032)
+  proposal_sent: 'В опрацюванні', confirmed: 'В опрацюванні', contract_signed: 'В опрацюванні',
+  invoiced: 'В опрацюванні', paid_partial: 'В опрацюванні', in_transit: 'Замовлення у дистрибютора',
+  ready_to_ship: 'Замовлення у дистрибютора', docs_received: 'Відвантажено',
+  client_transferred: 'В опрацюванні', deal_done: 'Угода закрита',
 }
 const SOURCE_LABEL = { recommendation: 'Рекомендація', tender: 'Тендер', cold: 'Холодний', other: 'Інше' }
 const DOC_TYPE_LABEL = {
