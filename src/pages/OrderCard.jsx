@@ -506,6 +506,8 @@ function ItemsTab({ o, onChange, onDirty }) {
   const netSum = (rows || []).reduce((s, r) => s + rowNet(r), 0)         // без ПДВ
   const vatSum = sum - netSum                                            // ПДВ
   const marginSum = (rows || []).reduce((s, r) => s + rowMargin(r), 0)
+  const costSum = netSum - marginSum                                     // собівартість без ПДВ
+  const marginPctTotal = netSum > 0 ? (marginSum / netSum) * 100 : 0
 
   const save = async () => {
     setSaving(true)
@@ -635,12 +637,22 @@ function ItemsTab({ o, onChange, onDirty }) {
       </div>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 14, flexWrap: 'wrap', gap: 10 }}>
-        <div style={{ fontWeight: 600 }}>
-          <div style={{ fontSize: 13, fontWeight: 400, color: 'var(--text2)' }}>Без ПДВ: {fmt(netSum)} грн · ПДВ: {fmt(vatSum)} грн</div>
-          Всього з ПДВ: {fmt(sum)} грн
-          {marginSum !== 0 && <span style={{ marginLeft: 12, fontSize: 13, fontWeight: 500, color: marginSum > 0 ? 'var(--green)' : 'var(--red)' }}>Маржа: {fmt(marginSum)} грн{netSum > 0 ? ` (${((marginSum / netSum) * 100).toFixed(0)}%)` : ''}</span>}
-          <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 400, marginTop: 2 }}>Маржа рахується без ПДВ (чиста ціна − чиста собівартість). «Тип ціни» задає, як введені ціни — з ПДВ чи без. «Сума» замовлення = всього з ПДВ.</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 14, flexWrap: 'wrap', gap: 16 }}>
+        <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <Metric label="Собівартість" value={fmt(costSum)} />
+          <Metric label="Виручка без ПДВ" value={fmt(netSum)} />
+          <Metric label="ПДВ" value={fmt(vatSum)} />
+          <Metric label="Всього з ПДВ" value={`${fmt(sum)} грн`} strong />
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+              Маржа
+              <i className="ti ti-info-circle" style={{ fontSize: 13, cursor: 'help', color: 'var(--text3)' }}
+                title="Маржа рахується без ПДВ (чиста ціна − чиста собівартість). «Тип ціни» задає, як введені ціни — з ПДВ чи без. «Сума» замовлення = всього з ПДВ." />
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 700, whiteSpace: 'nowrap', color: marginSum > 0 ? 'var(--green)' : marginSum < 0 ? 'var(--red)' : 'var(--text3)' }}>
+              {fmt(marginSum)}<span style={{ fontSize: 12, fontWeight: 500 }}> · {marginPctTotal.toFixed(0)}%</span>
+            </div>
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {saved && <span style={{ color: 'var(--green)', fontSize: 13 }}>Збережено!</span>}
@@ -1184,6 +1196,12 @@ function StockTab({ o }) {
 }
 
 // ───────── helpers ─────────
+const Metric = ({ label, value, strong, color }) => (
+  <div>
+    <div style={{ fontSize: 11, color: 'var(--text3)', whiteSpace: 'nowrap' }}>{label}</div>
+    <div style={{ fontSize: strong ? 16 : 14, fontWeight: strong ? 700 : 500, whiteSpace: 'nowrap', color: color || 'var(--text)' }}>{value}</div>
+  </div>
+)
 const Loading = () => <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
 const Empty = ({ text }) => <div className="card"><p style={{ color: 'var(--text3)', fontSize: 13, textAlign: 'center', padding: 16 }}>{text}</p></div>
 const Table = ({ head, children }) => (
