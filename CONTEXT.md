@@ -235,6 +235,8 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 ### 🔴 Міграції (звірено з БД 2026-07-14 через `migrations/probe.mjs`)
 - [x] ~~Запустити `migrations/025_suborder_item_ordered.sql`~~ — застосовано (звірено 2026-07-14, `supplier_order_items.ordered` є).
 - [x] ~~Запустити `migrations/027_generated_docs_refs.sql`~~ — застосовано (звірено 2026-07-14, усі 4 колонки є; поля видаткової/акту тепер зберігаються). Усі міграції 001–027 застосовані.
+- [x] ~~028/029/030~~ — застосовано (звірено 2026-08-18 через schema-probe: `orders.outcome`, `documents.is_verified`, таблиця `tasks` існують).
+- [ ] Запустити `migrations/031_order_number_unique.sql` — **ще не застосовано** (звірено 2026-08-18: функції `next_order_number()` нема). Фікс задвоєння номерів замовлень + розшивання наявних дублів.
 
 ### Дії користувача (дані, не код)
 - [ ] Ввести **початковий залишок ПУМБ** станом на 2025-02-26 (Налаштування → Рахунки) — інакше баланс = лише рух.
@@ -331,9 +333,9 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `026_period_closings.sql` | Закриття періоду: `period_closings` + тригери-блокувачі `guard_period_by_date`/`guard_period_by_docdate` | ✅ застосовано (LIVE) |
 | `027_generated_docs_refs.sql` | Генерація: `generated_docs.invoice_ref`/`invoice_ref_date`/`delivery_basis`/`delivery_address` (щоб поля видаткової/акту не «злітали» при редагуванні) | ✅ застосовано (звірено 2026-07-14) |
 | `028_orders_outcome.sql` | Замовлення: `orders.outcome` ('won'\|'lost'\|null) — результат при архівуванні | ✅ застосовано (звірено 2026-07-14) |
-| `029_documents_verified.sql` | Документи: `is_verified`/`verified_at`/`verified_by` — перевірка перед закриттям періоду | ⏳ **запустити вручну** |
-| `030_tasks.sql` | Задачі: таблиця `tasks` (+ RLS authenticated) для розділу «Задачі» й нагадувань бота | ⏳ **запустити вручну** |
-| `031_order_number_unique.sql` | Замовлення: послідовність `orders_number_seq` + `next_order_number()` + унікальний індекс + розшивання дублів (фікс задвоєння номерів) | ⏳ **запустити вручну** |
+| `029_documents_verified.sql` | Документи: `is_verified`/`verified_at`/`verified_by` — перевірка перед закриттям періоду | ✅ застосовано (звірено 2026-08-18 через schema-probe) |
+| `030_tasks.sql` | Задачі: таблиця `tasks` (+ RLS authenticated) для розділу «Задачі» й нагадувань бота | ✅ застосовано (звірено 2026-08-18 через schema-probe) |
+| `031_order_number_unique.sql` | Замовлення: послідовність `orders_number_seq` + `next_order_number()` + унікальний індекс + розшивання дублів (фікс задвоєння номерів) | ⏳ **запустити вручну** (звірено 2026-08-18: функції ще нема) |
 | `validate.mjs` | Перевірка цілісності Фази 1 (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 | `probe.mjs` | Звірка наявності колонок/таблиць усіх міграцій у БД (`SUPABASE_SERVICE_KEY=... node migrations/probe.mjs`) | — |
 
