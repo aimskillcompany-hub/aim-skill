@@ -32,7 +32,6 @@ const PriceLists = lazyPage(() => import('./pages/PriceLists'))
 const Documents = lazyPage(() => import('./pages/Documents'))
 const Mail = lazyPage(() => import('./pages/Mail'))
 const Analytics = lazyPage(() => import('./pages/Analytics'))
-const Budget = lazyPage(() => import('./pages/Budget'))
 const Settings = lazyPage(() => import('./pages/Settings'))
 const PeriodClose = lazyPage(() => import('./pages/PeriodClose'))
 const Tasks = lazyPage(() => import('./pages/Tasks'))
@@ -59,7 +58,6 @@ export default function App() {
               <Route path="/documents" element={<Documents />} />
               <Route path="/mail" element={<Mail />} />
               <Route path="/analytics" element={<Analytics />} />
-              <Route path="/budget" element={<Budget />} />
               <Route path="/period-close" element={<PeriodClose />} />
               <Route path="/tasks" element={<Tasks />} />
               <Route path="/settings" element={<Settings />} />
