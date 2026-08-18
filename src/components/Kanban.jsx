@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 import {
-  ORDER_TYPES, TYPE_COLORS, flowFor, labelForStatus, STATUS_ORDER,
-  isOpen, needsAction, nextActionLabel,
+  ORDER_TYPES, TYPE_COLORS, flowFor, labelForStatus, STATUS_ORDER, isOpen,
 } from '../lib/orders'
 import { fmt } from '../lib/fmt'
 
@@ -61,9 +60,9 @@ function Card({ o, onOpen }) {
       </div>
       <div className="ellip" style={{ fontSize: 13, color: 'var(--text2)', marginTop: 2 }} title={o.clientName}>{o.clientName}</div>
       <div style={{ fontSize: 13, fontWeight: 500, marginTop: 6 }}>{fmt(o.total)}</div>
-      {isOpen(o) && (
-        <div style={{ fontSize: 11, marginTop: 6, color: o.overdue ? 'var(--red)' : needsAction(o) ? 'var(--text)' : 'var(--text3)', fontWeight: needsAction(o) ? 600 : 400 }}>
-          {o.overdue && <i className="ti ti-alert-triangle" style={{ marginRight: 4 }} />}{nextActionLabel(o)}
+      {isOpen(o) && o.overdue && (
+        <div style={{ fontSize: 11, marginTop: 6, color: 'var(--red)', fontWeight: 600 }}>
+          <i className="ti ti-alert-triangle" style={{ marginRight: 4 }} />Прострочено
         </div>
       )}
     </div>

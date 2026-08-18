@@ -5,7 +5,7 @@ import { useUser } from '../lib/auth'
 import { nextOrderNumber } from '../lib/orderNumber'
 import { fmt, fmtInt } from '../lib/fmt'
 import {
-  ORDER_TYPES, TYPE_COLORS, OUTCOME, statusLabel, nextActionLabel, isOpen, needsAction,
+  ORDER_TYPES, TYPE_COLORS, OUTCOME, statusLabel, isOpen,
   proposalOverdue, paymentOverdue,
 } from '../lib/orders'
 import Kanban from '../components/Kanban'
@@ -50,7 +50,6 @@ export default function Orders() {
       const archived = !!o.archived_at
       if (filter === 'archived') { if (!archived) return false }
       else if (archived) return false
-      if (filter === 'action' && !(isOpen(o) && needsAction(o))) return false
       if (filter === 'overdue' && !o.overdue) return false
       if (['trade', 'service', 'agent'].includes(filter) && o.type !== filter) return false
       if (!term) return true
@@ -62,7 +61,6 @@ export default function Orders() {
     const open = orders.filter(o => !o.archived_at && isOpen(o))
     return {
       active: open.length,
-      action: open.filter(needsAction).length,
       overdue: open.filter(o => o.overdue).length,
       sum: open.reduce((s, o) => s + (Number(o.total) || 0), 0),
     }
@@ -78,7 +76,7 @@ export default function Orders() {
   })
 
   const FILTERS = [
-    ['all', 'Всі'], ['action', 'Потребують дії'], ['overdue', 'Прострочено'],
+    ['all', 'Всі'], ['overdue', 'Прострочено'],
     ['trade', 'Торгівля'], ['service', 'Послуги'], ['agent', 'Агент'], ['archived', 'Архів'],
   ]
 
@@ -91,7 +89,6 @@ export default function Orders() {
 
       <div className="kpi-grid" style={{ marginBottom: 18 }}>
         <Kpi label="Активних" value={kpi.active} />
-        <Kpi label="Потребують дії" value={kpi.action} accent={kpi.action > 0 ? 'var(--blue)' : undefined} />
         <Kpi label="Прострочено" value={kpi.overdue} accent={kpi.overdue > 0 ? 'var(--red)' : undefined} />
         <Kpi label="Сума в роботі" value={fmtInt(kpi.sum)} suffix="грн" />
       </div>
@@ -137,7 +134,6 @@ export default function Orders() {
                 <SortTh label="Клієнт" k="client" sort={sort} onSort={onSort} />
                 <SortTh label="Тип" k="type" sort={sort} onSort={onSort} />
                 <SortTh label="Статус" k="status" sort={sort} onSort={onSort} />
-                <th>Наступна дія</th>
                 <SortTh label="Сума" k="total" sort={sort} onSort={onSort} align="right" />
               </tr></thead>
               <tbody>
@@ -154,13 +150,10 @@ export default function Orders() {
                         </span>
                       )}
                     </td>
-                    <td style={{ fontSize: 13, color: o.overdue ? 'var(--red)' : needsAction(o) ? 'var(--text)' : 'var(--text2)', fontWeight: needsAction(o) ? 600 : 400 }}>
-                      {o.overdue && <i className="ti ti-alert-triangle" style={{ marginRight: 4 }} />}{isOpen(o) ? nextActionLabel(o) : '—'}
-                    </td>
                     <td style={{ textAlign: 'right' }}>{fmt(o.total)}</td>
                   </tr>
                 ))}
-                {sortedOrders.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 28 }}>Замовлень немає</td></tr>}
+                {sortedOrders.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 28 }}>Замовлень немає</td></tr>}
               </tbody>
             </table>
           </div>

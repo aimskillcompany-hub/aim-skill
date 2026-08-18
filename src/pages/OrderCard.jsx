@@ -14,8 +14,7 @@ import AutoTextarea from '../components/ui/AutoTextarea'
 import PricePickerModal from '../components/ui/PricePickerModal'
 import ContractorSelect from '../components/ui/ContractorSelect'
 import {
-  ORDER_TYPES, TYPE_COLORS, OUTCOME, flowFor, stepFor, statusLabel, nextActionLabel,
-  nextStatus, isOpen, needsAction, proposalOverdue,
+  ORDER_TYPES, TYPE_COLORS, OUTCOME, flowFor, statusLabel, proposalOverdue,
 } from '../lib/orders'
 
 const VAT_RATES = [0, 20]
@@ -57,14 +56,6 @@ export default function OrderCard() {
   useEffect(() => { load() }, [id])
 
   if (!o) return <div className="page-header"><h1>Завантаження…</h1></div>
-
-  const advance = async () => {
-    const ns = nextStatus(o)
-    const upd = { status: ns }
-    if (ns === 'closed') upd.closed_at = new Date().toISOString()
-    await supabase.from('orders').update(upd).eq('id', id)
-    load()
-  }
 
   // Архівувати з результатом (won/lost/null). Відновлення — archive(false).
   const archive = async (outcome) => {
@@ -132,7 +123,6 @@ export default function OrderCard() {
     navigate('/orders')
   }
 
-  const step = stepFor(o)
   const overdue = proposalOverdue(o, lastSent)
 
   return (
@@ -219,18 +209,6 @@ export default function OrderCard() {
         <div style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
           <i className="ti ti-alert-triangle" /> Минуло понад 48 год від надсилання КП без відповіді клієнта.
         </div>
-      )}
-
-      {/* Велика кнопка «Наступна дія» */}
-      {isOpen(o) && (
-        <button onClick={advance} className="btn btn-primary" style={{
-          width: '100%', padding: '16px', fontSize: 15, marginBottom: 18,
-          background: needsAction(o) ? 'var(--blue)' : 'var(--surface2)',
-          color: needsAction(o) ? '#fff' : 'var(--text2)', justifyContent: 'center',
-        }}>
-          <i className={`ti ${needsAction(o) ? 'ti-arrow-right' : 'ti-clock'}`} />
-          {step.next}{step.act === 'wait' ? ' (позначити виконаним)' : ''}
-        </button>
       )}
 
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 18, overflowX: 'auto' }}>
