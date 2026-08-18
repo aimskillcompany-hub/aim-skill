@@ -570,72 +570,78 @@ function ItemsTab({ o, onChange, onDirty }) {
 
       {rows.length === 0 && <p style={{ color: 'var(--text3)', fontSize: 13 }}>Товарів немає. Додавайте їх, коли стане відомо, що саме входить у замовлення.</p>}
 
-      {rows.length > 0 && (
-      <div style={{ overflowX: 'auto', marginLeft: -4, marginRight: -4, paddingLeft: 4, paddingRight: 4 }}>
-      <div style={{ minWidth: 1264 }}>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 6, fontSize: 11, color: 'var(--text3)', fontWeight: 600, flexWrap: 'nowrap' }}>
-          <div style={{ flex: '2 1 220px', minWidth: 180 }}>Товар</div>
-          <div style={{ width: 100 }}>Код</div>
-          <div style={{ width: 80 }}>К-сть</div>
-          <div style={{ width: 70 }}>Од.</div>
-          <div style={{ width: 110 }}>Закупівля</div>
-          <div style={{ width: 76 }}>Націнка %</div>
-          <div style={{ width: 110 }}>Ціна продажу</div>
-          <div style={{ width: 72 }}>ПДВ %</div>
-          <div style={{ width: 110 }}>Тип ціни</div>
-          <div style={{ width: 120, textAlign: 'right' }}>Маржа</div>
-          <div style={{ width: 110, textAlign: 'right' }}>Сума з ПДВ</div>
-          <div style={{ width: 38 }} />
-        </div>
-
       {rows.map((r, i) => {
         const m = rowMargin(r), mp = marginPct(r)
         const mColor = m > 0 ? 'var(--green)' : m < 0 ? 'var(--red)' : 'var(--text3)'
+        const noMarkup = !(Number(r.cost_price) > 0 || Number(r.unit_price) > 0)
         return (
-        <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, paddingBottom: 8, alignItems: 'flex-start', flexWrap: 'nowrap', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ flex: '2 1 220px', minWidth: 180 }}>
-            <ProductSelect
-              value={r.name}
-              placeholder="Назва товару або артикул"
-              onChange={(name) => setRow(i, { name, product_id: null })}
-              onSelect={(p) => p._new
-                ? setRow(i, { name: p.name, product_id: null })
-                : setRow(i, { name: p.name, product_id: p.id, sku: p.sku || r.sku || '', unit: p.unit || 'шт', cost_price: r.cost_price || p.buy_price || 0, unit_price: r.unit_price || p.sell_price || 0, price_includes_vat: false, supplier_id: null, supplier_name: null })}
-            />
-            {r.supplier_name
-              ? <div style={{ fontSize: 11, color: 'var(--blue)', marginTop: 2 }}><i className="ti ti-tag" /> {r.supplier_name}</div>
-              : r.product_id && <div style={{ fontSize: 11, color: 'var(--green)', marginTop: 2 }}><i className="ti ti-link" /> з довідника</div>}
+        <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, marginBottom: 10 }}>
+          {/* Назва — повний рядок зверху */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <ProductSelect
+                value={r.name}
+                placeholder="Назва товару або артикул"
+                onChange={(name) => setRow(i, { name, product_id: null })}
+                onSelect={(p) => p._new
+                  ? setRow(i, { name: p.name, product_id: null })
+                  : setRow(i, { name: p.name, product_id: p.id, sku: p.sku || r.sku || '', unit: p.unit || 'шт', cost_price: r.cost_price || p.buy_price || 0, unit_price: r.unit_price || p.sell_price || 0, price_includes_vat: false, supplier_id: null, supplier_name: null })}
+              />
+              {r.supplier_name
+                ? <div style={{ fontSize: 11, color: 'var(--blue)', marginTop: 2 }}><i className="ti ti-tag" /> {r.supplier_name}</div>
+                : r.product_id && <div style={{ fontSize: 11, color: 'var(--green)', marginTop: 2 }}><i className="ti ti-link" /> з довідника</div>}
+            </div>
+            <button className="btn" onClick={() => removeRow(i)} title="Прибрати позицію" style={{ flexShrink: 0 }}><i className="ti ti-x" /></button>
           </div>
-          <AutoTextarea placeholder="Код" value={r.sku || ''} onChange={e => setRow(i, { sku: e.target.value })} style={{ width: 100 }} />
-          <input className="form-input" type="number" placeholder="К-сть" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} style={{ width: 80 }} />
-          <input className="form-input" placeholder="од." value={r.unit || ''} onChange={e => setRow(i, { unit: e.target.value })} style={{ width: 70 }} />
-          <div style={{ width: 110 }}>
-            <input className="form-input" type="number" placeholder="Закупівля" value={r.cost_price ?? ''} onChange={e => setRow(i, { cost_price: e.target.value })} style={{ width: '100%' }} />
-            {Number(r.cost_price) > 0 && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 1, textAlign: 'right' }}>{r.price_includes_vat ? `без ПДВ: ${fmt(netCost(r))}` : `з ПДВ: ${fmt(grossCost(r))}`}</div>}
+
+          {/* Поля — під назвою, з підписами, переносяться на вузьких екранах */}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 10, alignItems: 'flex-end' }}>
+            <Field label="Код" width={120}>
+              <AutoTextarea placeholder="Код" value={r.sku || ''} onChange={e => setRow(i, { sku: e.target.value })} style={{ width: '100%' }} />
+            </Field>
+            <Field label="К-сть" width={72}>
+              <input className="form-input" type="number" placeholder="К-сть" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} style={{ width: '100%' }} />
+            </Field>
+            <Field label="Од." width={64}>
+              <input className="form-input" placeholder="од." value={r.unit || ''} onChange={e => setRow(i, { unit: e.target.value })} style={{ width: '100%' }} />
+            </Field>
+            <Field label="Закупівля" width={116}>
+              <input className="form-input" type="number" placeholder="Закупівля" value={r.cost_price ?? ''} onChange={e => setRow(i, { cost_price: e.target.value })} style={{ width: '100%' }} />
+              {Number(r.cost_price) > 0 && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 1, textAlign: 'right' }}>{r.price_includes_vat ? `без ПДВ: ${fmt(netCost(r))}` : `з ПДВ: ${fmt(grossCost(r))}`}</div>}
+            </Field>
+            <Field label="Націнка %" width={84}>
+              <input className="form-input" type="number" placeholder="%" value={fmtMarkup(r)} onChange={e => setMarkup(i, e.target.value)} disabled={noMarkup} style={{ width: '100%', padding: '8px 6px' }} title="Націнка над закупівлею. Задана закупівля → рахує ціну продажу; задана лише ціна продажу → рахує закупівлю" />
+            </Field>
+            <Field label="Ціна продажу" width={116}>
+              <input className="form-input" type="number" placeholder="Ціна" value={r.unit_price} onChange={e => setRow(i, { unit_price: e.target.value })} style={{ width: '100%' }} />
+              {Number(r.unit_price) > 0 && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 1, textAlign: 'right' }}>{r.price_includes_vat ? `без ПДВ: ${fmt(netUnit(r))}` : `з ПДВ: ${fmt(grossUnit(r))}`}</div>}
+            </Field>
+            <Field label="ПДВ %" width={72}>
+              <select className="form-input" value={Number(r.vat_rate) || 0} onChange={e => setRow(i, { vat_rate: Number(e.target.value) })} style={{ width: '100%', padding: '8px 6px' }}>
+                {VAT_RATES.map(v => <option key={v} value={v}>{v}%</option>)}
+              </select>
+            </Field>
+            <Field label="Тип ціни" width={88}>
+              <select className="form-input" value={r.price_includes_vat ? '1' : '0'} onChange={e => setRow(i, { price_includes_vat: e.target.value === '1' })} style={{ width: '100%', padding: '8px 6px' }} title="«з ПДВ» — ціна вже містить ПДВ; «+ ПДВ» — ПДВ додається зверху">
+                <option value="1">з ПДВ</option>
+                <option value="0">+ ПДВ</option>
+              </select>
+            </Field>
+            {/* Маржа + Сума — обчислені, притиснуті вправо */}
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 22, alignItems: 'flex-end', paddingBottom: 2 }}>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>Маржа</div>
+                <div style={{ fontSize: 13, color: mColor, whiteSpace: 'nowrap' }}>{fmt(m)} · {mp.toFixed(0)}%</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>Сума з ПДВ</div>
+                <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap' }}>{fmt(rowTotal(r))}</div>
+              </div>
+            </div>
           </div>
-          <div style={{ width: 76 }}>
-            <input className="form-input" type="number" placeholder="%" value={fmtMarkup(r)} onChange={e => setMarkup(i, e.target.value)} disabled={!(Number(r.cost_price) > 0 || Number(r.unit_price) > 0)} style={{ width: '100%' }} title="Націнка над закупівлею. Задана закупівля → рахує ціну продажу; задана лише ціна продажу → рахує закупівлю" />
-          </div>
-          <div style={{ width: 110 }}>
-            <input className="form-input" type="number" placeholder="Ціна" value={r.unit_price} onChange={e => setRow(i, { unit_price: e.target.value })} style={{ width: '100%' }} />
-            {Number(r.unit_price) > 0 && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 1, textAlign: 'right' }}>{r.price_includes_vat ? `без ПДВ: ${fmt(netUnit(r))}` : `з ПДВ: ${fmt(grossUnit(r))}`}</div>}
-          </div>
-          <select className="form-input" value={Number(r.vat_rate) || 0} onChange={e => setRow(i, { vat_rate: Number(e.target.value) })} style={{ width: 72, padding: '8px 6px' }}>
-            {VAT_RATES.map(v => <option key={v} value={v}>{v}%</option>)}
-          </select>
-          <select className="form-input" value={r.price_includes_vat ? '1' : '0'} onChange={e => setRow(i, { price_includes_vat: e.target.value === '1' })} style={{ width: 110, padding: '8px 6px' }} title="Як введені ціни закупівлі й продажу — з ПДВ чи без">
-            <option value="1">Ціни з ПДВ</option>
-            <option value="0">Ціни без ПДВ</option>
-          </select>
-          <div style={{ width: 120, textAlign: 'right', padding: '8px 0', fontSize: 13, color: mColor }}>{fmt(m)}<div style={{ fontSize: 11 }}>{mp.toFixed(0)}%</div></div>
-          <div style={{ width: 110, textAlign: 'right', padding: '8px 0', fontSize: 13, fontWeight: 500 }}>{fmt(rowTotal(r))}</div>
-          <button className="btn" onClick={() => removeRow(i)} title="Прибрати" style={{ flexShrink: 0 }}><i className="ti ti-x" /></button>
         </div>
         )
       })}
-      </div>
-      </div>
-      )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 14, flexWrap: 'wrap', gap: 16 }}>
         <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -1196,6 +1202,12 @@ function StockTab({ o }) {
 }
 
 // ───────── helpers ─────────
+const Field = ({ label, width, children }) => (
+  <div style={{ width }}>
+    <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 3 }}>{label}</div>
+    {children}
+  </div>
+)
 const Metric = ({ label, value, strong, color }) => (
   <div>
     <div style={{ fontSize: 11, color: 'var(--text3)', whiteSpace: 'nowrap' }}>{label}</div>
