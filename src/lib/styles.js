@@ -126,6 +126,11 @@ export const css = `
   .form-input::placeholder { color: var(--text3); }
   textarea.form-input { height: auto; min-height: 48px; }
 
+  /* Компактні контроли (напр. таблиця товарів замовлення) */
+  .compact .form-input { height: 34px; padding: 6px 10px; font-size: 13px; }
+  .compact textarea.form-input { height: auto; min-height: 32px; padding: 6px 10px; }
+  .compact select.form-input { padding: 6px 8px; }
+
   /* ═══ BUTTONS ═══ */
   .btn {
     padding: 12px 20px; border-radius: var(--radius-md); border: none;

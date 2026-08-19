@@ -371,7 +371,18 @@ function ItemsTab({ o, onChange, onDirty }) {
   const [aiLoading, setAiLoading] = useState(false)
   const [aiMsg, setAiMsg] = useState(null)
   const [bulkMarkup, setBulkMarkup] = useState('')
+  const [actionsOpen, setActionsOpen] = useState(false)
+  const specRef = useRef(null)
+  const costRef = useRef(null)
+  const actionsRef = useRef(null)
   const markDirty = () => { setDirty(true); onDirty?.(true) }
+
+  // Закриття меню «Дії» при кліку поза ним
+  useEffect(() => {
+    const h = (e) => { if (actionsRef.current && !actionsRef.current.contains(e.target)) setActionsOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
 
   // AI-імпорт специфікації (.docx / PDF / фото) → позиції замовлення
   const importSpec = async (files) => {
@@ -541,19 +552,23 @@ function ItemsTab({ o, onChange, onDirty }) {
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <div className="card-title" style={{ marginBottom: 0 }}>Товари замовлення</div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <label className="btn" style={{ cursor: aiLoading ? 'wait' : 'pointer' }} title="Завантажити договір/специфікацію (.docx, PDF, фото) — AI витягне товари">
-            {aiLoading ? <><i className="ti ti-loader-2" style={{ animation: 'spin 1s linear infinite' }} /> Розпізнаю…</> : <><i className="ti ti-file-import" /> Специфікація (AI)</>}
-            <input type="file" accept=".docx,.pdf,image/*" multiple style={{ display: 'none' }} disabled={aiLoading}
-              onChange={e => { const fs = Array.from(e.target.files || []); e.target.value = ''; importSpec(fs) }} />
-          </label>
-          <label className="btn" style={{ cursor: aiLoading ? 'wait' : 'pointer' }} title="Завантажити рахунок/накладну постачальника (.docx, PDF, фото) — AI заповнить закупівлю (собівартість) НАЯВНИХ позицій. Нових не додає (рахунок може покривати кілька замовлень)">
-            <i className="ti ti-receipt-tax" /> Собівартість (AI)
-            <input type="file" accept=".docx,.pdf,image/*" multiple style={{ display: 'none' }} disabled={aiLoading}
-              onChange={e => { const fs = Array.from(e.target.files || []); e.target.value = ''; importCosts(fs) }} />
-          </label>
-          <button className="btn" onClick={() => setShowPicker(true)}><i className="ti ti-tag" /> З прайсу</button>
-          <button className="btn" onClick={addRow}><i className="ti ti-plus" /> Позиція</button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {aiLoading && <span style={{ fontSize: 13, color: 'var(--text3)' }}><i className="ti ti-loader-2" style={{ animation: 'spin 1s linear infinite' }} /> Розпізнаю…</span>}
+          <div style={{ position: 'relative' }} ref={actionsRef}>
+            <button className="btn" onClick={() => setActionsOpen(v => !v)}><i className="ti ti-dots" /> Дії <i className="ti ti-chevron-down" style={{ fontSize: 13 }} /></button>
+            {actionsOpen && (
+              <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 4px 14px rgba(0,0,0,.1)', zIndex: 50, minWidth: 210, overflow: 'hidden' }}>
+                <MenuItem icon="ti-tag" label="З прайсу" onClick={() => { setActionsOpen(false); setShowPicker(true) }} />
+                <MenuItem icon="ti-file-import" label="Специфікація (AI)" hint="договір/специфікація → товари" onClick={() => { setActionsOpen(false); specRef.current?.click() }} />
+                <MenuItem icon="ti-receipt-tax" label="Собівартість (AI)" hint="рахунок постачальника → закупівля" onClick={() => { setActionsOpen(false); costRef.current?.click() }} />
+              </div>
+            )}
+          </div>
+          <button className="btn btn-primary" onClick={addRow}><i className="ti ti-plus" /> Позиція</button>
+          <input ref={specRef} type="file" accept=".docx,.pdf,image/*" multiple style={{ display: 'none' }} disabled={aiLoading}
+            onChange={e => { const fs = Array.from(e.target.files || []); e.target.value = ''; importSpec(fs) }} />
+          <input ref={costRef} type="file" accept=".docx,.pdf,image/*" multiple style={{ display: 'none' }} disabled={aiLoading}
+            onChange={e => { const fs = Array.from(e.target.files || []); e.target.value = ''; importCosts(fs) }} />
         </div>
       </div>
 
@@ -570,12 +585,13 @@ function ItemsTab({ o, onChange, onDirty }) {
 
       {rows.length === 0 && <p style={{ color: 'var(--text3)', fontSize: 13 }}>Товарів немає. Додавайте їх, коли стане відомо, що саме входить у замовлення.</p>}
 
+      <div className="compact">
       {rows.map((r, i) => {
         const m = rowMargin(r), mp = marginPct(r)
         const mColor = m > 0 ? 'var(--green)' : m < 0 ? 'var(--red)' : 'var(--text3)'
         const noMarkup = !(Number(r.cost_price) > 0 || Number(r.unit_price) > 0)
         return (
-        <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, marginBottom: 10 }}>
+        <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 10, marginBottom: 8 }}>
           {/* Назва — повний рядок зверху */}
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -599,7 +615,7 @@ function ItemsTab({ o, onChange, onDirty }) {
           </div>
 
           {/* Поля — під назвою, з підписами */}
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12, alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 8, alignItems: 'flex-start' }}>
             <Field label="Код" width={120}>
               <AutoTextarea placeholder="Код" value={r.sku || ''} onChange={e => setRow(i, { sku: e.target.value })} style={{ width: '100%' }} />
             </Field>
@@ -632,12 +648,13 @@ function ItemsTab({ o, onChange, onDirty }) {
               </select>
             </Field>
             <Field label="Маржа" width={130}>
-              <div style={{ padding: '9px 0', fontSize: 13, fontWeight: 600, color: mColor, whiteSpace: 'nowrap' }}>{fmt(m)} · {mp.toFixed(0)}%</div>
+              <div style={{ padding: '7px 0', fontSize: 13, fontWeight: 600, color: mColor, whiteSpace: 'nowrap' }}>{fmt(m)} · {mp.toFixed(0)}%</div>
             </Field>
           </div>
         </div>
         )
       })}
+      </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 14, flexWrap: 'wrap', gap: 16 }}>
         <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -1198,6 +1215,14 @@ function StockTab({ o }) {
 }
 
 // ───────── helpers ─────────
+const MenuItem = ({ icon, label, hint, onClick }) => (
+  <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13.5, color: 'var(--text)' }}
+    onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
+    onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+    <i className={`ti ${icon}`} style={{ fontSize: 16, color: 'var(--text2)' }} />
+    <span>{label}{hint && <span style={{ display: 'block', fontSize: 11, color: 'var(--text3)' }}>{hint}</span>}</span>
+  </button>
+)
 const Field = ({ label, width, children }) => (
   <div style={{ width }}>
     <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 3 }}>{label}</div>
