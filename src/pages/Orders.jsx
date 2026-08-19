@@ -134,7 +134,7 @@ export default function Orders() {
                 <SortTh label="Клієнт" k="client" sort={sort} onSort={onSort} />
                 <SortTh label="Тип" k="type" sort={sort} onSort={onSort} />
                 <SortTh label="Статус" k="status" sort={sort} onSort={onSort} />
-                <SortTh label="Сума" k="total" sort={sort} onSort={onSort} align="right" />
+                <SortTh label="Сума з ПДВ" k="total" sort={sort} onSort={onSort} align="right" />
               </tr></thead>
               <tbody>
                 {sortedOrders.map(o => (
