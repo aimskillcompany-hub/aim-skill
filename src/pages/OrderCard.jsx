@@ -591,11 +591,15 @@ function ItemsTab({ o, onChange, onDirty }) {
                 ? <div style={{ fontSize: 11, color: 'var(--blue)', marginTop: 2 }}><i className="ti ti-tag" /> {r.supplier_name}</div>
                 : r.product_id && <div style={{ fontSize: 11, color: 'var(--green)', marginTop: 2 }}><i className="ti ti-link" /> з довідника</div>}
             </div>
+            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+              <div style={{ fontSize: 11, color: 'var(--text3)' }}>Сума з ПДВ</div>
+              <div style={{ fontSize: 15, fontWeight: 700, whiteSpace: 'nowrap' }}>{fmt(rowTotal(r))}</div>
+            </div>
             <button className="btn" onClick={() => removeRow(i)} title="Прибрати позицію" style={{ flexShrink: 0 }}><i className="ti ti-x" /></button>
           </div>
 
-          {/* Поля — під назвою, з підписами, переносяться на вузьких екранах */}
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 10, alignItems: 'flex-end' }}>
+          {/* Поля — під назвою, з підписами */}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12, alignItems: 'flex-start' }}>
             <Field label="Код" width={120}>
               <AutoTextarea placeholder="Код" value={r.sku || ''} onChange={e => setRow(i, { sku: e.target.value })} style={{ width: '100%' }} />
             </Field>
@@ -627,17 +631,9 @@ function ItemsTab({ o, onChange, onDirty }) {
                 <option value="0">+ ПДВ</option>
               </select>
             </Field>
-            {/* Маржа + Сума — обчислені, притиснуті вправо */}
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 22, alignItems: 'flex-end', paddingBottom: 2 }}>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 11, color: 'var(--text3)' }}>Маржа</div>
-                <div style={{ fontSize: 13, color: mColor, whiteSpace: 'nowrap' }}>{fmt(m)} · {mp.toFixed(0)}%</div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 11, color: 'var(--text3)' }}>Сума з ПДВ</div>
-                <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap' }}>{fmt(rowTotal(r))}</div>
-              </div>
-            </div>
+            <Field label="Маржа" width={130}>
+              <div style={{ padding: '9px 0', fontSize: 13, fontWeight: 600, color: mColor, whiteSpace: 'nowrap' }}>{fmt(m)} · {mp.toFixed(0)}%</div>
+            </Field>
           </div>
         </div>
         )
