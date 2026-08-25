@@ -349,9 +349,9 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `030_tasks.sql` | Задачі: таблиця `tasks` (+ RLS authenticated) для розділу «Задачі» й нагадувань бота | ✅ застосовано (звірено 2026-08-18 через schema-probe) |
 | `031_order_number_unique.sql` | Замовлення: послідовність `orders_number_seq` + `next_order_number()` + унікальний індекс + розшивання дублів (фікс задвоєння номерів) | ✅ застосовано (звірено 2026-08-18: функція існує, дублів нема, setval=45 → наступне замовлення 0046) |
 | `032_orders_status_simplify.sql` | Замовлення: переназначення наявних замовлень на спрощений набір з 6 статусів | ✅ застосовано (2026-08-18, Success) |
-| `033_orders_procurement_id.sql` | Замовлення: `procurement_id` (ідентифікатор тендерної закупівлі) | ⏳ **запустити вручну** |
+| `033_orders_procurement_id.sql` | Замовлення: `procurement_id` (ідентифікатор тендерної закупівлі) | ✅ застосовано (звірено 2026-08-25, колонка є) |
 | `034_orders_total_gross.sql` | Замовлення: backfill `orders.total` = сума з ПДВ з `order_items` | ⏳ **запустити вручну** |
-| `035_profiles_admin_rls.sql` | Профілі: `is_admin()` + політики (адмін бачить усіх і міняє ролі) | ⏳ **запустити вручну** |
+| `035_profiles_admin_rls.sql` | Профілі: `is_admin()` + політики (адмін бачить усіх і міняє ролі) | ✅ застосовано (звірено 2026-08-25, функція є) |
 | `validate.mjs` | Перевірка цілісності Фази 1 (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 | `probe.mjs` | Звірка наявності колонок/таблиць усіх міграцій у БД (`SUPABASE_SERVICE_KEY=... node migrations/probe.mjs`) | — |
 
