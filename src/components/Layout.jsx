@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
+import { canAccess, sectionFromPath, ROLE_LABELS } from '../lib/permissions'
 
 // Навігація per ТЗ 5.1 — 10 розділів
 const NAV = [
@@ -43,11 +44,13 @@ export default function Layout() {
   const handleLogout = () => supabase.auth.signOut()
   const close = () => setSidebarOpen(false)
 
+  const visibleNav = NAV.filter(item => canAccess(role, sectionFromPath(item.to)))
+
   const NavItems = () => (
     <nav className="sidebar-nav">
-      {NAV.map((item, i) => (
+      {visibleNav.map((item, i) => (
         <div key={item.to}>
-          {item.section && item.section !== NAV[i - 1]?.section && (
+          {item.section && item.section !== visibleNav[i - 1]?.section && (
             <div className="nav-section">{item.section}</div>
           )}
           <NavLink
@@ -66,7 +69,7 @@ export default function Layout() {
   const Footer = () => (
     <div className="sidebar-footer">
       <div className="ellip" title={user?.email} style={{ marginBottom: 6, color: 'var(--text2)', fontSize: 13 }}>{user?.email}</div>
-      <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.5px', fontWeight: 500 }}>{role}</div>
+      <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10, letterSpacing: '.3px', fontWeight: 500 }}>{ROLE_LABELS[role] || role}</div>
       <span style={{ cursor: 'pointer', color: 'var(--text2)', fontSize: 13, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6, padding: '8px 0' }} onClick={handleLogout}>
         <i className="ti ti-logout" style={{ fontSize: 16 }} />Вийти
       </span>
@@ -107,7 +110,7 @@ export default function Layout() {
         <div className="page-inner"><Outlet /></div>
 
         <nav className="mobile-nav">
-          {MOBILE_NAV.map(item => (
+          {MOBILE_NAV.filter(item => canAccess(role, sectionFromPath(item.to))).map(item => (
             <NavLink
               key={item.to}
               to={item.to}

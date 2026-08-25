@@ -1,7 +1,8 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { css, mobileCss } from './lib/styles'
-import { AuthProvider, RequireAuth } from './lib/auth'
+import { AuthProvider, RequireAuth, useUser } from './lib/auth'
+import { canAccess, firstSection } from './lib/permissions'
 import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/Layout'
 import Login from './pages/Login'
@@ -38,6 +39,18 @@ const Tasks = lazyPage(() => import('./pages/Tasks'))
 
 const Loading = () => <div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Завантаження…</div>
 
+// Захист розділу за роллю (пряме введення URL). Немає доступу → на перший доступний розділ.
+function Gate({ section, children }) {
+  const { user } = useUser()
+  if (!canAccess(user?.role, section)) return <Navigate to={`/${firstSection(user?.role)}`} replace />
+  return children
+}
+// Стартовий розділ за роллю
+function Home() {
+  const { user } = useUser()
+  return <Navigate to={`/${firstSection(user?.role)}`} replace />
+}
+
 export default function App() {
   return (
     <AuthProvider>
@@ -47,21 +60,21 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route element={<RequireAuth><Layout /></RequireAuth>}>
-              <Route index element={<Navigate to="/orders" replace />} />
-              <Route path="/orders" element={<Orders />} />
-              <Route path="/orders/:id" element={<OrderCard />} />
-              <Route path="/contractors" element={<Contractors />} />
-              <Route path="/contractors/:id" element={<ContractorCard />} />
-              <Route path="/bank" element={<BankCash />} />
-              <Route path="/inventory" element={<Warehouse />} />
-              <Route path="/prices" element={<PriceLists />} />
-              <Route path="/documents" element={<Documents />} />
-              <Route path="/mail" element={<Mail />} />
-              <Route path="/analytics" element={<Analytics />} />
-              <Route path="/period-close" element={<PeriodClose />} />
-              <Route path="/tasks" element={<Tasks />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="*" element={<Navigate to="/orders" replace />} />
+              <Route index element={<Home />} />
+              <Route path="/orders" element={<Gate section="orders"><Orders /></Gate>} />
+              <Route path="/orders/:id" element={<Gate section="orders"><OrderCard /></Gate>} />
+              <Route path="/contractors" element={<Gate section="contractors"><Contractors /></Gate>} />
+              <Route path="/contractors/:id" element={<Gate section="contractors"><ContractorCard /></Gate>} />
+              <Route path="/bank" element={<Gate section="bank"><BankCash /></Gate>} />
+              <Route path="/inventory" element={<Gate section="inventory"><Warehouse /></Gate>} />
+              <Route path="/prices" element={<Gate section="prices"><PriceLists /></Gate>} />
+              <Route path="/documents" element={<Gate section="documents"><Documents /></Gate>} />
+              <Route path="/mail" element={<Gate section="mail"><Mail /></Gate>} />
+              <Route path="/analytics" element={<Gate section="analytics"><Analytics /></Gate>} />
+              <Route path="/period-close" element={<Gate section="period-close"><PeriodClose /></Gate>} />
+              <Route path="/tasks" element={<Gate section="tasks"><Tasks /></Gate>} />
+              <Route path="/settings" element={<Gate section="settings"><Settings /></Gate>} />
+              <Route path="*" element={<Home />} />
             </Route>
           </Routes>
         </Suspense>

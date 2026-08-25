@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { COMPANY_FIELDS, getCompany, saveCompany } from '../lib/companyConfig'
 import { invalidateCache, PL_ORDER, PL_LABELS } from '../lib/articles'
+import { ROLES, ROLE_LABELS, ROLE_HINTS } from '../lib/permissions'
 
 const TABS = [
   { id: 'company', label: 'Реквізити', icon: 'ti-building' },
@@ -209,20 +210,29 @@ function UsersTab() {
   const [rows, setRows] = useState([])
   const load = () => supabase.from('profiles').select('*').then(({ data }) => setRows(data || []))
   useEffect(() => { load() }, [])
-  const setRole = async (id, role) => { await supabase.from('profiles').update({ role }).eq('id', id); setRows(rs => rs.map(r => r.id === id ? { ...r, role } : r)) }
+  const setRole = async (id, role) => {
+    const { data, error } = await supabase.from('profiles').update({ role }).eq('id', id).select('id')
+    if (error || !data?.length) { alert('Не вдалося змінити роль' + (error ? ': ' + error.message : '. Немає прав (RLS) — запустіть міграцію 035.')); load(); return }
+    setRows(rs => rs.map(r => r.id === id ? { ...r, role } : r))
+  }
   return (
     <div className="card">
       <div className="tbl-wrap" style={{ border: 'none' }}>
-        <table><thead><tr><th>Email</th><th>Ім'я</th><th>Роль</th></tr></thead>
+        <table><thead><tr><th>Email</th><th>Ім'я</th><th>Роль</th><th>Доступ</th></tr></thead>
           <tbody>{rows.map(u => (
             <tr key={u.id}><td>{u.email}</td><td>{u.full_name || '—'}</td>
-              <td><select className="form-input" value={u.role || 'viewer'} onChange={e => setRole(u.id, e.target.value)} disabled={u.id === user?.id} style={{ width: 150, padding: '4px 8px', fontSize: 13 }}>
-                {['admin', 'accountant', 'manager', 'viewer'].map(r => <option key={r} value={r}>{r}</option>)}
-              </select></td></tr>
+              <td><select className="form-input" value={u.role || 'viewer'} onChange={e => setRole(u.id, e.target.value)} disabled={u.id === user?.id} style={{ width: 180, padding: '4px 8px', fontSize: 13 }}>
+                {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+              </select></td>
+              <td style={{ fontSize: 12, color: 'var(--text3)' }}>{ROLE_HINTS[u.role || 'viewer']}</td></tr>
           ))}</tbody>
         </table>
       </div>
-      <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>Усі ролі (admin/accountant/manager) мають повний доступ до модулів (per ТЗ).</p>
+      <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 12, lineHeight: 1.6 }}>
+        <b style={{ color: 'var(--text2)' }}>Ролі й доступ до розділів:</b>
+        {ROLES.map(r => <div key={r}><b>{ROLE_LABELS[r]}</b> — {ROLE_HINTS[r]}</div>)}
+        <div style={{ marginTop: 6 }}>Свою роль змінити не можна. Нові користувачі реєструються самі й отримують «Перегляд» — призначте їм роль тут.</div>
+      </div>
     </div>
   )
 }
