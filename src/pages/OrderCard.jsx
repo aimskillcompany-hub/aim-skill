@@ -375,6 +375,7 @@ function ItemsTab({ o, onChange, onDirty }) {
   const [expanded, setExpanded] = useState({})
   const specRef = useRef(null)
   const costRef = useRef(null)
+  const tableRef = useRef(null)
   const actionsRef = useRef(null)
   const markDirty = () => { setDirty(true); onDirty?.(true) }
 
@@ -444,6 +445,54 @@ function ItemsTab({ o, onChange, onDirty }) {
         ` Перевірте й «Зберегти».`)
     } catch (e) { setAiMsg('⚠️ ' + (e.message || 'Не вдалося розпізнати рахунок. Спробуй ще раз.')) }
     setAiLoading(false)
+  }
+
+  // Імпорт позицій із таблиці Excel/CSV: назва + к-сть (+ опц. код, ціна, од.).
+  // Розпізнає заголовки колонок; система додає рядки, ціни/собівартість заповнюються далі.
+  const importTable = async (files) => {
+    const file = files?.[0]
+    if (!file) { setAiMsg('Файл не обрано.'); return }
+    setAiMsg(`⏳ Читаю таблицю «${file.name}»…`)
+    try {
+      const XLSX = await import('xlsx')
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(new Uint8Array(buf), { type: 'array', codepage: 1251, cellText: true })
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' })
+      const norm = s => String(s || '').toLowerCase().trim()
+      // рядок заголовків — перший, де є і «назва», і «кількість»
+      const hi = aoa.findIndex(row => row.some(c => /назв|наймен|товар|name|product|опис/.test(norm(c))) && row.some(c => /к-?с|кільк|кол-?|qty|quantity/.test(norm(c))))
+      const headerRow = hi >= 0 ? aoa[hi] : (aoa[0] || [])
+      const idx = { name: -1, qty: -1, sku: -1, price: -1, unit: -1 }
+      headerRow.forEach((c, j) => {
+        const t = norm(c)
+        if (idx.name < 0 && /назв|наймен|товар|name|product|опис/.test(t)) idx.name = j
+        else if (idx.qty < 0 && /(к-?с|кільк|кол-?|qty|quantity)/.test(t)) idx.qty = j
+        else if (idx.sku < 0 && /(код|артик|sku|part)/.test(t)) idx.sku = j
+        else if (idx.price < 0 && /(ціна|price|варт)/.test(t)) idx.price = j
+        else if (idx.unit < 0 && /(^од|одиниц|unit|вим)/.test(t)) idx.unit = j
+      })
+      if (idx.name < 0) idx.name = 0            // фолбек: назва — перша колонка
+      const dataStart = hi >= 0 ? hi + 1 : 0
+      const pn = v => { const n = parseFloat(String(v).replace(/\s/g, '').replace(',', '.').replace(/[^\d.\-]/g, '')); return isNaN(n) ? 0 : n }
+      const items = []
+      for (let r = dataStart; r < aoa.length; r++) {
+        const row = aoa[r] || []
+        const name = String(row[idx.name] || '').trim()
+        if (!name || /^(назв|наймен|товар|разом|всього|итого|total)/i.test(name)) continue
+        const qty = idx.qty >= 0 ? (pn(row[idx.qty]) || 1) : 1
+        items.push({
+          product_id: null, name, sku: idx.sku >= 0 ? String(row[idx.sku] || '').trim() : '',
+          unit: idx.unit >= 0 ? (String(row[idx.unit] || '').trim() || 'шт') : 'шт',
+          qty, cost_price: 0, unit_price: idx.price >= 0 ? pn(row[idx.price]) : 0,
+          vat_rate: 20, price_includes_vat: false, supplier_id: null, supplier_name: null,
+        })
+      }
+      if (!items.length) { setAiMsg('У таблиці не знайдено рядків. Потрібні колонки «Назва» і «К-сть» (перший аркуш).'); return }
+      markDirty()
+      setRows(rs => [...(rs || []), ...items])
+      setAiMsg(`✅ Додано з таблиці: ${items.length}. Заповніть ціни/собівартість («З прайсу», «Собівартість (AI)» або вручну) і «Зберегти».`)
+    } catch (e) { setAiMsg('⚠️ Не вдалося прочитати таблицю: ' + (e.message || 'формат не підтримується')) }
   }
 
   const load = () => supabase.from('order_items').select('*, contractors(name)').eq('order_id', o.id).order('created_at')
@@ -571,6 +620,7 @@ function ItemsTab({ o, onChange, onDirty }) {
             <button className="btn" onClick={() => setActionsOpen(v => !v)} style={{ minHeight: 30, padding: '4px 10px', fontSize: 12 }}><i className="ti ti-dots" /> Дії</button>
             {actionsOpen && (
               <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 4px 14px rgba(0,0,0,.1)', zIndex: 50, minWidth: 210, overflow: 'hidden' }}>
+                <MenuItem icon="ti-table" label="З таблиці (Excel/CSV)" hint="колонки: Назва, К-сть" onClick={() => { setActionsOpen(false); tableRef.current?.click() }} />
                 <MenuItem icon="ti-tag" label="З прайсу" onClick={() => { setActionsOpen(false); setShowPicker(true) }} />
                 <MenuItem icon="ti-file-import" label="Специфікація (AI)" hint="договір/специфікація → товари" onClick={() => { setActionsOpen(false); specRef.current?.click() }} />
                 <MenuItem icon="ti-receipt-tax" label="Собівартість (AI)" hint="рахунок постачальника → закупівля" onClick={() => { setActionsOpen(false); costRef.current?.click() }} />
@@ -582,6 +632,8 @@ function ItemsTab({ o, onChange, onDirty }) {
             onChange={e => { const fs = Array.from(e.target.files || []); e.target.value = ''; importSpec(fs) }} />
           <input ref={costRef} type="file" accept=".docx,.pdf,image/*" multiple style={{ display: 'none' }} disabled={aiLoading}
             onChange={e => { const fs = Array.from(e.target.files || []); e.target.value = ''; importCosts(fs) }} />
+          <input ref={tableRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }}
+            onChange={e => { const fs = Array.from(e.target.files || []); e.target.value = ''; importTable(fs) }} />
         </div>
       </div>
 
