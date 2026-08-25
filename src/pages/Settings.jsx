@@ -208,6 +208,11 @@ function AccountsTab() {
 function UsersTab() {
   const { user } = useUser()
   const [rows, setRows] = useState([])
+  const [adding, setAdding] = useState(false)
+  const [form, setForm] = useState({ email: '', password: '', full_name: '', role: 'manager' })
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState(null)
+  const isAdmin = (user?.role === 'admin')
   const load = () => supabase.from('profiles').select('*').then(({ data }) => setRows(data || []))
   useEffect(() => { load() }, [])
   const setRole = async (id, role) => {
@@ -215,8 +220,54 @@ function UsersTab() {
     if (error || !data?.length) { alert('Не вдалося змінити роль' + (error ? ': ' + error.message : '. Немає прав (RLS) — запустіть міграцію 035.')); load(); return }
     setRows(rs => rs.map(r => r.id === id ? { ...r, role } : r))
   }
+  const createUser = async () => {
+    setMsg(null)
+    if (!form.email || !form.password) { setMsg('Вкажіть email і пароль'); return }
+    setBusy(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/create-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify(form),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Помилка створення')
+      setAdding(false); setForm({ email: '', password: '', full_name: '', role: 'manager' })
+      load()
+    } catch (e) { setMsg(e.message) }
+    setBusy(false)
+  }
   return (
     <div className="card">
+      {isAdmin && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div className="card-title" style={{ marginBottom: 0 }}>Користувачі</div>
+          {!adding && <button className="btn btn-primary" onClick={() => { setMsg(null); setAdding(true) }}><i className="ti ti-user-plus" /> Додати користувача</button>}
+        </div>
+      )}
+
+      {adding && (
+        <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 16 }}>
+          <div className="form-grid">
+            <div className="form-group"><label>Email *</label><input className="form-input" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="person@company.com" /></div>
+            <div className="form-group"><label>Пароль * (мін. 6)</label><input className="form-input" type="text" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder="тимчасовий пароль" /></div>
+            <div className="form-group"><label>Ім'я</label><input className="form-input" value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} placeholder="Іван Іванов" /></div>
+            <div className="form-group"><label>Роль</label>
+              <select className="form-input" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+                {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+              </select>
+            </div>
+          </div>
+          {msg && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 8 }}>{msg}</div>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button className="btn btn-primary" onClick={createUser} disabled={busy}>{busy ? '…' : 'Створити'}</button>
+            <button className="btn" onClick={() => { setAdding(false); setMsg(null) }} disabled={busy}>Скасувати</button>
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8 }}>Акаунт створюється одразу (без листа-підтвердження). Передайте користувачу email і пароль — він зможе увійти й змінити пароль.</p>
+        </div>
+      )}
+
       <div className="tbl-wrap" style={{ border: 'none' }}>
         <table><thead><tr><th>Email</th><th>Ім'я</th><th>Роль</th><th>Доступ</th></tr></thead>
           <tbody>{rows.map(u => (
@@ -231,7 +282,7 @@ function UsersTab() {
       <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 12, lineHeight: 1.6 }}>
         <b style={{ color: 'var(--text2)' }}>Ролі й доступ до розділів:</b>
         {ROLES.map(r => <div key={r}><b>{ROLE_LABELS[r]}</b> — {ROLE_HINTS[r]}</div>)}
-        <div style={{ marginTop: 6 }}>Свою роль змінити не можна. Нові користувачі реєструються самі й отримують «Перегляд» — призначте їм роль тут.</div>
+        <div style={{ marginTop: 6 }}>Самореєстрація вимкнена — акаунти створює лише адміністратор («Додати користувача»). Свою роль змінити не можна.</div>
       </div>
     </div>
   )

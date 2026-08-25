@@ -3,31 +3,18 @@ import { supabase } from '../lib/supabase'
 
 
 export default function Auth() {
-  const [mode, setMode] = useState('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [success, setSuccess] = useState(null)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
-    setSuccess(null)
     try {
-      if (mode === 'login') {
-        const { error } = await supabase.auth.signInWithPassword({ email, password })
-        if (error) throw error
-      } else {
-        const { error } = await supabase.auth.signUp({
-          email, password,
-          options: { data: { full_name: name } },
-        })
-        if (error) throw error
-        setSuccess('Перевірте email — надіслано лист підтвердження.')
-      }
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) throw error
     } catch (err) {
       setError(err.message)
     } finally {
@@ -62,7 +49,7 @@ export default function Auth() {
           </div>
 
           <h1 style={{ fontSize: 28, fontWeight: 700, color: '#000', marginBottom: 6, letterSpacing: '-.3px' }}>
-            {mode === 'login' ? 'Вхід до системи' : 'Реєстрація'}
+            Вхід до системи
           </h1>
           <p style={{ fontSize: 15, color: 'var(--text2)', marginBottom: 32 }}>
             Управлінський облік AiM Skills
@@ -79,25 +66,8 @@ export default function Auth() {
               marginBottom: 16,
             }}>{error}</div>
           )}
-          {success && (
-            <div style={{
-              background: 'var(--green-bg)',
-              border: '1px solid var(--border)',
-              color: 'var(--green)',
-              padding: '12px 16px',
-              borderRadius: 12,
-              fontSize: 14,
-              marginBottom: 16,
-            }}>{success}</div>
-          )}
 
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {mode === 'register' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label style={labelStyle}>{"ІМ'Я"}</label>
-                <input value={name} onChange={e => setName(e.target.value)} placeholder="Іван Іванов" required style={inputStyle} />
-              </div>
-            )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <label style={labelStyle}>EMAIL</label>
               <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="office@company.com" required style={inputStyle} />
@@ -125,18 +95,12 @@ export default function Auth() {
                 opacity: loading ? .6 : 1,
               }}
             >
-              {loading ? 'Завантаження...' : mode === 'login' ? 'Увійти' : 'Зареєструватись'}
+              {loading ? 'Завантаження...' : 'Увійти'}
             </button>
           </form>
 
-          <p style={{ textAlign: 'center', marginTop: 24, fontSize: 14, color: 'var(--text2)' }}>
-            {mode === 'login' ? 'Немає акаунту? ' : 'Вже є акаунт? '}
-            <span
-              style={{ color: '#000', cursor: 'pointer', fontWeight: 600 }}
-              onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
-            >
-              {mode === 'login' ? 'Зареєструватись' : 'Увійти'}
-            </span>
+          <p style={{ textAlign: 'center', marginTop: 24, fontSize: 13, color: 'var(--text3)' }}>
+            Немає акаунту? Зверніться до адміністратора — він створить доступ.
           </p>
         </div>
       </div>
