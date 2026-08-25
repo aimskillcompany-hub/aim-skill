@@ -282,8 +282,14 @@ function DetailsTab({ o, onSaved }) {
     client_id: o.client_id || null,
     clientName: o.contractors?.name || '',
     closed_at: o.closed_at ? o.closed_at.slice(0, 10) : '',
+    manager_id: o.manager_id || '',
   })
   const [saved, setSaved] = useState(false)
+  const [users, setUsers] = useState([])
+  useEffect(() => {
+    supabase.from('profiles').select('id, full_name, email, role').order('full_name').then(({ data }) => setUsers(data || []))
+  }, [])
+  const userName = (u) => u.full_name || u.email || '—'
 
   const save = async () => {
     const upd = {
@@ -292,11 +298,12 @@ function DetailsTab({ o, onSaved }) {
       procurement_id: form.procurement_type === 'tender' ? (form.procurement_id || null) : null,
       client_id: form.client_id || null,
       closed_at: form.closed_at ? new Date(form.closed_at).toISOString() : null,
+      manager_id: form.manager_id || null,
     }
     let { error } = await supabase.from('orders').update(upd).eq('id', o.id)
-    // procurement_id може ще не існувати (міграція 033) — тоді зберігаємо без нього
-    if (error && /procurement_id/.test(error.message || '')) {
-      const { procurement_id, ...rest } = upd
+    // Колонки можуть ще не існувати (міграції 033/037) — тоді зберігаємо без них
+    if (error && /(procurement_id|manager_id)/.test(error.message || '')) {
+      const { procurement_id, manager_id, ...rest } = upd
       ;({ error } = await supabase.from('orders').update(rest).eq('id', o.id))
     }
     if (error) { alert('Помилка збереження: ' + error.message); return }
@@ -316,6 +323,12 @@ function DetailsTab({ o, onSaved }) {
                 setForm(f => ({ ...f, client_id: c.id, clientName: c.name }))
               }
             }} />
+        </div>
+        <div className="form-group"><label>Відповідальний менеджер</label>
+          <select className="form-input" value={form.manager_id} onChange={e => setForm(f => ({ ...f, manager_id: e.target.value }))}>
+            <option value="">— не призначено —</option>
+            {users.map(u => <option key={u.id} value={u.id}>{userName(u)}</option>)}
+          </select>
         </div>
         <div className="form-group"><label>Тип закупівлі</label>
           <select className="form-input" value={form.procurement_type} onChange={e => setForm(f => ({ ...f, procurement_type: e.target.value }))}>

@@ -13,6 +13,7 @@ import { useSort, SortTh } from '../components/Sort'
 
 export default function Orders() {
   const navigate = useNavigate()
+  const { user } = useUser()
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
@@ -22,10 +23,11 @@ export default function Orders() {
 
   const load = async () => {
     setLoading(true)
-    const [{ data: ords }, { data: props }, { data: subs }] = await Promise.all([
+    const [{ data: ords }, { data: props }, { data: subs }, { data: profs }] = await Promise.all([
       supabase.from('orders').select('*, contractors(name)').order('created_at', { ascending: false }),
       supabase.from('commercial_proposals').select('order_id, sent_at, status'),
       supabase.from('supplier_orders').select('order_id, payment_due_date, status'),
+      supabase.from('profiles').select('id, full_name, email'),
     ])
     const lastSent = {}
     ;(props || []).forEach(p => {
@@ -33,10 +35,13 @@ export default function Orders() {
     })
     const subsByOrder = {}
     ;(subs || []).forEach(s => { (subsByOrder[s.order_id] ||= []).push(s) })
+    const userMap = {}
+    ;(profs || []).forEach(p => { userMap[p.id] = p.full_name || p.email || '—' })
 
     const enriched = (ords || []).map(o => ({
       ...o,
       clientName: o.contractors?.name || '—',
+      managerName: o.manager_id ? (userMap[o.manager_id] || '—') : '—',
       overdue: proposalOverdue(o, lastSent[o.id]) || paymentOverdue(subsByOrder[o.id]),
     }))
     setOrders(enriched)
@@ -51,6 +56,7 @@ export default function Orders() {
       if (filter === 'archived') { if (!archived) return false }
       else if (archived) return false
       if (filter === 'overdue' && !o.overdue) return false
+      if (filter === 'mine' && o.manager_id !== user?.id) return false
       if (['trade', 'service', 'agent'].includes(filter) && o.type !== filter) return false
       if (!term) return true
       return o.clientName.toLowerCase().includes(term) || (o.order_number || '').toLowerCase().includes(term)
@@ -70,13 +76,14 @@ export default function Orders() {
   const sortedOrders = sorted(filtered, {
     order_number: o => o.order_number || '',
     client: o => o.clientName || '',
+    manager: o => o.managerName || '',
     type: o => ORDER_TYPES[o.type] || '',
     status: o => statusLabel(o),
     total: o => Number(o.total) || 0,
   })
 
   const FILTERS = [
-    ['all', 'Всі'], ['overdue', 'Прострочено'],
+    ['all', 'Всі'], ['mine', 'Мої'], ['overdue', 'Прострочено'],
     ['trade', 'Торгівля'], ['service', 'Послуги'], ['agent', 'Агент'], ['archived', 'Архів'],
   ]
 
@@ -132,6 +139,7 @@ export default function Orders() {
               <thead><tr>
                 <SortTh label="№" k="order_number" sort={sort} onSort={onSort} />
                 <SortTh label="Клієнт" k="client" sort={sort} onSort={onSort} />
+                <SortTh label="Менеджер" k="manager" sort={sort} onSort={onSort} />
                 <SortTh label="Тип" k="type" sort={sort} onSort={onSort} />
                 <SortTh label="Статус" k="status" sort={sort} onSort={onSort} />
                 <SortTh label="Сума з ПДВ" k="total" sort={sort} onSort={onSort} align="right" />
@@ -141,6 +149,7 @@ export default function Orders() {
                   <tr key={o.id} style={{ cursor: 'pointer', background: o.overdue ? 'var(--red-bg)' : undefined }} onClick={() => navigate(`/orders/${o.id}`)}>
                     <td style={{ fontWeight: 500 }}>{o.order_number || o.id.slice(0, 6)}</td>
                     <td><div className="trunc">{o.clientName}</div></td>
+                    <td style={{ fontSize: 13, color: o.managerName === '—' ? 'var(--text3)' : 'var(--text2)' }}><div className="trunc">{o.managerName}</div></td>
                     <td><span style={{ color: TYPE_COLORS[o.type], fontSize: 12, fontWeight: 600 }}>{ORDER_TYPES[o.type]}</span></td>
                     <td style={{ fontSize: 13 }}>
                       {statusLabel(o)}
@@ -153,7 +162,7 @@ export default function Orders() {
                     <td style={{ textAlign: 'right' }}>{fmt(o.total)}</td>
                   </tr>
                 ))}
-                {sortedOrders.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text3)', padding: 28 }}>Замовлень немає</td></tr>}
+                {sortedOrders.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 28 }}>Замовлень немає</td></tr>}
               </tbody>
             </table>
           </div>
@@ -181,21 +190,26 @@ function NewOrderModal({ onClose, onCreated }) {
   const [clientId, setClientId] = useState('')
   const [total, setTotal] = useState('')
   const [description, setDescription] = useState('')
+  const [managerId, setManagerId] = useState(user?.id || '')
+  const [users, setUsers] = useState([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
   useEffect(() => {
     supabase.from('contractors').select('id, name').eq('is_client', true).order('name').then(({ data }) => setClients(data || []))
+    supabase.from('profiles').select('id, full_name, email').order('full_name').then(({ data }) => setUsers(data || []))
   }, [])
 
   const save = async () => {
     if (!clientId) { setError('Оберіть клієнта'); return }
     setSaving(true); setError(null)
     const order_number = await nextOrderNumber(supabase)
-    const { data, error } = await supabase.from('orders').insert({
-      order_number, type, status: 'new', client_id: clientId,
-      total: Number(total) || 0, description: description || null, created_by: user?.id || null,
-    }).select('id').single()
+    const base = { order_number, type, status: 'new', client_id: clientId, total: Number(total) || 0, description: description || null, created_by: user?.id || null }
+    let { data, error } = await supabase.from('orders').insert({ ...base, manager_id: managerId || null }).select('id').single()
+    // manager_id може ще не існувати (міграція 037) — тоді створюємо без нього
+    if (error && /manager_id/.test(error.message || '')) {
+      ;({ data, error } = await supabase.from('orders').insert(base).select('id').single())
+    }
     setSaving(false)
     if (error) { setError(error.message); return }
     onCreated(data.id)
@@ -217,6 +231,12 @@ function NewOrderModal({ onClose, onCreated }) {
             <select className="form-input" value={clientId} onChange={e => setClientId(e.target.value)}>
               <option value="">— оберіть —</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div className="form-group"><label>Відповідальний менеджер</label>
+            <select className="form-input" value={managerId} onChange={e => setManagerId(e.target.value)}>
+              <option value="">— не призначено —</option>
+              {users.map(u => <option key={u.id} value={u.id}>{u.full_name || u.email}</option>)}
             </select>
           </div>
           <div className="form-group"><label>Сума (план)</label><input className="form-input" type="number" value={total} onChange={e => setTotal(e.target.value)} /></div>
