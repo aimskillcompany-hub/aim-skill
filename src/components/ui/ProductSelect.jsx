@@ -5,7 +5,7 @@ import AutoTextarea from './AutoTextarea'
 // Селектор товару з пошуком по довіднику products + можливістю ввести нову назву.
 // onSelect(product) — для існуючого: { id, name, unit, sell_price }
 //                     для нового (вільний текст): { _new: true, name }
-export default function ProductSelect({ value, onChange, onSelect, placeholder }) {
+export default function ProductSelect({ value, onChange, onSelect, placeholder, className }) {
   const [query, setQuery] = useState(value || '')
   const [results, setResults] = useState([])
   const [open, setOpen] = useState(false)
@@ -53,6 +53,7 @@ export default function ProductSelect({ value, onChange, onSelect, placeholder }
         onChange={e => search(e.target.value)}
         onFocus={() => { if (results.length > 0) setOpen(true) }}
         placeholder={placeholder || 'Назва товару або артикул'}
+        className={className || 'form-input'}
         style={{ width: '100%' }}
       />
       {open && (

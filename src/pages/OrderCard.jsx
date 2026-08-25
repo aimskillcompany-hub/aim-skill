@@ -372,6 +372,7 @@ function ItemsTab({ o, onChange, onDirty }) {
   const [aiMsg, setAiMsg] = useState(null)
   const [bulkMarkup, setBulkMarkup] = useState('')
   const [actionsOpen, setActionsOpen] = useState(false)
+  const [expanded, setExpanded] = useState({})
   const specRef = useRef(null)
   const costRef = useRef(null)
   const actionsRef = useRef(null)
@@ -548,14 +549,26 @@ function ItemsTab({ o, onChange, onDirty }) {
 
   if (rows == null) return <Loading />
 
+  const GRID = 'minmax(0,1fr) 58px 96px 66px 96px 104px 108px 30px'
+  const HeadCell = ({ children, right }) => <span style={{ textAlign: right ? 'right' : 'left' }}>{children}</span>
+
   return (
-    <div className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <div className="card-title" style={{ marginBottom: 0 }}>Товари замовлення</div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {aiLoading && <span style={{ fontSize: 13, color: 'var(--text3)' }}><i className="ti ti-loader-2" style={{ animation: 'spin 1s linear infinite' }} /> Розпізнаю…</span>}
+    <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: 'var(--surface)' }}>
+      {/* Шапка */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 14px', borderBottom: '1px solid var(--border)', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+          <span style={{ fontWeight: 600, fontSize: 15 }}>Позиції</span>
+          <span style={{ color: 'var(--text3)', fontSize: 12 }}>{rows.length} шт</span>
+          {aiLoading && <span style={{ fontSize: 12, color: 'var(--text3)' }}><i className="ti ti-loader-2" style={{ animation: 'spin 1s linear infinite' }} /> Розпізнаю…</span>}
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="Націнка на всі позиції">
+            <i className="ti ti-percentage" style={{ color: 'var(--text3)', fontSize: 14 }} />
+            <input className="form-input" type="number" placeholder="%" value={bulkMarkup} onChange={e => setBulkMarkup(e.target.value)} style={{ width: 54, height: 30, padding: '4px 8px', fontSize: 13 }} />
+            <button className="btn" onClick={applyBulkMarkup} style={{ minHeight: 30, padding: '4px 10px', fontSize: 12 }}>на всі</button>
+          </div>
           <div style={{ position: 'relative' }} ref={actionsRef}>
-            <button className="btn" onClick={() => setActionsOpen(v => !v)}><i className="ti ti-dots" /> Дії <i className="ti ti-chevron-down" style={{ fontSize: 13 }} /></button>
+            <button className="btn" onClick={() => setActionsOpen(v => !v)} style={{ minHeight: 30, padding: '4px 10px', fontSize: 12 }}><i className="ti ti-dots" /> Дії</button>
             {actionsOpen && (
               <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 4px 14px rgba(0,0,0,.1)', zIndex: 50, minWidth: 210, overflow: 'hidden' }}>
                 <MenuItem icon="ti-tag" label="З прайсу" onClick={() => { setActionsOpen(false); setShowPicker(true) }} />
@@ -564,7 +577,7 @@ function ItemsTab({ o, onChange, onDirty }) {
               </div>
             )}
           </div>
-          <button className="btn btn-primary" onClick={addRow}><i className="ti ti-plus" /> Позиція</button>
+          <button className="btn btn-primary" onClick={addRow} style={{ minHeight: 30, padding: '4px 12px', fontSize: 12 }}><i className="ti ti-plus" /> позиція</button>
           <input ref={specRef} type="file" accept=".docx,.pdf,image/*" multiple style={{ display: 'none' }} disabled={aiLoading}
             onChange={e => { const fs = Array.from(e.target.files || []); e.target.value = ''; importSpec(fs) }} />
           <input ref={costRef} type="file" accept=".docx,.pdf,image/*" multiple style={{ display: 'none' }} disabled={aiLoading}
@@ -572,112 +585,95 @@ function ItemsTab({ o, onChange, onDirty }) {
         </div>
       </div>
 
+      {aiMsg && <div style={{ fontSize: 12.5, color: 'var(--text2)', background: 'var(--surface2)', padding: '8px 14px', borderBottom: '1px solid var(--border)' }}><i className="ti ti-sparkles" style={{ color: 'var(--blue)' }} /> {aiMsg}</div>}
+
+      {rows.length === 0 && <p style={{ color: 'var(--text3)', fontSize: 13, padding: '20px 14px', margin: 0 }}>Позицій немає. Додайте: «+ позиція», «Дії → З прайсу» або AI-імпорт.</p>}
+
       {rows.length > 0 && (
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 12, fontSize: 13, color: 'var(--text2)' }}>
-          <i className="ti ti-percentage" style={{ color: 'var(--text3)' }} />
-          <span>Націнка на всі позиції:</span>
-          <input className="form-input" type="number" placeholder="%" value={bulkMarkup} onChange={e => setBulkMarkup(e.target.value)} style={{ width: 90 }} title="Задана закупівля → ціна продажу = закупівля × (1 + %); задана лише ціна продажу → закупівля = ціна ÷ (1 + %)" />
-          <button className="btn" onClick={applyBulkMarkup} title="Застосувати до всіх позицій із заповненою закупівлею або ціною продажу">Застосувати</button>
+        <div style={{ overflowX: 'auto' }}>
+          <div style={{ minWidth: 800 }}>
+            {/* Заголовок колонок */}
+            <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: '0 8px', padding: '7px 14px', borderBottom: '1px solid var(--border)', fontSize: 11, color: 'var(--text3)', background: 'var(--surface2)' }}>
+              <HeadCell>Назва / код</HeadCell>
+              <HeadCell right>К-сть</HeadCell>
+              <HeadCell right>Закупівля</HeadCell>
+              <HeadCell right>Націнка</HeadCell>
+              <HeadCell right>Ціна</HeadCell>
+              <HeadCell right>Сума</HeadCell>
+              <HeadCell right>Маржа</HeadCell>
+              <span />
+            </div>
+
+            {rows.map((r, i) => {
+              const m = rowMargin(r), mp = marginPct(r)
+              const mColor = m > 0 ? 'var(--green)' : m < 0 ? 'var(--red)' : 'var(--text3)'
+              const noMarkup = !(Number(r.cost_price) > 0 || Number(r.unit_price) > 0)
+              const open = !!expanded[i]
+              return (
+              <div key={i} style={{ borderBottom: '1px solid var(--border)', background: open ? 'var(--surface2)' : undefined }}>
+                <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: '0 8px', alignItems: 'center', padding: '7px 14px' }}>
+                  {/* Назва + код */}
+                  <div style={{ minWidth: 0 }}>
+                    <ProductSelect className="cell-name" value={r.name} placeholder="Назва товару або артикул"
+                      onChange={(name) => setRow(i, { name, product_id: null })}
+                      onSelect={(p) => p._new
+                        ? setRow(i, { name: p.name, product_id: null })
+                        : setRow(i, { name: p.name, product_id: p.id, sku: p.sku || r.sku || '', unit: p.unit || 'шт', cost_price: r.cost_price || p.buy_price || 0, unit_price: r.unit_price || p.sell_price || 0, price_includes_vat: false, supplier_id: null, supplier_name: null })}
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 6 }}>
+                      <input className="cell-input" value={r.sku || ''} onChange={e => setRow(i, { sku: e.target.value })} placeholder="код" style={{ textAlign: 'left', fontFamily: 'monospace', fontSize: 11, color: 'var(--text3)', maxWidth: 170 }} />
+                      {r.supplier_name
+                        ? <span style={{ fontSize: 10, color: 'var(--blue)', whiteSpace: 'nowrap' }}><i className="ti ti-tag" /> {r.supplier_name}</span>
+                        : r.product_id && <span style={{ fontSize: 10, color: 'var(--green)', whiteSpace: 'nowrap' }}><i className="ti ti-link" /> довідник</span>}
+                    </div>
+                  </div>
+                  <input className="cell-input" type="number" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} />
+                  <input className="cell-input" type="number" value={r.cost_price ?? ''} onChange={e => setRow(i, { cost_price: e.target.value })} style={{ color: 'var(--text2)' }} />
+                  <input className="cell-input" type="number" placeholder="%" value={fmtMarkup(r)} onChange={e => setMarkup(i, e.target.value)} disabled={noMarkup} title="Націнка над закупівлею" />
+                  <input className="cell-input" type="number" value={r.unit_price} onChange={e => setRow(i, { unit_price: e.target.value })} />
+                  <span style={{ textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13 }}>{fmt(rowTotal(r))}</span>
+                  <span style={{ textAlign: 'right', color: mColor, fontVariantNumeric: 'tabular-nums', fontSize: 12.5, whiteSpace: 'nowrap' }}>{fmt(m)} · {mp.toFixed(0)}%</span>
+                  <button onClick={() => setExpanded(e => ({ ...e, [i]: !e[i] }))} title="Деталі позиції" style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text3)', padding: 0, textAlign: 'right' }}>
+                    <i className={`ti ${open ? 'ti-chevron-up' : 'ti-dots'}`} style={{ fontSize: 16 }} />
+                  </button>
+                </div>
+                {/* Розкриті рідкісні поля */}
+                {open && (
+                  <div style={{ display: 'flex', gap: 14, padding: '0 14px 10px', fontSize: 12, color: 'var(--text2)', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>Од.
+                      <input className="form-input" value={r.unit || ''} onChange={e => setRow(i, { unit: e.target.value })} style={{ width: 60, height: 30, padding: '4px 8px', fontSize: 12 }} /></label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>ПДВ
+                      <select className="form-input" value={Number(r.vat_rate) || 0} onChange={e => setRow(i, { vat_rate: Number(e.target.value) })} style={{ width: 66, height: 30, padding: '4px 6px', fontSize: 12 }}>{VAT_RATES.map(v => <option key={v} value={v}>{v}%</option>)}</select></label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>Тип ціни
+                      <select className="form-input" value={r.price_includes_vat ? '1' : '0'} onChange={e => setRow(i, { price_includes_vat: e.target.value === '1' })} style={{ width: 82, height: 30, padding: '4px 6px', fontSize: 12 }} title="«з ПДВ» — ціна вже містить ПДВ; «+ ПДВ» — ПДВ додається зверху"><option value="1">з ПДВ</option><option value="0">+ ПДВ</option></select></label>
+                    <span>Без ПДВ <b style={{ color: 'var(--text)' }}>{fmt(rowNet(r))}</b></span>
+                    <button onClick={() => removeRow(i)} style={{ marginLeft: 'auto', border: 'none', background: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: 12 }}><i className="ti ti-trash" /> прибрати</button>
+                  </div>
+                )}
+              </div>
+              )
+            })}
+          </div>
         </div>
       )}
 
-      {aiMsg && <div style={{ fontSize: 13, color: 'var(--text2)', background: 'var(--surface2)', borderRadius: 8, padding: '8px 12px', marginBottom: 12 }}><i className="ti ti-sparkles" style={{ color: 'var(--blue)' }} /> {aiMsg}</div>}
-
-      {rows.length === 0 && <p style={{ color: 'var(--text3)', fontSize: 13 }}>Товарів немає. Додавайте їх, коли стане відомо, що саме входить у замовлення.</p>}
-
-      <div className="compact">
-      {rows.map((r, i) => {
-        const m = rowMargin(r), mp = marginPct(r)
-        const mColor = m > 0 ? 'var(--green)' : m < 0 ? 'var(--red)' : 'var(--text3)'
-        const noMarkup = !(Number(r.cost_price) > 0 || Number(r.unit_price) > 0)
-        return (
-        <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 10, marginBottom: 8 }}>
-          {/* Назва — повний рядок зверху */}
-          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <ProductSelect
-                value={r.name}
-                placeholder="Назва товару або артикул"
-                onChange={(name) => setRow(i, { name, product_id: null })}
-                onSelect={(p) => p._new
-                  ? setRow(i, { name: p.name, product_id: null })
-                  : setRow(i, { name: p.name, product_id: p.id, sku: p.sku || r.sku || '', unit: p.unit || 'шт', cost_price: r.cost_price || p.buy_price || 0, unit_price: r.unit_price || p.sell_price || 0, price_includes_vat: false, supplier_id: null, supplier_name: null })}
-              />
-              {r.supplier_name
-                ? <div style={{ fontSize: 11, color: 'var(--blue)', marginTop: 2 }}><i className="ti ti-tag" /> {r.supplier_name}</div>
-                : r.product_id && <div style={{ fontSize: 11, color: 'var(--green)', marginTop: 2 }}><i className="ti ti-link" /> з довідника</div>}
-            </div>
-            <div style={{ textAlign: 'right', flexShrink: 0 }}>
-              <div style={{ fontSize: 11, color: 'var(--text3)' }}>Сума з ПДВ</div>
-              <div style={{ fontSize: 15, fontWeight: 700, whiteSpace: 'nowrap' }}>{fmt(rowTotal(r))}</div>
-            </div>
-            <button className="btn" onClick={() => removeRow(i)} title="Прибрати позицію" style={{ flexShrink: 0 }}><i className="ti ti-x" /></button>
-          </div>
-
-          {/* Поля — під назвою, з підписами */}
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 8, alignItems: 'flex-start' }}>
-            <Field label="Код" width={120}>
-              <AutoTextarea placeholder="Код" value={r.sku || ''} onChange={e => setRow(i, { sku: e.target.value })} style={{ width: '100%' }} />
-            </Field>
-            <Field label="К-сть" width={72}>
-              <input className="form-input" type="number" placeholder="К-сть" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} style={{ width: '100%' }} />
-            </Field>
-            <Field label="Од." width={64}>
-              <input className="form-input" placeholder="од." value={r.unit || ''} onChange={e => setRow(i, { unit: e.target.value })} style={{ width: '100%' }} />
-            </Field>
-            <Field label="Закупівля" width={116}>
-              <input className="form-input" type="number" placeholder="Закупівля" value={r.cost_price ?? ''} onChange={e => setRow(i, { cost_price: e.target.value })} style={{ width: '100%' }} />
-              {Number(r.cost_price) > 0 && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 1, textAlign: 'right' }}>{r.price_includes_vat ? `без ПДВ: ${fmt(netCost(r))}` : `з ПДВ: ${fmt(grossCost(r))}`}</div>}
-            </Field>
-            <Field label="Націнка %" width={84}>
-              <input className="form-input" type="number" placeholder="%" value={fmtMarkup(r)} onChange={e => setMarkup(i, e.target.value)} disabled={noMarkup} style={{ width: '100%', padding: '8px 6px' }} title="Націнка над закупівлею. Задана закупівля → рахує ціну продажу; задана лише ціна продажу → рахує закупівлю" />
-            </Field>
-            <Field label="Ціна продажу" width={116}>
-              <input className="form-input" type="number" placeholder="Ціна" value={r.unit_price} onChange={e => setRow(i, { unit_price: e.target.value })} style={{ width: '100%' }} />
-              {Number(r.unit_price) > 0 && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 1, textAlign: 'right' }}>{r.price_includes_vat ? `без ПДВ: ${fmt(netUnit(r))}` : `з ПДВ: ${fmt(grossUnit(r))}`}</div>}
-            </Field>
-            <Field label="ПДВ %" width={72}>
-              <select className="form-input" value={Number(r.vat_rate) || 0} onChange={e => setRow(i, { vat_rate: Number(e.target.value) })} style={{ width: '100%', padding: '8px 6px' }}>
-                {VAT_RATES.map(v => <option key={v} value={v}>{v}%</option>)}
-              </select>
-            </Field>
-            <Field label="Тип ціни" width={88}>
-              <select className="form-input" value={r.price_includes_vat ? '1' : '0'} onChange={e => setRow(i, { price_includes_vat: e.target.value === '1' })} style={{ width: '100%', padding: '8px 6px' }} title="«з ПДВ» — ціна вже містить ПДВ; «+ ПДВ» — ПДВ додається зверху">
-                <option value="1">з ПДВ</option>
-                <option value="0">+ ПДВ</option>
-              </select>
-            </Field>
-            <Field label="Маржа" width={130}>
-              <div style={{ padding: '7px 0', fontSize: 13, fontWeight: 600, color: mColor, whiteSpace: 'nowrap' }}>{fmt(m)} · {mp.toFixed(0)}%</div>
-            </Field>
-          </div>
-        </div>
-        )
-      })}
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 14, flexWrap: 'wrap', gap: 16 }}>
-        <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+      {/* Підсумок */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', padding: '12px 14px', background: 'var(--surface2)', flexWrap: 'wrap', gap: 16 }}>
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <Metric label="Собівартість" value={fmt(costSum)} />
           <Metric label="Виручка без ПДВ" value={fmt(netSum)} />
           <Metric label="ПДВ" value={fmt(vatSum)} />
-          <Metric label="Всього з ПДВ" value={`${fmt(sum)} грн`} strong />
+          <Metric label="Маржа" value={`${fmt(marginSum)} · ${marginPctTotal.toFixed(0)}%`} color={marginSum > 0 ? 'var(--green)' : marginSum < 0 ? 'var(--red)' : 'var(--text3)'} />
           <div>
-            <div style={{ fontSize: 11, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
-              Маржа
-              <i className="ti ti-info-circle" style={{ fontSize: 13, cursor: 'help', color: 'var(--text3)' }}
-                title="Маржа рахується без ПДВ (чиста ціна − чиста собівартість). «Тип ціни» задає, як введені ціни — з ПДВ чи без. «Сума» замовлення = всього з ПДВ." />
-            </div>
-            <div style={{ fontSize: 16, fontWeight: 700, whiteSpace: 'nowrap', color: marginSum > 0 ? 'var(--green)' : marginSum < 0 ? 'var(--red)' : 'var(--text3)' }}>
-              {fmt(marginSum)}<span style={{ fontSize: 12, fontWeight: 500 }}> · {marginPctTotal.toFixed(0)}%</span>
-            </div>
+            <div style={{ fontSize: 11, color: 'var(--text3)' }}>Всього з ПДВ</div>
+            <div style={{ fontSize: 18, fontWeight: 700, whiteSpace: 'nowrap' }}>{fmt(sum)} ₴</div>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {saved && <span style={{ color: 'var(--green)', fontSize: 13 }}>Збережено!</span>}
           {rows.length > 0 && (
             <button className="btn" onClick={() => investorReportPdf(o, rows)} title="PDF-розрахунок рентабельності для інвестора">
-              <i className="ti ti-chart-pie" /> Розрахунок для інвестора
+              <i className="ti ti-chart-pie" /> Розрахунок
             </button>
           )}
           <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? '…' : 'Зберегти'}</button>

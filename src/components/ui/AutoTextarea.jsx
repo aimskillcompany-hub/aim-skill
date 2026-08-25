@@ -2,14 +2,14 @@ import { useRef, useLayoutEffect } from 'react'
 
 // Textarea, що виглядає як інпут, але переносить довгий текст і авто-росте у висоту.
 // Використовується для назв товарів та кодів, щоб значення показувались повністю.
-export default function AutoTextarea({ value, onChange, style, onEnter, ...rest }) {
+export default function AutoTextarea({ value, onChange, style, onEnter, className = 'form-input', ...rest }) {
   const ref = useRef(null)
   const resize = () => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px' } }
   useLayoutEffect(resize, [value])
   return (
     <textarea
       ref={ref}
-      className="form-input"
+      className={className}
       rows={1}
       value={value ?? ''}
       onChange={e => { onChange?.(e); resize() }}

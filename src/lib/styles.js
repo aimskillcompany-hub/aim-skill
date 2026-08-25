@@ -131,6 +131,15 @@ export const css = `
   .compact textarea.form-input { height: auto; min-height: 32px; padding: 6px 10px; }
   .compact select.form-input { padding: 6px 8px; }
 
+  /* Інлайн-комірки щільної таблиці: виглядають як текст, рамка на hover/focus */
+  .cell-input { width: 100%; box-sizing: border-box; border: 1px solid transparent; background: transparent; border-radius: 6px; padding: 5px 6px; font-size: 13px; color: var(--text); font-variant-numeric: tabular-nums; text-align: right; font-family: inherit; }
+  .cell-input:hover:not(:disabled) { border-color: var(--border); }
+  .cell-input:focus { border-color: var(--blue); background: var(--surface); outline: none; }
+  .cell-input:disabled { color: var(--text3); }
+  .cell-name { box-sizing: border-box; width: 100%; border: 1px solid transparent; background: transparent; border-radius: 6px; padding: 3px 6px; color: var(--text); font-weight: 500; font-family: inherit; }
+  .cell-name:hover { border-color: var(--border); }
+  .cell-name:focus { border-color: var(--blue); background: var(--surface); outline: none; }
+
   /* ═══ BUTTONS ═══ */
   .btn {
     padding: 12px 20px; border-radius: var(--radius-md); border: none;
