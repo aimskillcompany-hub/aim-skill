@@ -386,6 +386,7 @@ function ItemsTab({ o, onChange, onDirty }) {
   const [bulkMarkup, setBulkMarkup] = useState('')
   const [actionsOpen, setActionsOpen] = useState(false)
   const [expanded, setExpanded] = useState({})
+  const [suppliers, setSuppliers] = useState([])
   const specRef = useRef(null)
   const costRef = useRef(null)
   const tableRef = useRef(null)
@@ -511,6 +512,21 @@ function ItemsTab({ o, onChange, onDirty }) {
   const load = () => supabase.from('order_items').select('*, contractors(name)').eq('order_id', o.id).order('created_at')
     .then(({ data }) => { setRows((data || []).map(r => ({ ...r, supplier_name: r.contractors?.name || null }))); setDirty(false); onDirty?.(false) })
   useEffect(() => { load() }, [o.id])
+  useEffect(() => { supabase.from('contractors').select('id, name').eq('is_supplier', true).order('name').then(({ data }) => setSuppliers(data || [])) }, [])
+  // Обрати наявного постачальника або створити нового (колонка «Постачальник»)
+  const chooseSupplier = async (i, v) => {
+    if (v === '__new__') {
+      const name = (window.prompt('Назва нового постачальника') || '').trim()
+      if (!name) return
+      const { data, error } = await supabase.from('contractors').insert({ name, is_supplier: true }).select('id, name').single()
+      if (error || !data) { alert('Не вдалося створити постачальника: ' + (error?.message || '')); return }
+      setSuppliers(s => [...s, data].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'uk')))
+      setRow(i, { supplier_id: data.id, supplier_name: data.name })
+    } else {
+      const sup = suppliers.find(s => s.id === v)
+      setRow(i, { supplier_id: v || null, supplier_name: sup?.name || null })
+    }
+  }
 
   // Попередження про незбережені зміни при оновленні/закритті сторінки
   useEffect(() => {
@@ -611,7 +627,7 @@ function ItemsTab({ o, onChange, onDirty }) {
 
   if (rows == null) return <Loading />
 
-  const GRID = 'minmax(0,1fr) 58px 96px 66px 96px 104px 108px 30px'
+  const GRID = 'minmax(0,1fr) 52px 88px 88px 58px 86px 96px 104px 150px 28px'
   const HeadCell = ({ children, right }) => <span style={{ textAlign: right ? 'right' : 'left' }}>{children}</span>
 
   return (
@@ -656,16 +672,18 @@ function ItemsTab({ o, onChange, onDirty }) {
 
       {rows.length > 0 && (
         <div style={{ overflowX: 'auto' }}>
-          <div style={{ minWidth: 800 }}>
+          <div style={{ minWidth: 1040 }}>
             {/* Заголовок колонок */}
             <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: '0 8px', padding: '7px 14px', borderBottom: '1px solid var(--border)', fontSize: 11, color: 'var(--text3)', background: 'var(--surface2)' }}>
               <HeadCell>Назва / код</HeadCell>
               <HeadCell right>К-сть</HeadCell>
-              <HeadCell right>Закупівля</HeadCell>
-              <HeadCell right>Націнка</HeadCell>
+              <HeadCell right>Закупка</HeadCell>
               <HeadCell right>Ціна</HeadCell>
+              <HeadCell right>Націнка</HeadCell>
+              <HeadCell>Тип ціни</HeadCell>
               <HeadCell right>Сума</HeadCell>
               <HeadCell right>Маржа</HeadCell>
+              <HeadCell>Постачальник</HeadCell>
               <span />
             </div>
 
@@ -687,17 +705,24 @@ function ItemsTab({ o, onChange, onDirty }) {
                     />
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 6 }}>
                       <input className="cell-input" value={r.sku || ''} onChange={e => setRow(i, { sku: e.target.value })} placeholder="код" style={{ textAlign: 'left', fontFamily: 'monospace', fontSize: 11, color: 'var(--text3)', maxWidth: 170 }} />
-                      {r.supplier_name
-                        ? <span style={{ fontSize: 10, color: 'var(--blue)', whiteSpace: 'nowrap' }}><i className="ti ti-tag" /> {r.supplier_name}</span>
-                        : r.product_id && <span style={{ fontSize: 10, color: 'var(--green)', whiteSpace: 'nowrap' }}><i className="ti ti-link" /> довідник</span>}
+                      {r.product_id && <span style={{ fontSize: 10, color: 'var(--green)', whiteSpace: 'nowrap' }}><i className="ti ti-link" /> довідник</span>}
                     </div>
                   </div>
                   <input className="cell-input" type="number" value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} />
                   <input className="cell-input" type="number" value={r.cost_price ?? ''} onChange={e => setRow(i, { cost_price: e.target.value })} style={{ color: 'var(--text2)' }} />
-                  <input className="cell-input" type="number" placeholder="%" value={fmtMarkup(r)} onChange={e => setMarkup(i, e.target.value)} disabled={noMarkup} title="Націнка над закупівлею" />
                   <input className="cell-input" type="number" value={r.unit_price} onChange={e => setRow(i, { unit_price: e.target.value })} />
+                  <input className="cell-input" type="number" placeholder="%" value={fmtMarkup(r)} onChange={e => setMarkup(i, e.target.value)} disabled={noMarkup} title="Націнка над закупівлею" />
+                  <select className="cell-input" value={r.price_includes_vat ? '1' : '0'} onChange={e => setRow(i, { price_includes_vat: e.target.value === '1' })} style={{ textAlign: 'left' }} title="«з ПДВ» — ціна вже містить ПДВ; «+ ПДВ» — ПДВ додається зверху">
+                    <option value="1">з ПДВ</option><option value="0">+ ПДВ</option>
+                  </select>
                   <span style={{ textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13 }}>{fmt(rowTotal(r))}</span>
                   <span style={{ textAlign: 'right', color: mColor, fontVariantNumeric: 'tabular-nums', fontSize: 12.5, whiteSpace: 'nowrap' }}>{fmt(m)} · {mp.toFixed(0)}%</span>
+                  <select className="cell-input" value={r.supplier_id || ''} onChange={e => chooseSupplier(i, e.target.value)} style={{ textAlign: 'left' }} title="Постачальник позиції (для субзамовлень)">
+                    <option value="">— постачальник —</option>
+                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    {r.supplier_id && !suppliers.some(s => s.id === r.supplier_id) && <option value={r.supplier_id}>{r.supplier_name || '—'}</option>}
+                    <option value="__new__">＋ новий…</option>
+                  </select>
                   <button onClick={() => setExpanded(e => ({ ...e, [i]: !e[i] }))} title="Деталі позиції" style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text3)', padding: 0, textAlign: 'right' }}>
                     <i className={`ti ${open ? 'ti-chevron-up' : 'ti-dots'}`} style={{ fontSize: 16 }} />
                   </button>
@@ -709,8 +734,6 @@ function ItemsTab({ o, onChange, onDirty }) {
                       <input className="form-input" value={r.unit || ''} onChange={e => setRow(i, { unit: e.target.value })} style={{ width: 60, height: 30, padding: '4px 8px', fontSize: 12 }} /></label>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>ПДВ
                       <select className="form-input" value={Number(r.vat_rate) || 0} onChange={e => setRow(i, { vat_rate: Number(e.target.value) })} style={{ width: 66, height: 30, padding: '4px 6px', fontSize: 12 }}>{VAT_RATES.map(v => <option key={v} value={v}>{v}%</option>)}</select></label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>Тип ціни
-                      <select className="form-input" value={r.price_includes_vat ? '1' : '0'} onChange={e => setRow(i, { price_includes_vat: e.target.value === '1' })} style={{ width: 82, height: 30, padding: '4px 6px', fontSize: 12 }} title="«з ПДВ» — ціна вже містить ПДВ; «+ ПДВ» — ПДВ додається зверху"><option value="1">з ПДВ</option><option value="0">+ ПДВ</option></select></label>
                     <span>Без ПДВ <b style={{ color: 'var(--text)' }}>{fmt(rowNet(r))}</b></span>
                     <button onClick={() => removeRow(i)} style={{ marginLeft: 'auto', border: 'none', background: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: 12 }}><i className="ti ti-trash" /> прибрати</button>
                   </div>
