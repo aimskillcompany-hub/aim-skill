@@ -35,9 +35,20 @@ export function buildDocFileName({ type, docNumber, contractorName, date }, orig
   return base ? `${base}.${cleanExt}` : origName
 }
 
+// Порожня форма документа (для прикріплення файлу без OCR або фолбеку при помилці OCR)
+const defaultForm = (fileName = '') => ({
+  type: 'supplyAgreement',
+  file_name: fileName,
+  doc_number: '',
+  contractor_id: null, contractorName: '', edrpou: '',
+  amount: '', vat_amount: 0,
+  date: new Date().toISOString().split('T')[0],
+  doc_role: 'incoming', items: [],
+})
+
 // Універсальна модалка документа: завантаження+OCR (новий), розпізнавання (existingDoc+autoOcr),
 // перегляд/редагування/видалення (existingDoc, autoOcr=false). Прев'ю файлу зліва, поля справа.
-export default function DocModal({ user, existingDoc, autoOcr = true, onClose, onSaved }) {
+export default function DocModal({ user, existingDoc, autoOcr = true, orderId, onClose, onSaved }) {
   const [files, setFiles] = useState([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -173,8 +184,21 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
         doc_role: docRole,
         items: data.items || [],
       })
-    } catch (e) { setError(e.message) }
+    } catch (e) {
+      // OCR не спрацював — даємо форму заповнити вручну (не блокуємо збереження)
+      setError('OCR не спрацював — заповніть поля вручну. ' + (e.message || ''))
+      if (!existingDoc) setForm(f => f || defaultForm(arr[0]?.name || ''))
+    }
     setBusy(false)
+  }
+
+  // Прикріпити файл БЕЗ OCR (договір/ТТН/акт тощо — тип задає користувач)
+  const attachFile = (fileList) => {
+    const arr = Array.from(fileList)
+    if (!arr[0]) return
+    setFiles(arr); setError(null)
+    makePreview(arr[0], arr[0].name, arr[0].type)
+    setForm(defaultForm(arr[0].name))
   }
 
   // Ідемпотентно синхронізувати складські рухи документа (замінити ВСІ рухи цього документа,
@@ -241,6 +265,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
         storage_path, file_name, file_type, file_path: storage_path,
         doc_role: getDocType(form.type)?.direction || 'incoming',
         ocr_data: form, uploaded_by: user?.id || null,
+        order_id: orderId || null,
       }).select('id').single()
       if (error) throw error
 
@@ -275,7 +300,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
     {showMail && <MailSendModal document={{ ...existingDoc, type: form?.type || existingDoc?.type, doc_number: form?.doc_number ?? existingDoc?.doc_number }} onClose={() => setShowMail(false)} />}
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: form ? 1080 : 600, width: '95vw' }}>
-        <div className="modal-header"><h2>{existingDoc ? (autoOcr ? 'Розпізнати документ' : 'Документ') : 'Завантажити документ (OCR)'}</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
+        <div className="modal-header"><h2>{existingDoc ? (autoOcr ? 'Розпізнати документ' : 'Документ') : (autoOcr ? 'Завантажити документ (OCR)' : 'Завантажити документ')}</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
 
         {existingDoc && (
           <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 12 }} title={existingDoc.file_name}>
@@ -285,10 +310,10 @@ export default function DocModal({ user, existingDoc, autoOcr = true, onClose, o
 
         {!form && !existingDoc && (
           <label style={{ display: 'block', border: '2px dashed var(--border)', borderRadius: 12, padding: 32, textAlign: 'center', cursor: 'pointer' }}>
-            <i className="ti ti-scan" style={{ fontSize: 40, color: 'var(--blue)', display: 'block', marginBottom: 10 }} />
-            <div style={{ fontWeight: 600 }}>{busy ? 'Розпізнавання…' : 'Оберіть скан або фото'}</div>
-            <div style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 4 }}>PDF, JPG, PNG · Claude OCR</div>
-            <input type="file" multiple accept="image/*,.pdf,.heic" style={{ display: 'none' }} onChange={e => runOcr(e.target.files)} disabled={busy} />
+            <i className={`ti ${autoOcr ? 'ti-scan' : 'ti-upload'}`} style={{ fontSize: 40, color: 'var(--blue)', display: 'block', marginBottom: 10 }} />
+            <div style={{ fontWeight: 600 }}>{busy ? 'Розпізнавання…' : (autoOcr ? 'Оберіть скан або фото' : 'Оберіть файл')}</div>
+            <div style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 4 }}>{autoOcr ? 'PDF, JPG, PNG · Claude OCR' : 'Договір, ТТН, акт тощо · PDF, фото, DOCX'}</div>
+            <input type="file" multiple={autoOcr} accept={autoOcr ? 'image/*,.pdf,.heic' : '.pdf,image/*,.doc,.docx,.xls,.xlsx'} style={{ display: 'none' }} onChange={e => (autoOcr ? runOcr : attachFile)(e.target.files)} disabled={busy} />
           </label>
         )}
         {!form && existingDoc && !error && (

@@ -907,6 +907,7 @@ function DocumentsTab({ o }) {
   const [genDocs, setGenDocs] = useState([])
   const [openDoc, setOpenDoc] = useState(null)
   const [showAttach, setShowAttach] = useState(false)
+  const [showUpload, setShowUpload] = useState(false)
   const [gen, setGen] = useState(null) // { contractor, editDoc }
   const load = () => supabase.from('documents')
     .select('id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, source, contractors(name)')
@@ -956,6 +957,7 @@ function DocumentsTab({ o }) {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="btn" onClick={() => openGen('invoice')}><i className="ti ti-file-invoice" /> Рахунок</button>
           <button className="btn" onClick={() => openGen('waybill')}><i className="ti ti-truck-delivery" /> Видаткова</button>
+          <button className="btn btn-primary" onClick={() => setShowUpload(true)} title="Завантажити файл (договір, ТТН, акт тощо) у це замовлення"><i className="ti ti-upload" /> Завантажити</button>
           <button className="btn" onClick={() => setShowAttach(true)}><i className="ti ti-link" /> Прив'язати</button>
         </div>
       </div>
@@ -1012,6 +1014,7 @@ function DocumentsTab({ o }) {
       )}
 
       {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => { setOpenDoc(null); load() }} />}
+      {showUpload && <DocModal user={user} orderId={o.id} autoOcr={false} onClose={() => setShowUpload(false)} onSaved={() => { setShowUpload(false); load() }} />}
       {showAttach && <AttachDocsModal o={o} onClose={() => setShowAttach(false)} onAttached={() => { setShowAttach(false); load() }} />}
       {gen && <DocGenModal contractor={gen.contractor} userId={user?.id} orderId={o.id} editDoc={gen.editDoc} onClose={() => setGen(null)} onSaved={() => { setGen(null); loadGen() }} />}
     </div>
