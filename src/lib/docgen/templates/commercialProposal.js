@@ -95,12 +95,19 @@ export function pdf(company, contractor, items, options) {
         margin: [0, 0, 0, 12],
       },
 
-      // ═══ ЗАГОЛОВОК З ВЕРТИКАЛЬНИМ АКЦЕНТОМ ЗЛІВА ═══
+      // ═══ ЗАГОЛОВОК ПО ЦЕНТРУ З ВЕРТИКАЛЬНИМ АКЦЕНТОМ ЗЛІВА ═══
       {
         columns: [
-          { width: 3, canvas: [{ type: 'rect', x: 0, y: 2, w: 3, h: 17, color: ACCENT }] },
-          { width: 11, text: '' },
-          { width: '*', text: 'КОМЕРЦІЙНА ПРОПОЗИЦІЯ', fontSize: 16, bold: true, color: BLACK, characterSpacing: 1.2 },
+          { width: '*', text: '' },
+          {
+            width: 'auto',
+            columns: [
+              { width: 3, canvas: [{ type: 'rect', x: 0, y: 2, w: 3, h: 17, color: ACCENT }] },
+              { width: 11, text: '' },
+              { width: 'auto', text: 'КОМЕРЦІЙНА ПРОПОЗИЦІЯ', fontSize: 16, bold: true, color: BLACK, characterSpacing: 1.2 },
+            ],
+          },
+          { width: '*', text: '' },
         ],
         margin: [0, 0, 0, 16],
       },
