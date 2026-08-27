@@ -38,9 +38,15 @@ export default function Documents() {
     setLoading(true)
     const base = 'id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, direction, created_at, contractor_id, storage_path, file_path, file_type, doc_role, ocr_data, source, generated_doc_id, contractors(name)'
     // is_verified — міграція 029; якщо колонки ще нема, вантажимо без неї (сторінка не ламається)
-    let { data, error } = await supabase.from('documents').select(base + ', is_verified')
-      .order('created_at', { ascending: false }).limit(500)
-    if (error) ({ data } = await supabase.from('documents').select(base).order('created_at', { ascending: false }).limit(500))
+    // posted=false — чернетка в замовленні (не проведено по системі), у реєстрі не показуємо
+    const sel = (extra, filterPosted) => {
+      let q = supabase.from('documents').select(base + extra)
+      if (filterPosted) q = q.not('posted', 'is', false)
+      return q.order('created_at', { ascending: false }).limit(500)
+    }
+    let { data, error } = await sel(', is_verified', true)
+    if (error) ({ data, error } = await sel('', true))   // без is_verified (029)
+    if (error) ({ data } = await sel('', false))         // без posted-фільтра (037/038 ще нема)
     setRows(data || [])
     setLoading(false)
   }

@@ -36,14 +36,14 @@ export function buildDocFileName({ type, docNumber, contractorName, date }, orig
 }
 
 // Порожня форма документа (для прикріплення файлу без OCR або фолбеку при помилці OCR)
-const defaultForm = (fileName = '') => ({
+const defaultForm = (fileName = '', posted = true) => ({
   type: 'supplyAgreement',
   file_name: fileName,
   doc_number: '',
   contractor_id: null, contractorName: '', edrpou: '',
   amount: '', vat_amount: 0,
   date: new Date().toISOString().split('T')[0],
-  doc_role: 'incoming', items: [],
+  doc_role: 'incoming', items: [], posted,
 })
 
 // Універсальна модалка документа: завантаження+OCR (новий), розпізнавання (existingDoc+autoOcr),
@@ -148,6 +148,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
           is_signed: d.is_signed || false,
           doc_role: d.doc_role || null,
           items: d.ocr_data?.items || [],
+          posted: d.posted !== false,
         })
         setBusy(false)
       }
@@ -183,11 +184,12 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
         is_signed: existingDoc?.is_signed || false,
         doc_role: docRole,
         items: data.items || [],
+        posted: existingDoc ? (existingDoc.posted !== false) : !orderId,
       })
     } catch (e) {
       // OCR не спрацював — даємо форму заповнити вручну (не блокуємо збереження)
       setError('OCR не спрацював — заповніть поля вручну. ' + (e.message || ''))
-      if (!existingDoc) setForm(f => f || defaultForm(arr[0]?.name || ''))
+      if (!existingDoc) setForm(f => f || defaultForm(arr[0]?.name || '', !orderId))
     }
     setBusy(false)
   }
@@ -198,7 +200,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
     if (!arr[0]) return
     setFiles(arr); setError(null)
     makePreview(arr[0], arr[0].name, arr[0].type)
-    setForm(defaultForm(arr[0].name))
+    setForm(defaultForm(arr[0].name, !orderId))
   }
 
   // Ідемпотентно синхронізувати складські рухи документа (замінити ВСІ рухи цього документа,
@@ -227,7 +229,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
     setBusy(true); setError(null)
     try {
       if (existingDoc) {
-        const { data, error } = await supabase.from('documents').update({
+        const upd = {
           type: form.type,
           contractor_id: form.contractor_id || null,
           amount: Number(form.amount) || null,
@@ -238,7 +240,10 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
           doc_number: form.doc_number?.trim() || null,
           doc_date: form.date || null,
           ocr_data: form,
-        }).eq('id', existingDoc.id).select('id')
+          posted: form.posted !== false,
+        }
+        let { data, error } = await supabase.from('documents').update(upd).eq('id', existingDoc.id).select('id')
+        if (error && /posted/.test(error.message || '')) { const { posted, ...rest } = upd; ({ data, error } = await supabase.from('documents').update(rest).eq('id', existingDoc.id).select('id')) }
         if (error) throw error
         if (!data?.length) throw new Error('Документ не оновлено (немає прав UPDATE). Запусти migrations/004 у Supabase.')
         await syncDocStock(existingDoc.id)
@@ -252,7 +257,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
         if (upErr && !upErr.message.includes('exists')) throw upErr
         storage_path = path; file_name = form.file_name?.trim() || f.name; file_type = f.type
       }
-      const { data: doc, error } = await supabase.from('documents').insert({
+      const ins = {
         type: form.type,
         doc_number: form.doc_number?.trim() || null,
         doc_date: form.date || null,
@@ -266,7 +271,10 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
         doc_role: getDocType(form.type)?.direction || 'incoming',
         ocr_data: form, uploaded_by: user?.id || null,
         order_id: orderId || null,
-      }).select('id').single()
+        posted: form.posted !== false,
+      }
+      let { data: doc, error } = await supabase.from('documents').insert(ins).select('id').single()
+      if (error && /posted/.test(error.message || '')) { const { posted, ...rest } = ins; ({ data: doc, error } = await supabase.from('documents').insert(rest).select('id').single()) }
       if (error) throw error
 
       await syncDocStock(doc.id)
@@ -372,6 +380,14 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
                   </div>
                 </div>
               </div>
+
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', background: form.posted !== false ? 'var(--green-bg, #e7f7ec)' : 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '11px 14px', marginTop: 12 }}>
+                <input type="checkbox" checked={form.posted !== false} onChange={e => setForm(f => ({ ...f, posted: e.target.checked }))} style={{ width: 18, height: 18, marginTop: 1 }} />
+                <span>
+                  <b style={{ fontSize: 13.5 }}>Провести по системі</b>
+                  <span style={{ display: 'block', fontSize: 12, color: 'var(--text3)', marginTop: 1 }}>Додати в загальний розділ «Документи». Без відмітки документ лишається чернеткою лише в цьому замовленні.</span>
+                </span>
+              </label>
 
               {(form.items || []).length > 0 && (
                 <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: '10px 14px', marginTop: 12, fontSize: 13, color: 'var(--text2)' }}>

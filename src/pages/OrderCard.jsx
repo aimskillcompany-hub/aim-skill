@@ -909,10 +909,18 @@ function DocumentsTab({ o }) {
   const [showAttach, setShowAttach] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
   const [gen, setGen] = useState(null) // { contractor, editDoc }
-  const load = () => supabase.from('documents')
-    .select('id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, source, contractors(name)')
-    .eq('order_id', o.id).order('created_at', { ascending: false })
-    .then(({ data }) => setRows((data || []).filter(d => d.source !== 'generated'))) // згенеровані показані окремою секцією
+  const load = async () => {
+    const cols = 'id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, source, posted, contractors(name)'
+    let { data, error } = await supabase.from('documents').select(cols).eq('order_id', o.id).order('created_at', { ascending: false })
+    if (error) ({ data } = await supabase.from('documents').select(cols.replace(', posted', '')).eq('order_id', o.id).order('created_at', { ascending: false })) // фолбек, якщо колонки posted ще нема
+    setRows((data || []).filter(d => d.source !== 'generated')) // згенеровані показані окремою секцією
+  }
+  // Провести / зняти з проведення (додати/прибрати з розділу «Документи»)
+  const setPosted = async (d, val) => {
+    const { data, error } = await supabase.from('documents').update({ posted: val }).eq('id', d.id).select('id')
+    if (error || !data?.length) { alert('Не вдалося: ' + (error?.message || 'запустіть міграцію 038')); return }
+    load()
+  }
   const loadGen = () => supabase.from('generated_docs').select('*').eq('order_id', o.id).order('created_at', { ascending: false }).then(({ data }) => setGenDocs(data || []))
   useEffect(() => { load(); loadGen() }, [o.id])
   const unlink = async (d) => { await supabase.from('documents').update({ order_id: null }).eq('id', d.id); load() }
@@ -996,18 +1004,23 @@ function DocumentsTab({ o }) {
       ) : (
         <div className="tbl-wrap" style={{ border: 'none' }}>
           <table>
-            <thead><tr><th>Тип</th><th>№</th><th>Файл</th><th style={{ textAlign: 'right' }}>Сума</th><th>Підписано</th><th>Дата</th><th /></tr></thead>
+            <thead><tr><th>Тип</th><th>№</th><th>Файл</th><th style={{ textAlign: 'right' }}>Сума</th><th>Статус</th><th>Дата</th><th /></tr></thead>
             <tbody>
-              {rows.map(d => (
+              {rows.map(d => { const draft = d.posted === false; return (
                 <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => setOpenDoc(d)}>
                   <td>{getDocType(d.type)?.label || d.type || '—'}</td>
                   <td style={{ color: 'var(--text2)', fontSize: 12 }}>{d.doc_number || '—'}</td>
                   <td><div className="trunc">{d.file_name}</div></td>
                   <td style={{ textAlign: 'right' }}>{d.amount ? fmt(d.amount) : '—'}</td>
-                  <td>{d.is_signed ? '✓' : '—'}</td><td>{(d.doc_date || d.created_at || '').slice(0, 10)}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {draft
+                      ? <button className="btn" title="Провести — додати в розділ «Документи»" onClick={e => { e.stopPropagation(); setPosted(d, true) }} style={{ fontSize: 12, padding: '3px 10px', color: 'var(--amber)' }}><i className="ti ti-file-off" /> Чернетка</button>
+                      : <span title="Проведено — у розділі «Документи»" style={{ fontSize: 12, color: 'var(--green)', display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={e => { e.stopPropagation(); setPosted(d, false) }}><i className="ti ti-circle-check" /> Проведено</span>}
+                  </td>
+                  <td>{(d.doc_date || d.created_at || '').slice(0, 10)}</td>
                   <td style={{ textAlign: 'right' }}><button className="btn" title="Відв'язати" onClick={e => { e.stopPropagation(); unlink(d) }}><i className="ti ti-unlink" /></button></td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>

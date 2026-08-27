@@ -426,10 +426,13 @@ function DocumentsTab({ id }) {
   const [rows, setRows] = useState(null)
   const [openDoc, setOpenDoc] = useState(null)
   const [genDoc, setGenDoc] = useState(null)
-  const load = () => supabase.from('documents')
-    .select('id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, ocr_data, source, generated_doc_id, contractors(name)')
-    .eq('contractor_id', id).order('created_at', { ascending: false })
-    .then(({ data }) => setRows(data || []))
+  const cols = 'id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, ocr_data, source, generated_doc_id, contractors(name)'
+  const load = async () => {
+    // posted=false — чернетка в замовленні; у картці контрагента не показуємо
+    let { data, error } = await supabase.from('documents').select(cols).eq('contractor_id', id).not('posted', 'is', false).order('created_at', { ascending: false })
+    if (error) ({ data } = await supabase.from('documents').select(cols).eq('contractor_id', id).order('created_at', { ascending: false })) // фолбек, якщо колонки posted ще нема
+    setRows(data || [])
+  }
   useEffect(() => { load() }, [id])
 
   const openRow = (d) => {
