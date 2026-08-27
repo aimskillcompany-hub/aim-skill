@@ -95,15 +95,14 @@ export function pdf(company, contractor, items, options) {
         margin: [0, 0, 0, 12],
       },
 
-      // ═══ ЗАГОЛОВОК + ТОНКИЙ АКЦЕНТ ═══
-      { text: 'КОМЕРЦІЙНА ПРОПОЗИЦІЯ', fontSize: 16, bold: true, color: BLACK, alignment: 'center', characterSpacing: 1.2 },
+      // ═══ ЗАГОЛОВОК З ВЕРТИКАЛЬНИМ АКЦЕНТОМ ЗЛІВА ═══
       {
         columns: [
-          { width: '*', text: '' },
-          { width: 48, canvas: [{ type: 'rect', x: 0, y: 0, w: 48, h: 1.4, color: ACCENT }] },
-          { width: '*', text: '' },
+          { width: 3, canvas: [{ type: 'rect', x: 0, y: 2, w: 3, h: 17, color: ACCENT }] },
+          { width: 11, text: '' },
+          { width: '*', text: 'КОМЕРЦІЙНА ПРОПОЗИЦІЯ', fontSize: 16, bold: true, color: BLACK, characterSpacing: 1.2 },
         ],
-        margin: [0, 5, 0, 10],
+        margin: [0, 0, 0, 16],
       },
 
       // ═══ ВСТУП ═══
