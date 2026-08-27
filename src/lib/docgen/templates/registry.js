@@ -18,6 +18,8 @@ export const DOCUMENT_TYPES = [
   { key: 'supplyAgreement', label: 'Договір поставки', prefix: 'ДП', icon: 'ti-truck', template: supplyAgreement, direction: 'outgoing', isContract: true },
   { key: 'purchaseOrder', label: 'Замовлення постачальнику', prefix: 'ЗП', icon: 'ti-shopping-cart', template: invoice, direction: 'outgoing', isOrder: true },
   { key: 'salesOrder', label: 'Замовлення від клієнта', prefix: 'ЗК', icon: 'ti-receipt', template: invoice, direction: 'incoming', isOrder: true },
+  // Без шаблону — лише для класифікації завантажених документів (ТТН, довіреність тощо). Не генерується, не створює борг.
+  { key: 'other', label: 'Інше', prefix: 'ДОК', icon: 'ti-file', direction: 'incoming' },
 ]
 
 export function getDocType(key) {
