@@ -12,13 +12,6 @@ const G3 = '#C7C7CC'
 const G4 = '#E5E5EA'
 const LIME = '#14DF62'   // акцентний колір КП
 const GREEN = '#4A7C59'
-const TAGLINE = 'Комплексні ІТ-рішення та обладнання для бізнесу'
-const ADVANTAGES = [
-  'Офіційний партнер провідних брендів',
-  'Гарантія та сервісна підтримка',
-  'Індивідуальні умови та ціни під проєкт',
-  'Швидка поставка й супровід замовлення',
-]
 
 function addDays(dateStr, days) {
   const d = new Date(dateStr)
@@ -33,122 +26,98 @@ function itm(it, i) {
   return { n: i + 1, name: it.name || '', q, u: it.unit || 'шт', p, vr, v, t: a + v, a }
 }
 
-const rvLine = (label, value) => value ? {
-  columns: [
-    { text: label, width: 42, fontSize: 8, color: G2, alignment: 'left', margin: [0, 0, 2, 0] },
-    { text: value, width: '*', fontSize: 8, color: G1 },
-  ], margin: [0, 1, 0, 1],
-} : null
-
-const sectionTitle = (text) => ({ text: text, fontSize: 7.5, letterSpacing: 2, color: G2, bold: true, margin: [0, 0, 0, 6] })
-
 export function pdf(company, contractor, items, options) {
   const { docNumber, docDate, notes, validityDays } = options
   const { subtotal, vatAmount, total, vatByRate } = calcTotals(items)
   const rows = items.map((it, i) => itm(it, i))
+  const companyName = company.name || company.shortName || 'ТОВ «ЕЙМ СКІЛ»'
+  const validTo = formatDate(addDays(docDate, validityDays))
 
   return {
     pageSize: 'A4',
-    pageMargins: [40, 20, 40, 56],
-    defaultStyle: { fontSize: 9, color: G1 },
+    pageMargins: [48, 36, 48, 52],
+    defaultStyle: { fontSize: 9.5, color: G1, lineHeight: 1.15 },
 
-    footer: () => ({
-      margin: [40, 0, 40, 0],
-      stack: [
-        { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.3, lineColor: G4 }], margin: [0, 0, 0, 5] },
-        {
-          columns: [
-            {
-              stack: [
-                { text: docNumber, fontSize: 6, bold: true, color: G2 },
-                { text: 'Сформовано в корпоративній системі AiM Skill  ·  073 700 77 58  ·  office@aim-skill.com.ua  ·  www.aim-skill.com.ua', fontSize: 5.5, color: G3, margin: [0, 1, 0, 0] },
-              ],
-              width: '*', margin: [0, 3, 0, 0],
-            },
-          ],
-        },
+    footer: (page, count) => ({
+      margin: [48, 0, 48, 0],
+      columns: [
+        { text: 'Сформовано в системі AiM Skill  ·  aim-skill.com.ua', fontSize: 6, color: G3 },
+        { text: count > 1 ? `${page} / ${count}` : '', fontSize: 6, color: G3, alignment: 'right' },
       ],
     }),
 
     content: [
-      // ═══ ШАПКА: лого + слоган ═══
+      // ═══ ШАПКА: лого зліва · реквізити справа ═══
       {
         columns: [
-          { image: LOGO_BASE64, width: 78, margin: [0, 2, 0, 0] },
+          { image: LOGO_BASE64, width: 96, margin: [0, 6, 0, 0] },
           {
             width: '*',
             stack: [
-              { text: company.shortName || company.name, fontSize: 11, bold: true, color: BLACK, alignment: 'right' },
-              { text: TAGLINE, fontSize: 8, color: G2, alignment: 'right', margin: [0, 2, 0, 0] },
-              { text: `${company.phone || ''}  ·  ${company.email || ''}`, fontSize: 7.5, color: G2, alignment: 'right', margin: [0, 2, 0, 0] },
-            ],
+              { text: companyName, fontSize: 12, bold: true, color: BLACK, alignment: 'right', characterSpacing: 0.3 },
+              { canvas: [{ type: 'line', x1: 140, y1: 4, x2: 387, y2: 4, lineWidth: 0.8, lineColor: DARK }], margin: [0, 0, 0, 5] },
+              { text: company.address || '', fontSize: 8.5, color: G1, alignment: 'right', lineHeight: 1.3 },
+              company.phone ? { text: `телефон: ${company.phone}`, fontSize: 8.5, color: G1, alignment: 'right', margin: [0, 1, 0, 0] } : null,
+              company.email ? { text: `email: ${company.email}`, fontSize: 8.5, color: G1, alignment: 'right', margin: [0, 1, 0, 0] } : null,
+            ].filter(Boolean),
           },
         ],
-        margin: [0, 0, 0, 8],
-      },
-      { canvas: [{ type: 'rect', x: 0, y: 0, w: 515, h: 3, color: LIME }], margin: [0, 0, 0, 14] },
-
-      // ═══ НАЗВА + БЕЙДЖ ТЕРМІНУ ═══
-      {
-        columns: [
-          {
-            width: '*',
-            stack: [
-              { text: 'КОМЕРЦІЙНА ПРОПОЗИЦІЯ', fontSize: 19, bold: true, color: BLACK, margin: [0, 0, 0, 4] },
-              { text: `№ ${docNumber}  ·  від ${formatDateLong(docDate)}`, fontSize: 10.5, color: G1 },
-            ],
-          },
-          {
-            width: 'auto',
-            table: { body: [[{ text: `Дійсна до ${formatDate(addDays(docDate, validityDays))}`, fontSize: 8.5, bold: true, color: BLACK, fillColor: LIME, margin: [10, 6, 10, 6] }]] },
-            layout: 'noBorders',
-            margin: [0, 6, 0, 0],
-          },
-        ],
+        columnGap: 16,
         margin: [0, 0, 0, 12],
       },
+      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 499, y2: 0, lineWidth: 1, lineColor: DARK }], margin: [0, 0, 0, 18] },
 
+      // ═══ НОМЕР + ТЕРМІН ДІЇ ═══
+      { text: `№ ${docNumber} від ${formatDateLong(docDate)}`, fontSize: 10.5, color: BLACK, margin: [0, 0, 0, 2] },
+      { text: `Пропозиція дійсна до ${validTo} р.`, fontSize: 9.5, color: G1, margin: [0, 0, 0, 18] },
+
+      // ═══ КОМУ (з відступом праворуч) ═══
       {
         columns: [
+          { width: '46%', text: '' },
           {
-            width: '49%',
+            width: '54%',
             stack: [
-              sectionTitle('ВІД КОГО'),
-              { text: company.shortName || company.name, fontSize: 9.5, bold: true, color: BLACK, margin: [0, 0, 0, 4] },
-              rvLine('ЄДРПОУ', company.edrpou),
-              rvLine('Адреса', company.address),
-              rvLine('Тел.', company.phone),
-              rvLine('Email', company.email),
-            ].filter(Boolean),
-          },
-          { width: '2%', text: '' },
-          {
-            width: '49%',
-            stack: [
-              sectionTitle('КОМУ'),
-              { text: contractor.short_name || contractor.name || '—', fontSize: 9.5, bold: true, color: BLACK, margin: [0, 0, 0, 4] },
-              rvLine('ЄДРПОУ', contractor.edrpou),
-              rvLine('Адреса', contractor.legal_address || contractor.address),
-              rvLine('Тел.', contractor.phone),
-              rvLine('Email', contractor.email),
+              { text: 'КОМУ:', fontSize: 9, bold: true, color: G2, characterSpacing: 0.5, margin: [0, 0, 0, 3] },
+              { text: contractor.name || contractor.short_name || '—', fontSize: 11, bold: true, color: BLACK, lineHeight: 1.2 },
+              contractor.edrpou ? { text: `ЄДРПОУ ${contractor.edrpou}`, fontSize: 9.5, color: G1, margin: [0, 2, 0, 0] } : null,
+              (contractor.legal_address || contractor.address) ? { text: contractor.legal_address || contractor.address, fontSize: 9.5, color: G1, margin: [0, 2, 0, 0], lineHeight: 1.3 } : null,
             ].filter(Boolean),
           },
         ],
-        margin: [0, 0, 0, 10],
+        margin: [0, 0, 0, 22],
       },
 
+      // ═══ ЗАГОЛОВОК + ЛАЙМОВИЙ АКЦЕНТ ═══
+      { text: 'КОМЕРЦІЙНА ПРОПОЗИЦІЯ', fontSize: 16, bold: true, color: BLACK, alignment: 'center', characterSpacing: 1.2 },
+      {
+        columns: [
+          { width: '*', text: '' },
+          { width: 54, canvas: [{ type: 'rect', x: 0, y: 0, w: 54, h: 2.6, color: LIME }] },
+          { width: '*', text: '' },
+        ],
+        margin: [0, 6, 0, 16],
+      },
+
+      // ═══ ВСТУП ═══
+      {
+        text: 'Дякуємо за звернення. Згідно з Вашим запитом надаємо комерційну пропозицію на поставку наступного товару:',
+        alignment: 'justify', fontSize: 10, color: DARK, lineHeight: 1.45, leadingIndent: 26, margin: [0, 0, 0, 14],
+      },
+
+      // ═══ ТАБЛИЦЯ ТОВАРІВ ═══
       {
         table: {
           headerRows: 1,
-          widths: [18, '*', 26, 28, 56, 22, 42, 52],
+          widths: [18, '*', 26, 28, 58, 22, 44, 54],
           body: [
-            ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна без ПДВ', 'ПДВ', 'Сума ПДВ', 'Сума'].map(t => ({
-              text: t, fontSize: 6, bold: true, color: '#FFF', fillColor: DARK,
-              alignment: 'center', margin: [0, 3, 0, 3],
+            ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна без ПДВ', 'ПДВ', 'Сума ПДВ', 'Сума'].map((t, ci) => ({
+              text: t, fontSize: 6.5, bold: true, color: '#FFF', fillColor: DARK,
+              alignment: ci === 1 ? 'left' : 'center', margin: [0, 4, 0, 4],
             })),
             ...rows.map(r => [
               { text: r.n, alignment: 'center', fontSize: 8.5, color: G2 },
-              { text: r.name, fontSize: 8.5, color: BLACK },
+              { text: r.name, fontSize: 8.5, color: BLACK, lineHeight: 1.2 },
               { text: r.u, alignment: 'center', fontSize: 8, color: G2 },
               { text: r.q, alignment: 'center', fontSize: 8.5 },
               { text: formatMoney(r.p), alignment: 'right', fontSize: 8.5 },
@@ -162,83 +131,92 @@ export function pdf(company, contractor, items, options) {
           hLineWidth: (i) => i === 0 ? 0 : i === 1 ? 1 : 0.5,
           vLineWidth: () => 0,
           hLineColor: (i) => i === 1 ? DARK : G4,
-          paddingLeft: () => 4, paddingRight: () => 4,
-          paddingTop: () => 4, paddingBottom: () => 4,
+          paddingLeft: () => 6, paddingRight: () => 6,
+          paddingTop: () => 5, paddingBottom: () => 5,
           fillColor: (i) => i > 0 && i % 2 === 0 ? '#FAFAFA' : null,
         },
       },
 
+      // ═══ ПІДСУМКИ ═══
       {
         columns: [
           { width: '*', text: '' },
           {
-            width: 200,
+            width: 220,
             table: {
-              widths: [100, 100],
+              widths: [110, 110],
               body: [
-                [{ text: 'Сума без ПДВ:', alignment: 'right', fontSize: 8.5, color: G2 }, { text: `${formatMoney(subtotal)} грн`, alignment: 'right', fontSize: 8.5 }],
+                [{ text: 'Сума без ПДВ:', alignment: 'right', fontSize: 9, color: G2 }, { text: `${formatMoney(subtotal)} грн`, alignment: 'right', fontSize: 9 }],
                 ...(vatAmount > 0
-                  ? Object.entries(vatByRate).map(([rate, amt]) => [{ text: `ПДВ ${rate}%:`, alignment: 'right', fontSize: 8.5, color: G2 }, { text: `${formatMoney(amt)} грн`, alignment: 'right', fontSize: 8.5 }])
-                  : [[{ text: 'ПДВ:', alignment: 'right', fontSize: 8.5, color: G2 }, { text: 'без ПДВ', alignment: 'right', fontSize: 8.5, color: G2 }]]),
-                [{ text: 'Всього з ПДВ:', alignment: 'right', fontSize: 10, bold: true, color: BLACK }, { text: `${formatMoney(total)} грн`, alignment: 'right', fontSize: 10, bold: true, color: BLACK }],
+                  ? Object.entries(vatByRate).map(([rate, amt]) => [{ text: `ПДВ ${rate}%:`, alignment: 'right', fontSize: 9, color: G2 }, { text: `${formatMoney(amt)} грн`, alignment: 'right', fontSize: 9 }])
+                  : [[{ text: 'ПДВ:', alignment: 'right', fontSize: 9, color: G2 }, { text: 'без ПДВ', alignment: 'right', fontSize: 9, color: G2 }]]),
+                [
+                  { text: 'Всього з ПДВ:', alignment: 'right', fontSize: 10.5, bold: true, color: BLACK, fillColor: '#F2FBF5', margin: [0, 4, 0, 4] },
+                  { text: `${formatMoney(total)} грн`, alignment: 'right', fontSize: 10.5, bold: true, color: BLACK, fillColor: '#F2FBF5', margin: [0, 4, 4, 4] },
+                ],
               ],
             },
-            layout: 'noBorders',
-            margin: [0, 4, 0, 0],
+            layout: { defaultBorder: false, paddingTop: () => 2, paddingBottom: () => 2, paddingLeft: () => 4, paddingRight: () => 0 },
+            margin: [0, 6, 0, 0],
           },
         ],
       },
 
-      notes ? { text: notes, fontSize: 8.5, color: G1, margin: [0, 8, 0, 0], lineHeight: 1.4 } : {},
+      notes ? { text: notes, fontSize: 9, color: G1, margin: [0, 10, 0, 0], lineHeight: 1.4 } : {},
 
-      // ═══ ЧОМУ МИ ═══
-      { text: '', margin: [0, 8] },
-      sectionTitle('ЧОМУ AIM SKILL'),
+      // ═══ ПІДПИС + ПЕЧАТКА ═══
+      { text: '', margin: [0, 14] },
       {
-        columnGap: 10,
-        columns: ADVANTAGES.map(a => ({
-          width: '*',
-          stack: [
-            { canvas: [{ type: 'rect', x: 0, y: 0, w: 18, h: 3, color: LIME }], margin: [0, 0, 0, 5] },
-            { text: a, fontSize: 8, color: G1, lineHeight: 1.3 },
-          ],
-        })),
-        margin: [0, 0, 0, 4],
+        columns: [
+          {
+            width: '*',
+            stack: [
+              { text: 'З повагою,', fontSize: 10, color: G1, margin: [0, 0, 0, 2] },
+              { text: companyName, fontSize: 10.5, bold: true, color: BLACK, margin: [0, 0, 0, 22] },
+              { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 210, y2: 0, lineWidth: 0.5, lineColor: G3 }] },
+              {
+                text: [
+                  { text: `${company.directorPosition || 'Директор'}   `, color: G2 },
+                  { text: company.director || '', bold: true, color: BLACK },
+                ], fontSize: 9.5, margin: [0, 4, 0, 0],
+              },
+            ],
+          },
+          {
+            width: 150,
+            stack: [
+              { text: 'М.П.', fontSize: 9, color: G2, alignment: 'center', margin: [0, 34, 0, 0] },
+              stampOverlay(options, { x: 12, y: -74, w: 134 }),
+            ],
+          },
+        ],
       },
 
       // ═══ ЗАКЛИК + КОНТАКТИ ═══
-      { text: '', margin: [0, 8] },
+      { text: '', margin: [0, 12] },
       {
         table: {
-          widths: ['*'],
-          body: [[{
-            fillColor: '#FAFAFA',
-            margin: [14, 12, 14, 12],
-            stack: [
-              { text: 'Готові обговорити деталі чи оформити замовлення?', fontSize: 10, bold: true, color: BLACK },
-              { text: `Зв'яжіться з нами — підберемо оптимальне рішення під ваш бюджет.`, fontSize: 8.5, color: G1, margin: [0, 3, 0, 6] },
-              { text: [
-                { text: company.phone || '', bold: true, color: BLACK },
-                { text: company.phone ? '   ·   ' : '', color: G3 },
-                { text: company.email || '', color: GREEN },
-                { text: '   ·   www.aim-skill.com.ua', color: G2 },
-              ], fontSize: 9 },
-            ],
-          }]],
+          widths: [3, '*'],
+          body: [[
+            { text: '', fillColor: LIME },
+            {
+              fillColor: '#F7FAF8', margin: [16, 13, 16, 13],
+              stack: [
+                { text: 'Готові обговорити деталі чи оформити замовлення?', fontSize: 10, bold: true, color: BLACK },
+                { text: `Зв'яжіться з нами — підберемо оптимальне рішення під ваш бюджет.`, fontSize: 9, color: G1, margin: [0, 3, 0, 7] },
+                {
+                  text: [
+                    { text: company.phone || '', bold: true, color: BLACK },
+                    { text: company.phone ? '    ·    ' : '', color: G3 },
+                    { text: company.email || '', color: GREEN },
+                    { text: '    ·    www.aim-skill.com.ua', color: G2 },
+                  ], fontSize: 9,
+                },
+              ],
+            },
+          ]],
         },
-        layout: 'noBorders',
-      },
-
-      // ═══ ПІДПИС ═══
-      { text: '', margin: [0, 10] },
-      {
-        width: '48%',
-        stack: [
-          { text: 'ПІДГОТУВАВ', fontSize: 6.5, letterSpacing: 2, color: G2, margin: [0, 0, 0, 12] },
-          { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 0.5, lineColor: G3 }] },
-          { text: `${company.directorPosition || 'Директор'} ${company.director || ''}`, fontSize: 9, color: G1, margin: [0, 3, 0, 0] },
-          stampOverlay(options, { x: 183, y: -80, w: 135 }),
-        ],
+        layout: { defaultBorder: false, paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0 },
       },
     ],
   }
