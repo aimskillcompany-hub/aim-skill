@@ -829,7 +829,7 @@ function ProposalsTab({ o, onChange }) {
         return { name: it.name, quantity: Number(it.qty) || 0, unit: it.unit || unitByName[it.name] || 'шт', unitPrice: net, vatRate: vr }
       })
       const today = new Date().toISOString().slice(0, 10)
-      const opts = { docNumber: `КП-${o.order_number || o.id.slice(0, 6)}-v${p.version}`, docDate: today, withStamp: stampCP }
+      const opts = { docNumber: `КП-${o.order_number || o.id.slice(0, 6)}`, docDate: today, withStamp: stampCP }
       await previewPdf('commercialProposal', c || { name: o.contractors?.name }, items, opts)
     } catch (e) { alert('Помилка формування: ' + e.message) }
     setGenId(null)

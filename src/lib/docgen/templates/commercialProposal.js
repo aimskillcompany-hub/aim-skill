@@ -12,6 +12,14 @@ const G3 = '#C7C7CC'
 const G4 = '#E5E5EA'
 const LIME = '#14DF62'   // акцентний колір КП
 const GREEN = '#4A7C59'
+const ACCENT = '#2E7D46' // темно-зелений акцент (тонкі лінії)
+
+// Скорочення форми власності у назві: «ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ …» → «ТОВ …»
+const shortenName = (n) => (n || '')
+  .replace(/товариство з обмеженою відповідальністю/i, 'ТОВ')
+  .replace(/приватне підприємство/i, 'ПП')
+  .replace(/фізична особа[-\s—]*підприємець/i, 'ФОП')
+  .replace(/\s+/g, ' ').trim()
 
 function addDays(dateStr, days) {
   const d = new Date(dateStr)
@@ -30,7 +38,7 @@ export function pdf(company, contractor, items, options) {
   const { docNumber, docDate, notes, validityDays } = options
   const { subtotal, vatAmount, total, vatByRate } = calcTotals(items)
   const rows = items.map((it, i) => itm(it, i))
-  const companyName = company.name || company.shortName || 'ТОВ «ЕЙМ СКІЛ»'
+  const companyName = company.shortName || shortenName(company.name) || 'ТОВ «ЕЙМ СКІЛ»'
   const validTo = formatDate(addDays(docDate, validityDays))
 
   return {
@@ -54,22 +62,21 @@ export function pdf(company, contractor, items, options) {
           {
             width: '*',
             stack: [
-              { text: companyName, fontSize: 12, bold: true, color: BLACK, alignment: 'right', characterSpacing: 0.3 },
-              { canvas: [{ type: 'line', x1: 140, y1: 4, x2: 387, y2: 4, lineWidth: 0.8, lineColor: DARK }], margin: [0, 0, 0, 5] },
+              { text: companyName, fontSize: 12, bold: true, color: BLACK, alignment: 'right', characterSpacing: 0.3, margin: [0, 0, 0, 4] },
               { text: company.address || '', fontSize: 8.5, color: G1, alignment: 'right', lineHeight: 1.3 },
-              company.phone ? { text: `телефон: ${company.phone}`, fontSize: 8.5, color: G1, alignment: 'right', margin: [0, 1, 0, 0] } : null,
-              company.email ? { text: `email: ${company.email}`, fontSize: 8.5, color: G1, alignment: 'right', margin: [0, 1, 0, 0] } : null,
+              company.phone ? { text: `телефон: ${company.phone}`, fontSize: 8.5, color: G1, alignment: 'right' } : null,
+              company.email ? { text: `email: ${company.email}`, fontSize: 8.5, color: G1, alignment: 'right' } : null,
             ].filter(Boolean),
           },
         ],
         columnGap: 16,
-        margin: [0, 0, 0, 12],
+        margin: [0, 0, 0, 8],
       },
-      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 499, y2: 0, lineWidth: 1, lineColor: DARK }], margin: [0, 0, 0, 18] },
+      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 499, y2: 0, lineWidth: 0.6, lineColor: DARK }], margin: [0, 0, 0, 10] },
 
       // ═══ НОМЕР + ТЕРМІН ДІЇ ═══
-      { text: `№ ${docNumber} від ${formatDateLong(docDate)}`, fontSize: 10.5, color: BLACK, margin: [0, 0, 0, 2] },
-      { text: `Пропозиція дійсна до ${validTo} р.`, fontSize: 9.5, color: G1, margin: [0, 0, 0, 18] },
+      { text: `№ ${docNumber} від ${formatDateLong(docDate)}`, fontSize: 10.5, color: BLACK, margin: [0, 0, 0, 1] },
+      { text: `Пропозиція дійсна до ${validTo} р.`, fontSize: 9.5, color: G1, margin: [0, 0, 0, 12] },
 
       // ═══ КОМУ (з відступом праворуч) ═══
       {
@@ -85,24 +92,24 @@ export function pdf(company, contractor, items, options) {
             ].filter(Boolean),
           },
         ],
-        margin: [0, 0, 0, 22],
+        margin: [0, 0, 0, 12],
       },
 
-      // ═══ ЗАГОЛОВОК + ЛАЙМОВИЙ АКЦЕНТ ═══
+      // ═══ ЗАГОЛОВОК + ТОНКИЙ АКЦЕНТ ═══
       { text: 'КОМЕРЦІЙНА ПРОПОЗИЦІЯ', fontSize: 16, bold: true, color: BLACK, alignment: 'center', characterSpacing: 1.2 },
       {
         columns: [
           { width: '*', text: '' },
-          { width: 54, canvas: [{ type: 'rect', x: 0, y: 0, w: 54, h: 2.6, color: LIME }] },
+          { width: 48, canvas: [{ type: 'rect', x: 0, y: 0, w: 48, h: 1.4, color: ACCENT }] },
           { width: '*', text: '' },
         ],
-        margin: [0, 6, 0, 16],
+        margin: [0, 5, 0, 10],
       },
 
       // ═══ ВСТУП ═══
       {
         text: 'Дякуємо за звернення. Згідно з Вашим запитом надаємо комерційну пропозицію на поставку наступного товару:',
-        alignment: 'justify', fontSize: 10, color: DARK, lineHeight: 1.45, leadingIndent: 26, margin: [0, 0, 0, 14],
+        alignment: 'justify', fontSize: 10, color: DARK, lineHeight: 1.35, leadingIndent: 26, margin: [0, 0, 0, 10],
       },
 
       // ═══ ТАБЛИЦЯ ТОВАРІВ ═══
@@ -165,14 +172,14 @@ export function pdf(company, contractor, items, options) {
       notes ? { text: notes, fontSize: 9, color: G1, margin: [0, 10, 0, 0], lineHeight: 1.4 } : {},
 
       // ═══ ПІДПИС + ПЕЧАТКА ═══
-      { text: '', margin: [0, 14] },
+      { text: '', margin: [0, 8] },
       {
         columns: [
           {
             width: '*',
             stack: [
-              { text: 'З повагою,', fontSize: 10, color: G1, margin: [0, 0, 0, 2] },
-              { text: companyName, fontSize: 10.5, bold: true, color: BLACK, margin: [0, 0, 0, 22] },
+              { text: 'З повагою,', fontSize: 10, color: G1, margin: [0, 0, 0, 1] },
+              { text: companyName, fontSize: 10.5, bold: true, color: BLACK, margin: [0, 0, 0, 16] },
               { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 210, y2: 0, lineWidth: 0.5, lineColor: G3 }] },
               {
                 text: [
@@ -193,12 +200,12 @@ export function pdf(company, contractor, items, options) {
       },
 
       // ═══ ЗАКЛИК + КОНТАКТИ ═══
-      { text: '', margin: [0, 12] },
+      { text: '', margin: [0, 7] },
       {
         table: {
-          widths: [3, '*'],
+          widths: [2, '*'],
           body: [[
-            { text: '', fillColor: LIME },
+            { text: '', fillColor: ACCENT },
             {
               fillColor: '#F7FAF8', margin: [16, 13, 16, 13],
               stack: [
