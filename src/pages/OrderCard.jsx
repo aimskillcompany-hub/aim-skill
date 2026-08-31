@@ -281,6 +281,7 @@ function StatusStepper({ o, onChange }) {
 
 // ───────── Деталі ─────────
 function DetailsTab({ o, onSaved }) {
+  const { companies, activeId, setActiveCompany } = useCompany()
   const [form, setForm] = useState({
     description: o.description || '',
     procurement_type: o.procurement_type || 'direct',
@@ -290,6 +291,7 @@ function DetailsTab({ o, onSaved }) {
     closed_at: o.closed_at ? o.closed_at.slice(0, 10) : '',
     manager_id: o.manager_id || '',
     contract_id: o.contract_id || '',
+    company_id: o.company_id || activeId || '',
   })
   const [saved, setSaved] = useState(false)
   const [users, setUsers] = useState([])
@@ -305,6 +307,16 @@ function DetailsTab({ o, onSaved }) {
   }, [form.client_id])
   const userName = (u) => u.full_name || u.email || '—'
   const contractLabel = (c) => `№${c.number}${c.date ? ` від ${c.date.slice(0, 10).split('-').reverse().join('.')}` : ''}`
+
+  // Перенести замовлення в іншу юрособу: сам order + пов'язані scoped-записи.
+  const moveCompany = async (cid) => {
+    await qc('orders').update({ company_id: cid }).eq('id', o.id)
+    // Пов'язані записи (щоб не осиротіли в старій компанії). Best-effort:
+    // документи/рухи в закритому періоді можуть блокуватися тригером — не валимо весь перенос.
+    for (const t of ['commercial_proposals', 'supplier_orders', 'documents', 'generated_docs', 'stock_movements']) {
+      try { await qc(t).update({ company_id: cid }).eq('order_id', o.id) } catch {}
+    }
+  }
 
   const save = async () => {
     const upd = {
@@ -323,6 +335,12 @@ function DetailsTab({ o, onSaved }) {
       ;({ error } = await qc('orders').update(rest).eq('id', o.id))
     }
     if (error) { alert('Помилка збереження: ' + error.message); return }
+    // Зміна компанії — перенос + слідування (перемкнути активну компанію, щоб замовлення лишилось видимим)
+    const newCid = form.company_id || null
+    if (newCid && newCid !== (o.company_id || null)) {
+      await moveCompany(newCid)
+      if (newCid !== activeId) { setActiveCompany(newCid); return } // remount покаже замовлення в новій компанії
+    }
     setSaved(true); setTimeout(() => setSaved(false), 2000); onSaved()
   }
   return (
@@ -340,6 +358,16 @@ function DetailsTab({ o, onSaved }) {
               }
             }} />
         </div>
+        {companies.length > 1 && (
+          <div className="form-group"><label>Компанія (юрособа)</label>
+            <select className="form-input" value={form.company_id} onChange={e => setForm(f => ({ ...f, company_id: e.target.value }))}>
+              {companies.map(c => <option key={c.id} value={c.id}>{c.short_name || c.name}</option>)}
+            </select>
+            {form.company_id && form.company_id !== (o.company_id || activeId) && (
+              <span style={{ fontSize: 11, color: 'var(--amber, #b45309)' }}>Замовлення (з КП/субзамовленнями/документами) буде перенесено; система перемкнеться на цю компанію</span>
+            )}
+          </div>
+        )}
         <div className="form-group"><label>Відповідальний менеджер</label>
           <select className="form-input" value={form.manager_id} onChange={e => setForm(f => ({ ...f, manager_id: e.target.value }))}>
             <option value="">— не призначено —</option>
