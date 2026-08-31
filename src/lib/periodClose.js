@@ -1,5 +1,6 @@
 // ── Закриття періоду: чек-лист якості, знімок, закрити/переоткрити ──
 import { supabase } from './supabase'
+import { q } from './companyScope'
 import { computePL, salesProfitReport, periodRange } from './pl'
 import { countsAsDebt } from './debts'
 
@@ -36,7 +37,7 @@ export async function runChecklist(year, month) {
     .select('id, doc_number, type').gte('doc_date', from).lte('doc_date', to).is('amount', null)
 
   // 3. Невалідовані (некласифіковані) транзакції періоду — з даними для класифікації
-  const { data: unclassifiedList } = await supabase.from('bank_transactions')
+  const { data: unclassifiedList } = await q('bank_transactions')
     .select('id, date, amount, counterparty, description, direction, article, account_id')
     .gte('date', from).lte('date', to).eq('is_ignored', false).eq('is_validated', false).order('date')
 
@@ -86,7 +87,7 @@ export async function computeSnapshot(year, month) {
 
   // Баланси рахунків станом на кінець періоду
   const [{ data: accs }, txs] = await Promise.all([
-    supabase.from('accounts').select('id, name, type, opening_balance, opening_balance_date'),
+    q('accounts').select('id, name, type, opening_balance, opening_balance_date'),
     fetchAll('bank_transactions', 'account_id, amount, date', q => q.eq('is_ignored', false).lte('date', to)),
   ])
   const accAgg = {}
@@ -295,7 +296,7 @@ export async function computeContinuity(year, month) {
   const stockTot = stockItems.reduce((s, x) => ({ openVal: s.openVal + x.openVal, closeVal: s.closeVal + x.closeVal }), { openVal: 0, closeVal: 0 })
 
   // Гроші (Банк/Каса)
-  const { data: accs } = await supabase.from('accounts').select('id, name, type, opening_balance, opening_balance_date, sort_order').order('sort_order')
+  const { data: accs } = await q('accounts').select('id, name, type, opening_balance, opening_balance_date, sort_order').order('sort_order')
   const txs = await fetchAll('bank_transactions', 'account_id, amount, date', q => q.eq('is_ignored', false).lte('date', to))
   const cash = (accs || []).map(a => {
     let openMove = 0, inflow = 0, outflow = 0

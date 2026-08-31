@@ -7,11 +7,12 @@
 //
 //   Залишок = opening_balance + (Надходження − Витрати) від opening_balance_date
 import { supabase } from './supabase'
+import { q } from './companyScope'
 
 export async function getAccountBalances() {
   const [{ data: accs }, { data: txs }] = await Promise.all([
-    supabase.from('accounts').select('id, name, type, bank_name, is_active, opening_balance, opening_balance_date, sort_order').order('sort_order'),
-    supabase.from('bank_transactions').select('account_id, amount, date').eq('is_ignored', false),
+    q('accounts').select('id, name, type, bank_name, is_active, opening_balance, opening_balance_date, sort_order').order('sort_order'),
+    q('bank_transactions').select('account_id, amount, date').eq('is_ignored', false),
   ])
   const agg = {}
   ;(accs || []).forEach(a => { agg[a.id] = { inflow: 0, outflow: 0 } })

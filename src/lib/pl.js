@@ -1,6 +1,7 @@
 // Аналітика: P&L (Факт/План), Борги (Aging), Dashboard.
 // Принципи ТЗ: у P&L лише is_validated транзакції; борги = документи − прив'язані транзакції.
 import { supabase } from './supabase'
+import { q } from './companyScope'
 import { PL_ORDER, PL_LABELS, PL_SIGN } from './articles'
 import { getAccountBalances } from './accounts'
 import { countsAsDebt } from './debts'
@@ -17,7 +18,7 @@ export function periodRange(year, month) {
 export async function computePL(year, month) {
   const { from, to, ym } = periodRange(year, month)
   const [{ data: txs }, { data: arts }, { data: plans }] = await Promise.all([
-    supabase.from('bank_transactions').select('amount, article, direction').eq('is_validated', true).eq('is_ignored', false).gte('date', from).lte('date', to),
+    q('bank_transactions').select('amount, article, direction').eq('is_validated', true).eq('is_ignored', false).gte('date', from).lte('date', to),
     supabase.from('articles').select('name, type, pl_level, sort_order'),
     supabase.from('plans').select('article, amount, year_month'),
   ])
@@ -66,7 +67,7 @@ export async function computePLBreakdown(year, month, opts = {}) {
   const includePending = !!opts.includePending
   const { from, to } = periodRange(year, month)
   const [{ data: txs }, { data: arts }] = await Promise.all([
-    supabase.from('bank_transactions').select('amount, article, direction, date, is_validated').eq('is_ignored', false).gte('date', from).lte('date', to),
+    q('bank_transactions').select('amount, article, direction, date, is_validated').eq('is_ignored', false).gte('date', from).lte('date', to),
     supabase.from('articles').select('name, type, pl_level, sort_order'),
   ])
   const meta = {}; (arts || []).forEach(a => { meta[a.name] = a })
@@ -142,7 +143,7 @@ export async function plDrill(year, month, bucketKey, articleNames, opts = {}) {
     if (bucketKey === 'total') ({ from, to } = periodRange(year, null))
     else { const m = Number(bucketKey); from = `${year}-${pad(m)}-01`; to = `${year}-${pad(m)}-${pad(monthEnd(year, m))}` }
   }
-  const { data } = await supabase.from('bank_transactions')
+  const { data } = await q('bank_transactions')
     .select('id, date, amount, article, direction, counterparty, contractor_id, description')
     .eq('is_validated', opts.validated === false ? false : true).eq('is_ignored', false)
     .gte('date', from).lte('date', to)
@@ -340,8 +341,8 @@ export async function dashboardStats(year) {
   const yFrom = `${year}-01-01`
 
   const [{ data: monthTxs }, { data: yearTxs }, balances, aging] = await Promise.all([
-    supabase.from('bank_transactions').select('amount, direction').eq('is_validated', true).eq('is_ignored', false).gte('date', mFrom),
-    supabase.from('bank_transactions').select('amount, direction, date, counterparty, contractor_id').eq('is_validated', true).eq('is_ignored', false).gte('date', yFrom),
+    q('bank_transactions').select('amount, direction').eq('is_validated', true).eq('is_ignored', false).gte('date', mFrom),
+    q('bank_transactions').select('amount, direction, date, counterparty, contractor_id').eq('is_validated', true).eq('is_ignored', false).gte('date', yFrom),
     getAccountBalances(),
     computeAging(),
   ])

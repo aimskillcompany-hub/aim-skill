@@ -3,6 +3,7 @@
 // Дебіторка (receivable) — клієнт винен нам; кредиторка (payable) — ми винні постачальнику.
 // Борги НІКОЛИ не вводяться вручну.
 import { supabase } from './supabase'
+import { q } from './companyScope'
 
 const sum = (arr, f) => (arr || []).reduce((s, x) => s + (Number(f(x)) || 0), 0)
 
@@ -20,7 +21,7 @@ export async function getContractorBalance(contractorId) {
 
   const [{ data: docs }, { data: txs }] = await Promise.all([
     supabase.from('documents').select('amount, direction, type, is_signed').eq('contractor_id', contractorId),
-    supabase.from('bank_transactions').select('amount, direction, date')
+    q('bank_transactions').select('amount, direction, date')
       .eq('contractor_id', contractorId).eq('is_ignored', false),
   ])
 

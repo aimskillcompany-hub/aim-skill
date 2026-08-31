@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { q } from '../lib/companyScope'
 import { useUser } from '../lib/auth'
 import { fmt, fmtInt } from '../lib/fmt'
 import { getContractorBalance } from '../lib/debts'
@@ -465,7 +466,7 @@ function DocumentsTab({ id }) {
 function TransactionsTab({ id }) {
   const [rows, setRows] = useState(null)
   useEffect(() => {
-    supabase.from('bank_transactions').select('id, date, description, counterparty, amount, direction, article')
+    q('bank_transactions').select('id, date, description, counterparty, amount, direction, article')
       .eq('contractor_id', id).eq('is_ignored', false).order('date', { ascending: false }).limit(200)
       .then(({ data }) => setRows(data || []))
   }, [id])

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { q, withCompany } from '../lib/companyScope'
 import { useUser } from '../lib/auth'
 import { fmt, fmtInt } from '../lib/fmt'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
@@ -81,7 +82,7 @@ function TransactionsTab({ accounts, onChange }) {
 
   const load = async () => {
     setLoading(true)
-    let qb = supabase.from('bank_transactions')
+    let qb = q('bank_transactions')
       .select('id, date, amount, counterparty, description, edrpou, direction, article, article_id, contractor_id, account_id, is_validated')
       .eq('is_ignored', false).order('date', { ascending: false }).limit(500)
     if (status === 'unconfirmed') qb = qb.eq('is_validated', false)
@@ -150,7 +151,7 @@ function TransactionsTab({ accounts, onChange }) {
     setLinking(true); setLinkMsg(null)
     try {
       const [{ data: txs }, { data: docs }, { data: tdocs }] = await Promise.all([
-        supabase.from('bank_transactions').select('id, amount, date, direction, contractor_id').eq('is_ignored', false).not('contractor_id', 'is', null),
+        q('bank_transactions').select('id, amount, date, direction, contractor_id').eq('is_ignored', false).not('contractor_id', 'is', null),
         supabase.from('documents').select('id, contractor_id, amount, direction, type, doc_date, created_at').not('amount', 'is', null).not('contractor_id', 'is', null),
         supabase.from('transaction_documents').select('transaction_id, document_id, amount'),
       ])
@@ -281,12 +282,12 @@ function AddTxModal({ accounts, grouped, onClose, onSaved }) {
     const arts = Object.values(grouped).flat()
     const article = arts.find(a => a.name === f.article)
     const signed = f.kind === 'in' ? Math.abs(sum) : -Math.abs(sum)
-    const { error } = await supabase.from('bank_transactions').insert({
+    const { error } = await q('bank_transactions').insert(withCompany({
       account_id: f.account_id, date: f.date, amount: signed,
       direction: f.direction || null, article: f.article || null, article_id: article?.id || null,
       contractor_id: f.contractor_id || null, counterparty: f.cname || null, description: f.description || null,
       is_validated: true, is_ignored: false, imported_by: user?.id || null,
-    })
+    }))
     setBusy(false)
     if (error) { setError(error.message); return }
     onSaved()
@@ -352,13 +353,13 @@ function TxModal({ tx, grouped, onClose, onSaved, onLink, onOpenDoc }) {
     setBusy(true)
     const arts = Object.values(grouped).flat()
     const article = arts.find(a => a.name === f.article)
-    await supabase.from('bank_transactions').update({
+    await q('bank_transactions').update({
       direction: f.direction || null, article: f.article || null, article_id: article?.id || null,
       contractor_id: f.contractor_id || null, ...(validate ? { is_validated: true } : {}),
     }).eq('id', tx.id)
     setBusy(false); onSaved()
   }
-  const ignore = async () => { setBusy(true); await supabase.from('bank_transactions').update({ is_ignored: true }).eq('id', tx.id); setBusy(false); onSaved() }
+  const ignore = async () => { setBusy(true); await q('bank_transactions').update({ is_ignored: true }).eq('id', tx.id); setBusy(false); onSaved() }
 
   return (
     <div className="modal-bg" onClick={onClose}>
@@ -571,7 +572,7 @@ function ImportTab({ accounts, onDone }) {
     const refs = [...new Set(parsed.map(t => (t.reference || '').trim()).filter(Boolean))]
     const existingRefs = new Set()
     if (refs.length) {
-      const { data: exR } = await supabase.from('bank_transactions').select('reference').in('reference', refs)
+      const { data: exR } = await q('bank_transactions').select('reference').in('reference', refs)
       ;(exR || []).forEach(r => r.reference && existingRefs.add(String(r.reference).trim()))
     }
     const existingComposite = new Set()
@@ -579,7 +580,7 @@ function ImportTab({ accounts, onDone }) {
     if (noRefRows.length && accId) {
       const dates = noRefRows.map(t => t.date).filter(Boolean).sort()
       if (dates.length) {
-        const { data: exC } = await supabase.from('bank_transactions')
+        const { data: exC } = await q('bank_transactions')
           .select('date, amount, counterparty, description').eq('account_id', accId)
           .gte('date', dates[0]).lte('date', dates[dates.length - 1])
         ;(exC || []).forEach(r => existingComposite.add(compositeKey(r)))
@@ -646,7 +647,7 @@ function ImportTab({ accounts, onDone }) {
         is_validated: false, is_ignored: false, imported_by: user?.id || null,
       }
     })
-    const { error } = await supabase.from('bank_transactions').insert(rows)
+    const { error } = await q('bank_transactions').insert(withCompany(rows))
     setBusy(false)
     resetClassifyCache(); resetContractorMatchCache()
     if (error) { setError(error.message); return }
@@ -749,10 +750,10 @@ function TransferTab({ accounts, onDone }) {
     setBusy(true); setError(null)
     const fromName = accounts.find(a => a.id === from)?.name
     const toName = accounts.find(a => a.id === to)?.name
-    const { error } = await supabase.from('bank_transactions').insert([
+    const { error } = await q('bank_transactions').insert(withCompany([
       { account_id: from, date, amount: -amt, direction: 'Інше', description: `Переказ на ${toName}`, is_validated: true, is_ignored: false, imported_by: user?.id || null },
       { account_id: to, date, amount: amt, direction: 'Інше', description: `Переказ з ${fromName}`, is_validated: true, is_ignored: false, imported_by: user?.id || null },
-    ])
+    ]))
     setBusy(false)
     if (error) { setError(error.message); return }
     onDone()

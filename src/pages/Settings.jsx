@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { q, withCompany } from '../lib/companyScope'
 import { useUser } from '../lib/auth'
 import { COMPANY_FIELDS, getCompany, saveCompany } from '../lib/companyConfig'
 import { invalidateCache, PL_ORDER, PL_LABELS } from '../lib/articles'
@@ -153,18 +154,18 @@ function AccountsTab() {
   const [add, setAdd] = useState(null)
   const [edits, setEdits] = useState({}) // id → { opening_balance, opening_balance_date }
   const [savedId, setSavedId] = useState(null)
-  const load = () => supabase.from('accounts').select('*').order('sort_order').then(({ data }) => { setRows(data || []); setEdits({}) })
+  const load = () => q('accounts').select('*').order('sort_order').then(({ data }) => { setRows(data || []); setEdits({}) })
   useEffect(() => { load() }, [])
-  const toggle = async (a) => { await supabase.from('accounts').update({ is_active: !a.is_active }).eq('id', a.id); load() }
+  const toggle = async (a) => { await q('accounts').update({ is_active: !a.is_active }).eq('id', a.id); load() }
   const create = async () => {
     if (!add.name.trim()) return
-    await supabase.from('accounts').insert({ name: add.name.trim(), type: add.type, bank_name: add.bank_name || null, sort_order: rows.length + 1 })
+    await q('accounts').insert(withCompany({ name: add.name.trim(), type: add.type, bank_name: add.bank_name || null, sort_order: rows.length + 1 }))
     setAdd(null); load()
   }
   const setEdit = (id, field, value) => setEdits(e => ({ ...e, [id]: { ...e[id], [field]: value } }))
   const saveOpening = async (a) => {
     const e = edits[a.id] || {}
-    await supabase.from('accounts').update({
+    await q('accounts').update({
       opening_balance: Number(e.opening_balance ?? a.opening_balance) || 0,
       opening_balance_date: (e.opening_balance_date ?? a.opening_balance_date) || null,
     }).eq('id', a.id)
