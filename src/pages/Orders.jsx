@@ -9,6 +9,7 @@ import {
   proposalOverdue, paymentOverdue,
 } from '../lib/orders'
 import Kanban from '../components/Kanban'
+import OrderReport from '../components/OrderReport'
 import { useSort, SortTh } from '../components/Sort'
 
 export default function Orders() {
@@ -101,16 +102,19 @@ export default function Orders() {
       </div>
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <input className="form-input" placeholder="Пошук за клієнтом або номером…" value={q} onChange={e => setQ(e.target.value)} style={{ flex: '1 1 240px', maxWidth: 360 }} />
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {FILTERS.map(([k, lbl]) => (
-            <button key={k} onClick={() => setFilter(k)} className="btn"
-              style={{ background: filter === k ? 'var(--blue)' : 'var(--surface)', color: filter === k ? '#fff' : 'var(--text2)', border: '1px solid var(--border)' }}>{lbl}</button>
-          ))}
-        </div>
+        {view !== 'report' && <>
+          <input className="form-input" placeholder="Пошук за клієнтом або номером…" value={q} onChange={e => setQ(e.target.value)} style={{ flex: '1 1 240px', maxWidth: 360 }} />
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {FILTERS.map(([k, lbl]) => (
+              <button key={k} onClick={() => setFilter(k)} className="btn"
+                style={{ background: filter === k ? 'var(--blue)' : 'var(--surface)', color: filter === k ? '#fff' : 'var(--text2)', border: '1px solid var(--border)' }}>{lbl}</button>
+            ))}
+          </div>
+        </>}
         <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
           <button className="btn" onClick={() => setView('table')} style={{ background: view === 'table' ? 'var(--surface2)' : 'var(--surface)' }} title="Таблиця"><i className="ti ti-list" /></button>
           <button className="btn" onClick={() => setView('kanban')} style={{ background: view === 'kanban' ? 'var(--surface2)' : 'var(--surface)' }} title="Канбан"><i className="ti ti-layout-kanban" /></button>
+          <button className="btn" onClick={() => setView('report')} style={{ background: view === 'report' ? 'var(--surface2)' : 'var(--surface)' }} title="Звіт"><i className="ti ti-report" /></button>
         </div>
       </div>
 
@@ -128,7 +132,9 @@ export default function Orders() {
         )
       })()}
 
-      {loading ? (
+      {view === 'report' ? (
+        <OrderReport />
+      ) : loading ? (
         <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
       ) : view === 'kanban' ? (
         <Kanban orders={filtered} type={filter} onOpen={(id) => navigate(`/orders/${id}`)} />
