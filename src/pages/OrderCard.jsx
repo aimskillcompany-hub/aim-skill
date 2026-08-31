@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { qc } from '../lib/companyScope'
+import { qc, withCompany } from '../lib/companyScope'
 import { useUser } from '../lib/auth'
 import { nextOrderNumber } from '../lib/orderNumber'
 import { fmt } from '../lib/fmt'
@@ -49,9 +49,9 @@ export default function OrderCard() {
   const goBack = () => { if (!guardLeave()) return; setItemsDirty(false); navigate('/orders') }
 
   const load = async () => {
-    const { data } = await supabase.from('orders').select('*, contractors(name)').eq('id', id).single()
+    const { data } = await qc('orders').select('*, contractors(name)').eq('id', id).single()
     setO(data)
-    const { data: props } = await supabase.from('commercial_proposals').select('sent_at').eq('order_id', id).not('sent_at', 'is', null).order('sent_at', { ascending: false }).limit(1)
+    const { data: props } = await qc('commercial_proposals').select('sent_at').eq('order_id', id).not('sent_at', 'is', null).order('sent_at', { ascending: false }).limit(1)
     setLastSent(props?.[0]?.sent_at || null)
   }
   useEffect(() => { load() }, [id])
@@ -62,10 +62,10 @@ export default function OrderCard() {
   const archive = async (outcome) => {
     setBusy('archive'); setMsg(null); setArchiveMenu(false)
     const upd = { archived_at: new Date().toISOString(), outcome: outcome || null }
-    let { error } = await supabase.from('orders').update(upd).eq('id', id)
+    let { error } = await qc('orders').update(upd).eq('id', id)
     // Колонка outcome може ще не існувати (міграція 028) — тоді архівуємо без неї
     if (error && /outcome/.test(error.message || '')) {
-      ;({ error } = await supabase.from('orders').update({ archived_at: upd.archived_at }).eq('id', id))
+      ;({ error } = await qc('orders').update({ archived_at: upd.archived_at }).eq('id', id))
     }
     setBusy('')
     if (error) { setMsg('Помилка архівування: ' + error.message); return }
@@ -74,7 +74,7 @@ export default function OrderCard() {
 
   const unarchive = async () => {
     setBusy('archive'); setMsg(null)
-    await supabase.from('orders').update({ archived_at: null }).eq('id', id)
+    await qc('orders').update({ archived_at: null }).eq('id', id)
     setBusy(''); load()
   }
 
@@ -83,14 +83,14 @@ export default function OrderCard() {
     const upd = { status: s }
     if (s === 'closed') upd.closed_at = o.closed_at || new Date().toISOString()
     else if (o.status === 'closed') upd.closed_at = null // вихід із «Закрито» → скидаємо дату закриття
-    await supabase.from('orders').update(upd).eq('id', id)
+    await qc('orders').update(upd).eq('id', id)
     load()
   }
 
   // Змінити/проставити результат без зміни статусу архіву
   const setOutcome = async (outcome) => {
     setMsg(null)
-    const { error } = await supabase.from('orders').update({ outcome: outcome || null }).eq('id', id)
+    const { error } = await qc('orders').update({ outcome: outcome || null }).eq('id', id)
     if (error) { setMsg('Помилка: ' + error.message); return }
     load()
   }
@@ -100,11 +100,11 @@ export default function OrderCard() {
     setBusy('copy'); setMsg(null)
     try {
       const order_number = await nextOrderNumber(supabase)
-      const { data: no, error } = await supabase.from('orders').insert({
+      const { data: no, error } = await qc('orders').insert(withCompany({
         order_number, type: o.type, status: 'new', client_id: o.client_id,
         description: o.description || null, procurement_type: o.procurement_type || null,
         total: o.total || 0, created_by: user?.id || null,
-      }).select('id').single()
+      })).select('id').single()
       if (error) throw error
       const { data: items } = await supabase.from('order_items').select('*').eq('order_id', id)
       if (items?.length) {
@@ -127,7 +127,7 @@ export default function OrderCard() {
       setMsg(`Не можна видалити: до замовлення прив'язано ${count} документ(ів). Заархівуйте його замість видалення.`)
       return
     }
-    const { error } = await supabase.from('orders').delete().eq('id', id)
+    const { error } = await qc('orders').delete().eq('id', id)
     setBusy('')
     if (error) { setMsg('Помилка видалення: ' + error.message); return }
     navigate('/orders')
@@ -315,11 +315,11 @@ function DetailsTab({ o, onSaved }) {
       manager_id: form.manager_id || null,
       contract_id: form.contract_id || null,
     }
-    let { error } = await supabase.from('orders').update(upd).eq('id', o.id)
+    let { error } = await qc('orders').update(upd).eq('id', o.id)
     // Колонки можуть ще не існувати (міграції 033/037/040) — тоді зберігаємо без них
     if (error && /(procurement_id|manager_id|contract_id)/.test(error.message || '')) {
       const { procurement_id, manager_id, contract_id, ...rest } = upd
-      ;({ error } = await supabase.from('orders').update(rest).eq('id', o.id))
+      ;({ error } = await qc('orders').update(rest).eq('id', o.id))
     }
     if (error) { alert('Помилка збереження: ' + error.message); return }
     setSaved(true); setTimeout(() => setSaved(false), 2000); onSaved()
@@ -642,7 +642,7 @@ function ItemsTab({ o, onChange, onDirty }) {
     await supabase.from('order_items').delete().eq('order_id', o.id)
     if (resolved.length) await supabase.from('order_items').insert(resolved)
     // Сума замовлення = сума цін продажу товарів (синхронізуємо автоматично)
-    if (resolved.length) await supabase.from('orders').update({ total: sum }).eq('id', o.id)
+    if (resolved.length) await qc('orders').update({ total: sum }).eq('id', o.id)
     setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000)
     load(); onChange()
   }
@@ -800,7 +800,7 @@ function ProposalsTab({ o, onChange }) {
   const [rows, setRows] = useState([])
   const [editing, setEditing] = useState(null) // new proposal draft
   const [stampCP, setStampCP] = useState(false) // печатка на КП
-  const load = () => supabase.from('commercial_proposals').select('*').eq('order_id', o.id).order('version', { ascending: false }).then(({ data }) => setRows(data || []))
+  const load = () => qc('commercial_proposals').select('*').eq('order_id', o.id).order('version', { ascending: false }).then(({ data }) => setRows(data || []))
   useEffect(() => { load() }, [o.id])
 
   // Нова версія КП префілиться позиціями товарів замовлення (якщо є)
@@ -819,17 +819,17 @@ function ProposalsTab({ o, onChange }) {
 
   const saveDraft = async () => {
     const total = itemsTotal(editing.items)
-    await supabase.from('commercial_proposals')
-      .insert({ order_id: o.id, version: editing.version, items: editing.items, total, status: 'draft' })
+    await qc('commercial_proposals')
+      .insert(withCompany({ order_id: o.id, version: editing.version, items: editing.items, total, status: 'draft' }))
     setEditing(null); load()
   }
   const send = async (p) => {
-    await supabase.from('commercial_proposals').update({ status: 'sent', sent_at: new Date().toISOString() }).eq('id', p.id)
-    if (o.status === 'new') await supabase.from('orders').update({ status: 'processing' }).eq('id', o.id)
+    await qc('commercial_proposals').update({ status: 'sent', sent_at: new Date().toISOString() }).eq('id', p.id)
+    if (o.status === 'new') await qc('orders').update({ status: 'processing' }).eq('id', o.id)
     load(); onChange()
   }
-  const setStatus = async (p, status) => { await supabase.from('commercial_proposals').update({ status }).eq('id', p.id); load() }
-  const delProposal = async (p) => { await supabase.from('commercial_proposals').delete().eq('id', p.id); load() }
+  const setStatus = async (p, status) => { await qc('commercial_proposals').update({ status }).eq('id', p.id); load() }
+  const delProposal = async (p) => { await qc('commercial_proposals').delete().eq('id', p.id); load() }
 
   // Переглянути КП у новій вкладці (не зберігається в Документи).
   // price у позиції — з ПДВ; для документа рахуємо ціну без ПДВ за ставкою позиції.
@@ -1121,7 +1121,7 @@ function SuppliersTab({ o }) {
   const [msg, setMsg] = useState(null)
 
   const load = async () => {
-    const { data: so } = await supabase.from('supplier_orders').select('*, contractors(name)').eq('order_id', o.id).order('created_at')
+    const { data: so } = await qc('supplier_orders').select('*, contractors(name)').eq('order_id', o.id).order('created_at')
     setRows(so || [])
     const ids = (so || []).map(s => s.id)
     if (ids.length) {
@@ -1138,12 +1138,12 @@ function SuppliersTab({ o }) {
   const create = async () => {
     const delay = Number(add.delay) || 0
     const due = delay ? new Date(Date.now() + delay * 864e5).toISOString().split('T')[0] : null
-    await supabase.from('supplier_orders').insert({ order_id: o.id, supplier_id: add.supplier_id || null, total: Number(add.total) || 0, payment_delay_days: delay, payment_due_date: due, status: 'new', source: 'manual' })
+    await qc('supplier_orders').insert(withCompany({ order_id: o.id, supplier_id: add.supplier_id || null, total: Number(add.total) || 0, payment_delay_days: delay, payment_due_date: due, status: 'new', source: 'manual' }))
     setAdd(null); load()
   }
-  const setStatus = async (s, status) => { await supabase.from('supplier_orders').update({ status }).eq('id', s.id); load() }
-  const setSupplier = async (s, supplier_id) => { await supabase.from('supplier_orders').update({ supplier_id: supplier_id || null }).eq('id', s.id); load() }
-  const del = async (s) => { await supabase.from('supplier_orders').delete().eq('id', s.id); load() }
+  const setStatus = async (s, status) => { await qc('supplier_orders').update({ status }).eq('id', s.id); load() }
+  const setSupplier = async (s, supplier_id) => { await qc('supplier_orders').update({ supplier_id: supplier_id || null }).eq('id', s.id); load() }
+  const del = async (s) => { await qc('supplier_orders').delete().eq('id', s.id); load() }
 
   // Помітка «замовлено» на позиції субзамовлення
   const toggleOrdered = async (soId, it, val) => {
@@ -1187,13 +1187,13 @@ function SuppliersTab({ o }) {
     }
     if (!Object.keys(groups).length) { setBusy(false); setMsg('Немає товарів для формування (додайте позиції у вкладці «Товари»).'); return }
     // Заміщуємо лише авто-сформовані, ручні лишаємо
-    await supabase.from('supplier_orders').delete().eq('order_id', o.id).eq('source', 'auto')
+    await qc('supplier_orders').delete().eq('order_id', o.id).eq('source', 'auto')
     for (const key of Object.keys(groups)) {
       const list = groups[key]
       const total = list.reduce((s, it) => s + (Number(it.cost_price) || 0) * (Number(it.qty) || 0), 0)
-      const { data: so } = await supabase.from('supplier_orders').insert({
+      const { data: so } = await qc('supplier_orders').insert(withCompany({
         order_id: o.id, supplier_id: key === '__none__' ? null : key, total, status: 'new', source: 'auto',
-      }).select('id').single()
+      })).select('id').single()
       if (so?.id) await supabase.from('supplier_order_items').insert(list.map(it => ({
         supplier_order_id: so.id, product_id: it.product_id || null, name: it.name, sku: it.sku || null, unit: it.unit, qty: Number(it.qty) || 0, cost_price: Number(it.cost_price) || 0,
       })))

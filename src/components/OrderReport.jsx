@@ -42,7 +42,7 @@ export default function OrderReport() {
   async function generate() {
     setLoading(true); setErr(null)
     try {
-      let query = supabase.from('orders')
+      let query = qc('orders')
         .select('id, order_number, created_at, total, status, client_id, contract_id, contractors(name)')
         .is('archived_at', null)
       if (clientId) query = query.eq('client_id', clientId)
@@ -52,7 +52,7 @@ export default function OrderReport() {
       let { data: ords, error } = await query.order('order_number')
       // Фолбек, якщо колонку contract_id ще не додано (міграція 040)
       if (error && /contract_id/.test(error.message || '')) {
-        let q2 = supabase.from('orders')
+        let q2 = qc('orders')
           .select('id, order_number, created_at, total, status, client_id, contractors(name)')
           .is('archived_at', null)
         if (clientId) q2 = q2.eq('client_id', clientId)

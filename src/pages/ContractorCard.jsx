@@ -403,7 +403,7 @@ function OrdersTab({ id }) {
   const navigate = useNavigate()
   const [rows, setRows] = useState(null)
   useEffect(() => {
-    supabase.from('orders').select('id, order_number, type, status, total, created_at').eq('client_id', id).order('created_at', { ascending: false })
+    qc('orders').select('id, order_number, type, status, total, created_at').eq('client_id', id).order('created_at', { ascending: false })
       .then(({ data }) => setRows(data || []))
   }, [id])
   if (rows == null) return <Loading />

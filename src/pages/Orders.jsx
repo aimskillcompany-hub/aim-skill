@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { qc, withCompany } from '../lib/companyScope'
 import { useUser } from '../lib/auth'
 import { nextOrderNumber } from '../lib/orderNumber'
 import { fmt, fmtInt } from '../lib/fmt'
@@ -25,9 +26,9 @@ export default function Orders() {
   const load = async () => {
     setLoading(true)
     const [{ data: ords }, { data: props }, { data: subs }, { data: profs }] = await Promise.all([
-      supabase.from('orders').select('*, contractors(name)').order('created_at', { ascending: false }),
-      supabase.from('commercial_proposals').select('order_id, sent_at, status'),
-      supabase.from('supplier_orders').select('order_id, payment_due_date, status'),
+      qc('orders').select('*, contractors(name)').order('created_at', { ascending: false }),
+      qc('commercial_proposals').select('order_id, sent_at, status'),
+      qc('supplier_orders').select('order_id, payment_due_date, status'),
       supabase.from('profiles').select('id, full_name, email'),
     ])
     const lastSent = {}
@@ -213,10 +214,10 @@ function NewOrderModal({ onClose, onCreated }) {
     setSaving(true); setError(null)
     const order_number = await nextOrderNumber(supabase)
     const base = { order_number, type, status: 'new', client_id: clientId, total: Number(total) || 0, description: description || null, created_by: user?.id || null }
-    let { data, error } = await supabase.from('orders').insert({ ...base, manager_id: managerId || null }).select('id').single()
+    let { data, error } = await qc('orders').insert(withCompany({ ...base, manager_id: managerId || null })).select('id').single()
     // manager_id може ще не існувати (міграція 037) — тоді створюємо без нього
     if (error && /manager_id/.test(error.message || '')) {
-      ;({ data, error } = await supabase.from('orders').insert(base).select('id').single())
+      ;({ data, error } = await qc('orders').insert(withCompany(base)).select('id').single())
     }
     setSaving(false)
     if (error) { setError(error.message); return }

@@ -287,7 +287,7 @@ export async function computeForecast(year, month) {
   const [pl, aging, ordersRes] = await Promise.all([
     computePL(year, month),
     computeAging(),
-    supabase.from('orders').select('id, total, status, archived_at, outcome').neq('status', 'closed').is('archived_at', null),
+    qc('orders').select('id, total, status, archived_at, outcome').neq('status', 'closed').is('archived_at', null),
   ])
   const factNet = pl?.totals?.fact?.net || 0
   const receivable = aging?.receivable?.total || 0
