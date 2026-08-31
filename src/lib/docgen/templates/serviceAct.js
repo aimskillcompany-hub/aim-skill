@@ -158,7 +158,7 @@ export function pdf(company, contractor, items, options) {
               { text: r.name, fontSize: 8.5, color: BLACK },
               { text: r.u, alignment: 'center', fontSize: 8, color: G2 },
               { text: r.q, alignment: 'center', fontSize: 8.5 },
-              { text: formatMoney(r.p), alignment: 'right', fontSize: 8.5 },
+              { text: formatMoney(vatPayer ? r.p : (r.q ? r.t / r.q : r.t)), alignment: 'right', fontSize: 8.5 },
               ...(vatPayer ? [
                 { text: r.vr > 0 ? `${r.vr}%` : '—', alignment: 'center', fontSize: 7, color: G2 },
                 { text: formatMoney(r.v), alignment: 'right', fontSize: 8.5, color: G2 },
@@ -207,7 +207,7 @@ export function pdf(company, contractor, items, options) {
         { text: 'Всього до сплати: ' },
         { text: amountInWords(total).charAt(0).toLowerCase() + amountInWords(total).slice(1) },
       ], fontSize: 9, color: G1, margin: [0, 0, 0, 1] },
-      vatAmount > 0 ? { text: [
+      (vatPayer && vatAmount > 0) ? { text: [
         { text: 'у тому числі ' },
         { text: vatInWords(vatAmount) },
       ], fontSize: 9, color: G1 } : {},

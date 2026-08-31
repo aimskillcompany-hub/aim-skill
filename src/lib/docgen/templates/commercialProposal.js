@@ -147,7 +147,7 @@ export function pdf(company, contractor, items, options) {
               { text: r.name, fontSize: 8.5, color: BLACK, lineHeight: 1.2 },
               { text: r.u, alignment: 'center', fontSize: 8, color: G2 },
               { text: r.q, alignment: 'center', fontSize: 8.5 },
-              { text: formatMoney(r.p), alignment: 'right', fontSize: 8.5 },
+              { text: formatMoney(vatPayer ? r.p : (r.q ? r.t / r.q : r.t)), alignment: 'right', fontSize: 8.5 },
               ...(vatPayer ? [
                 { text: r.vr > 0 ? `${r.vr}%` : '—', alignment: 'center', fontSize: 7, color: G2 },
                 { text: formatMoney(r.v), alignment: 'right', fontSize: 8.5, color: G2 },
@@ -223,32 +223,6 @@ export function pdf(company, contractor, items, options) {
         ],
       },
 
-      // ═══ ЗАКЛИК + КОНТАКТИ ═══
-      { text: '', margin: [0, 7] },
-      {
-        table: {
-          widths: [2, '*'],
-          body: [[
-            { text: '', fillColor: accent },
-            {
-              fillColor: ctaBg, margin: [16, 13, 16, 13],
-              stack: [
-                { text: 'Готові обговорити деталі чи оформити замовлення?', fontSize: 10, bold: true, color: BLACK },
-                { text: `Зв'яжіться з нами — підберемо оптимальне рішення під ваш бюджет.`, fontSize: 9, color: G1, margin: [0, 3, 0, 7] },
-                {
-                  text: [
-                    { text: company.phone || '', bold: true, color: BLACK },
-                    { text: company.phone && company.email ? '    ·    ' : '', color: G3 },
-                    { text: company.email || '', color: aim ? GREEN : G1 },
-                    aim ? { text: '    ·    www.aim-skill.com.ua', color: G2 } : { text: '' },
-                  ], fontSize: 9,
-                },
-              ],
-            },
-          ]],
-        },
-        layout: { defaultBorder: false, paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0 },
-      },
     ],
   }
 }

@@ -44,7 +44,7 @@ export function pdf(company, contractor, items, options) {
   const { subtotal, vatAmount, total, vatByRate } = calcTotals(items)
   const rows = items.map((it, i) => itm(it, i))
   const contractStr = contractNum ? `№${contractNum}${contractDate ? ` від ${formatDate(contractDate)}` : ''}` : null
-  const paymentPurpose = `Оплата за товари/послуги згідно рахунку №${docNumber} від ${formatDate(docDate)}${contractStr ? `, Договір ${contractStr}` : ''}. ${vatAmount > 0 ? `В т.ч. ПДВ 20% — ${formatMoney(vatAmount)} грн` : 'Без ПДВ'}`
+  const paymentPurpose = `Оплата за товари/послуги згідно рахунку №${docNumber} від ${formatDate(docDate)}${contractStr ? `, Договір ${contractStr}` : ''}. ${(vatPayer && vatAmount > 0) ? `В т.ч. ПДВ 20% — ${formatMoney(vatAmount)} грн` : 'Без ПДВ'}`
 
   const addInfo = [
     contractStr ? [{ text: 'Договір: ', color: G2 }, { text: contractStr, color: G1 }] : null,
@@ -143,7 +143,7 @@ export function pdf(company, contractor, items, options) {
               { text: r.name, fontSize: 8.5, color: BLACK },
               { text: r.u, alignment: 'center', fontSize: 8, color: G2 },
               { text: r.q, alignment: 'center', fontSize: 8.5 },
-              { text: formatMoney(r.p), alignment: 'right', fontSize: 8.5 },
+              { text: formatMoney(vatPayer ? r.p : (r.q ? r.t / r.q : r.t)), alignment: 'right', fontSize: 8.5 },
               ...(vatPayer ? [
                 { text: r.vr > 0 ? `${r.vr}%` : '—', alignment: 'center', fontSize: 7, color: G2 },
                 { text: formatMoney(r.v), alignment: 'right', fontSize: 8.5, color: G2 },
@@ -192,7 +192,7 @@ export function pdf(company, contractor, items, options) {
         { text: 'Всього до сплати: ' },
         { text: amountInWords(total).charAt(0).toLowerCase() + amountInWords(total).slice(1) },
       ], fontSize: 9, color: G1, margin: [0, 0, 0, 1] },
-      vatAmount > 0 ? { text: [
+      (vatPayer && vatAmount > 0) ? { text: [
         { text: 'у тому числі ' },
         { text: vatInWords(vatAmount) },
       ], fontSize: 9, color: G1 } : {},
