@@ -206,7 +206,7 @@ export async function computePeriodDetail(year, month) {
   const docIds = docs.map(d => d.id)
   const itemsByDoc = {}
   for (let i = 0; i < docIds.length; i += 100) {
-    const { data: mv } = await supabase.from('stock_movements')
+    const { data: mv } = await qc('stock_movements')
       .select('document_id, product_id, type, quantity, price, description').in('document_id', docIds.slice(i, i + 100))
     ;(mv || []).forEach(m => { (itemsByDoc[m.document_id] ||= []).push(m) })
   }

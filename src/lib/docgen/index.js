@@ -303,7 +303,7 @@ export async function createStockFromDoc(docId, docType, items, date, userId) {
       costPrice = unitPrice // для IN cost = ціна закупки
     }
 
-    await supabase.from('stock_movements').insert({
+    await qc('stock_movements').insert(withCompany({
       product_id: resolved.productId,
       type: dt.stockEffect,
       quantity: qty,
@@ -315,7 +315,7 @@ export async function createStockFromDoc(docId, docType, items, date, userId) {
       description: `${dt.label}: ${item.name}`,
       source: 'document',
       created_by: userId,
-    })
+    }))
   }
 }
 

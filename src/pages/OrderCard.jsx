@@ -950,7 +950,7 @@ function DocumentsTab({ o }) {
     // Спершу прибрати складські рухи дзеркального документа (FK = SET NULL, тож каскад їх не видалить),
     // потім сам згенерований — каскад (міграція 017) прибере дзеркало в documents.
     const { data: mirror } = await qc('documents').select('id').eq('generated_doc_id', d.id).maybeSingle()
-    if (mirror?.id) await supabase.from('stock_movements').delete().eq('document_id', mirror.id).neq('source', 'assembly')
+    if (mirror?.id) await qc('stock_movements').delete().eq('document_id', mirror.id).neq('source', 'assembly')
     await qc('generated_docs').delete().eq('id', d.id)
     loadGen()
   }
@@ -1326,7 +1326,7 @@ function TransactionsTab({ o }) {
 function StockTab({ o }) {
   const [rows, setRows] = useState(null)
   useEffect(() => {
-    supabase.from('stock_movements').select('id, type, quantity, cost_price, total, date, products(name)').eq('order_id', o.id).order('date', { ascending: false })
+    qc('stock_movements').select('id, type, quantity, cost_price, total, date, products(name)').eq('order_id', o.id).order('date', { ascending: false })
       .then(({ data }) => setRows(data || []))
   }, [o.id])
   if (rows == null) return <Loading />

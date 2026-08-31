@@ -157,7 +157,7 @@ export async function plDrill(year, month, bucketKey, articleNames, opts = {}) {
 // cost_price = FIFO собівартість/од (net). ПДВ 20% для колонок «з ПДВ». Податок на дохід 18%.
 export async function salesProfitReport(year, month) {
   const { from, to } = periodRange(year, month)
-  const { data: movs } = await supabase.from('stock_movements')
+  const { data: movs } = await qc('stock_movements')
     .select('product_id, document_id, quantity, price, cost_price, date, description')
     .eq('type', 'out').not('document_id', 'is', null).gte('date', from).lte('date', to)
   if (!movs?.length) return { groups: [], grand: null }
@@ -174,7 +174,7 @@ export async function salesProfitReport(year, month) {
   // Джерело закупівлі по товару: постачальник + № прихідної (найсвіжіший прихід із документом)
   const purchaseByProd = {}
   if (prodIds.length) {
-    const { data: inMovs } = await supabase.from('stock_movements')
+    const { data: inMovs } = await qc('stock_movements')
       .select('product_id, date, document_id, price, cost_price').eq('type', 'in').in('product_id', prodIds).not('document_id', 'is', null)
       .order('date', { ascending: false })
     const inDocIds = [...new Set((inMovs || []).map(m => m.document_id))]

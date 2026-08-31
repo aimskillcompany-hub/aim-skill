@@ -51,7 +51,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
 
   // Завантажити товари зі складу + договори контрагента
   useEffect(() => {
-    supabase.from('product_stock').select('id, name, sku, computed_stock, unit, buy_price, sell_price, product_type')
+    qc('product_stock').select('id, name, sku, computed_stock, unit, buy_price, sell_price, product_type')
       .eq('status', 'active').order('name')
       .then(({ data }) => setProducts(data || []))
     if (contractor?.id) {

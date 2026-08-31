@@ -2,7 +2,6 @@
 //   борг = сума документів − сума прив'язаних транзакцій по контрагенту.
 // Дебіторка (receivable) — клієнт винен нам; кредиторка (payable) — ми винні постачальнику.
 // Борги НІКОЛИ не вводяться вручну.
-import { supabase } from './supabase'
 import { qc } from './companyScope'
 
 const sum = (arr, f) => (arr || []).reduce((s, x) => s + (Number(f(x)) || 0), 0)
@@ -41,12 +40,18 @@ export async function getContractorBalance(contractorId) {
   }
 }
 
-// Баланси всіх контрагентів одним запитом (для списку) — з in'юхи contractor_balances
+// Баланси всіх контрагентів (для списку) — рахуються з документів і транзакцій
+// АКТИВНОЇ компанії (scoped через qc). Раніше бралися з в'юхи contractor_balances,
+// яка не знала про company_id → показувала суму по всіх юрособах.
 export async function getAllBalances() {
-  const { data } = await supabase
-    .from('contractor_balances')
-    .select('contractor_id, balance, documents_total, transactions_total')
+  const [{ data: docs }, { data: txs }] = await Promise.all([
+    qc('documents').select('contractor_id, amount, type').not('contractor_id', 'is', null),
+    qc('bank_transactions').select('contractor_id, amount').eq('is_ignored', false).not('contractor_id', 'is', null),
+  ])
   const map = {}
-  ;(data || []).forEach(b => { map[b.contractor_id] = b })
+  const ensure = (id) => (map[id] ||= { contractor_id: id, documents_total: 0, transactions_total: 0, balance: 0 })
+  ;(docs || []).forEach(d => { if (countsAsDebt(d.type)) ensure(d.contractor_id).documents_total += Number(d.amount) || 0 })
+  ;(txs || []).forEach(t => { ensure(t.contractor_id).transactions_total += Number(t.amount) || 0 })
+  Object.values(map).forEach(m => { m.balance = m.documents_total - m.transactions_total })
   return map
 }

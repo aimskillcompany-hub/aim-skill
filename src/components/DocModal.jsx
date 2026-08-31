@@ -70,7 +70,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
     if (!existingDoc?.id) return
     let cancelled = false
     ;(async () => {
-      const { data: mv } = await supabase.from('stock_movements')
+      const { data: mv } = await qc('stock_movements')
         .select('id, type, quantity, price, cost_price, product_id, source, description')
         .eq('document_id', existingDoc.id).order('date')
       const pids = [...new Set((mv || []).map(m => m.product_id).filter(Boolean))]
@@ -210,7 +210,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
   // тож просте збереження документа з порожніми позиціями стирало вже створений прихід/видаток.
   const syncDocStock = async (documentId) => {
     if (!stockOn) return
-    await supabase.from('stock_movements').delete().eq('document_id', documentId).neq('source', 'assembly')
+    await qc('stock_movements').delete().eq('document_id', documentId).neq('source', 'assembly')
     for (const it of (form.items || [])) {
       const qty = Number(it.quantity ?? it.qty) || 0
       if (!qty || !it.name) continue
@@ -291,11 +291,11 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
       // Рухи цього документа треба зібрати ДО видалення: FK stock_movements.document_id = ON DELETE SET NULL,
       // тож після видалення документа рухи лишаються (осиротілі), а склад не відкочується. Прибираємо їх явно
       // (крім збірок — їх source='assembly'). Спершу видаляємо документ (перевірка прав/періоду), потім рухи.
-      const { data: mvs } = await supabase.from('stock_movements').select('id').eq('document_id', existingDoc.id).neq('source', 'assembly')
+      const { data: mvs } = await qc('stock_movements').select('id').eq('document_id', existingDoc.id).neq('source', 'assembly')
       const { data, error } = await qc('documents').delete().eq('id', existingDoc.id).select('id')
       if (error) throw error
       if (!data?.length) { setError('Документ не видалено (недостатньо прав). Видалення доступне ролям admin/accountant.'); setBusy(false); return }
-      if (mvs?.length) await supabase.from('stock_movements').delete().in('id', mvs.map(m => m.id))
+      if (mvs?.length) await qc('stock_movements').delete().in('id', mvs.map(m => m.id))
       onSaved()
     } catch (e) {
       const msg = /PERIOD_CLOSED/.test(e.message) ? e.message.replace(/^.*PERIOD_CLOSED:\s*/, '') : e.message

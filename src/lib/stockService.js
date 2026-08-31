@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { qc, withCompany } from './companyScope'
 
 // ── Кеш аліасів (оновлюється раз на 2 хвилини) ──
 let _aliasCache = null
@@ -205,13 +206,13 @@ export async function getFifoCost(productId, quantity) {
   if (!productId || !quantity) return null
 
   // Всі IN рухи по даті (FIFO)
-  const { data: inMovs } = await supabase.from('stock_movements')
+  const { data: inMovs } = await qc('stock_movements')
     .select('id, quantity, price, date')
     .eq('product_id', productId).eq('type', 'in')
     .order('date').order('created_at')
 
   // Всі OUT рухи з cost_price (вже розподілені)
-  const { data: outMovs } = await supabase.from('stock_movements')
+  const { data: outMovs } = await qc('stock_movements')
     .select('id, quantity, cost_price')
     .eq('product_id', productId).eq('type', 'out')
     .not('cost_price', 'is', null)
@@ -288,7 +289,7 @@ export async function createStockMovement({
     costPrice = await getFifoCost(productId, quantity)
   }
 
-  const { data: movement, error } = await supabase.from('stock_movements').insert({
+  const { data: movement, error } = await qc('stock_movements').insert(withCompany({
     product_id: productId,
     type: type || 'in',
     quantity,
@@ -304,7 +305,7 @@ export async function createStockMovement({
     description: description || null,
     source: bankTransactionId ? 'auto' : documentId ? 'document' : 'manual',
     created_by: userId,
-  }).select('id').single()
+  })).select('id').single()
 
   if (error) {
     if (error.code === '23505') return null
@@ -326,7 +327,7 @@ export async function backfillCostPrices() {
   for (const prod of (products || [])) {
     try {
       // Всі IN рухи (FIFO по даті)
-      const { data: inMovs } = await supabase.from('stock_movements')
+      const { data: inMovs } = await qc('stock_movements')
         .select('id, quantity, price')
         .eq('product_id', prod.id).eq('type', 'in')
         .order('date').order('created_at')
@@ -334,7 +335,7 @@ export async function backfillCostPrices() {
       if (!inMovs?.length) continue
 
       // Всі OUT рухи (по даті)
-      const { data: outMovs } = await supabase.from('stock_movements')
+      const { data: outMovs } = await qc('stock_movements')
         .select('id, quantity')
         .eq('product_id', prod.id).eq('type', 'out')
         .order('date').order('created_at')
@@ -360,7 +361,7 @@ export async function backfillCostPrices() {
 
         const costPrice = totalQty > 0 ? totalCost / totalQty : null
         if (costPrice !== null) {
-          await supabase.from('stock_movements')
+          await qc('stock_movements')
             .update({ cost_price: costPrice })
             .eq('id', out.id)
           updated++
@@ -402,7 +403,7 @@ export async function assembleProduct({ name, resultProductId, quantity, compone
     const needQty = compQty * quantity
 
     // Перевірити залишок
-    const { data: stockData } = await supabase.from('product_stock')
+    const { data: stockData } = await qc('product_stock')
       .select('computed_stock').eq('id', comp.productId).maybeSingle()
     const available = stockData?.computed_stock || 0
     if (available < needQty) {
@@ -416,12 +417,12 @@ export async function assembleProduct({ name, resultProductId, quantity, compone
   }
 
   // 3. Зберегти assembly
-  const { data: assembly, error: aErr } = await supabase.from('assemblies').insert({
+  const { data: assembly, error: aErr } = await qc('assemblies').insert(withCompany({
     name, result_product_id: productId, quantity,
     total_cost: totalCost, notes: notes || null,
     assembled_at: date || new Date().toISOString().split('T')[0],
     created_by: userId,
-  }).select('id').single()
+  })).select('id').single()
 
   if (aErr || !assembly) return { error: aErr?.message || 'Помилка збереження збірки' }
 
@@ -435,25 +436,25 @@ export async function assembleProduct({ name, resultProductId, quantity, compone
 
   // 5. Списати компоненти (OUT)
   for (const c of enrichedComponents) {
-    await supabase.from('stock_movements').insert({
+    await qc('stock_movements').insert(withCompany({
       product_id: c.productId, type: 'out',
       quantity: (c.qty || c.quantity) * quantity, price: c.costPrice, cost_price: c.costPrice, total: c.total,
       date: date || new Date().toISOString().split('T')[0],
       description: `Збірка: ${name}`, created_by: userId,
       assembly_id: assembly.id, source: 'assembly',
-    })
+    }))
   }
 
   // 6. Оприбуткувати готовий виріб (IN)
   const unitCost = quantity > 0 ? totalCost / quantity : totalCost
-  await supabase.from('stock_movements').insert({
+  await qc('stock_movements').insert(withCompany({
     product_id: productId, type: 'in',
     quantity, price: unitCost, cost_price: unitCost, total: totalCost,
     date: date || new Date().toISOString().split('T')[0],
     description: `Збірка: ${name} (${enrichedComponents.length} компонентів)`,
     created_by: userId,
     assembly_id: assembly.id, source: 'assembly',
-  })
+  }))
 
   // Оновити buy_price готового виробу
   await supabase.from('products').update({ buy_price: unitCost }).eq('id', productId)
@@ -463,7 +464,7 @@ export async function assembleProduct({ name, resultProductId, quantity, compone
 
 // ── Деталі збірки (виріб + компоненти з назвами) ──
 export async function getAssembly(id) {
-  const { data: a } = await supabase.from('assemblies').select('*, products(name, unit)').eq('id', id).maybeSingle()
+  const { data: a } = await qc('assemblies').select('*, products(name, unit)').eq('id', id).maybeSingle()
   if (!a) return null
   const { data: items } = await supabase.from('assembly_items').select('product_id, quantity, cost_price, total, products(name, unit)').eq('assembly_id', id)
   return { ...a, items: items || [] }
@@ -475,25 +476,25 @@ export async function getAssembly(id) {
 // з assembly_items: компоненти повертаються (IN), виріб знімається (OUT).
 async function reverseAssemblyMovements(id) {
   const [{ data: a }, { data: items }] = await Promise.all([
-    supabase.from('assemblies').select('quantity, result_product_id, total_cost, name').eq('id', id).maybeSingle(),
+    qc('assemblies').select('quantity, result_product_id, total_cost, name').eq('id', id).maybeSingle(),
     supabase.from('assembly_items').select('product_id, quantity, cost_price, total').eq('assembly_id', id),
   ])
-  const { data: deleted } = await supabase.from('stock_movements').delete().eq('assembly_id', id).select('id')
+  const { data: deleted } = await qc('stock_movements').delete().eq('assembly_id', id).select('id')
   if (deleted && deleted.length) return // рухи були прив'язані — видалили, цього досить
 
   const today = new Date().toISOString().slice(0, 10)
   for (const it of (items || [])) {
-    await supabase.from('stock_movements').insert({
+    await qc('stock_movements').insert(withCompany({
       product_id: it.product_id, type: 'in', quantity: it.quantity, price: it.cost_price, cost_price: it.cost_price, total: it.total,
       date: today, source: 'assembly', description: `Скасування збірки: ${a?.name || ''} — повернення компонента`.slice(0, 200),
-    })
+    }))
   }
   if (a?.result_product_id) {
     const unit = a.quantity ? a.total_cost / a.quantity : a.total_cost
-    await supabase.from('stock_movements').insert({
+    await qc('stock_movements').insert(withCompany({
       product_id: a.result_product_id, type: 'out', quantity: a.quantity, price: unit, cost_price: unit, total: a.total_cost,
       date: today, source: 'assembly', description: `Скасування збірки: ${a?.name || ''} — зняття виробу`.slice(0, 200),
-    })
+    }))
   }
 }
 
@@ -503,9 +504,9 @@ export async function mergeProducts(keepId, dupId) {
   if (!keepId || !dupId || keepId === dupId) return { error: 'Оберіть інший товар' }
   const { data: dup } = await supabase.from('products').select('name').eq('id', dupId).maybeSingle()
   if (!dup) return { error: 'Товар для об\'єднання не знайдено' }
-  await supabase.from('stock_movements').update({ product_id: keepId }).eq('product_id', dupId)
+  await qc('stock_movements').update({ product_id: keepId }).eq('product_id', dupId)
   for (const t of ['order_items', 'transaction_items', 'assembly_items']) await supabase.from(t).update({ product_id: keepId }).eq('product_id', dupId).then(() => {}, () => {})
-  await supabase.from('assemblies').update({ result_product_id: keepId }).eq('result_product_id', dupId).then(() => {}, () => {})
+  await qc('assemblies').update({ result_product_id: keepId }).eq('result_product_id', dupId).then(() => {}, () => {})
   await supabase.from('product_aliases').update({ product_id: keepId }).eq('product_id', dupId).then(() => {}, () => {})
   await supabase.from('product_aliases').upsert({ product_id: keepId, alias: dup.name.trim(), normalized: normalizeName(dup.name) }, { onConflict: 'normalized', ignoreDuplicates: true }).then(() => {}, () => {})
   const { error } = await supabase.from('products').update({ status: 'archived' }).eq('id', dupId)
@@ -516,13 +517,13 @@ export async function mergeProducts(keepId, dupId) {
 export async function deleteAssembly(id) {
   await reverseAssemblyMovements(id)
   await supabase.from('assembly_items').delete().eq('assembly_id', id)
-  const { error } = await supabase.from('assemblies').delete().eq('id', id)
+  const { error } = await qc('assemblies').delete().eq('id', id)
   return { error: error?.message || null }
 }
 
 // ── Редагувати збірку = реверс + перезбірка (з перевіркою залишків) ──
 export async function editAssembly(id, { name, quantity, components, date, notes, userId }) {
-  const { data: old } = await supabase.from('assemblies').select('result_product_id').eq('id', id).maybeSingle()
+  const { data: old } = await qc('assemblies').select('result_product_id').eq('id', id).maybeSingle()
   if (!old) return { error: 'Збірку не знайдено' }
   const { data: oldItems } = await supabase.from('assembly_items').select('product_id, quantity').eq('assembly_id', id)
   const oldConsumed = {}; (oldItems || []).forEach(i => { oldConsumed[i.product_id] = (oldConsumed[i.product_id] || 0) + Number(i.quantity) })
@@ -530,7 +531,7 @@ export async function editAssembly(id, { name, quantity, components, date, notes
   // Перевірка залишків з урахуванням повернення старих компонентів
   for (const comp of components) {
     const need = (Number(comp.qty) || 0) * (Number(quantity) || 0)
-    const { data: sd } = await supabase.from('product_stock').select('computed_stock').eq('id', comp.productId).maybeSingle()
+    const { data: sd } = await qc('product_stock').select('computed_stock').eq('id', comp.productId).maybeSingle()
     const avail = (Number(sd?.computed_stock) || 0) + (oldConsumed[comp.productId] || 0)
     if (avail < need) return { error: `Недостатньо "${comp.productName || comp.productId}": потрібно ${need}, буде доступно ${avail}` }
   }
@@ -538,7 +539,7 @@ export async function editAssembly(id, { name, quantity, components, date, notes
   // Реверс (видалення прив'язаних рухів або компенсуючі рухи для старих збірок)
   await reverseAssemblyMovements(id)
   await supabase.from('assembly_items').delete().eq('assembly_id', id)
-  await supabase.from('assemblies').delete().eq('id', id)
+  await qc('assemblies').delete().eq('id', id)
 
   // Перезбірка на той самий виріб
   const res = await assembleProduct({ resultProductId: old.result_product_id, name, quantity, components, date, notes, userId })
@@ -653,11 +654,11 @@ export async function migrateProductAliases() {
 
 // ── Перерахувати FIFO cost prices для одного продукту ──
 export async function recalcFifoForProduct(productId) {
-  const { data: inMovs } = await supabase.from('stock_movements')
+  const { data: inMovs } = await qc('stock_movements')
     .select('id, quantity, price').eq('product_id', productId).eq('type', 'in')
     .order('date').order('created_at')
   if (!inMovs?.length) return
-  const { data: outMovs } = await supabase.from('stock_movements')
+  const { data: outMovs } = await qc('stock_movements')
     .select('id, quantity').eq('product_id', productId).eq('type', 'out')
     .order('date').order('created_at')
   if (!outMovs?.length) return
@@ -677,7 +678,7 @@ export async function recalcFifoForProduct(productId) {
     }
     const costPrice = totalQty > 0 ? Math.round(totalCost / totalQty * 100) / 100 : null
     if (costPrice !== null) {
-      await supabase.from('stock_movements').update({ cost_price: costPrice }).eq('id', out.id)
+      await qc('stock_movements').update({ cost_price: costPrice }).eq('id', out.id)
     }
   }
 }
@@ -724,7 +725,7 @@ export async function mergeProductDuplicates() {
 
     for (const dup of duplicates) {
       // Перенести stock_movements
-      await supabase.from('stock_movements').update({ product_id: keep.id }).eq('product_id', dup.id)
+      await qc('stock_movements').update({ product_id: keep.id }).eq('product_id', dup.id)
       // Перенести transaction_items
       await supabase.from('transaction_items').update({ product_id: keep.id }).eq('product_id', dup.id)
       // Перенести aliases
@@ -746,7 +747,7 @@ export async function mergeProductDuplicates() {
   }
 
   // Видалити дубльовані stock_movements (по transaction_item_id)
-  const { data: allMovs } = await supabase.from('stock_movements')
+  const { data: allMovs } = await qc('stock_movements')
     .select('id, transaction_item_id').order('id')
   const seen = new Map()
   const toDelete = []
@@ -757,7 +758,7 @@ export async function mergeProductDuplicates() {
   })
   for (let i = 0; i < toDelete.length; i += 50) {
     const chunk = toDelete.slice(i, i + 50)
-    await supabase.from('stock_movements').delete().in('id', chunk)
+    await qc('stock_movements').delete().in('id', chunk)
     removedMovements += chunk.length
   }
 

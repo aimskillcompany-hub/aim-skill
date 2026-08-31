@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { qc } from '../lib/companyScope'
+import { qc, withCompany } from '../lib/companyScope'
 import { useUser } from '../lib/auth'
 import { fmt, fmtInt } from '../lib/fmt'
 import { assembleProduct, getAssembly, deleteAssembly, editAssembly, mergeProducts } from '../lib/stockService'
@@ -54,7 +54,7 @@ function StockTab() {
 
   const load = async () => {
     setLoading(true)
-    let query = supabase.from('product_stock')
+    let query = qc('product_stock')
       .select('id, name, sku, unit, category, buy_price, sell_price, computed_stock, total_in, total_out, status')
       .eq('product_type', 'goods').order('name').limit(2000)
     if (!showArchived) query = query.eq('status', 'active')
@@ -207,14 +207,14 @@ function ServicesTab() {
   const [showArchived, setShowArchived] = useState(false)
 
   const load = async () => {
-    let pq = supabase.from('product_stock')
+    let pq = qc('product_stock')
       .select('id, name, category, status').eq('product_type', 'service').order('name').limit(2000)
     if (!showArchived) pq = pq.eq('status', 'active')
     const { data: prods } = await pq
     const ids = (prods || []).map(p => p.id)
     let movs = []
     if (ids.length) {
-      const { data } = await supabase.from('stock_movements').select('product_id, type, quantity, total').in('product_id', ids)
+      const { data } = await qc('stock_movements').select('product_id, type, quantity, total').in('product_id', ids)
       movs = data || []
     }
     const agg = {}
@@ -290,7 +290,7 @@ function ConsumablesTab() {
   const [showArchived, setShowArchived] = useState(false)
 
   const load = async () => {
-    let query = supabase.from('product_stock')
+    let query = qc('product_stock')
       .select('id, name, unit, computed_stock, total_in, total_out, status').eq('product_type', 'expense').order('name').limit(2000)
     if (!showArchived) query = query.eq('status', 'active')
     const { data } = await query
@@ -348,10 +348,10 @@ function ConsumeModal({ product, user, onClose, onDone }) {
     const q = Number(qty) || 0
     if (q <= 0) { setErr('Вкажіть кількість'); return }
     setBusy(true); setErr(null)
-    const { error } = await supabase.from('stock_movements').insert({
+    const { error } = await qc('stock_movements').insert(withCompany({
       product_id: product.id, type: 'out', quantity: q, date,
       source: 'manual', description: note.trim() || `Списання: ${product.name}`.slice(0, 200), created_by: user?.id || null,
-    })
+    }))
     setBusy(false)
     if (error) { setErr(error.message); return }
     onDone()
@@ -394,10 +394,10 @@ function ProductModal({ product, onClose }) {
   const [err, setErr] = useState(null)
   const [showMove, setShowMove] = useState(false)
   const [showMerge, setShowMerge] = useState(false)
-  const loadStock = () => supabase.from('product_stock').select('computed_stock, total_in, total_out, unit, product_type').eq('id', product.id).maybeSingle().then(({ data }) => setStock(data))
-  const loadMovs = () => supabase.from('stock_movements').select(`id, type, quantity, cost_price, date, description, source, document_id, ${DOC_EMBED}`).eq('product_id', product.id).order('date', { ascending: false }).limit(50).then(({ data }) => setMovs(data || []))
+  const loadStock = () => qc('product_stock').select('computed_stock, total_in, total_out, unit, product_type').eq('id', product.id).maybeSingle().then(({ data }) => setStock(data))
+  const loadMovs = () => qc('stock_movements').select(`id, type, quantity, cost_price, date, description, source, document_id, ${DOC_EMBED}`).eq('product_id', product.id).order('date', { ascending: false }).limit(50).then(({ data }) => setMovs(data || []))
   useEffect(() => {
-    supabase.from('product_stock').select('computed_stock, total_in, total_out, unit, product_type').eq('id', product.id).maybeSingle().then(({ data }) => setStock(data))
+    qc('product_stock').select('computed_stock, total_in, total_out, unit, product_type').eq('id', product.id).maybeSingle().then(({ data }) => setStock(data))
     supabase.from('product_aliases').select('alias').eq('product_id', product.id).then(({ data }) => setAliases(data || []))
     supabase.from('products').select('category').not('category', 'is', null).then(({ data }) => {
       setAllCats([...new Set((data || []).map(d => (d.category || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'uk')))
@@ -433,7 +433,7 @@ function ProductModal({ product, onClose }) {
   }
 
   const del = async () => {
-    const { count } = await supabase.from('stock_movements').select('id', { count: 'exact', head: true }).eq('product_id', product.id)
+    const { count } = await qc('stock_movements').select('id', { count: 'exact', head: true }).eq('product_id', product.id)
     if (count > 0) {
       alert(`Не можна видалити: є ${count} складських рухів (історія). Скористайтесь «Архівувати».`)
       return
@@ -447,13 +447,13 @@ function ProductModal({ product, onClose }) {
   }
 
   const linkDoc = async (docId) => {
-    await supabase.from('stock_movements').update({ document_id: docId, source: 'document' }).eq('id', linkMov.id)
+    await qc('stock_movements').update({ document_id: docId, source: 'document' }).eq('id', linkMov.id)
     setLinkMov(null); loadMovs()
   }
 
   const delMov = async (m) => {
     if (!confirm(`Видалити рух: ${m.type === 'in' ? 'Прихід' : m.type === 'out' ? 'Видаток' : m.type} ${m.quantity} від ${m.date}? Залишок перерахується.`)) return
-    await supabase.from('stock_movements').delete().eq('id', m.id)
+    await qc('stock_movements').delete().eq('id', m.id)
     loadMovs(); loadStock()
   }
 
@@ -551,10 +551,10 @@ function ManualMoveModal({ product, stock, user, onClose, onDone }) {
     }
     if (quantity <= 0) { setErr('Кількість має бути > 0'); setBusy(false); return }
     const price = cost === '' ? null : Number(cost)
-    const { error } = await supabase.from('stock_movements').insert({
+    const { error } = await qc('stock_movements').insert(withCompany({
       product_id: product.id, type, quantity, price, cost_price: price,
       date, source: 'manual', description: note.trim() || (kind === 'set' ? 'Коригування залишку' : type === 'in' ? 'Ручний прихід' : 'Ручне списання'), created_by: user?.id || null,
-    })
+    }))
     setBusy(false)
     if (error) { setErr(error.message); return }
     onDone()
@@ -597,7 +597,7 @@ function MergeProductModal({ product, onClose, onDone }) {
   useEffect(() => {
     const t = q.trim()
     if (t.length < 2) { setRows([]); return }
-    supabase.from('product_stock').select('id, name, sku, computed_stock').eq('status', 'active').or(`name.ilike.%${t}%,sku.ilike.%${t}%`).limit(15)
+    qc('product_stock').select('id, name, sku, computed_stock').eq('status', 'active').or(`name.ilike.%${t}%,sku.ilike.%${t}%`).limit(15)
       .then(({ data }) => setRows((data || []).filter(r => r.id !== product.id)))
   }, [q])
 
@@ -656,13 +656,13 @@ function MovementsTab() {
   const [linkMov, setLinkMov] = useState(null)
   const load = () => {
     setLoading(true)
-    let qb = supabase.from('stock_movements').select(`id, type, quantity, cost_price, total, date, description, source, document_id, products(name), ${DOC_EMBED}`).order('date', { ascending: false }).limit(500)
+    let qb = qc('stock_movements').select(`id, type, quantity, cost_price, total, date, description, source, document_id, products(name), ${DOC_EMBED}`).order('date', { ascending: false }).limit(500)
     if (type !== 'all') qb = qb.eq('type', type)
     qb.then(({ data }) => { setRows(data || []); setLoading(false) })
   }
   useEffect(() => { load() }, [type])
   const linkDoc = async (docId) => {
-    await supabase.from('stock_movements').update({ document_id: docId, source: 'document' }).eq('id', linkMov.id)
+    await qc('stock_movements').update({ document_id: docId, source: 'document' }).eq('id', linkMov.id)
     setLinkMov(null); load()
   }
   const { sort, onSort, sorted } = useSort('date', 'desc')
@@ -778,7 +778,7 @@ function AssembliesTab() {
   const [rows, setRows] = useState([])
   const [showNew, setShowNew] = useState(false)
   const [detail, setDetail] = useState(null)
-  const load = () => supabase.from('assemblies').select('id, name, quantity, total_cost, assembled_at, products(name)').order('assembled_at', { ascending: false }).then(({ data }) => setRows(data || []))
+  const load = () => qc('assemblies').select('id, name, quantity, total_cost, assembled_at, products(name)').order('assembled_at', { ascending: false }).then(({ data }) => setRows(data || []))
   useEffect(() => { load() }, [])
 
   return (
@@ -837,7 +837,7 @@ function AssemblyDetailModal({ id, user, onClose, onChanged }) {
         qty: qy ? (Number(it.quantity) || 0) / qy : Number(it.quantity) || 0,
       })))
     })
-    supabase.from('product_stock').select('id, name, sku, unit, computed_stock').eq('status', 'active').order('name').limit(3000).then(({ data }) => setStock(data || []))
+    qc('product_stock').select('id, name, sku, unit, computed_stock').eq('status', 'active').order('name').limit(3000).then(({ data }) => setStock(data || []))
   }, [id])
 
   const addComp = (p) => { if (!comps.find(c => c.productId === p.id)) setComps(cs => [...cs, { productId: p.id, productName: p.name, unit: p.unit, qty: 1 }]); setQ('') }
@@ -967,7 +967,7 @@ function NewAssemblyModal({ user, onClose, onSaved }) {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    supabase.from('product_stock').select('id, name, sku, unit, computed_stock').eq('status', 'active').order('name').limit(3000).then(({ data }) => setStock(data || []))
+    qc('product_stock').select('id, name, sku, unit, computed_stock').eq('status', 'active').order('name').limit(3000).then(({ data }) => setStock(data || []))
   }, [])
 
   const addComp = (p) => {

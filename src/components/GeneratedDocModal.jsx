@@ -63,7 +63,7 @@ export default function GeneratedDocModal({ doc, onClose, onDeleted, onScanUploa
     setBusy(true); setErr(null)
     try {
       const gid = doc.generated_doc_id
-      if (doc.id) await supabase.from('stock_movements').delete().eq('document_id', doc.id)
+      if (doc.id) await qc('stock_movements').delete().eq('document_id', doc.id)
       const { error: dErr } = await qc('documents').delete().eq('generated_doc_id', gid)
       if (dErr) throw dErr
       const { error: gErr } = await qc('generated_docs').delete().eq('id', gid)
