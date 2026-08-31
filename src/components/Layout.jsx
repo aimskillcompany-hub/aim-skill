@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
+import { CompanySwitcher } from '../lib/company'
 import { canAccess, sectionFromPath, ROLE_LABELS } from '../lib/permissions'
 
 // Навігація per ТЗ 5.1 — 10 розділів
@@ -80,6 +81,7 @@ export default function Layout() {
     <div className="app">
       <aside className="sidebar">
         <div className="sidebar-logo"><AimLogo size={18} /></div>
+        <CompanySwitcher />
         <NavItems />
         <Footer />
       </aside>
@@ -93,6 +95,7 @@ export default function Layout() {
                 <i className="ti ti-x" />
               </button>
             </div>
+            <CompanySwitcher />
             <NavItems />
             <Footer />
           </aside>
@@ -105,6 +108,7 @@ export default function Layout() {
             <i className="ti ti-menu-2" />
           </button>
           <AimLogo size={14} />
+          <div style={{ marginLeft: 'auto' }}><CompanySwitcher compact /></div>
         </div>
 
         <div className="page-inner"><Outlet /></div>

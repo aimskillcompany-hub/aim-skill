@@ -53,6 +53,22 @@ export const css = `
     display: flex; align-items: center; min-height: 72px;
   }
   .sidebar-logo img { max-width: 100%; height: auto; filter: brightness(0); }
+  .company-switch {
+    display: flex; align-items: center; gap: 8px;
+    margin: 12px 12px 0; padding: 8px 10px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    color: var(--text2); font-size: 13px;
+  }
+  .company-switch > i { font-size: 16px; color: var(--text3); flex-shrink: 0; }
+  .company-switch select {
+    flex: 1; min-width: 0; border: none; background: transparent;
+    color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer;
+    outline: none; appearance: none; padding-right: 14px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='3'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right center;
+  }
+  .company-switch.one span { font-weight: 600; color: var(--text); }
+  .company-switch.compact { margin: 0; padding: 6px 8px; max-width: 180px; }
   .sidebar-nav { padding: 16px 12px; flex: 1; overflow-y: auto; }
   .nav-section {
     font-size: 11px; font-weight: 600; text-transform: uppercase;
