@@ -533,6 +533,14 @@ function ImportTab({ accounts, onDone }) {
   const [autoCreate, setAutoCreate] = useState(true) // авто-створення контрагентів за ЄДРПОУ
   const [detectedBank, setDetectedBank] = useState(null) // банк, визначений з виписки
   const [result, setResult] = useState(null) // підсумок імпорту { added, skipped }
+  const [ownCodes, setOwnCodes] = useState(new Set(['45505924'])) // ЄДРПОУ/ІПН наших юросіб — не створювати як контрагентів
+  useEffect(() => {
+    supabase.from('companies').select('edrpou, ipn').then(({ data }) => {
+      const s = new Set()
+      ;(data || []).forEach(c => { if (c.edrpou) s.add(String(c.edrpou).trim()); if (c.ipn) s.add(String(c.ipn).trim()) })
+      if (s.size) setOwnCodes(s)
+    })
+  }, [])
 
   // Ключ дедуплікації рядка виписки: референс (унікальний у банку) або дата+сума+контрагент+опис
   const compositeKey = (t) => [t.date, Number(t.amount).toFixed(2), (t.counterparty || '').trim(), (t.description || '').slice(0, 40)].join('¦')
@@ -606,12 +614,11 @@ function ImportTab({ accounts, onDone }) {
     // Ключ — ЄДРПОУ (унікальний). Назву-збіг не використовуємо (у виписках пишеться по-різному).
     const byCode = {} // edrpou -> contractor_id
     if (autoCreate) {
-      const OWN = '45505924'
       const need = new Map() // edrpou -> { name, direction }
       for (const t of parsedFresh) {
         if (t._auto?.contractor_id) continue
         const code = txEdrpou(t)
-        if (!code || code === OWN) continue
+        if (!code || ownCodes.has(code)) continue
         if (!need.has(code)) need.set(code, { name: (t.counterparty || '').trim() || null, direction: t._auto?.direction })
       }
       if (need.size) {
@@ -704,7 +711,7 @@ function ImportTab({ accounts, onDone }) {
             </div>
           </div>
           {(() => {
-            const codes = new Set(parsed.filter(t => !t._auto?.contractor_id).map(t => txEdrpou(t)).filter(c => c && c !== '45505924'))
+            const codes = new Set(parsed.filter(t => !t._auto?.contractor_id).map(t => txEdrpou(t)).filter(c => c && !ownCodes.has(c)))
             return (
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text2)', marginBottom: 12 }}>
                 <input type="checkbox" checked={autoCreate} onChange={e => setAutoCreate(e.target.checked)} style={{ width: 16, height: 16 }} />

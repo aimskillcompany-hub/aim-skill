@@ -1,6 +1,31 @@
-// Реквізити нашої компанії
-// Зберігаються в Supabase (profiles.settings) з fallback на localStorage
+// Реквізити нашої компанії.
+// Мультикомпанійність: getCompany() повертає реквізити АКТИВНОЇ компанії
+// з таблиці companies (за companyScope). Fallback — стара конфігурація
+// (profiles.settings / localStorage), якщо активної компанії ще нема.
 import { supabase } from './supabase'
+import { getActiveCompanyId } from './companyScope'
+
+// Рядок таблиці companies (snake_case) → форма реквізитів для docgen (camelCase).
+function mapRow(row) {
+  return {
+    id: row.id,
+    name: row.name || '',
+    shortName: row.short_name || '',
+    edrpou: row.edrpou || '',
+    ipn: row.ipn || '',
+    address: row.address || '',
+    iban: row.iban || '',
+    bankName: row.bank_name || '',
+    mfo: row.mfo || '',
+    phone: row.phone || '',
+    email: row.email || '',
+    director: row.director || '',
+    directorPosition: row.director_position || 'Директор',
+    isVatPayer: !!row.is_vat_payer,
+    isFop: !!row.is_fop,
+    taxGroup: row.tax_group || 'tov_vat',
+  }
+}
 
 const DEFAULTS = {
   name: 'ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ "ЕЙМ СКІЛ"',
@@ -30,26 +55,37 @@ function loadLocal() {
 }
 
 export let COMPANY = loadLocal()
+let _cachedId = null // id активної компанії, для якої закешовано _cached
+
+// Скинути кеш реквізитів (при перемиканні/редагуванні компанії).
+export function clearCompanyCache() { _cached = null; _cachedId = null }
 
 export async function getCompany() {
-  if (_cached) return _cached
-  // Try Supabase first
+  const activeId = getActiveCompanyId()
+  // Мультикомпанійність: реквізити активної компанії з таблиці companies.
+  if (activeId) {
+    if (_cached && _cachedId === activeId) return _cached
+    try {
+      const { data } = await supabase.from('companies').select('*').eq('id', activeId).maybeSingle()
+      if (data) { _cached = mapRow(data); _cachedId = activeId; COMPANY = _cached; return _cached }
+    } catch {}
+  }
+  // Fallback (стара однокомпанійна конфігурація) — до застосування мультикомпанійності.
+  if (_cached && _cachedId === null) return _cached
   try {
     const { data: user } = await supabase.auth.getUser()
     if (user?.user?.id) {
       const { data } = await supabase.from('profiles')
         .select('settings').eq('id', user.user.id).maybeSingle()
       if (data?.settings?.company) {
-        _cached = { ...DEFAULTS, ...data.settings.company }
+        _cached = { ...DEFAULTS, ...data.settings.company }; _cachedId = null
         COMPANY = _cached
-        // Sync to localStorage as backup
         localStorage.setItem(STORAGE_KEY, JSON.stringify(_cached))
         return _cached
       }
     }
   } catch {}
-  // Fallback to localStorage
-  _cached = loadLocal()
+  _cached = loadLocal(); _cachedId = null
   return _cached
 }
 

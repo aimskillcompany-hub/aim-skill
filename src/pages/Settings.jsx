@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { qc, withCompany } from '../lib/companyScope'
 import { useUser } from '../lib/auth'
-import { COMPANY_FIELDS, getCompany, saveCompany } from '../lib/companyConfig'
+import { clearCompanyCache } from '../lib/companyConfig'
+import { useCompany } from '../lib/company'
 import { invalidateCache, PL_ORDER, PL_LABELS } from '../lib/articles'
 import { ROLES, ROLE_LABELS, ROLE_HINTS } from '../lib/permissions'
 
@@ -35,32 +36,84 @@ export default function Settings() {
   )
 }
 
-// ───────── Реквізити ─────────
+// ───────── Реквізити компанії (активної) ─────────
+const CO_FIELDS = [
+  { key: 'name', label: 'Повна назва', full: true },
+  { key: 'short_name', label: 'Коротка назва (для перемикача)' },
+  { key: 'edrpou', label: 'ЄДРПОУ (ТОВ)' },
+  { key: 'ipn', label: 'ІПН / РНОКПП' },
+  { key: 'address', label: 'Адреса', full: true },
+  { key: 'iban', label: 'IBAN', full: true },
+  { key: 'bank_name', label: 'Банк' },
+  { key: 'mfo', label: 'МФО' },
+  { key: 'phone', label: 'Телефон' },
+  { key: 'email', label: 'Email' },
+  { key: 'director', label: 'Директор / ФОП (ПІБ)' },
+  { key: 'director_position', label: 'Посада підписанта' },
+]
+const TAX_GROUPS = [
+  ['tov_vat', 'ТОВ — платник ПДВ'], ['tov_single_5', 'ТОВ — 3 група (5%)'],
+  ['fop_group2', 'ФОП — 2 група'], ['fop_group3', 'ФОП — 3 група'], ['other', 'Інше'],
+]
+
 function CompanyTab() {
-  const [form, setForm] = useState({})
+  const { active, activeId, reload } = useCompany()
+  const [form, setForm] = useState(null)
   const [saved, setSaved] = useState(false)
-  useEffect(() => { getCompany().then(setForm) }, [])
-  const save = async () => { await saveCompany(form); setSaved(true); setTimeout(() => setSaved(false), 2500) }
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    if (!activeId) { setForm(null); return }
+    supabase.from('companies').select('*').eq('id', activeId).maybeSingle().then(({ data }) => setForm(data || null))
+  }, [activeId])
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const save = async () => {
+    if (!form) return
+    setBusy(true)
+    const { id, created_at, ...upd } = form
+    const { error } = await supabase.from('companies').update(upd).eq('id', activeId)
+    setBusy(false)
+    if (error) { alert('Помилка збереження: ' + error.message); return }
+    clearCompanyCache(); reload()
+    setSaved(true); setTimeout(() => setSaved(false), 2500)
+  }
+  if (!activeId) return <div className="card"><p style={{ color: 'var(--text3)' }}>Оберіть компанію в перемикачі у шапці.</p></div>
+  if (!form) return <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
   return (
     <div className="card">
-      <p style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 16 }}>Реквізити компанії-продавця — використовуються при генерації документів.</p>
+      <p style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 16 }}>
+        Реквізити компанії <b>{active?.short_name || active?.name}</b> — використовуються при генерації документів.
+        Щоб редагувати іншу юрособу, перемкни її в шапці.
+      </p>
       <div className="form-grid">
-        {COMPANY_FIELDS.map(f => (
+        {CO_FIELDS.map(f => (
           <div className={`form-group ${f.full ? 'full' : ''}`} key={f.key}>
             <label>{f.label}</label>
-            <input className="form-input" value={form[f.key] || ''} onChange={e => setForm(s => ({ ...s, [f.key]: e.target.value }))} />
+            <input className="form-input" value={form[f.key] || ''} onChange={e => set(f.key, e.target.value)} />
           </div>
         ))}
         <div className="form-group">
+          <label>Група оподаткування</label>
+          <select className="form-input" value={form.tax_group || 'tov_vat'} onChange={e => set('tax_group', e.target.value)}>
+            {TAX_GROUPS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </div>
+        <div className="form-group">
           <label>Платник ПДВ</label>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 44 }}>
-            <input type="checkbox" checked={form.isVatPayer || false} onChange={e => setForm(s => ({ ...s, isVatPayer: e.target.checked }))} style={{ width: 18, height: 18 }} />
-            <span style={{ fontSize: 14, color: 'var(--text2)' }}>{form.isVatPayer ? 'Так' : 'Ні'}</span>
+            <input type="checkbox" checked={!!form.is_vat_payer} onChange={e => set('is_vat_payer', e.target.checked)} style={{ width: 18, height: 18 }} />
+            <span style={{ fontSize: 14, color: 'var(--text2)' }}>{form.is_vat_payer ? 'Так' : 'Ні'}</span>
+          </div>
+        </div>
+        <div className="form-group">
+          <label>ФОП</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 44 }}>
+            <input type="checkbox" checked={!!form.is_fop} onChange={e => set('is_fop', e.target.checked)} style={{ width: 18, height: 18 }} />
+            <span style={{ fontSize: 14, color: 'var(--text2)' }}>{form.is_fop ? 'Так (без «Директора», підпис ФОП)' : 'Ні'}</span>
           </div>
         </div>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 16 }}>
-        <button className="btn btn-primary" onClick={save}>Зберегти</button>
+        <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? 'Збереження…' : 'Зберегти'}</button>
         {saved && <span style={{ color: 'var(--green)', fontSize: 13 }}>Збережено!</span>}
       </div>
     </div>

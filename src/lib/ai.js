@@ -1,4 +1,5 @@
 import { unzipSync, strFromU8 } from 'fflate'
+import { getCompany } from './companyConfig'
 // API key тепер на сервері — виклики через /api/ai proxy
 const USE_PROXY = !import.meta.env.DEV // В dev режимі fallback на прямий доступ
 const API_KEY = import.meta.env.VITE_ANTHROPIC_KEY
@@ -80,6 +81,11 @@ export async function extractDocument(file, articles) {
 export async function extractDocumentMulti(files, articles) {
   if (!files?.length) throw new Error('Немає файлів')
 
+  // Реквізити АКТИВНОЇ компанії — для визначення напряму документа (наша vs контрагент).
+  const company = await getCompany().catch(() => null)
+  const ourName = company?.shortName || company?.name || 'наша компанія'
+  const ourCode = company?.edrpou ? `ЄДРПОУ ${company.edrpou}` : company?.ipn ? `ІПН/РНОКПП ${company.ipn}` : ''
+
   const contentBlocks = []
 
   for (let file of files) {
@@ -117,8 +123,8 @@ export async function extractDocumentMulti(files, articles) {
 Якщо документ на кількох сторінках — збери дані з усіх сторінок разом.
 
 ВАЖЛИВО — визначення напряму документу:
-Наша компанія: ТОВ "ЕЙМ СКІЛ", ЄДРПОУ 45505924.
-- Якщо в документі ПОСТАЧАЛЬНИК = наша компанія (ЄДРПОУ 45505924 або "ЕЙМ СКІЛ") → це ВИХІДНИЙ документ від нас до клієнта. В полі "contractor" вкажи ПОКУПЦЯ (не нашу компанію), "suggestedDirection" = "Доходи", "docRole" = "outgoing".
+Наша компанія: ${ourName}${ourCode ? `, ${ourCode}` : ''}.
+- Якщо в документі ПОСТАЧАЛЬНИК = наша компанія (${ourCode || ourName} або "${ourName}") → це ВИХІДНИЙ документ від нас до клієнта. В полі "contractor" вкажи ПОКУПЦЯ (не нашу компанію), "suggestedDirection" = "Доходи", "docRole" = "outgoing".
 - Якщо в документі ПОСТАЧАЛЬНИК = інша компанія → це ВХІДНИЙ документ. В полі "contractor" вкажи ПОСТАЧАЛЬНИКА, "suggestedDirection" = "Витрати", "docRole" = "incoming".
 
 СТАТТІ ОБЛІКУ — обирай ТІЛЬКИ з цього списку:
