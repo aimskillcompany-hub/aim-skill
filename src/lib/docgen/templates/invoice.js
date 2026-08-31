@@ -34,6 +34,7 @@ const sectionTitle = (text) => ({ text: text, fontSize: 7.5, letterSpacing: 2, c
 
 export function pdf(company, contractor, items, options) {
   const { docNumber, docDate, notes, contractNum, contractDate, paymentDue, city } = options
+  const vatPayer = options.vatPayer !== false // неплатник ПДВ → без колонок/рядків ПДВ
   const { subtotal, vatAmount, total, vatByRate } = calcTotals(items)
   const rows = items.map((it, i) => itm(it, i))
   const contractStr = contractNum ? `№${contractNum}${contractDate ? ` від ${formatDate(contractDate)}` : ''}` : null
@@ -122,9 +123,12 @@ export function pdf(company, contractor, items, options) {
       {
         table: {
           headerRows: 1,
-          widths: [18, '*', 28, 28, 58, 22, 42, 56],
+          widths: vatPayer ? [18, '*', 28, 28, 58, 22, 42, 56] : [18, '*', 34, 34, 80, 80],
           body: [
-            ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна без ПДВ', 'ПДВ', 'Сума ПДВ', 'Сума'].map(t => ({
+            (vatPayer
+              ? ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна без ПДВ', 'ПДВ', 'Сума ПДВ', 'Сума']
+              : ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна', 'Сума']
+            ).map(t => ({
               text: t, fontSize: 6, bold: true, color: '#FFF', fillColor: DARK,
               alignment: 'center', margin: [0, 3, 0, 3],
             })),
@@ -134,8 +138,10 @@ export function pdf(company, contractor, items, options) {
               { text: r.u, alignment: 'center', fontSize: 8, color: G2 },
               { text: r.q, alignment: 'center', fontSize: 8.5 },
               { text: formatMoney(r.p), alignment: 'right', fontSize: 8.5 },
-              { text: r.vr > 0 ? `${r.vr}%` : '—', alignment: 'center', fontSize: 7, color: G2 },
-              { text: formatMoney(r.v), alignment: 'right', fontSize: 8.5, color: G2 },
+              ...(vatPayer ? [
+                { text: r.vr > 0 ? `${r.vr}%` : '—', alignment: 'center', fontSize: 7, color: G2 },
+                { text: formatMoney(r.v), alignment: 'right', fontSize: 8.5, color: G2 },
+              ] : []),
               { text: formatMoney(r.t), alignment: 'right', fontSize: 8.5, bold: true, color: BLACK },
             ]),
           ],
@@ -159,10 +165,12 @@ export function pdf(company, contractor, items, options) {
             table: {
               widths: [90, 90],
               body: [
-                [{ text: 'Без ПДВ:', alignment: 'right', fontSize: 8.5, color: G2 }, { text: `${formatMoney(subtotal)} грн`, alignment: 'right', fontSize: 8.5 }],
-                ...Object.entries(vatByRate).map(([rate, amt]) =>
-                  [{ text: `ПДВ ${rate}%:`, alignment: 'right', fontSize: 8.5, color: G2 }, { text: `${formatMoney(amt)} грн`, alignment: 'right', fontSize: 8.5 }]
-                ),
+                ...(vatPayer ? [
+                  [{ text: 'Без ПДВ:', alignment: 'right', fontSize: 8.5, color: G2 }, { text: `${formatMoney(subtotal)} грн`, alignment: 'right', fontSize: 8.5 }],
+                  ...Object.entries(vatByRate).map(([rate, amt]) =>
+                    [{ text: `ПДВ ${rate}%:`, alignment: 'right', fontSize: 8.5, color: G2 }, { text: `${formatMoney(amt)} грн`, alignment: 'right', fontSize: 8.5 }]
+                  ),
+                ] : []),
                 [{ text: 'Всього:', alignment: 'right', fontSize: 10, bold: true, color: BLACK }, { text: `${formatMoney(total)} грн`, alignment: 'right', fontSize: 10, bold: true, color: BLACK }],
               ],
             },

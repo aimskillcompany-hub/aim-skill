@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { qc } from '../lib/companyScope'
+import { useCompany } from '../lib/company'
 import {
   DOCUMENT_TYPES, getNextDocNumber, generatePdf, generateXlsx,
   saveDoc, calcTotals, formatMoney
@@ -11,6 +12,9 @@ const today = () => new Date().toISOString().split('T')[0]
 export default function DocGenModal({ contractor, userId, onClose, onSaved, editDoc, orderId }) {
   const isEdit = !!editDoc && !!editDoc.id
   const isFromInvoice = !!editDoc?._fromInvoice
+  const { active } = useCompany()
+  const vatOn = active?.is_vat_payer !== false   // неплатник ПДВ → генерація без ПДВ
+  const defVat = vatOn ? 20 : 0
   const [parentDocId] = useState(editDoc?._parentDocId || null)
   const [step, setStep] = useState(isEdit || editDoc?.doc_type ? 2 : 1)
   const [docType, setDocType] = useState(editDoc?.doc_type || null)
@@ -34,9 +38,9 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
   const [items, setItems] = useState(() => {
     if (editDoc?.items) {
       const parsed = typeof editDoc.items === 'string' ? JSON.parse(editDoc.items) : editDoc.items
-      return parsed.length > 0 ? parsed : [{ name: '', quantity: 1, unit: 'шт', unitPrice: '', vatRate: 20, amount: '', productId: null }]
+      return parsed.length > 0 ? parsed : [{ name: '', quantity: 1, unit: 'шт', unitPrice: '', vatRate: defVat, amount: '', productId: null }]
     }
-    return [{ name: '', quantity: 1, unit: 'шт', unitPrice: '', vatRate: 20, amount: '', productId: null }]
+    return [{ name: '', quantity: 1, unit: 'шт', unitPrice: '', vatRate: defVat, amount: '', productId: null }]
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -87,7 +91,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
   }, [docType])
 
   const addItem = () => {
-    setItems(prev => [...prev, { name: '', quantity: 1, unit: 'шт', unitPrice: '', vatRate: 20, amount: '', productId: null }])
+    setItems(prev => [...prev, { name: '', quantity: 1, unit: 'шт', unitPrice: '', vatRate: defVat, amount: '', productId: null }])
     // Автоматично відкрити пошук для нового рядка
     setTimeout(() => setSearchIdx(items.length), 50)
   }
@@ -102,7 +106,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
       quantity: 1,
       unit: product.unit || 'шт',
       unitPrice: price,
-      vatRate: 20,
+      vatRate: defVat,
       amount: price.toFixed(2),
       productId: product.id,
     }
@@ -440,7 +444,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
                                 quantity: it.quantity || 1,
                                 unit: it.unit || 'шт',
                                 unitPrice: it.unitPrice || '',
-                                vatRate: it.vatRate ?? 20,
+                                vatRate: vatOn ? (it.vatRate ?? 20) : 0,
                                 amount: it.amount || '',
                                 productId: match?.id || null,
                               }
@@ -482,7 +486,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
                 <button className="btn btn-sm btn-secondary" onClick={() => {
                   if (searchText.trim()) {
                     // Додати як новий товар (не зі складу)
-                    const newItem = { name: searchText.trim(), quantity: 1, unit: 'шт', unitPrice: '', vatRate: 20, amount: '', productId: null }
+                    const newItem = { name: searchText.trim(), quantity: 1, unit: 'шт', unitPrice: '', vatRate: defVat, amount: '', productId: null }
                     if (searchIdx !== null && searchIdx < items.length && !items[searchIdx].name) {
                       setItems(prev => prev.map((it, i) => i === searchIdx ? newItem : it))
                     } else {
@@ -541,19 +545,19 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
                     <th style={{ padding: '6px 4px', width: 50 }}>Од.</th>
                     <th style={{ padding: '6px 4px', width: 90 }}>
                       Ціна
-                      <div style={{ display: 'flex', gap: 2, marginTop: 2 }}>
+                      {vatOn && <div style={{ display: 'flex', gap: 2, marginTop: 2 }}>
                         <button onClick={() => setPriceMode('net')} style={{ fontSize: 9, padding: '1px 4px', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit', background: priceMode === 'net' ? 'var(--text)' : 'var(--surface)', color: priceMode === 'net' ? '#fff' : 'var(--text3)' }}>без ПДВ</button>
                         <button onClick={() => setPriceMode('gross')} style={{ fontSize: 9, padding: '1px 4px', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit', background: priceMode === 'gross' ? 'var(--text)' : 'var(--surface)', color: priceMode === 'gross' ? '#fff' : 'var(--text3)' }}>з ПДВ</button>
-                      </div>
+                      </div>}
                     </th>
-                    <th style={{ padding: '6px 4px', width: 50 }}>ПДВ%</th>
-                    <th style={{ padding: '6px 4px', width: 90 }}>Сума без ПДВ</th>
+                    {vatOn && <th style={{ padding: '6px 4px', width: 50 }}>ПДВ%</th>}
+                    <th style={{ padding: '6px 4px', width: 90 }}>{vatOn ? 'Сума без ПДВ' : 'Сума'}</th>
                     <th style={{ width: 30 }}></th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.filter(it => it.name).length === 0 && (
-                    <tr><td colSpan={7} style={{ padding: 16, textAlign: 'center', color: 'var(--text3)' }}>
+                    <tr><td colSpan={vatOn ? 7 : 6} style={{ padding: 16, textAlign: 'center', color: 'var(--text3)' }}>
                       Знайдіть товар у пошуку вище або натисніть "Додати"
                     </td></tr>
                   )}
@@ -589,14 +593,14 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
                             onChange={e => updateItem(i, 'unitPrice', e.target.value)} placeholder="0.00" />
                         )}
                       </td>
-                      <td style={{ padding: '4px 2px' }}>
+                      {vatOn && <td style={{ padding: '4px 2px' }}>
                         <select className="form-input" style={{ height: 32, fontSize: 12, padding: '2px 4px' }}
                           value={it.vatRate} onChange={e => updateItem(i, 'vatRate', e.target.value)}>
                           <option value={20}>20%</option>
                           <option value={7}>7%</option>
                           <option value={0}>0%</option>
                         </select>
-                      </td>
+                      </td>}
                       <td style={{ padding: '4px 2px', textAlign: 'right', fontWeight: 500, fontSize: 12 }}>
                         {formatMoney(parseFloat(it.amount) || 0)}
                       </td>
@@ -609,8 +613,9 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
               </table>
             </div>
 
-            {/* Підсумок — завжди показуємо 3 рядки */}
+            {/* Підсумок */}
             {items.some(it => it.name) && (
+              vatOn ? (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 8, padding: '10px 12px', background: 'var(--surface2)', borderRadius: 8, fontSize: 13 }}>
                 <div>
                   <div style={{ fontSize: 11, color: 'var(--text3)' }}>Без ПДВ</div>
@@ -625,6 +630,12 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
                   <div style={{ fontWeight: 700, fontSize: 15 }}>{formatMoney(totals.total)} грн</div>
                 </div>
               </div>
+              ) : (
+              <div style={{ marginTop: 8, padding: '10px 12px', background: 'var(--surface2)', borderRadius: 8, fontSize: 13 }}>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>Всього (без ПДВ)</div>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>{formatMoney(totals.total)} грн</div>
+              </div>
+              )
             )}
 
             </>}

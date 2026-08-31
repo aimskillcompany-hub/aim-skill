@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { qc, withCompany } from '../lib/companyScope'
+import { useCompany } from '../lib/company'
 import { useUser } from '../lib/auth'
 import { nextOrderNumber } from '../lib/orderNumber'
 import { fmt } from '../lib/fmt'
@@ -398,6 +399,9 @@ const _toCostBasis = (price, supInclVat, rowInclVat, vatRate) => {
 // (переюз у КП/документах/складі); name — знімок назви.
 function ItemsTab({ o, onChange, onDirty }) {
   const { user } = useUser()
+  const { active } = useCompany()
+  const vatOn = active?.is_vat_payer !== false   // неплатник ПДВ → увесь ПДВ-функціонал вимкнено
+  const defVat = vatOn ? 20 : 0
   const [rows, setRows] = useState(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -434,7 +438,7 @@ function ItemsTab({ o, onChange, onDirty }) {
         product_id: null, name: it.name || '', sku: it.sku || '', unit: it.unit || 'шт',
         qty: Number(it.quantity) || 1, cost_price: 0,
         unit_price: Number(it.unitPrice) || 0,
-        vat_rate: it.vatRate != null ? Number(it.vatRate) : 20,
+        vat_rate: vatOn ? (it.vatRate != null ? Number(it.vatRate) : 20) : 0,
         price_includes_vat: !!priceIncludesVat,
         supplier_id: null, supplier_name: null,
       }))])
@@ -521,7 +525,7 @@ function ItemsTab({ o, onChange, onDirty }) {
           product_id: null, name, sku: idx.sku >= 0 ? String(row[idx.sku] || '').trim() : '',
           unit: idx.unit >= 0 ? (String(row[idx.unit] || '').trim() || 'шт') : 'шт',
           qty, cost_price: 0, unit_price: idx.price >= 0 ? pn(row[idx.price]) : 0,
-          vat_rate: 20, price_includes_vat: false, supplier_id: null, supplier_name: null,
+          vat_rate: defVat, price_includes_vat: false, supplier_id: null, supplier_name: null,
         })
       }
       if (!items.length) { setAiMsg('У таблиці не знайдено рядків. Потрібні колонки «Назва» і «К-сть» (перший аркуш).'); return }
@@ -558,7 +562,7 @@ function ItemsTab({ o, onChange, onDirty }) {
   }, [dirty])
 
   const setRow = (i, patch) => { markDirty(); setRows(rs => rs.map((r, j) => j === i ? { ...r, ...patch } : r)) }
-  const addRow = () => { markDirty(); setRows(rs => [...rs, { product_id: null, name: '', sku: '', unit: 'шт', qty: 1, cost_price: 0, unit_price: 0, vat_rate: 20, price_includes_vat: false, supplier_id: null, supplier_name: null }]) }
+  const addRow = () => { markDirty(); setRows(rs => [...rs, { product_id: null, name: '', sku: '', unit: 'шт', qty: 1, cost_price: 0, unit_price: 0, vat_rate: defVat, price_includes_vat: false, supplier_id: null, supplier_name: null }]) }
   // Підстановка позиції з прайсу: закупівля = ціна прайсу, продаж = роздріб (редагована),
   // запам'ятовуємо постачальника (для авто-формування субзамовлень)
   const addFromPrice = (p) => {
@@ -568,8 +572,8 @@ function ItemsTab({ o, onChange, onDirty }) {
       product_id: null, name: p.name, sku: p.sku || '', unit: p.unit || 'шт', qty: 1,
       cost_price: p.price || 0,
       unit_price: (p.retail_price > 0 ? p.retail_price : p.price) || 0,
-      vat_rate: p.vat_rate != null ? Number(p.vat_rate) : 20,
-      price_includes_vat: true, // ціна з прайсу вже містить ПДВ
+      vat_rate: vatOn ? (p.vat_rate != null ? Number(p.vat_rate) : 20) : 0,
+      price_includes_vat: vatOn, // ціна з прайсу вже містить ПДВ (для неплатника — без ПДВ)
       supplier_id: p.supplier_id || null, supplier_name: p.contractors?.name || null,
     }])
   }
@@ -649,7 +653,9 @@ function ItemsTab({ o, onChange, onDirty }) {
 
   if (rows == null) return <Loading />
 
-  const GRID = 'minmax(0,1fr) 52px 88px 88px 58px 86px 96px 104px 150px 28px'
+  const GRID = vatOn
+    ? 'minmax(0,1fr) 52px 88px 88px 58px 86px 96px 104px 150px 28px'
+    : 'minmax(0,1fr) 52px 88px 88px 58px 96px 104px 150px 28px'  // без колонки «Тип ціни»
   const HeadCell = ({ children, right }) => <span style={{ textAlign: right ? 'right' : 'left' }}>{children}</span>
 
   return (
@@ -702,7 +708,7 @@ function ItemsTab({ o, onChange, onDirty }) {
               <HeadCell right>Закупка</HeadCell>
               <HeadCell right>Ціна</HeadCell>
               <HeadCell right>Націнка</HeadCell>
-              <HeadCell>Тип ціни</HeadCell>
+              {vatOn && <HeadCell>Тип ціни</HeadCell>}
               <HeadCell right>Сума</HeadCell>
               <HeadCell right>Маржа</HeadCell>
               <HeadCell>Постачальник</HeadCell>
@@ -734,9 +740,9 @@ function ItemsTab({ o, onChange, onDirty }) {
                   <input className="cell-input" type="number" value={r.cost_price ?? ''} onChange={e => setRow(i, { cost_price: e.target.value })} style={{ color: 'var(--text2)' }} />
                   <input className="cell-input" type="number" value={r.unit_price} onChange={e => setRow(i, { unit_price: e.target.value })} />
                   <input className="cell-input" type="number" placeholder="%" value={fmtMarkup(r)} onChange={e => setMarkup(i, e.target.value)} disabled={noMarkup} title="Націнка над закупівлею" />
-                  <select className="cell-input" value={r.price_includes_vat ? '1' : '0'} onChange={e => setRow(i, { price_includes_vat: e.target.value === '1' })} style={{ textAlign: 'left' }} title="«з ПДВ» — ціна вже містить ПДВ; «+ ПДВ» — ПДВ додається зверху">
+                  {vatOn && <select className="cell-input" value={r.price_includes_vat ? '1' : '0'} onChange={e => setRow(i, { price_includes_vat: e.target.value === '1' })} style={{ textAlign: 'left' }} title="«з ПДВ» — ціна вже містить ПДВ; «+ ПДВ» — ПДВ додається зверху">
                     <option value="1">з ПДВ</option><option value="0">+ ПДВ</option>
-                  </select>
+                  </select>}
                   <span style={{ textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13 }}>{fmt(rowTotal(r))}</span>
                   <span style={{ textAlign: 'right', color: mColor, fontVariantNumeric: 'tabular-nums', fontSize: 12.5, whiteSpace: 'nowrap' }}>{fmt(m)} · {mp.toFixed(0)}%</span>
                   <select className="cell-input" value={r.supplier_id || ''} onChange={e => chooseSupplier(i, e.target.value)} style={{ textAlign: 'left' }} title="Постачальник позиції (для субзамовлень)">
@@ -754,9 +760,9 @@ function ItemsTab({ o, onChange, onDirty }) {
                   <div style={{ display: 'flex', gap: 14, padding: '0 14px 10px', fontSize: 12, color: 'var(--text2)', alignItems: 'center', flexWrap: 'wrap' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>Од.
                       <input className="form-input" value={r.unit || ''} onChange={e => setRow(i, { unit: e.target.value })} style={{ width: 60, height: 30, padding: '4px 8px', fontSize: 12 }} /></label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>ПДВ
-                      <select className="form-input" value={Number(r.vat_rate) || 0} onChange={e => setRow(i, { vat_rate: Number(e.target.value) })} style={{ width: 66, height: 30, padding: '4px 6px', fontSize: 12 }}>{VAT_RATES.map(v => <option key={v} value={v}>{v}%</option>)}</select></label>
-                    <span>Без ПДВ <b style={{ color: 'var(--text)' }}>{fmt(rowNet(r))}</b></span>
+                    {vatOn && <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>ПДВ
+                      <select className="form-input" value={Number(r.vat_rate) || 0} onChange={e => setRow(i, { vat_rate: Number(e.target.value) })} style={{ width: 66, height: 30, padding: '4px 6px', fontSize: 12 }}>{VAT_RATES.map(v => <option key={v} value={v}>{v}%</option>)}</select></label>}
+                    {vatOn && <span>Без ПДВ <b style={{ color: 'var(--text)' }}>{fmt(rowNet(r))}</b></span>}
                     <button onClick={() => removeRow(i)} style={{ marginLeft: 'auto', border: 'none', background: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: 12 }}><i className="ti ti-trash" /> прибрати</button>
                   </div>
                 )}
@@ -771,11 +777,11 @@ function ItemsTab({ o, onChange, onDirty }) {
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', padding: '12px 14px', background: 'var(--surface2)', flexWrap: 'wrap', gap: 16 }}>
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <Metric label="Собівартість" value={fmt(costSum)} />
-          <Metric label="Виручка без ПДВ" value={fmt(netSum)} />
-          <Metric label="ПДВ" value={fmt(vatSum)} />
+          {vatOn && <Metric label="Виручка без ПДВ" value={fmt(netSum)} />}
+          {vatOn && <Metric label="ПДВ" value={fmt(vatSum)} />}
           <Metric label="Маржа" value={`${fmt(marginSum)} · ${marginPctTotal.toFixed(0)}%`} color={marginSum > 0 ? 'var(--green)' : marginSum < 0 ? 'var(--red)' : 'var(--text3)'} />
           <div>
-            <div style={{ fontSize: 11, color: 'var(--text3)' }}>Всього з ПДВ</div>
+            <div style={{ fontSize: 11, color: 'var(--text3)' }}>{vatOn ? 'Всього з ПДВ' : 'Всього'}</div>
             <div style={{ fontSize: 18, fontWeight: 700, whiteSpace: 'nowrap' }}>{fmt(sum)} ₴</div>
           </div>
         </div>

@@ -40,7 +40,7 @@ export async function generatePdf(docTypeKey, contractor, items, options) {
   const company = await getCompany()
   const seller = dt.direction === 'incoming' ? enriched : company
   const buyer = dt.direction === 'incoming' ? company : enriched
-  const docDef = dt.template.pdf(seller, buyer, cleanItems(items), options)
+  const docDef = dt.template.pdf(seller, buyer, cleanItems(items), { ...(options || {}), vatPayer: company.isVatPayer !== false })
   const fileName = `${dt.label}_${options.docNumber}_${options.docDate}.pdf`
   downloadPdf(docDef, fileName)
 }
@@ -54,7 +54,7 @@ export async function generateOrderDoc(docTypeKey, contractor, items, options, {
   const seller = dt.direction === 'incoming' ? enriched : company
   const buyer = dt.direction === 'incoming' ? company : enriched
   const clean = cleanItems(items)
-  const docDef = dt.template.pdf(seller, buyer, clean, options)
+  const docDef = dt.template.pdf(seller, buyer, clean, { ...(options || {}), vatPayer: company.isVatPayer !== false })
   const { total, vatAmount } = calcTotals(clean)
   const fileName = `${dt.label}_${options.docNumber}_${options.docDate}.pdf`
 
@@ -104,7 +104,7 @@ export async function storeGeneratedPdf(generatedDocId, docTypeKey, contractor, 
     const company = await getCompany()
     const seller = dt.direction === 'incoming' ? enriched : company
     const buyer = dt.direction === 'incoming' ? company : enriched
-    const docDef = dt.template.pdf(seller, buyer, cleanItems(items), options)
+    const docDef = dt.template.pdf(seller, buyer, cleanItems(items), { ...(options || {}), vatPayer: company.isVatPayer !== false })
     await uploadDocDefViaApi('generated', generatedDocId, docDef)
   } catch { /* best-effort */ }
 }
@@ -140,7 +140,7 @@ export async function previewPdf(docTypeKey, contractor, items, options) {
   const company = await getCompany()
   const seller = dt.direction === 'incoming' ? enriched : company
   const buyer = dt.direction === 'incoming' ? company : enriched
-  const docDef = dt.template.pdf(seller, buyer, cleanItems(items), options)
+  const docDef = dt.template.pdf(seller, buyer, cleanItems(items), { ...(options || {}), vatPayer: company.isVatPayer !== false })
   openPdf(docDef)
 }
 
@@ -152,7 +152,7 @@ export async function generatedDocBlob(docTypeKey, contractor, items, options) {
   const company = await getCompany()
   const seller = dt.direction === 'incoming' ? enriched : company
   const buyer = dt.direction === 'incoming' ? company : enriched
-  const docDef = dt.template.pdf(seller, buyer, cleanItems(items), options)
+  const docDef = dt.template.pdf(seller, buyer, cleanItems(items), { ...(options || {}), vatPayer: company.isVatPayer !== false })
   return getPdfBlob(docDef)
 }
 
@@ -164,7 +164,7 @@ export async function generateXlsx(docTypeKey, contractor, items, options) {
   const company = await getCompany()
   const seller = dt.direction === 'incoming' ? enriched : company
   const buyer = dt.direction === 'incoming' ? company : enriched
-  const wb = dt.template.xlsx(seller, buyer, cleanItems(items), options)
+  const wb = dt.template.xlsx(seller, buyer, cleanItems(items), { ...(options || {}), vatPayer: company.isVatPayer !== false })
   const fileName = `${dt.label}_${options.docNumber}_${options.docDate}.xlsx`
   downloadXlsx(wb, fileName)
 }
