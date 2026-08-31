@@ -45,6 +45,12 @@ export function pdf(company, contractor, items, options) {
   const rows = items.map((it, i) => itm(it, i))
   const companyName = company.shortName || shortenName(company.name) || 'ТОВ «ЕЙМ СКІЛ»'
   const validTo = formatDate(addDays(docDate, validityDays))
+  const vatPayer = options.vatPayer !== false
+  // Чиста тема (не ЕЙМ СКІЛ): монохромні акценти замість фірмового зеленого AiM.
+  const aim = brand.theme === 'aim'
+  const accent = aim ? ACCENT : DARK
+  const totalBg = aim ? '#F2FBF5' : '#F4F4F5'
+  const ctaBg = aim ? '#F7FAF8' : '#F4F4F5'
 
   return {
     pageSize: 'A4',
@@ -107,7 +113,7 @@ export function pdf(company, contractor, items, options) {
           {
             width: 'auto',
             columns: [
-              { width: 3, canvas: [{ type: 'rect', x: 0, y: 2, w: 3, h: 17, color: ACCENT }] },
+              { width: 3, canvas: [{ type: 'rect', x: 0, y: 2, w: 3, h: 17, color: accent }] },
               { width: 11, text: '' },
               { width: 'auto', text: 'КОМЕРЦІЙНА ПРОПОЗИЦІЯ', fontSize: 16, bold: true, color: BLACK, characterSpacing: 1.2 },
             ],
@@ -127,9 +133,12 @@ export function pdf(company, contractor, items, options) {
       {
         table: {
           headerRows: 1,
-          widths: [18, '*', 26, 28, 58, 22, 44, 54],
+          widths: vatPayer ? [18, '*', 26, 28, 58, 22, 44, 54] : [18, '*', 32, 34, 78, 78],
           body: [
-            ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна без ПДВ', 'ПДВ', 'Сума ПДВ', 'Сума'].map((t, ci) => ({
+            (vatPayer
+              ? ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна без ПДВ', 'ПДВ', 'Сума ПДВ', 'Сума']
+              : ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна', 'Сума']
+            ).map((t, ci) => ({
               text: t, fontSize: 6.5, bold: true, color: '#FFF', fillColor: DARK,
               alignment: ci === 1 ? 'left' : 'center', margin: [0, 4, 0, 4],
             })),
@@ -139,8 +148,10 @@ export function pdf(company, contractor, items, options) {
               { text: r.u, alignment: 'center', fontSize: 8, color: G2 },
               { text: r.q, alignment: 'center', fontSize: 8.5 },
               { text: formatMoney(r.p), alignment: 'right', fontSize: 8.5 },
-              { text: r.vr > 0 ? `${r.vr}%` : '—', alignment: 'center', fontSize: 7, color: G2 },
-              { text: formatMoney(r.v), alignment: 'right', fontSize: 8.5, color: G2 },
+              ...(vatPayer ? [
+                { text: r.vr > 0 ? `${r.vr}%` : '—', alignment: 'center', fontSize: 7, color: G2 },
+                { text: formatMoney(r.v), alignment: 'right', fontSize: 8.5, color: G2 },
+              ] : []),
               { text: formatMoney(r.t), alignment: 'right', fontSize: 8.5, bold: true, color: BLACK },
             ]),
           ],
@@ -164,13 +175,15 @@ export function pdf(company, contractor, items, options) {
             table: {
               widths: [110, 110],
               body: [
-                [{ text: 'Сума без ПДВ:', alignment: 'right', fontSize: 9, color: G2 }, { text: `${formatMoney(subtotal)} грн`, alignment: 'right', fontSize: 9 }],
-                ...(vatAmount > 0
-                  ? Object.entries(vatByRate).map(([rate, amt]) => [{ text: `ПДВ ${rate}%:`, alignment: 'right', fontSize: 9, color: G2 }, { text: `${formatMoney(amt)} грн`, alignment: 'right', fontSize: 9 }])
-                  : [[{ text: 'ПДВ:', alignment: 'right', fontSize: 9, color: G2 }, { text: 'без ПДВ', alignment: 'right', fontSize: 9, color: G2 }]]),
+                ...(vatPayer ? [
+                  [{ text: 'Сума без ПДВ:', alignment: 'right', fontSize: 9, color: G2 }, { text: `${formatMoney(subtotal)} грн`, alignment: 'right', fontSize: 9 }],
+                  ...(vatAmount > 0
+                    ? Object.entries(vatByRate).map(([rate, amt]) => [{ text: `ПДВ ${rate}%:`, alignment: 'right', fontSize: 9, color: G2 }, { text: `${formatMoney(amt)} грн`, alignment: 'right', fontSize: 9 }])
+                    : [[{ text: 'ПДВ:', alignment: 'right', fontSize: 9, color: G2 }, { text: 'без ПДВ', alignment: 'right', fontSize: 9, color: G2 }]]),
+                ] : []),
                 [
-                  { text: 'Всього з ПДВ:', alignment: 'right', fontSize: 10.5, bold: true, color: BLACK, fillColor: '#F2FBF5', margin: [0, 4, 0, 4] },
-                  { text: `${formatMoney(total)} грн`, alignment: 'right', fontSize: 10.5, bold: true, color: BLACK, fillColor: '#F2FBF5', margin: [0, 4, 4, 4] },
+                  { text: vatPayer ? 'Всього з ПДВ:' : 'Всього:', alignment: 'right', fontSize: 10.5, bold: true, color: BLACK, fillColor: totalBg, margin: [0, 4, 0, 4] },
+                  { text: `${formatMoney(total)} грн`, alignment: 'right', fontSize: 10.5, bold: true, color: BLACK, fillColor: totalBg, margin: [0, 4, 4, 4] },
                 ],
               ],
             },
@@ -216,18 +229,18 @@ export function pdf(company, contractor, items, options) {
         table: {
           widths: [2, '*'],
           body: [[
-            { text: '', fillColor: ACCENT },
+            { text: '', fillColor: accent },
             {
-              fillColor: '#F7FAF8', margin: [16, 13, 16, 13],
+              fillColor: ctaBg, margin: [16, 13, 16, 13],
               stack: [
                 { text: 'Готові обговорити деталі чи оформити замовлення?', fontSize: 10, bold: true, color: BLACK },
                 { text: `Зв'яжіться з нами — підберемо оптимальне рішення під ваш бюджет.`, fontSize: 9, color: G1, margin: [0, 3, 0, 7] },
                 {
                   text: [
                     { text: company.phone || '', bold: true, color: BLACK },
-                    { text: company.phone ? '    ·    ' : '', color: G3 },
-                    { text: company.email || '', color: GREEN },
-                    { text: '    ·    www.aim-skill.com.ua', color: G2 },
+                    { text: company.phone && company.email ? '    ·    ' : '', color: G3 },
+                    { text: company.email || '', color: aim ? GREEN : G1 },
+                    aim ? { text: '    ·    www.aim-skill.com.ua', color: G2 } : { text: '' },
                   ], fontSize: 9,
                 },
               ],
