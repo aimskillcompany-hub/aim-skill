@@ -52,6 +52,146 @@ export function pdf(company, contractor, items, options) {
   const totalBg = aim ? '#F2FBF5' : '#F4F4F5'
   const ctaBg = aim ? '#F7FAF8' : '#F4F4F5'
 
+  // Спільна таблиця товарів (обидві теми)
+  const productsTable = {
+    table: {
+      headerRows: 1,
+      widths: vatPayer ? [18, '*', 26, 28, 58, 22, 44, 54] : [18, '*', 32, 34, 78, 78],
+      body: [
+        (vatPayer
+          ? ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна без ПДВ', 'ПДВ', 'Сума ПДВ', 'Сума']
+          : ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна', 'Сума']
+        ).map((t, ci) => ({
+          text: t, fontSize: 6.5, bold: true, color: '#FFF', fillColor: DARK,
+          alignment: ci === 1 ? 'left' : 'center', margin: [0, 4, 0, 4],
+        })),
+        ...rows.map(r => [
+          { text: r.n, alignment: 'center', fontSize: 8.5, color: G2 },
+          { text: r.name, fontSize: 8.5, color: BLACK, lineHeight: 1.2 },
+          { text: r.u, alignment: 'center', fontSize: 8, color: G2 },
+          { text: r.q, alignment: 'center', fontSize: 8.5 },
+          { text: formatMoney(vatPayer ? r.p : (r.q ? r.t / r.q : r.t)), alignment: 'right', fontSize: 8.5 },
+          ...(vatPayer ? [
+            { text: r.vr > 0 ? `${r.vr}%` : '—', alignment: 'center', fontSize: 7, color: G2 },
+            { text: formatMoney(r.v), alignment: 'right', fontSize: 8.5, color: G2 },
+          ] : []),
+          { text: formatMoney(r.t), alignment: 'right', fontSize: 8.5, bold: true, color: BLACK },
+        ]),
+      ],
+    },
+    layout: {
+      hLineWidth: (i) => i === 0 ? 0 : i === 1 ? 1 : 0.5,
+      vLineWidth: () => 0,
+      hLineColor: (i) => i === 1 ? DARK : G4,
+      paddingLeft: () => 6, paddingRight: () => 6,
+      paddingTop: () => 5, paddingBottom: () => 5,
+      fillColor: (i) => i > 0 && i % 2 === 0 ? '#FAFAFA' : null,
+    },
+  }
+  const totalsBlock = {
+    columns: [
+      { width: '*', text: '' },
+      {
+        width: 220,
+        table: {
+          widths: [110, 110],
+          body: [
+            ...(vatPayer ? [
+              [{ text: 'Сума без ПДВ:', alignment: 'right', fontSize: 9, color: G2 }, { text: `${formatMoney(subtotal)} грн`, alignment: 'right', fontSize: 9 }],
+              ...(vatAmount > 0
+                ? Object.entries(vatByRate).map(([rate, amt]) => [{ text: `ПДВ ${rate}%:`, alignment: 'right', fontSize: 9, color: G2 }, { text: `${formatMoney(amt)} грн`, alignment: 'right', fontSize: 9 }])
+                : [[{ text: 'ПДВ:', alignment: 'right', fontSize: 9, color: G2 }, { text: 'без ПДВ', alignment: 'right', fontSize: 9, color: G2 }]]),
+            ] : []),
+            [
+              { text: vatPayer ? 'Всього з ПДВ:' : 'Всього:', alignment: 'right', fontSize: 10.5, bold: true, color: BLACK, fillColor: totalBg, margin: [0, 4, 0, 4] },
+              { text: `${formatMoney(total)} грн`, alignment: 'right', fontSize: 10.5, bold: true, color: BLACK, fillColor: totalBg, margin: [0, 4, 4, 4] },
+            ],
+          ],
+        },
+        layout: { defaultBorder: false, paddingTop: () => 2, paddingBottom: () => 2, paddingLeft: () => 4, paddingRight: () => 0 },
+        margin: [0, 6, 0, 0],
+      },
+    ],
+  }
+
+  // ══════════════ ЧИСТА ТЕМА (не ЕЙМ СКІЛ): макет за референсом ФОП ══════════════
+  // Отримувач угорі справа · заголовок по центру · таблиця · підпис · реквізити продавця внизу (синім)
+  if (!aim) {
+    const BLUE = '#1560BD'
+    const sellerTitle = company.isFop ? 'Фізична особа-підприємець' : (company.shortName || company.name || '')
+    const sellerName = company.isFop ? (company.director || company.name || '') : ''
+    return {
+      pageSize: 'A4',
+      pageMargins: [56, 44, 56, 152],
+      defaultStyle: { fontSize: 10, color: BLACK, lineHeight: 1.2 },
+      footer: () => ({
+        margin: [56, 0, 56, 26],
+        columns: [
+          logoImg ? { image: logoImg, width: 96, alignment: 'left' } : { text: '', width: 1 },
+          { width: 28, text: '' },
+          {
+            width: '*',
+            stack: [
+              { text: sellerTitle, fontSize: 10.5, bold: true, color: BLUE, lineHeight: 1.25 },
+              sellerName ? { text: sellerName, fontSize: 10.5, bold: true, color: BLUE, margin: [0, 0, 0, 2] } : null,
+              company.address ? { text: `Адреса: ${company.address}`, fontSize: 9, color: BLUE, lineHeight: 1.3 } : null,
+              company.ipn ? { text: `ІПН (РНОКПП): ${company.ipn}`, fontSize: 9, color: BLUE } : null,
+              (!company.isFop && company.edrpou) ? { text: `ЄДРПОУ: ${company.edrpou}`, fontSize: 9, color: BLUE } : null,
+              company.iban ? { text: `р/р ${company.iban}`, fontSize: 9, color: BLUE } : null,
+              company.bankName ? { text: `у ${company.bankName}`, fontSize: 9, color: BLUE } : null,
+            ].filter(Boolean),
+          },
+        ],
+      }),
+      content: [
+        // Адресовано (справа)
+        {
+          columns: [
+            { width: '*', text: '' },
+            {
+              width: 250,
+              stack: [
+                { text: 'Адресовано:', fontSize: 10.5, color: BLACK },
+                { text: contractor.name || contractor.short_name || '—', fontSize: 10.5, bold: true, color: BLACK, margin: [0, 2, 0, 0], lineHeight: 1.25 },
+                contractor.edrpou ? { text: `ЄДРПОУ ${contractor.edrpou}`, fontSize: 10, color: G1, margin: [0, 1, 0, 0] } : null,
+                (contractor.legal_address || contractor.address) ? { text: contractor.legal_address || contractor.address, fontSize: 10, color: G1, margin: [0, 1, 0, 0], lineHeight: 1.3 } : null,
+              ].filter(Boolean),
+            },
+          ],
+          margin: [0, 0, 0, 30],
+        },
+        // Заголовок по центру
+        { text: 'КОМЕРЦІЙНА ПРОПОЗИЦІЯ', fontSize: 13, color: BLACK, alignment: 'center', characterSpacing: 0.5 },
+        { text: `№${docNumber} від ${formatDate(docDate)}`, fontSize: 11, color: BLACK, alignment: 'center', margin: [0, 3, 0, 22] },
+        // Вступ
+        { text: 'Відповідно до Вашого запиту пропонуємо наступні товари:', fontSize: 10.5, color: BLACK, margin: [0, 0, 0, 14] },
+        productsTable,
+        totalsBlock,
+        notes ? { text: notes, fontSize: 9, color: G1, margin: [0, 10, 0, 0], lineHeight: 1.4 } : {},
+        // Підпис
+        { text: '', margin: [0, 18] },
+        {
+          columns: [
+            {
+              width: '*',
+              stack: [
+                { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 210, y2: 0, lineWidth: 0.5, lineColor: G3 }] },
+                { text: sellerName || sellerTitle, fontSize: 9.5, bold: true, color: BLACK, margin: [0, 4, 0, 0] },
+              ],
+            },
+            {
+              width: 150,
+              stack: [
+                { text: 'М.П.', fontSize: 9, color: G2, alignment: 'center', margin: [0, 34, 0, 0] },
+                stampOverlay(options, { x: 12, y: -74, w: 134 }),
+              ],
+            },
+          ],
+        },
+      ],
+    }
+  }
+
   return {
     pageSize: 'A4',
     pageMargins: [48, 36, 48, 52],
