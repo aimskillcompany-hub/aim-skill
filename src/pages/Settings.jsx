@@ -56,6 +56,27 @@ const TAX_GROUPS = [
   ['fop_group2', 'ФОП — 2 група'], ['fop_group3', 'ФОП — 3 група'], ['other', 'Інше'],
 ]
 
+// Зображення → зменшений PNG dataURL (для лого в документах, pdfmake приймає dataURL)
+function fileToLogoDataUrl(file, maxDim = 320) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const img = new Image()
+      img.onload = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height))
+        const w = Math.max(1, Math.round(img.width * scale)), h = Math.max(1, Math.round(img.height * scale))
+        const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+        resolve(canvas.toDataURL('image/png')) // PNG зберігає прозорість
+      }
+      img.onerror = reject
+      img.src = reader.result
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
 function CompanyTab() {
   const { active, activeId, reload } = useCompany()
   const [form, setForm] = useState(null)
@@ -70,7 +91,13 @@ function CompanyTab() {
     if (!form) return
     setBusy(true)
     const { id, created_at, ...upd } = form
-    const { error } = await supabase.from('companies').update(upd).eq('id', activeId)
+    let { error } = await supabase.from('companies').update(upd).eq('id', activeId)
+    // logo_base64 може ще не існувати (міграція 043) — зберегти без нього
+    if (error && /logo_base64/.test(error.message || '')) {
+      const { logo_base64, ...rest } = upd
+      ;({ error } = await supabase.from('companies').update(rest).eq('id', activeId))
+      if (!error) alert('Реквізити збережено, але лого — запустіть міграцію 043.')
+    }
     setBusy(false)
     if (error) { alert('Помилка збереження: ' + error.message); return }
     clearCompanyCache(); reload()
@@ -91,6 +118,25 @@ function CompanyTab() {
             <input className="form-input" value={form[f.key] || ''} onChange={e => set(f.key, e.target.value)} />
           </div>
         ))}
+        <div className="form-group full">
+          <label>Логотип для документів</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+            {form.logo_base64
+              ? <img src={form.logo_base64} alt="лого" style={{ height: 48, maxWidth: 200, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 8, padding: 4, background: '#fff' }} />
+              : <span style={{ fontSize: 13, color: 'var(--text3)' }}>Лого не завантажено</span>}
+            <label className="btn" style={{ cursor: 'pointer' }}>
+              <i className="ti ti-upload" /> Завантажити
+              <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" style={{ display: 'none' }}
+                onChange={async e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) { try { set('logo_base64', await fileToLogoDataUrl(file)) } catch { alert('Не вдалося зчитати зображення') } } }} />
+            </label>
+            {form.logo_base64 && <button className="btn" onClick={() => set('logo_base64', null)} style={{ color: 'var(--red)' }}><i className="ti ti-trash" /> Прибрати</button>}
+          </div>
+          <span style={{ fontSize: 11, color: 'var(--text3)' }}>
+            {active?.edrpou === '45505924'
+              ? 'ЕЙМ СКІЛ друкує фірмове лого AiM (це поле для неї не застосовується).'
+              : 'Зʼявиться у шапці/футері згенерованих документів цієї юрособи (замість брендингу AiM).'}
+          </span>
+        </div>
         <div className="form-group">
           <label>Група оподаткування</label>
           <select className="form-input" value={form.tax_group || 'tov_vat'} onChange={e => set('tax_group', e.target.value)}>

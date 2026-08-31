@@ -15,6 +15,22 @@ function cleanItems(items) {
   return (items || []).filter(it => it.name?.trim())
 }
 
+// Опції для шаблону: ПДВ + бренд (тема документа за компанією).
+// AiM-брендинг (лого/футер/лайм) — лише для ЕЙМ СКІЛ; решта — власне лого або без нього.
+function docOptions(options, company) {
+  return {
+    ...(options || {}),
+    vatPayer: company.isVatPayer !== false,
+    brand: {
+      theme: company.isAim ? 'aim' : 'clean',
+      companyLogo: company.logoBase64 || null,
+      name: company.shortName || company.name || '',
+      phone: company.phone || '',
+      email: company.email || '',
+    },
+  }
+}
+
 // ── Підтягнути підписанта з contractor_contacts ──
 async function enrichContractorSigner(contractor) {
   if (!contractor?.id) return contractor
@@ -40,7 +56,7 @@ export async function generatePdf(docTypeKey, contractor, items, options) {
   const company = await getCompany()
   const seller = dt.direction === 'incoming' ? enriched : company
   const buyer = dt.direction === 'incoming' ? company : enriched
-  const docDef = dt.template.pdf(seller, buyer, cleanItems(items), { ...(options || {}), vatPayer: company.isVatPayer !== false })
+  const docDef = dt.template.pdf(seller, buyer, cleanItems(items), docOptions(options, company))
   const fileName = `${dt.label}_${options.docNumber}_${options.docDate}.pdf`
   downloadPdf(docDef, fileName)
 }
@@ -54,7 +70,7 @@ export async function generateOrderDoc(docTypeKey, contractor, items, options, {
   const seller = dt.direction === 'incoming' ? enriched : company
   const buyer = dt.direction === 'incoming' ? company : enriched
   const clean = cleanItems(items)
-  const docDef = dt.template.pdf(seller, buyer, clean, { ...(options || {}), vatPayer: company.isVatPayer !== false })
+  const docDef = dt.template.pdf(seller, buyer, clean, docOptions(options, company))
   const { total, vatAmount } = calcTotals(clean)
   const fileName = `${dt.label}_${options.docNumber}_${options.docDate}.pdf`
 
@@ -89,7 +105,7 @@ export async function investorReportPdf(order, items, { download } = {}) {
 export async function supplierOrderPdf(supplier, items, options, { download } = {}) {
   const supplierOrder = await import('./templates/supplierOrder')
   const company = await getCompany()
-  const docDef = supplierOrder.pdf(company, supplier || {}, items || [], options)
+  const docDef = supplierOrder.pdf(company, supplier || {}, items || [], docOptions(options, company))
   if (download) downloadPdf(docDef, `Замовлення постачальнику_${options.docNumber}.pdf`)
   else openPdf(docDef)
 }
@@ -104,7 +120,7 @@ export async function storeGeneratedPdf(generatedDocId, docTypeKey, contractor, 
     const company = await getCompany()
     const seller = dt.direction === 'incoming' ? enriched : company
     const buyer = dt.direction === 'incoming' ? company : enriched
-    const docDef = dt.template.pdf(seller, buyer, cleanItems(items), { ...(options || {}), vatPayer: company.isVatPayer !== false })
+    const docDef = dt.template.pdf(seller, buyer, cleanItems(items), docOptions(options, company))
     await uploadDocDefViaApi('generated', generatedDocId, docDef)
   } catch { /* best-effort */ }
 }
@@ -128,7 +144,7 @@ export async function storeProposalPdf(proposalId, contractor, items, options) {
   if (!proposalId) return { ok: false, error: 'no id' }
   const cp = await import('./templates/commercialProposal')
   const company = await getCompany()
-  const docDef = cp.pdf(company, contractor || {}, cleanItems(items), options)
+  const docDef = cp.pdf(company, contractor || {}, cleanItems(items), docOptions(options, company))
   return uploadDocDefViaApi('proposal', proposalId, docDef)
 }
 
@@ -140,7 +156,7 @@ export async function previewPdf(docTypeKey, contractor, items, options) {
   const company = await getCompany()
   const seller = dt.direction === 'incoming' ? enriched : company
   const buyer = dt.direction === 'incoming' ? company : enriched
-  const docDef = dt.template.pdf(seller, buyer, cleanItems(items), { ...(options || {}), vatPayer: company.isVatPayer !== false })
+  const docDef = dt.template.pdf(seller, buyer, cleanItems(items), docOptions(options, company))
   openPdf(docDef)
 }
 
@@ -152,7 +168,7 @@ export async function generatedDocBlob(docTypeKey, contractor, items, options) {
   const company = await getCompany()
   const seller = dt.direction === 'incoming' ? enriched : company
   const buyer = dt.direction === 'incoming' ? company : enriched
-  const docDef = dt.template.pdf(seller, buyer, cleanItems(items), { ...(options || {}), vatPayer: company.isVatPayer !== false })
+  const docDef = dt.template.pdf(seller, buyer, cleanItems(items), docOptions(options, company))
   return getPdfBlob(docDef)
 }
 
@@ -164,7 +180,7 @@ export async function generateXlsx(docTypeKey, contractor, items, options) {
   const company = await getCompany()
   const seller = dt.direction === 'incoming' ? enriched : company
   const buyer = dt.direction === 'incoming' ? company : enriched
-  const wb = dt.template.xlsx(seller, buyer, cleanItems(items), { ...(options || {}), vatPayer: company.isVatPayer !== false })
+  const wb = dt.template.xlsx(seller, buyer, cleanItems(items), docOptions(options, company))
   const fileName = `${dt.label}_${options.docNumber}_${options.docDate}.xlsx`
   downloadXlsx(wb, fileName)
 }

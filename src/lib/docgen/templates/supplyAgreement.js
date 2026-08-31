@@ -21,6 +21,8 @@ const clause = (num, text) => ({ text: [{ text: `${num} `, color: G2, fontSize: 
 
 export function pdf(company, contractor, items, options) {
   const { docNumber, docDate, notes, city, deliveryBasis, deliveryAddress } = options
+  const brand = options.brand || { theme: 'aim' } // AiM-брендинг лише для ЕЙМ СКІЛ
+  const footerLine = brand.theme === 'aim' ? 'Сформовано в корпоративній системі AiM Skill' : (brand.name || '')
   const params = items[0] || {}
   const paymentTerms = params.paymentTerms || '5 банківських днів з моменту отримання товару'
   const deliveryTerms = params.deliveryTerms || '10 робочих днів з моменту підписання Договору'
@@ -35,8 +37,8 @@ export function pdf(company, contractor, items, options) {
       margin: [44, 0, 44, 10],
       columns: [
         { text: `${docNumber} · ${formatDate(docDate)} · Стор. ${cp}/${pc}`, fontSize: 6, color: G3, margin: [0, 5, 0, 0] },
-        { text: 'Сформовано в корпоративній системі AiM Skill', fontSize: 5.5, color: G3, alignment: 'center', margin: [0, 5, 0, 0] },
-        { ...aimLogo(7), alignment: 'right', margin: [0, 3, 0, 0] },
+        { text: footerLine, fontSize: 5.5, color: G3, alignment: 'center', margin: [0, 5, 0, 0] },
+        brand.theme === 'aim' ? { ...aimLogo(7), alignment: 'right', margin: [0, 3, 0, 0] } : { text: '' },
       ],
     }),
 

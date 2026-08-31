@@ -36,6 +36,11 @@ function itm(it, i) {
 
 export function pdf(company, contractor, items, options) {
   const { docNumber, docDate, notes, validityDays } = options
+  const brand = options.brand || { theme: 'aim' } // тема документа (AiM лише для ЕЙМ СКІЛ)
+  const logoImg = brand.theme === 'aim' ? LOGO_BASE64 : brand.companyLogo
+  const footerLine = brand.theme === 'aim'
+    ? 'Сформовано в системі AiM Skill  ·  aim-skill.com.ua'
+    : [brand.name, brand.phone, brand.email].filter(Boolean).join('  ·  ')
   const { subtotal, vatAmount, total, vatByRate } = calcTotals(items)
   const rows = items.map((it, i) => itm(it, i))
   const companyName = company.shortName || shortenName(company.name) || 'ТОВ «ЕЙМ СКІЛ»'
@@ -49,7 +54,7 @@ export function pdf(company, contractor, items, options) {
     footer: (page, count) => ({
       margin: [48, 0, 48, 0],
       columns: [
-        { text: 'Сформовано в системі AiM Skill  ·  aim-skill.com.ua', fontSize: 6, color: G3 },
+        { text: footerLine, fontSize: 6, color: G3 },
         { text: count > 1 ? `${page} / ${count}` : '', fontSize: 6, color: G3, alignment: 'right' },
       ],
     }),
@@ -58,7 +63,7 @@ export function pdf(company, contractor, items, options) {
       // ═══ ШАПКА: лого зліва · реквізити справа ═══
       {
         columns: [
-          { image: LOGO_BASE64, width: 96, margin: [0, 6, 0, 0] },
+          logoImg ? { image: logoImg, width: 96, margin: [0, 6, 0, 0] } : { text: '', width: 1 },
           {
             width: '*',
             stack: [

@@ -24,6 +24,11 @@ const PROCUREMENT = { tender: 'Тендер', direct: 'Пряма закупів
 
 export function pdf(company, supplier, items, options) {
   const { docNumber, docDate, client, procurementType, notes } = options
+  const brand = options.brand || { theme: 'aim' } // тема документа (AiM лише для ЕЙМ СКІЛ)
+  const logoImg = brand.theme === 'aim' ? LOGO_BASE64 : brand.companyLogo
+  const footerLine = brand.theme === 'aim'
+    ? 'Сформовано в корпоративній системі AiM Skill  ·  073 700 77 58  ·  office@aim-skill.com.ua'
+    : [brand.name, brand.phone, brand.email].filter(Boolean).join('  ·  ')
   const rows = items.map((it, i) => ({ n: i + 1, name: it.name || '', sku: it.sku || '', u: it.unit || 'шт', q: parseFloat(it.quantity) || 0 }))
 
   return {
@@ -38,9 +43,9 @@ export function pdf(company, supplier, items, options) {
         { columns: [
           { stack: [
             { text: docNumber, fontSize: 6, bold: true, color: G2 },
-            { text: 'Сформовано в корпоративній системі AiM Skill  ·  073 700 77 58  ·  office@aim-skill.com.ua', fontSize: 5.5, color: G3, margin: [0, 1, 0, 0] },
+            footerLine ? { text: footerLine, fontSize: 5.5, color: G3, margin: [0, 1, 0, 0] } : {},
           ], width: '*', margin: [0, 3, 0, 0] },
-          { image: LOGO_BASE64, width: 52, alignment: 'right' },
+          logoImg ? { image: logoImg, width: 52, alignment: 'right' } : { text: '' },
         ] },
       ],
     }),

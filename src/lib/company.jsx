@@ -33,14 +33,16 @@ export function CompanyProvider({ children }) {
     setLoading(true)
     let list = []
     // Компанії, призначені користувачу.
+    // Лаконічний набір колонок (без важкого logo_base64 — воно лише для docgen/Settings).
+    const COLS = 'id, name, short_name, sort_order, is_vat_payer, is_fop, edrpou, ipn, tax_group'
     const { data, error } = await supabase
       .from('user_companies')
-      .select('company_id, companies(*)')
+      .select(`company_id, companies(${COLS})`)
       .eq('user_id', user.id)
     if (!error) list = (data || []).map(r => r.companies).filter(Boolean)
     // Фолбек: призначень нема (свіжа БД) — усі компанії.
     if (!list.length) {
-      const { data: all } = await supabase.from('companies').select('*')
+      const { data: all } = await supabase.from('companies').select(COLS)
       list = all || []
     }
     list.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) ||

@@ -24,6 +24,9 @@ function mapRow(row) {
     isVatPayer: !!row.is_vat_payer,
     isFop: !!row.is_fop,
     taxGroup: row.tax_group || 'tov_vat',
+    logoBase64: row.logo_base64 || null,
+    // AiM-брендинг документів — лише для ЕЙМ СКІЛ (за ЄДРПОУ / фіксованим id).
+    isAim: row.edrpou === '45505924' || row.id === '00000000-0000-0000-0000-000000000001',
   }
 }
 

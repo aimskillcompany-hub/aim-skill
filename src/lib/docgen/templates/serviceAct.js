@@ -35,6 +35,12 @@ const sectionTitle = (text) => ({ text: text, fontSize: 7.5, letterSpacing: 2, c
 export function pdf(company, contractor, items, options) {
   const { docNumber, docDate, notes, contractNum, contractDate, city, invoiceRef, invoiceRefDate } = options
   const vatPayer = options.vatPayer !== false // неплатник ПДВ → без колонок/рядків ПДВ
+  const brand = options.brand || { theme: 'aim' } // тема документа (AiM лише для ЕЙМ СКІЛ)
+  const logoImg = brand.theme === 'aim' ? LOGO_BASE64 : brand.companyLogo
+  const brandLine = brand.theme === 'aim' ? 'Сформовано в корпоративній системі AiM Skill' : (brand.name || '')
+  const contactsLine = brand.theme === 'aim'
+    ? '073 700 77 58  ·  office@aim-skill.com.ua  ·  www.aim-skill.com.ua'
+    : [brand.phone, brand.email].filter(Boolean).join('  ·  ')
   const { subtotal, vatAmount, total, vatByRate } = calcTotals(items)
   const rows = items.map((it, i) => itm(it, i))
   const contractStr = contractNum ? `№${contractNum}${contractDate ? ` від ${formatDate(contractDate)}` : ''}` : null
@@ -60,12 +66,12 @@ export function pdf(company, contractor, items, options) {
             {
               stack: [
                 { text: docNumber, fontSize: 6, bold: true, color: G2 },
-                { text: 'Сформовано в корпоративній системі AiM Skill', fontSize: 5.5, color: G3, margin: [0, 1, 0, 0] },
-                { text: '073 700 77 58  ·  office@aim-skill.com.ua  ·  www.aim-skill.com.ua', fontSize: 5.5, color: G3, margin: [0, 1, 0, 0] },
+                brandLine ? { text: brandLine, fontSize: 5.5, color: G3, margin: [0, 1, 0, 0] } : {},
+                contactsLine ? { text: contactsLine, fontSize: 5.5, color: G3, margin: [0, 1, 0, 0] } : {},
               ],
               width: '*', margin: [0, 3, 0, 0],
             },
-            { image: LOGO_BASE64, width: 52, alignment: 'right' },
+            logoImg ? { image: logoImg, width: 52, alignment: 'right' } : { text: '' },
           ],
         },
       ],
