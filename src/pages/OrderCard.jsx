@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { qc } from '../lib/companyScope'
 import { useUser } from '../lib/auth'
 import { nextOrderNumber } from '../lib/orderNumber'
 import { fmt } from '../lib/fmt'
@@ -120,7 +121,7 @@ export default function OrderCard() {
   // (реальні облікові дані). Інакше — пропонуємо архівування.
   const del = async () => {
     setBusy('del'); setMsg(null)
-    const { count } = await supabase.from('documents').select('id', { count: 'exact', head: true }).eq('order_id', id)
+    const { count } = await qc('documents').select('id', { count: 'exact', head: true }).eq('order_id', id)
     if (count > 0) {
       setBusy(''); setConfirmDel(false)
       setMsg(`Не можна видалити: до замовлення прив'язано ${count} документ(ів). Заархівуйте його замість видалення.`)
@@ -932,25 +933,25 @@ function DocumentsTab({ o }) {
   const [gen, setGen] = useState(null) // { contractor, editDoc }
   const load = async () => {
     const cols = 'id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, source, posted, contractors(name)'
-    let { data, error } = await supabase.from('documents').select(cols).eq('order_id', o.id).order('created_at', { ascending: false })
-    if (error) ({ data } = await supabase.from('documents').select(cols.replace(', posted', '')).eq('order_id', o.id).order('created_at', { ascending: false })) // фолбек, якщо колонки posted ще нема
+    let { data, error } = await qc('documents').select(cols).eq('order_id', o.id).order('created_at', { ascending: false })
+    if (error) ({ data } = await qc('documents').select(cols.replace(', posted', '')).eq('order_id', o.id).order('created_at', { ascending: false })) // фолбек, якщо колонки posted ще нема
     setRows((data || []).filter(d => d.source !== 'generated')) // згенеровані показані окремою секцією
   }
   // Провести / зняти з проведення (додати/прибрати з розділу «Документи»)
   const setPosted = async (d, val) => {
-    const { data, error } = await supabase.from('documents').update({ posted: val }).eq('id', d.id).select('id')
+    const { data, error } = await qc('documents').update({ posted: val }).eq('id', d.id).select('id')
     if (error || !data?.length) { alert('Не вдалося: ' + (error?.message || 'запустіть міграцію 038')); return }
     load()
   }
-  const loadGen = () => supabase.from('generated_docs').select('*').eq('order_id', o.id).order('created_at', { ascending: false }).then(({ data }) => setGenDocs(data || []))
+  const loadGen = () => qc('generated_docs').select('*').eq('order_id', o.id).order('created_at', { ascending: false }).then(({ data }) => setGenDocs(data || []))
   useEffect(() => { load(); loadGen() }, [o.id])
-  const unlink = async (d) => { await supabase.from('documents').update({ order_id: null }).eq('id', d.id); load() }
+  const unlink = async (d) => { await qc('documents').update({ order_id: null }).eq('id', d.id); load() }
   const delGen = async (d) => {
     // Спершу прибрати складські рухи дзеркального документа (FK = SET NULL, тож каскад їх не видалить),
     // потім сам згенерований — каскад (міграція 017) прибере дзеркало в documents.
-    const { data: mirror } = await supabase.from('documents').select('id').eq('generated_doc_id', d.id).maybeSingle()
+    const { data: mirror } = await qc('documents').select('id').eq('generated_doc_id', d.id).maybeSingle()
     if (mirror?.id) await supabase.from('stock_movements').delete().eq('document_id', mirror.id).neq('source', 'assembly')
-    await supabase.from('generated_docs').delete().eq('id', d.id)
+    await qc('generated_docs').delete().eq('id', d.id)
     loadGen()
   }
 
@@ -1062,7 +1063,7 @@ function AttachDocsModal({ o, onClose, onAttached }) {
   const timerRef = useRef(null)
 
   const search = async (term) => {
-    let query = supabase.from('documents')
+    let query = qc('documents')
       .select('id, type, doc_number, file_name, amount, doc_date, created_at, order_id, contractor_id, contractors(name)')
       .order('created_at', { ascending: false }).limit(40)
     const t = term.trim()
@@ -1078,7 +1079,7 @@ function AttachDocsModal({ o, onClose, onAttached }) {
     return () => clearTimeout(timerRef.current)
   }, [q]) // eslint-disable-line
 
-  const attach = async (d) => { await supabase.from('documents').update({ order_id: o.id }).eq('id', d.id); onAttached() }
+  const attach = async (d) => { await qc('documents').update({ order_id: o.id }).eq('id', d.id); onAttached() }
 
   return (
     <div className="modal-bg" onClick={onClose}>
@@ -1302,7 +1303,7 @@ function TransactionsTab({ o }) {
   const [rows, setRows] = useState(null)
   useEffect(() => {
     (async () => {
-      const { data: docs } = await supabase.from('documents').select('id').eq('order_id', o.id)
+      const { data: docs } = await qc('documents').select('id').eq('order_id', o.id)
       const docIds = (docs || []).map(d => d.id)
       if (!docIds.length) { setRows([]); return }
       const { data } = await supabase.from('transaction_documents')

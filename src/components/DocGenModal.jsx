@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { qc } from '../lib/companyScope'
 import {
   DOCUMENT_TYPES, getNextDocNumber, generatePdf, generateXlsx,
   saveDoc, calcTotals, formatMoney
@@ -58,7 +59,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
       const contractDocTypes = DOCUMENT_TYPES.filter(t => t.isContract).map(t => t.key)
       Promise.all([
         supabase.from('contractor_contracts').select('*').eq('contractor_id', contractor.id).eq('status', 'active').order('date', { ascending: false }),
-        supabase.from('documents').select('id, type, doc_number, doc_date').eq('contractor_id', contractor.id).in('type', contractDocTypes),
+        qc('documents').select('id, type, doc_number, doc_date').eq('contractor_id', contractor.id).in('type', contractDocTypes),
       ]).then(([{ data: regs }, { data: docs }]) => {
         const list = [...(regs || [])]
         const seen = new Set(list.map(c => (c.number || '').trim()))
@@ -72,7 +73,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
         setContractsList(list)
       })
       // Наявні рахунки цього контрагента — щоб у видатковій/акті обрати рахунок, а не вводити вручну
-      supabase.from('generated_docs').select('id, doc_number, doc_date, total')
+      qc('generated_docs').select('id, doc_number, doc_date, total')
         .eq('contractor_id', contractor.id).eq('doc_type', 'invoice').order('doc_date', { ascending: false })
         .then(({ data }) => setInvoicesList(data || []))
     }
@@ -186,7 +187,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
             const path = `incoming/${savedDoc.id}/${Date.now()}.${ext}`
             const { error: upErr } = await supabase.storage.from('documents').upload(path, f, { contentType: f.type })
             if (!upErr) {
-              await supabase.from('generated_docs').update({ file_path: path, file_name: f.name }).eq('id', savedDoc.id)
+              await qc('generated_docs').update({ file_path: path, file_name: f.name }).eq('id', savedDoc.id)
             }
           }
         }

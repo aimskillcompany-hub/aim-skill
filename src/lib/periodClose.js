@@ -1,6 +1,6 @@
 // ── Закриття періоду: чек-лист якості, знімок, закрити/переоткрити ──
 import { supabase } from './supabase'
-import { q } from './companyScope'
+import { qc } from './companyScope'
 import { computePL, salesProfitReport, periodRange } from './pl'
 import { countsAsDebt } from './debts'
 
@@ -33,11 +33,11 @@ export async function runChecklist(year, month) {
   }
 
   // 2. Документи періоду без суми
-  const { data: docsNoAmount } = await supabase.from('documents')
+  const { data: docsNoAmount } = await qc('documents')
     .select('id, doc_number, type').gte('doc_date', from).lte('doc_date', to).is('amount', null)
 
   // 3. Невалідовані (некласифіковані) транзакції періоду — з даними для класифікації
-  const { data: unclassifiedList } = await q('bank_transactions')
+  const { data: unclassifiedList } = await qc('bank_transactions')
     .select('id, date, amount, counterparty, description, direction, article, account_id')
     .gte('date', from).lte('date', to).eq('is_ignored', false).eq('is_validated', false).order('date')
 
@@ -45,7 +45,7 @@ export async function runChecklist(year, month) {
   //    якщо її ще нема, вважаємо 0 неперевірених, щоб не ламати чек-лист до застосування міграції.
   let unverifiedList = []
   {
-    const r = await supabase.from('documents')
+    const r = await qc('documents')
       .select('id, doc_number, type, doc_date, amount, vat_amount, contractor_id, storage_path, file_path, file_type, file_name, ocr_data, is_signed, is_verified, doc_role, direction, source, contractors(name)')
       .gte('doc_date', from).lte('doc_date', to).eq('is_verified', false).order('doc_date')
     if (!r.error) unverifiedList = r.data || []
@@ -87,7 +87,7 @@ export async function computeSnapshot(year, month) {
 
   // Баланси рахунків станом на кінець періоду
   const [{ data: accs }, txs] = await Promise.all([
-    q('accounts').select('id, name, type, opening_balance, opening_balance_date'),
+    qc('accounts').select('id, name, type, opening_balance, opening_balance_date'),
     fetchAll('bank_transactions', 'account_id, amount, date', q => q.eq('is_ignored', false).lte('date', to)),
   ])
   const accAgg = {}
@@ -296,7 +296,7 @@ export async function computeContinuity(year, month) {
   const stockTot = stockItems.reduce((s, x) => ({ openVal: s.openVal + x.openVal, closeVal: s.closeVal + x.closeVal }), { openVal: 0, closeVal: 0 })
 
   // Гроші (Банк/Каса)
-  const { data: accs } = await q('accounts').select('id, name, type, opening_balance, opening_balance_date, sort_order').order('sort_order')
+  const { data: accs } = await qc('accounts').select('id, name, type, opening_balance, opening_balance_date, sort_order').order('sort_order')
   const txs = await fetchAll('bank_transactions', 'account_id, amount, date', q => q.eq('is_ignored', false).lte('date', to))
   const cash = (accs || []).map(a => {
     let openMove = 0, inflow = 0, outflow = 0

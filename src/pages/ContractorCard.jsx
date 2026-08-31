@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { q } from '../lib/companyScope'
+import { qc } from '../lib/companyScope'
 import { useUser } from '../lib/auth'
 import { fmt, fmtInt } from '../lib/fmt'
 import { getContractorBalance } from '../lib/debts'
@@ -430,8 +430,8 @@ function DocumentsTab({ id }) {
   const cols = 'id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, ocr_data, source, generated_doc_id, contractors(name)'
   const load = async () => {
     // posted=false — чернетка в замовленні; у картці контрагента не показуємо
-    let { data, error } = await supabase.from('documents').select(cols).eq('contractor_id', id).not('posted', 'is', false).order('created_at', { ascending: false })
-    if (error) ({ data } = await supabase.from('documents').select(cols).eq('contractor_id', id).order('created_at', { ascending: false })) // фолбек, якщо колонки posted ще нема
+    let { data, error } = await qc('documents').select(cols).eq('contractor_id', id).not('posted', 'is', false).order('created_at', { ascending: false })
+    if (error) ({ data } = await qc('documents').select(cols).eq('contractor_id', id).order('created_at', { ascending: false })) // фолбек, якщо колонки posted ще нема
     setRows(data || [])
   }
   useEffect(() => { load() }, [id])
@@ -466,7 +466,7 @@ function DocumentsTab({ id }) {
 function TransactionsTab({ id }) {
   const [rows, setRows] = useState(null)
   useEffect(() => {
-    q('bank_transactions').select('id, date, description, counterparty, amount, direction, article')
+    qc('bank_transactions').select('id, date, description, counterparty, amount, direction, article')
       .eq('contractor_id', id).eq('is_ignored', false).order('date', { ascending: false }).limit(200)
       .then(({ data }) => setRows(data || []))
   }, [id])

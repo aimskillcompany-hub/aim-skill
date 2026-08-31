@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { qc, withCompany } from '../lib/companyScope'
 import { extractDocumentMulti } from '../lib/ai'
 import { fetchArticles } from '../lib/articles'
 import { getContractorMatcher } from '../lib/contractorMatch'
@@ -88,7 +89,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
     if (!existingDoc?.id) return
     setBusy(true); setError(null)
     const next = !verified
-    const { error } = await supabase.from('documents')
+    const { error } = await qc('documents')
       .update({ is_verified: next, verified_at: next ? new Date().toISOString() : null, verified_by: next ? (user?.id || null) : null })
       .eq('id', existingDoc.id)
     setBusy(false)
@@ -100,7 +101,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
   const toggleSigned = async (checked) => {
     setForm(f => ({ ...f, is_signed: checked }))
     if (!existingDoc?.id) return
-    const { error } = await supabase.from('documents')
+    const { error } = await qc('documents')
       .update({ is_signed: checked, signed_scan_url: checked ? (existingDoc.storage_path || existingDoc.file_path || null) : null })
       .eq('id', existingDoc.id)
     if (error) { setError('Не вдалося зберегти «Підписаний»: ' + error.message); setForm(f => ({ ...f, is_signed: !checked })) }
@@ -242,8 +243,8 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
           ocr_data: form,
           posted: form.posted !== false,
         }
-        let { data, error } = await supabase.from('documents').update(upd).eq('id', existingDoc.id).select('id')
-        if (error && /posted/.test(error.message || '')) { const { posted, ...rest } = upd; ({ data, error } = await supabase.from('documents').update(rest).eq('id', existingDoc.id).select('id')) }
+        let { data, error } = await qc('documents').update(upd).eq('id', existingDoc.id).select('id')
+        if (error && /posted/.test(error.message || '')) { const { posted, ...rest } = upd; ({ data, error } = await qc('documents').update(rest).eq('id', existingDoc.id).select('id')) }
         if (error) throw error
         if (!data?.length) throw new Error('Документ не оновлено (немає прав UPDATE). Запусти migrations/004 у Supabase.')
         await syncDocStock(existingDoc.id)
@@ -273,8 +274,8 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
         order_id: orderId || null,
         posted: form.posted !== false,
       }
-      let { data: doc, error } = await supabase.from('documents').insert(ins).select('id').single()
-      if (error && /posted/.test(error.message || '')) { const { posted, ...rest } = ins; ({ data: doc, error } = await supabase.from('documents').insert(rest).select('id').single()) }
+      let { data: doc, error } = await qc('documents').insert(withCompany(ins)).select('id').single()
+      if (error && /posted/.test(error.message || '')) { const { posted, ...rest } = ins; ({ data: doc, error } = await qc('documents').insert(withCompany(rest)).select('id').single()) }
       if (error) throw error
 
       await syncDocStock(doc.id)
@@ -291,7 +292,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
       // тож після видалення документа рухи лишаються (осиротілі), а склад не відкочується. Прибираємо їх явно
       // (крім збірок — їх source='assembly'). Спершу видаляємо документ (перевірка прав/періоду), потім рухи.
       const { data: mvs } = await supabase.from('stock_movements').select('id').eq('document_id', existingDoc.id).neq('source', 'assembly')
-      const { data, error } = await supabase.from('documents').delete().eq('id', existingDoc.id).select('id')
+      const { data, error } = await qc('documents').delete().eq('id', existingDoc.id).select('id')
       if (error) throw error
       if (!data?.length) { setError('Документ не видалено (недостатньо прав). Видалення доступне ролям admin/accountant.'); setBusy(false); return }
       if (mvs?.length) await supabase.from('stock_movements').delete().in('id', mvs.map(m => m.id))

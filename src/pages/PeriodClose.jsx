@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useUser } from '../lib/auth'
 import { fmt } from '../lib/fmt'
 import { supabase } from '../lib/supabase'
-import { q } from '../lib/companyScope'
+import { qc } from '../lib/companyScope'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import { listClosings, periodStatus, runChecklist, computeSnapshot, closePeriod, reopenPeriod, computeContinuity, snapshotDiff, computePeriodDetail } from '../lib/periodClose'
 import { getDocType } from '../lib/docgen'
@@ -417,12 +417,12 @@ function TxClassify({ tx, grouped, onDone }) {
   const save = async () => {
     setBusy(true)
     const article = Object.values(grouped).flat().find(a => a.name === art)
-    await q('bank_transactions').update({
+    await qc('bank_transactions').update({
       direction: dir || null, article: art || null, article_id: article?.id || null, is_validated: true,
     }).eq('id', tx.id)
     setBusy(false); onDone()
   }
-  const ignore = async () => { setBusy(true); await q('bank_transactions').update({ is_ignored: true }).eq('id', tx.id); setBusy(false); onDone() }
+  const ignore = async () => { setBusy(true); await qc('bank_transactions').update({ is_ignored: true }).eq('id', tx.id); setBusy(false); onDone() }
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10, margin: '8px 0 8px 24px', fontSize: 13 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, gap: 10 }}>

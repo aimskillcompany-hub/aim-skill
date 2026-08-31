@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { qc } from '../lib/companyScope'
 import { useUser } from '../lib/auth'
 import { fmt, fmtInt } from '../lib/fmt'
 import { assembleProduct, getAssembly, deleteAssembly, editAssembly, mergeProducts } from '../lib/stockService'
@@ -724,7 +725,7 @@ function DocPickerModal({ title, match, onClose, onPick }) {
   const movDate = match?.date || null
   useEffect(() => {
     const t = setTimeout(async () => {
-      let qb = supabase.from('documents').select('id, type, file_name, amount, doc_date, created_at, contractors(name)').limit(120)
+      let qb = qc('documents').select('id, type, file_name, amount, doc_date, created_at, contractors(name)').limit(120)
       const term = q.trim()
       if (term) { const e = term.replace(/[%,()]/g, ' '); qb = qb.or(`file_name.ilike.%${e}%,doc_number.ilike.%${e}%`).order('created_at', { ascending: false }) }
       else if (movDate) { const d = new Date(movDate); const lo = new Date(d - 45 * 864e5).toISOString().slice(0, 10); const hi = new Date(+d + 45 * 864e5).toISOString().slice(0, 10); qb = qb.gte('doc_date', lo).lte('doc_date', hi).order('doc_date', { ascending: false }) }

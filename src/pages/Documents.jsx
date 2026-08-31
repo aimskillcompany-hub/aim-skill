@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { qc } from '../lib/companyScope'
 import { useUser } from '../lib/auth'
 import { fmt } from '../lib/fmt'
 import { DOCUMENT_TYPES, getDocType } from '../lib/docgen'
@@ -40,7 +41,7 @@ export default function Documents() {
     // is_verified — міграція 029; якщо колонки ще нема, вантажимо без неї (сторінка не ламається)
     // posted=false — чернетка в замовленні (не проведено по системі), у реєстрі не показуємо
     const sel = (extra, filterPosted) => {
-      let q = supabase.from('documents').select(base + extra)
+      let q = qc('documents').select(base + extra)
       if (filterPosted) q = q.not('posted', 'is', false)
       return q.order('created_at', { ascending: false }).limit(500)
     }

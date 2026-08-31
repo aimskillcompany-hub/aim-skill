@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { qc } from '../lib/companyScope'
 import { STATUS_ORDER, labelForStatus } from '../lib/orders'
 import { fmt } from '../lib/fmt'
 
@@ -65,7 +66,7 @@ export default function OrderReport() {
       const ids = (ords || []).map(o => o.id)
       let docs = []
       if (ids.length) {
-        const { data } = await supabase.from('documents')
+        const { data } = await qc('documents')
           .select('order_id, type, doc_number, doc_date, created_at')
           .in('order_id', ids)
         docs = data || []

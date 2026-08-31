@@ -1,7 +1,7 @@
 // Аналітика: P&L (Факт/План), Борги (Aging), Dashboard.
 // Принципи ТЗ: у P&L лише is_validated транзакції; борги = документи − прив'язані транзакції.
 import { supabase } from './supabase'
-import { q } from './companyScope'
+import { qc } from './companyScope'
 import { PL_ORDER, PL_LABELS, PL_SIGN } from './articles'
 import { getAccountBalances } from './accounts'
 import { countsAsDebt } from './debts'
@@ -18,7 +18,7 @@ export function periodRange(year, month) {
 export async function computePL(year, month) {
   const { from, to, ym } = periodRange(year, month)
   const [{ data: txs }, { data: arts }, { data: plans }] = await Promise.all([
-    q('bank_transactions').select('amount, article, direction').eq('is_validated', true).eq('is_ignored', false).gte('date', from).lte('date', to),
+    qc('bank_transactions').select('amount, article, direction').eq('is_validated', true).eq('is_ignored', false).gte('date', from).lte('date', to),
     supabase.from('articles').select('name, type, pl_level, sort_order'),
     supabase.from('plans').select('article, amount, year_month'),
   ])
@@ -67,7 +67,7 @@ export async function computePLBreakdown(year, month, opts = {}) {
   const includePending = !!opts.includePending
   const { from, to } = periodRange(year, month)
   const [{ data: txs }, { data: arts }] = await Promise.all([
-    q('bank_transactions').select('amount, article, direction, date, is_validated').eq('is_ignored', false).gte('date', from).lte('date', to),
+    qc('bank_transactions').select('amount, article, direction, date, is_validated').eq('is_ignored', false).gte('date', from).lte('date', to),
     supabase.from('articles').select('name, type, pl_level, sort_order'),
   ])
   const meta = {}; (arts || []).forEach(a => { meta[a.name] = a })
@@ -143,7 +143,7 @@ export async function plDrill(year, month, bucketKey, articleNames, opts = {}) {
     if (bucketKey === 'total') ({ from, to } = periodRange(year, null))
     else { const m = Number(bucketKey); from = `${year}-${pad(m)}-01`; to = `${year}-${pad(m)}-${pad(monthEnd(year, m))}` }
   }
-  const { data } = await q('bank_transactions')
+  const { data } = await qc('bank_transactions')
     .select('id, date, amount, article, direction, counterparty, contractor_id, description')
     .eq('is_validated', opts.validated === false ? false : true).eq('is_ignored', false)
     .gte('date', from).lte('date', to)
@@ -165,7 +165,7 @@ export async function salesProfitReport(year, month) {
   const docIds = [...new Set(movs.map(m => m.document_id))]
   const prodIds = [...new Set(movs.map(m => m.product_id).filter(Boolean))]
   const [{ data: docs }, { data: prods }] = await Promise.all([
-    supabase.from('documents').select('id, type, doc_number, doc_date, contractors(name)').in('id', docIds),
+    qc('documents').select('id, type, doc_number, doc_date, contractors(name)').in('id', docIds),
     prodIds.length ? supabase.from('products').select('id, name, product_type').in('id', prodIds) : Promise.resolve({ data: [] }),
   ])
   const docMap = {}; (docs || []).forEach(d => { docMap[d.id] = d })
@@ -178,7 +178,7 @@ export async function salesProfitReport(year, month) {
       .select('product_id, date, document_id, price, cost_price').eq('type', 'in').in('product_id', prodIds).not('document_id', 'is', null)
       .order('date', { ascending: false })
     const inDocIds = [...new Set((inMovs || []).map(m => m.document_id))]
-    const { data: inDocs } = inDocIds.length ? await supabase.from('documents').select('id, doc_number, doc_date, vat_amount, contractors(name, is_vat_payer)').in('id', inDocIds) : { data: [] }
+    const { data: inDocs } = inDocIds.length ? await qc('documents').select('id, doc_number, doc_date, vat_amount, contractors(name, is_vat_payer)').in('id', inDocIds) : { data: [] }
     const inDocMap = {}; (inDocs || []).forEach(d => { inDocMap[d.id] = d })
     ;(inMovs || []).forEach(m => {
       if (purchaseByProd[m.product_id]) return
@@ -243,7 +243,7 @@ const BUCKETS = [['0-7', 0, 7], ['8-14', 8, 14], ['15-30', 15, 30], ['30+', 31, 
 export async function computeAging() {
   const today = new Date()
   const [{ data: docs }, { data: tdocs }, { data: contractors }] = await Promise.all([
-    supabase.from('documents').select('id, contractor_id, amount, direction, type, doc_date, created_at').not('amount', 'is', null).not('direction', 'is', null),
+    qc('documents').select('id, contractor_id, amount, direction, type, doc_date, created_at').not('amount', 'is', null).not('direction', 'is', null),
     supabase.from('transaction_documents').select('document_id, amount'),
     supabase.from('contractors').select('id, name'),
   ])
@@ -298,7 +298,7 @@ export async function computeForecast(year, month) {
   // Замовлення, що вже мають receivable-документ (видаткова/акт) → не рахуємо в pipeline
   const withDoc = new Set()
   if (openIds.length) {
-    const { data: docs } = await supabase.from('documents')
+    const { data: docs } = await qc('documents')
       .select('order_id, type, direction').in('order_id', openIds)
     ;(docs || []).forEach(d => {
       if (d.order_id && d.direction === 'receivable' && countsAsDebt(d.type)) withDoc.add(d.order_id)
@@ -341,8 +341,8 @@ export async function dashboardStats(year) {
   const yFrom = `${year}-01-01`
 
   const [{ data: monthTxs }, { data: yearTxs }, balances, aging] = await Promise.all([
-    q('bank_transactions').select('amount, direction').eq('is_validated', true).eq('is_ignored', false).gte('date', mFrom),
-    q('bank_transactions').select('amount, direction, date, counterparty, contractor_id').eq('is_validated', true).eq('is_ignored', false).gte('date', yFrom),
+    qc('bank_transactions').select('amount, direction').eq('is_validated', true).eq('is_ignored', false).gte('date', mFrom),
+    qc('bank_transactions').select('amount, direction, date, counterparty, contractor_id').eq('is_validated', true).eq('is_ignored', false).gte('date', yFrom),
     getAccountBalances(),
     computeAging(),
   ])

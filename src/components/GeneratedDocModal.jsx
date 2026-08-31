@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { qc } from '../lib/companyScope'
 import { fmt } from '../lib/fmt'
 import { getDocType, generatedDocBlob, previewPdf, generatePdf } from '../lib/docgen'
 
@@ -19,7 +20,7 @@ export default function GeneratedDocModal({ doc, onClose, onDeleted, onScanUploa
   useEffect(() => {
     (async () => {
       try {
-        const { data: g } = await supabase.from('generated_docs').select('*').eq('id', doc.generated_doc_id).maybeSingle()
+        const { data: g } = await qc('generated_docs').select('*').eq('id', doc.generated_doc_id).maybeSingle()
         if (!g) throw new Error('Згенерований документ не знайдено')
         let c = { id: doc.contractor_id, name: doc.contractors?.name }
         if (doc.contractor_id) { const { data } = await supabase.from('contractors').select('*').eq('id', doc.contractor_id).maybeSingle(); if (data) c = data }
@@ -51,7 +52,7 @@ export default function GeneratedDocModal({ doc, onClose, onDeleted, onScanUploa
       const { error: upErr } = await supabase.storage.from('documents').upload(path, file, { contentType: file.type, upsert: false })
       if (upErr && !/exists/i.test(upErr.message)) throw upErr
       const upd = { storage_path: path, file_path: path, file_name: file.name, file_type: file.type }
-      const { error } = await supabase.from('documents').update(upd).eq('id', doc.id)
+      const { error } = await qc('documents').update(upd).eq('id', doc.id)
       if (error) throw error
       onScanUploaded?.({ ...doc, ...upd })
     } catch (e) { setErr('Не вдалося завантажити скан: ' + e.message); setBusy(false) }
@@ -63,9 +64,9 @@ export default function GeneratedDocModal({ doc, onClose, onDeleted, onScanUploa
     try {
       const gid = doc.generated_doc_id
       if (doc.id) await supabase.from('stock_movements').delete().eq('document_id', doc.id)
-      const { error: dErr } = await supabase.from('documents').delete().eq('generated_doc_id', gid)
+      const { error: dErr } = await qc('documents').delete().eq('generated_doc_id', gid)
       if (dErr) throw dErr
-      const { error: gErr } = await supabase.from('generated_docs').delete().eq('id', gid)
+      const { error: gErr } = await qc('generated_docs').delete().eq('id', gid)
       if (gErr) throw gErr
       ;(onDeleted || onClose)()
     } catch (e) {

@@ -34,11 +34,12 @@ export function setActiveCompanyId(id) {
   _activeCompanyId = id || null
 }
 
-// Скоуплений SELECT: q('bank_transactions').select('*').eq(...) →
+// Скоуплений SELECT: qc('bank_transactions').select('*').eq(...) →
 // авто-додає .eq('company_id', активна) одразу після .select().
 // Insert/update/delete проходять без змін (перший виклик не .select → не перехоплюється),
 // тож для запису company_id підставляй через withCompany().
-export function q(table) {
+// Назва qc (query-company), НЕ q — щоб не колізувати з поширеним локальним `q` (пошук/лічильники).
+export function qc(table) {
   const builder = supabase.from(table)
   const id = _activeCompanyId
   if (!id || !isScoped(table)) return builder

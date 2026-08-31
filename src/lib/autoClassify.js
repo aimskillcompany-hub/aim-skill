@@ -1,6 +1,6 @@
 // ── Автоматична класифікація банківських транзакцій ──
 import { supabase } from './supabase'
-import { q } from './companyScope'
+import { qc } from './companyScope'
 
 // Кеш історії (завантажується один раз)
 let historyCache = null
@@ -9,7 +9,7 @@ async function loadHistory() {
   if (historyCache) return historyCache
 
   const [{ data: txs }, { data: contractors }] = await Promise.all([
-    q('bank_transactions')
+    qc('bank_transactions')
       .select('edrpou, counterparty, direction, article, contractor_id')
       .eq('is_ignored', false)
       .not('direction', 'is', null)

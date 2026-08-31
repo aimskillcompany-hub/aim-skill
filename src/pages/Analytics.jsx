@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { qc } from '../lib/companyScope'
 import { useUser } from '../lib/auth'
 import { getDocType } from '../lib/docgen'
 import DocModal from '../components/DocModal'
@@ -351,7 +352,7 @@ function ProfitView() {
   // Відкрити документ-джерело (видаткову або прихідну) — регенерований чи завантажений
   const openDocById = async (id) => {
     if (!id) return
-    const { data: d } = await supabase.from('documents').select('*, contractors(name)').eq('id', id).maybeSingle()
+    const { data: d } = await qc('documents').select('*, contractors(name)').eq('id', id).maybeSingle()
     if (!d) return
     if (d.source === 'generated' && d.generated_doc_id) setGenDoc(d)
     else setOpenDoc(d)
@@ -468,7 +469,7 @@ function VatView() {
   useEffect(() => { setData(null); vatReport(year).then(setData) }, [year])
 
   const openDocById = async (id) => {
-    const { data: d } = await supabase.from('documents')
+    const { data: d } = await qc('documents')
       .select('*, contractors(name)').eq('id', id).single()
     if (d) setOpenDoc(d)
   }

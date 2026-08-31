@@ -5,6 +5,7 @@ import { downloadPdf, openPdf, getPdfBlob, getPdfBase64 } from './pdfBuilder'
 import { downloadXlsx } from './xlsxBuilder'
 import { calcTotals } from './formatUtils'
 import { supabase } from '../supabase'
+import { qc, withCompany } from '../companyScope'
 
 export { DOCUMENT_TYPES, getDocType, getDocLabel, STATUS_LABELS, STATUS_COLORS } from './templates/registry'
 export { calcTotals, amountInWords, formatMoney, formatDate } from './formatUtils'
@@ -65,12 +66,12 @@ export async function generateOrderDoc(docTypeKey, contractor, items, options, {
   const path = `orders/${orderId}/${Date.now()}_${docTypeKey}.pdf`
   const { error: upErr } = await supabase.storage.from('documents').upload(path, blob, { contentType: 'application/pdf', upsert: false })
   if (upErr) throw upErr
-  await supabase.from('documents').delete().eq('order_id', orderId).eq('type', docTypeKey).eq('doc_number', options.docNumber)
-  const { error: insErr } = await supabase.from('documents').insert({
+  await qc('documents').delete().eq('order_id', orderId).eq('type', docTypeKey).eq('doc_number', options.docNumber)
+  const { error: insErr } = await qc('documents').insert(withCompany({
     type: docTypeKey, order_id: orderId, contractor_id: contractorId || contractor?.id || null,
     doc_number: options.docNumber, doc_date: options.docDate, amount: total || null, vat_amount: vatAmount || null,
     file_name: fileName, storage_path: path, direction: dt.direction === 'incoming' ? 'payable' : 'receivable',
-  })
+  }))
   if (insErr) throw insErr
 }
 
@@ -223,9 +224,9 @@ export async function saveDoc({ docType, docNumber, docDate, contractorId, contr
     delivery_basis: deliveryBasis || null,
     delivery_address: deliveryAddress || null,
   }
-  let { data, error } = await supabase.from('generated_docs').insert({ ...base, ...refs }).select('id').single()
+  let { data, error } = await qc('generated_docs').insert(withCompany({ ...base, ...refs })).select('id').single()
   if (error && isMissingRefsColumn(error.message)) {
-    ;({ data, error } = await supabase.from('generated_docs').insert(base).select('id').single())
+    ;({ data, error } = await qc('generated_docs').insert(withCompany(base)).select('id').single())
   }
 
   if (error) throw new Error(error.message)
@@ -236,11 +237,11 @@ export async function saveDoc({ docType, docNumber, docDate, contractorId, contr
   // Створюється МИТТЄВО (без рендера PDF). Пропускаємо, якщо документ з таким
   // же контрагентом+типом+номером уже існує (щоб не задвоювати борг).
   if (data?.id) {
-    let dup = supabase.from('documents').select('id', { count: 'exact', head: true }).eq('type', docType).eq('doc_number', docNumber)
+    let dup = qc('documents').select('id', { count: 'exact', head: true }).eq('type', docType).eq('doc_number', docNumber)
     dup = contractorId ? dup.eq('contractor_id', contractorId) : dup.is('contractor_id', null)
     const { count: existing } = await dup
     if (existing) return data // вже є такий документ — дзеркало не створюємо
-    await supabase.from('documents').insert({
+    await qc('documents').insert(withCompany({
       type: docType, doc_number: docNumber, doc_date: docDate,
       contractor_id: contractorId || null, order_id: orderId || null,
       amount: total ?? null, vat_amount: vatAmount ?? null,
@@ -248,7 +249,7 @@ export async function saveDoc({ docType, docNumber, docDate, contractorId, contr
       doc_role: dt.direction === 'incoming' ? 'incoming' : 'outgoing',
       file_name: `${dt.label}_${docNumber}.pdf`, file_path: `generated/${data.id}.pdf`,
       source: 'generated', generated_doc_id: data.id,
-    })
+    }))
   }
 
   // Автоматичні складські рухи тільки для прихідних (IN)
@@ -271,7 +272,7 @@ export async function createStockFromDoc(docId, docType, items, date, userId) {
   // знаходимо дзеркальний рядок у documents (за generated_doc_id).
   let mirrorId = null
   if (docId) {
-    const { data: mirror } = await supabase.from('documents').select('id').eq('generated_doc_id', docId).maybeSingle()
+    const { data: mirror } = await qc('documents').select('id').eq('generated_doc_id', docId).maybeSingle()
     mirrorId = mirror?.id || null
   }
 
@@ -337,20 +338,20 @@ export async function updateDoc(id, { docNumber, docDate, items, subtotal, vatAm
     delivery_basis: deliveryBasis || null,
     delivery_address: deliveryAddress || null,
   }
-  let { error } = await supabase.from('generated_docs').update({ ...base, ...refs }).eq('id', id)
+  let { error } = await qc('generated_docs').update({ ...base, ...refs }).eq('id', id)
   if (error && isMissingRefsColumn(error.message)) {
-    ;({ error } = await supabase.from('generated_docs').update(base).eq('id', id))
+    ;({ error } = await qc('generated_docs').update(base).eq('id', id))
   }
   if (error) throw new Error(error.message)
   // Синхронізувати дзеркальний рядок у documents (сума/номер/дата)
-  await supabase.from('documents').update({ doc_number: docNumber, doc_date: docDate, amount: total ?? null, vat_amount: vatAmount ?? null }).eq('generated_doc_id', id)
+  await qc('documents').update({ doc_number: docNumber, doc_date: docDate, amount: total ?? null, vat_amount: vatAmount ?? null }).eq('generated_doc_id', id)
 }
 
 // ── Оновити статус ──
 export async function updateDocStatus(id, status, bankTransactionId) {
   const upd = { status }
   if (bankTransactionId) upd.bank_transaction_id = bankTransactionId
-  const { error } = await supabase.from('generated_docs').update(upd).eq('id', id)
+  const { error } = await qc('generated_docs').update(upd).eq('id', id)
   if (error) throw new Error(error.message)
 }
 
