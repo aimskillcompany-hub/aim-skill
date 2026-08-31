@@ -252,6 +252,9 @@ function StatusStepper({ o, onChange }) {
     <div style={{ display: 'flex', alignItems: 'flex-start', overflowX: 'auto', marginBottom: 16, padding: '4px 2px' }}>
       {steps.map((st, i) => {
         const done = i < cur, active = i === cur
+        const accent = st.accent // яскравий статус (напр. «Потребує оплати»)
+        const activeBg = accent || 'var(--blue)'
+        const labelColor = active ? activeBg : accent ? accent : done ? 'var(--text)' : 'var(--text3)'
         return (
           <Fragment key={st.s}>
             {i > 0 && <div style={{ flex: '1 1 16px', minWidth: 12, height: 2, background: i <= cur ? 'var(--green)' : 'var(--border)', marginTop: 14 }} />}
@@ -260,11 +263,12 @@ function StatusStepper({ o, onChange }) {
               <span style={{
                 width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 13, fontWeight: 700,
-                background: active ? 'var(--blue)' : done ? 'var(--green)' : 'var(--surface2)',
-                color: active || done ? '#fff' : 'var(--text3)',
+                background: active ? activeBg : done ? 'var(--green)' : accent ? accent : 'var(--surface2)',
+                color: active || done || accent ? '#fff' : 'var(--text3)',
+                boxShadow: accent && !done ? `0 0 0 3px ${accent}33` : 'none',
               }}>{done ? <i className="ti ti-check" /> : i + 1}</span>
               <span style={{ fontSize: 11, textAlign: 'center', lineHeight: 1.2, maxWidth: 92,
-                color: active ? 'var(--blue)' : done ? 'var(--text)' : 'var(--text3)', fontWeight: active ? 600 : 400 }}>{st.label}</span>
+                color: labelColor, fontWeight: active || accent ? 600 : 400 }}>{st.label}</span>
             </button>
           </Fragment>
         )

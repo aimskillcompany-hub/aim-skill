@@ -5,7 +5,7 @@ import { useUser } from '../lib/auth'
 import { nextOrderNumber } from '../lib/orderNumber'
 import { fmt, fmtInt } from '../lib/fmt'
 import {
-  ORDER_TYPES, TYPE_COLORS, OUTCOME, statusLabel, isOpen,
+  ORDER_TYPES, TYPE_COLORS, OUTCOME, statusLabel, statusAccent, isOpen,
   proposalOverdue, paymentOverdue,
 } from '../lib/orders'
 import Kanban from '../components/Kanban'
@@ -152,7 +152,9 @@ export default function Orders() {
                     <td style={{ fontSize: 13, color: o.managerName === '—' ? 'var(--text3)' : 'var(--text2)' }}><div className="trunc">{o.managerName}</div></td>
                     <td><span style={{ color: TYPE_COLORS[o.type], fontSize: 12, fontWeight: 600 }}>{ORDER_TYPES[o.type]}</span></td>
                     <td style={{ fontSize: 13 }}>
-                      {statusLabel(o)}
+                      {statusAccent(o.status)
+                        ? <span style={{ background: statusAccent(o.status), color: '#fff', borderRadius: 6, padding: '2px 9px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>{statusLabel(o)}</span>
+                        : statusLabel(o)}
                       {OUTCOME[o.outcome] && (
                         <span style={{ marginLeft: 6, color: OUTCOME[o.outcome].color, fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' }}>
                           <i className={`ti ${OUTCOME[o.outcome].icon}`} /> {OUTCOME[o.outcome].label}

@@ -10,16 +10,20 @@ export const OUTCOME = {
   lost: { label: 'Програно', icon: 'ti-mood-sad', color: 'var(--red)', bg: 'var(--red-bg)' },
 }
 
-// Єдиний цикл із 6 статусів
+// Єдиний цикл із 7 статусів. `accent` — яскравий колір для статусів, що потребують дії.
 const STAGES = [
   { s: 'new',               label: 'Новий' },
   { s: 'processing',        label: 'В опрацюванні' },
   { s: 'ordering_supplier', label: 'Замовлення у дистрибютора' },
   { s: 'shipped',           label: 'Відвантажено' },
+  { s: 'needs_payment',     label: 'Потребує оплати', accent: '#F97316' },
   { s: 'paid',              label: 'Оплачено' },
   { s: 'closed',            label: 'Закрито' },
 ]
 const FLOW = { trade: STAGES, service: STAGES, agent: STAGES }
+
+// Яскравий акцент статусу (для степера/бейджів/канбану). null — звичайний вигляд.
+export const statusAccent = (s) => STAGES.find(x => x.s === s)?.accent || null
 
 // Легасі-статуси (старий набір, до застосування міграції 032) → підпис нового набору,
 // щоб наявні замовлення показувались читабельно ще до переназначення в БД.
@@ -36,7 +40,7 @@ export const stepFor = (o) => flowFor(o.type).find(x => x.s === o.status) || flo
 export const statusLabel = (o) => STAGES.find(x => x.s === o.status)?.label || LEGACY[o.status] || stepFor(o).label
 
 // Порядок статусів для Kanban-дошки
-export const STATUS_ORDER = ['new', 'processing', 'ordering_supplier', 'shipped', 'paid', 'closed']
+export const STATUS_ORDER = ['new', 'processing', 'ordering_supplier', 'shipped', 'needs_payment', 'paid', 'closed']
 
 // Лейбл статусу без прив'язки до типу (для колонок канбану)
 export const labelForStatus = (s) => STAGES.find(x => x.s === s)?.label || LEGACY[s] || s

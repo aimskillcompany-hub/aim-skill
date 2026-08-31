@@ -4,11 +4,11 @@
 import { getAdmin, nextOrderNumber } from './_lib.js'
 
 // Єдиний спрощений набір статусів для всіх типів (узгоджено з src/lib/orders.js)
-const STAGES = ['new', 'processing', 'ordering_supplier', 'shipped', 'paid', 'closed']
+const STAGES = ['new', 'processing', 'ordering_supplier', 'shipped', 'needs_payment', 'paid', 'closed']
 const FLOW = { trade: STAGES, service: STAGES, agent: STAGES }
 const STATUS_LABEL = {
   new: 'Новий', processing: 'В опрацюванні', ordering_supplier: 'Замовлення у дистрибютора',
-  shipped: 'Відвантажено', paid: 'Оплачено', closed: 'Закрито',
+  shipped: 'Відвантажено', needs_payment: 'Потребує оплати', paid: 'Оплачено', closed: 'Закрито',
   // легасі (до міграції 032)
   proposal_sent: 'В опрацюванні', confirmed: 'В опрацюванні', contract_signed: 'В опрацюванні',
   invoiced: 'В опрацюванні', paid_partial: 'В опрацюванні', in_transit: 'Замовлення у дистрибютора',

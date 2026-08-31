@@ -12,7 +12,7 @@ const orderUrl = (id) => `${APP_URL}/#/orders/${id}`
 
 const STATUS_LABEL = {
   new: 'Новий', processing: 'В опрацюванні', ordering_supplier: 'Замовлення у дистрибютора',
-  shipped: 'Відвантажено', paid: 'Оплачено', closed: 'Закрито',
+  shipped: 'Відвантажено', needs_payment: 'Потребує оплати', paid: 'Оплачено', closed: 'Закрито',
   // легасі (до міграції 032)
   proposal_sent: 'В опрацюванні', confirmed: 'В опрацюванні', contract_signed: 'В опрацюванні',
   invoiced: 'В опрацюванні', paid_partial: 'В опрацюванні', in_transit: 'Замовлення у дистрибютора',

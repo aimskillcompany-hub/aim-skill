@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import {
-  ORDER_TYPES, TYPE_COLORS, flowFor, labelForStatus, STATUS_ORDER, isOpen,
+  ORDER_TYPES, TYPE_COLORS, flowFor, labelForStatus, statusAccent, STATUS_ORDER, isOpen,
 } from '../lib/orders'
 import { fmt } from '../lib/fmt'
 
@@ -30,9 +30,9 @@ export default function Kanban({ orders, onOpen, type }) {
     <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8, alignItems: 'flex-start' }}>
       {columns.map(col => (
         <div key={col.status} style={{ flex: '0 0 260px', width: 260 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', marginBottom: 8, borderBottom: '2px solid var(--border)' }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: col.status === 'closed' ? 'var(--text3)' : 'var(--text)' }}>{col.label}</span>
-            <span style={{ fontSize: 12, color: 'var(--text3)', background: 'var(--surface2)', borderRadius: 10, padding: '1px 8px' }}>{col.items.length}</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', marginBottom: 8, borderBottom: `2px solid ${statusAccent(col.status) || 'var(--border)'}` }}>
+            <span style={{ fontSize: 13, fontWeight: statusAccent(col.status) ? 700 : 600, color: statusAccent(col.status) || (col.status === 'closed' ? 'var(--text3)' : 'var(--text)') }}>{col.label}</span>
+            <span style={{ fontSize: 12, color: statusAccent(col.status) ? '#fff' : 'var(--text3)', background: statusAccent(col.status) || 'var(--surface2)', borderRadius: 10, padding: '1px 8px' }}>{col.items.length}</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {col.items.map(o => <Card key={o.id} o={o} onOpen={onOpen} />)}
