@@ -287,13 +287,22 @@ function DetailsTab({ o, onSaved }) {
     clientName: o.contractors?.name || '',
     closed_at: o.closed_at ? o.closed_at.slice(0, 10) : '',
     manager_id: o.manager_id || '',
+    contract_id: o.contract_id || '',
   })
   const [saved, setSaved] = useState(false)
   const [users, setUsers] = useState([])
+  const [contracts, setContracts] = useState([])
   useEffect(() => {
     supabase.from('profiles').select('id, full_name, email, role').order('full_name').then(({ data }) => setUsers(data || []))
   }, [])
+  // Договори клієнта — для випадайки «Договір».
+  useEffect(() => {
+    if (!form.client_id) { setContracts([]); return }
+    supabase.from('contractor_contracts').select('id, number, date').eq('contractor_id', form.client_id)
+      .order('date', { ascending: false }).then(({ data }) => setContracts(data || []))
+  }, [form.client_id])
   const userName = (u) => u.full_name || u.email || '—'
+  const contractLabel = (c) => `№${c.number}${c.date ? ` від ${c.date.slice(0, 10).split('-').reverse().join('.')}` : ''}`
 
   const save = async () => {
     const upd = {
@@ -303,11 +312,12 @@ function DetailsTab({ o, onSaved }) {
       client_id: form.client_id || null,
       closed_at: form.closed_at ? new Date(form.closed_at).toISOString() : null,
       manager_id: form.manager_id || null,
+      contract_id: form.contract_id || null,
     }
     let { error } = await supabase.from('orders').update(upd).eq('id', o.id)
-    // Колонки можуть ще не існувати (міграції 033/037) — тоді зберігаємо без них
-    if (error && /(procurement_id|manager_id)/.test(error.message || '')) {
-      const { procurement_id, manager_id, ...rest } = upd
+    // Колонки можуть ще не існувати (міграції 033/037/040) — тоді зберігаємо без них
+    if (error && /(procurement_id|manager_id|contract_id)/.test(error.message || '')) {
+      const { procurement_id, manager_id, contract_id, ...rest } = upd
       ;({ error } = await supabase.from('orders').update(rest).eq('id', o.id))
     }
     if (error) { alert('Помилка збереження: ' + error.message); return }
@@ -322,9 +332,9 @@ function DetailsTab({ o, onSaved }) {
             onContractorSelect={async (c) => {
               if (c._new) {
                 const { data } = await supabase.from('contractors').insert({ name: c.name, is_client: true }).select('id').single()
-                setForm(f => ({ ...f, client_id: data?.id || null, clientName: c.name }))
+                setForm(f => ({ ...f, client_id: data?.id || null, clientName: c.name, contract_id: '' }))
               } else {
-                setForm(f => ({ ...f, client_id: c.id, clientName: c.name }))
+                setForm(f => ({ ...f, client_id: c.id, clientName: c.name, contract_id: '' }))
               }
             }} />
         </div>
@@ -333,6 +343,13 @@ function DetailsTab({ o, onSaved }) {
             <option value="">— не призначено —</option>
             {users.map(u => <option key={u.id} value={u.id}>{userName(u)}</option>)}
           </select>
+        </div>
+        <div className="form-group"><label>Договір</label>
+          <select className="form-input" value={form.contract_id} onChange={e => setForm(f => ({ ...f, contract_id: e.target.value }))} disabled={!form.client_id}>
+            <option value="">— без договору —</option>
+            {contracts.map(c => <option key={c.id} value={c.id}>{contractLabel(c)}</option>)}
+          </select>
+          {form.client_id && contracts.length === 0 && <span style={{ fontSize: 11, color: 'var(--text3)' }}>У клієнта немає договорів — додайте в картці контрагента</span>}
         </div>
         <div className="form-group"><label>Тип закупівлі</label>
           <select className="form-input" value={form.procurement_type} onChange={e => setForm(f => ({ ...f, procurement_type: e.target.value }))}>

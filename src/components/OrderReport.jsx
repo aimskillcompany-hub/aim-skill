@@ -42,13 +42,24 @@ export default function OrderReport() {
     setLoading(true); setErr(null)
     try {
       let query = supabase.from('orders')
-        .select('id, order_number, created_at, total, status, client_id, contractors(name)')
+        .select('id, order_number, created_at, total, status, client_id, contract_id, contractors(name)')
         .is('archived_at', null)
       if (clientId) query = query.eq('client_id', clientId)
       if (status) query = query.eq('status', status)
       if (from) query = query.gte('created_at', from)
       if (to) query = query.lte('created_at', to + 'T23:59:59')
-      const { data: ords, error } = await query.order('order_number')
+      let { data: ords, error } = await query.order('order_number')
+      // Фолбек, якщо колонку contract_id ще не додано (міграція 040)
+      if (error && /contract_id/.test(error.message || '')) {
+        let q2 = supabase.from('orders')
+          .select('id, order_number, created_at, total, status, client_id, contractors(name)')
+          .is('archived_at', null)
+        if (clientId) q2 = q2.eq('client_id', clientId)
+        if (status) q2 = q2.eq('status', status)
+        if (from) q2 = q2.gte('created_at', from)
+        if (to) q2 = q2.lte('created_at', to + 'T23:59:59')
+        ;({ data: ords, error } = await q2.order('order_number'))
+      }
       if (error) throw error
 
       const ids = (ords || []).map(o => o.id)
@@ -59,14 +70,13 @@ export default function OrderReport() {
           .in('order_id', ids)
         docs = data || []
       }
-      // Фолбек договору — з реєстру договорів контрагента.
-      const clientIds = [...new Set((ords || []).map(o => o.client_id).filter(Boolean))]
-      let contracts = []
-      if (clientIds.length) {
+      // Договір замовлення — з поля orders.contract_id (реєстр contractor_contracts).
+      const contractIds = [...new Set((ords || []).map(o => o.contract_id).filter(Boolean))]
+      const contractById = {}
+      if (contractIds.length) {
         const { data } = await supabase.from('contractor_contracts')
-          .select('contractor_id, number, date').in('contractor_id', clientIds)
-          .order('date', { ascending: false })
-        contracts = data || []
+          .select('id, number, date').in('id', contractIds)
+        ;(data || []).forEach(c => { contractById[c.id] = c })
       }
 
       const byOrder = {}
@@ -74,8 +84,9 @@ export default function OrderReport() {
 
       const result = (ords || []).map(o => {
         const arr = byOrder[o.id] || []
+        // Пріоритет: прив'язаний документ-договір; інакше — договір із поля замовлення.
         const contract = pick(arr, CONTRACT_TYPES)
-        const contractFb = !contract && contracts.find(c => c.contractor_id === o.client_id)
+        const linked = !contract && contractById[o.contract_id]
         const waybill = pick(arr, ['waybill'])
         const invoice = pick(arr, ['invoice'])
         return {
@@ -83,8 +94,8 @@ export default function OrderReport() {
           number: o.order_number || o.id.slice(0, 6),
           date: o.created_at,
           client: o.contractors?.name || '',
-          contractNum: contract?.doc_number || contractFb?.number || '',
-          contractDate: contract?.doc_date || contractFb?.date || '',
+          contractNum: contract?.doc_number || linked?.number || '',
+          contractDate: contract?.doc_date || linked?.date || '',
           waybillNum: waybill?.doc_number || '',
           waybillDate: waybill?.doc_date || '',
           invoiceNum: invoice?.doc_number || '',
