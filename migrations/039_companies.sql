@@ -57,10 +57,10 @@ values ('00000000-0000-0000-0000-000000000001',
 on conflict (id) do nothing;
 
 -- Плейсхолдери двох нових юросіб (реквізити заповнюються у Налаштуваннях, Фаза 5).
-insert into companies (id, name, short_name, tax_group, is_vat_payer, is_fop, director, director_position, sort_order)
+insert into companies (id, name, short_name, tax_group, is_vat_payer, is_fop, director_position, sort_order)
 values
-  ('00000000-0000-0000-0000-000000000002', 'ФОП (2 група) — заповнити реквізити',        'ФОП 2 гр.',    'fop_group2',    false, true,  '', 'ФОП',      1),
-  ('00000000-0000-0000-0000-000000000003', 'ТОВ (3 група, 5%) — заповнити реквізити',      'ТОВ 3 гр. 5%', 'tov_single_5',  false, false, '', 'Директор', 2)
+  ('00000000-0000-0000-0000-000000000002', 'ФОП (2 група) - заповнити реквізити', 'ФОП 2 гр.', 'fop_group2', false, true, 'ФОП', 1),
+  ('00000000-0000-0000-0000-000000000003', 'ТОВ (3 група, 5%) - заповнити реквізити', 'ТОВ 3 гр. 5%', 'tov_single_5', false, false, 'Директор', 2)
 on conflict (id) do nothing;
 
 -- Доступ: наразі всі наявні користувачі бачать усі компанії (тонше — Фаза 5).

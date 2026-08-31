@@ -376,9 +376,9 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `035_profiles_admin_rls.sql` | Профілі: `is_admin()` + політики (адмін бачить усіх і міняє ролі) | ✅ застосовано (звірено 2026-08-25, функція є) |
 | `036_fix_handle_new_user.sql` | Фікс тригера `handle_new_user` (search_path) — «Database error creating new user» | ✅ застосовано (2026-08-25) |
 | `037_orders_manager.sql` | Замовлення: `manager_id` (відповідальний) + політика `profiles_select_all` | ✅ застосовано (звірено 2026-08-25, колонка є) |
-| `038_documents_posted.sql` | Документи: `posted` (чернетка в замовленні / проведено по системі) | ⏳ **запустити вручну** |
-| `039_companies.sql` | Мультикомпанійність Фаза 0: таблиці `companies` + `user_companies`, сід 3 юросіб (ЕЙМ СКІЛ + ФОП 2гр + ТОВ 3гр 5%), RLS, призначення всіх користувачів усім компаніям | ⏳ **запустити вручну** |
-| `040_orders_contract.sql` | Замовлення: `contract_id` (FK → contractor_contracts) — договір замовлення для звіту | ⏳ **запустити вручну** |
+| `038_documents_posted.sql` | Документи: `posted` (чернетка в замовленні / проведено по системі) | ✅ застосовано (звірено 2026-08-31) |
+| `039_companies.sql` | Мультикомпанійність Фаза 0: таблиці `companies` + `user_companies`, сід 3 юросіб (ЕЙМ СКІЛ + ФОП 2гр + ТОВ 3гр 5%), RLS, призначення всіх користувачів усім компаніям | ✅ застосовано (звірено 2026-08-31: 3 компанії, 6 призначень) |
+| `040_orders_contract.sql` | Замовлення: `contract_id` (FK → contractor_contracts) — договір замовлення для звіту | ✅ застосовано (звірено 2026-08-31) |
 | `validate.mjs` | Перевірка цілісності Фази 1 (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 | `probe.mjs` | Звірка наявності колонок/таблиць усіх міграцій у БД (`SUPABASE_SERVICE_KEY=... node migrations/probe.mjs`) | — |
 
