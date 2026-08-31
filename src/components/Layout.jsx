@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
-import { CompanySwitcher } from '../lib/company'
+import { CompanySwitcher, useCompany } from '../lib/company'
 import { canAccess, sectionFromPath, ROLE_LABELS } from '../lib/permissions'
 
 // Навігація per ТЗ 5.1 — 10 розділів
@@ -40,6 +40,7 @@ const AimLogo = ({ size = 18 }) => (
 
 export default function Layout() {
   const { user } = useUser()
+  const { activeId } = useCompany()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const role = user?.role || 'viewer'
   const handleLogout = () => supabase.auth.signOut()
@@ -111,7 +112,8 @@ export default function Layout() {
           <div style={{ marginLeft: 'auto' }}><CompanySwitcher compact /></div>
         </div>
 
-        <div className="page-inner"><Outlet /></div>
+        {/* key={activeId} — перемонтувати сторінку при зміні активної компанії, щоб дані перезавантажились */}
+        <div className="page-inner" key={activeId || 'none'}><Outlet /></div>
 
         <nav className="mobile-nav">
           {MOBILE_NAV.filter(item => canAccess(role, sectionFromPath(item.to))).map(item => (

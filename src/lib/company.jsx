@@ -6,6 +6,7 @@ import { supabase } from './supabase'
 import { useUser } from './auth'
 import { setActiveCompanyId } from './companyScope'
 import { clearCompanyCache } from './companyConfig'
+import { resetClassifyCache } from './autoClassify'
 
 const Ctx = createContext(null)
 const LS_KEY = 'active_company_id'
@@ -19,7 +20,8 @@ export function CompanyProvider({ children }) {
   function applyActive(id) {
     setActiveId(id)
     setActiveCompanyId(id)
-    clearCompanyCache() // реквізити docgen — під нову активну компанію
+    clearCompanyCache()   // реквізити docgen — під нову активну компанію
+    resetClassifyCache()  // авто-класифікація будується з транзакцій (scoped) — скинути
     try {
       if (id) localStorage.setItem(LS_KEY, id)
       else localStorage.removeItem(LS_KEY)
