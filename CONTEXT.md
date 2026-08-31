@@ -401,6 +401,7 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `040_orders_contract.sql` | Замовлення: `contract_id` (FK → contractor_contracts) — договір замовлення для звіту | ✅ застосовано (звірено 2026-08-31) |
 | `041_company_scope.sql` | Мультикомпанійність Фаза 1: `company_id` (default ЕЙМ СКІЛ, NOT NULL, FK, index) на 14 грошових таблиць | ✅ застосовано (звірено 2026-08-31: усі 14, backfill на …0001, 0 сторонніх) |
 | `042_product_stock_company.sql` | Мультикомпанійність Фаза 1: в'юха `product_stock` per-company (company_id, group by product+company) | ✅ застосовано (звірено 2026-08-31: company_id є, 269 рядків ЕЙМ СКІЛ) |
+| `043_company_logo.sql` | Документи per company: `companies.logo_base64` (власне лого) | ✅ застосовано (звірено 2026-08-31) |
 | `validate.mjs` | Перевірка цілісності Фази 1 (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 | `probe.mjs` | Звірка наявності колонок/таблиць усіх міграцій у БД (`SUPABASE_SERVICE_KEY=... node migrations/probe.mjs`) | — |
 
