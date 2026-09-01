@@ -55,6 +55,13 @@ const TAX_GROUPS = [
   ['tov_vat', 'ТОВ — платник ПДВ'], ['tov_single_5', 'ТОВ — 3 група (5%)'],
   ['fop_group2', 'ФОП — 2 група'], ['fop_group3', 'ФОП — 3 група'], ['other', 'Інше'],
 ]
+// Дизайн (тема) згенерованих документів
+const DOC_THEMES = [
+  ['', 'Авто (за компанією)'],
+  ['clean', 'Класичний лист (реквізити внизу)'],
+  ['bit', 'BIT Group (індиго, tech)'],
+  ['aim', 'AiM (фірмовий зелений)'],
+]
 
 // Зображення → зменшений PNG dataURL (для лого в документах, pdfmake приймає dataURL)
 function fileToLogoDataUrl(file, maxDim = 320) {
@@ -92,11 +99,11 @@ function CompanyTab() {
     setBusy(true)
     const { id, created_at, ...upd } = form
     let { error } = await supabase.from('companies').update(upd).eq('id', activeId)
-    // logo_base64 може ще не існувати (міграція 043) — зберегти без нього
-    if (error && /logo_base64/.test(error.message || '')) {
-      const { logo_base64, ...rest } = upd
+    // logo_base64 / doc_theme можуть ще не існувати (міграції 043/044) — зберегти без них
+    if (error && /(logo_base64|doc_theme)/.test(error.message || '')) {
+      const { logo_base64, doc_theme, ...rest } = upd
       ;({ error } = await supabase.from('companies').update(rest).eq('id', activeId))
-      if (!error) alert('Реквізити збережено, але лого — запустіть міграцію 043.')
+      if (!error) alert('Реквізити збережено, але лого/дизайн — запустіть міграції 043/044.')
     }
     setBusy(false)
     if (error) { alert('Помилка збереження: ' + error.message); return }
@@ -141,6 +148,12 @@ function CompanyTab() {
           <label>Група оподаткування</label>
           <select className="form-input" value={form.tax_group || 'tov_vat'} onChange={e => set('tax_group', e.target.value)}>
             {TAX_GROUPS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </div>
+        <div className="form-group">
+          <label>Дизайн документів</label>
+          <select className="form-input" value={form.doc_theme || ''} onChange={e => set('doc_theme', e.target.value || null)}>
+            {DOC_THEMES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </div>
         <div className="form-group">

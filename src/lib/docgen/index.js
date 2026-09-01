@@ -22,7 +22,7 @@ function docOptions(options, company) {
     ...(options || {}),
     vatPayer: company.isVatPayer !== false,
     brand: {
-      theme: company.isAim ? 'aim' : 'clean',
+      theme: company.docTheme || (company.isAim ? 'aim' : 'clean'),
       companyLogo: company.logoBase64 || null,
       name: company.shortName || company.name || '',
       phone: company.phone || '',

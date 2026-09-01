@@ -25,6 +25,7 @@ function mapRow(row) {
     isFop: !!row.is_fop,
     taxGroup: row.tax_group || 'tov_vat',
     logoBase64: row.logo_base64 || null,
+    docTheme: row.doc_theme || null, // тема документів (clean|bit|aim), null=авто
     // AiM-брендинг документів — лише для ЕЙМ СКІЛ (за ЄДРПОУ / фіксованим id).
     isAim: row.edrpou === '45505924' || row.id === '00000000-0000-0000-0000-000000000001',
   }
