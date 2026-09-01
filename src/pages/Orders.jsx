@@ -51,6 +51,17 @@ export default function Orders() {
   }
   useEffect(() => { load() }, [])
 
+  // Відмітка «комісійні сплачені» — перемикач прямо в реєстрі (без переходу в картку)
+  const toggleCommission = async (o) => {
+    const val = !o.commission_paid
+    setOrders(prev => prev.map(x => x.id === o.id ? { ...x, commission_paid: val } : x))
+    const { error } = await qc('orders').update({ commission_paid: val }).eq('id', o.id)
+    if (error) {
+      setOrders(prev => prev.map(x => x.id === o.id ? { ...x, commission_paid: !val } : x))
+      alert('Не вдалося зберегти: ' + (/commission_paid/.test(error.message || '') ? 'запустіть міграцію 045' : error.message))
+    }
+  }
+
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase()
     return orders.filter(o => {
@@ -78,6 +89,7 @@ export default function Orders() {
   const sortedOrders = sorted(filtered, {
     order_number: o => o.order_number || '',
     created: o => o.created_at || '',
+    commission: o => o.commission_paid ? 1 : 0,
     client: o => o.clientName || '',
     manager: o => o.managerName || '',
     type: o => ORDER_TYPES[o.type] || '',
@@ -152,6 +164,7 @@ export default function Orders() {
                 <SortTh label="Тип" k="type" sort={sort} onSort={onSort} />
                 <SortTh label="Статус" k="status" sort={sort} onSort={onSort} />
                 <SortTh label="Сума з ПДВ" k="total" sort={sort} onSort={onSort} align="right" />
+                <SortTh label="Комісія" k="commission" sort={sort} onSort={onSort} align="center" />
               </tr></thead>
               <tbody>
                 {sortedOrders.map(o => (
@@ -172,9 +185,12 @@ export default function Orders() {
                       )}
                     </td>
                     <td style={{ textAlign: 'right' }}>{fmt(o.total)}</td>
+                    <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" checked={!!o.commission_paid} onChange={() => toggleCommission(o)} style={{ width: 16, height: 16, cursor: 'pointer' }} title="Комісійні сплачені" />
+                    </td>
                   </tr>
                 ))}
-                {sortedOrders.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 28 }}>Замовлень немає</td></tr>}
+                {sortedOrders.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 28 }}>Замовлень немає</td></tr>}
               </tbody>
             </table>
           </div>
