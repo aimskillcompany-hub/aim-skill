@@ -77,6 +77,7 @@ export default function Orders() {
   const { sort, onSort, sorted } = useSort('order_number', 'asc')
   const sortedOrders = sorted(filtered, {
     order_number: o => o.order_number || '',
+    created: o => o.created_at || '',
     client: o => o.clientName || '',
     manager: o => o.managerName || '',
     type: o => ORDER_TYPES[o.type] || '',
@@ -145,6 +146,7 @@ export default function Orders() {
             <table>
               <thead><tr>
                 <SortTh label="№" k="order_number" sort={sort} onSort={onSort} />
+                <SortTh label="Дата" k="created" sort={sort} onSort={onSort} />
                 <SortTh label="Клієнт" k="client" sort={sort} onSort={onSort} />
                 <SortTh label="Менеджер" k="manager" sort={sort} onSort={onSort} />
                 <SortTh label="Тип" k="type" sort={sort} onSort={onSort} />
@@ -155,6 +157,7 @@ export default function Orders() {
                 {sortedOrders.map(o => (
                   <tr key={o.id} style={{ cursor: 'pointer', background: o.overdue ? 'var(--red-bg)' : undefined }} onClick={() => navigate(`/orders/${o.id}`)}>
                     <td style={{ fontWeight: 500 }}>{o.order_number || o.id.slice(0, 6)}</td>
+                    <td style={{ fontSize: 13, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{o.created_at ? o.created_at.slice(0, 10).split('-').reverse().join('.') : '—'}</td>
                     <td><div className="trunc">{o.clientName}</div></td>
                     <td style={{ fontSize: 13, color: o.managerName === '—' ? 'var(--text3)' : 'var(--text2)' }}><div className="trunc">{o.managerName}</div></td>
                     <td><span style={{ color: TYPE_COLORS[o.type], fontSize: 12, fontWeight: 600 }}>{ORDER_TYPES[o.type]}</span></td>
@@ -171,7 +174,7 @@ export default function Orders() {
                     <td style={{ textAlign: 'right' }}>{fmt(o.total)}</td>
                   </tr>
                 ))}
-                {sortedOrders.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 28 }}>Замовлень немає</td></tr>}
+                {sortedOrders.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 28 }}>Замовлень немає</td></tr>}
               </tbody>
             </table>
           </div>
