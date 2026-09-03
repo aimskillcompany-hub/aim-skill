@@ -417,6 +417,7 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `044_company_doc_theme.sql` | Дизайн документів на компанію: `companies.doc_theme` (clean/bit/aim) | ✅ застосовано (звірено 2026-09-03) |
 | `045_orders_commission_paid.sql` | Замовлення: `commission_paid` (чекбокс «комісійні сплачені» в реєстрі) | ✅ застосовано (звірено 2026-09-03) |
 | `046_orders_agent_pct.sql` | Замовлення: `agent_commission_pct` (% агентських для звіту «Розрахунок») | ✅ застосовано (звірено 2026-09-03) |
+| `047_orders_investor.sql` | Замовлення: `in_investor` (відмітка «врахувати в розрахунку інвестора») + частк. індекс | ✅ застосовано (звірено 2026-09-03: 19 позначено) |
 | `validate.mjs` | Перевірка цілісності Фази 1 (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 | `probe.mjs` | Звірка наявності колонок/таблиць усіх міграцій у БД (`SUPABASE_SERVICE_KEY=... node migrations/probe.mjs`) | — |
 
