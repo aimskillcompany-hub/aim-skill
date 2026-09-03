@@ -76,12 +76,13 @@ export default function Orders() {
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase()
     return orders.filter(o => {
-      const archived = !!o.archived_at
-      if (filter === 'archived') { if (!archived) return false }
-      else if (archived) return false
+      const done = !!o.archived_at          // завершене (виконано/програно) — під капотом archived_at
+      const lost = o.outcome === 'lost'
+      if (filter === 'done') { if (!done || lost) return false }        // Виконані = завершені, крім програних
+      else if (filter === 'lost') { if (!lost) return false }           // Програні
+      else { if (done) return false }                                    // усі інші фільтри — лише в роботі
       if (filter === 'overdue' && !o.overdue) return false
       if (filter === 'mine' && o.manager_id !== user?.id) return false
-      if (['trade', 'service', 'agent'].includes(filter) && o.type !== filter) return false
       if (!term) return true
       return o.clientName.toLowerCase().includes(term) || (o.order_number || '').toLowerCase().includes(term)
     })
@@ -111,7 +112,7 @@ export default function Orders() {
 
   const FILTERS = [
     ['all', 'Всі'], ['mine', 'Мої'], ['overdue', 'Прострочено'],
-    ['trade', 'Торгівля'], ['service', 'Послуги'], ['agent', 'Агент'], ['archived', 'Архів'],
+    ['done', 'Виконані'], ['lost', 'Програні'],
   ]
 
   return (
@@ -131,10 +132,14 @@ export default function Orders() {
         {view !== 'report' && <>
           <input className="form-input" placeholder="Пошук за клієнтом або номером…" value={q} onChange={e => setQ(e.target.value)} style={{ flex: '1 1 240px', maxWidth: 360 }} />
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {FILTERS.map(([k, lbl]) => (
+            {FILTERS.map(([k, lbl]) => {
+              const bright = k === 'done' ? 'var(--green)' : k === 'lost' ? 'var(--red)' : 'var(--blue)'
+              const active = filter === k
+              return (
               <button key={k} onClick={() => setFilter(k)} className="btn"
-                style={{ background: filter === k ? 'var(--blue)' : 'var(--surface)', color: filter === k ? '#fff' : 'var(--text2)', border: '1px solid var(--border)' }}>{lbl}</button>
-            ))}
+                style={{ background: active ? bright : 'var(--surface)', color: active ? '#fff' : (k === 'done' ? 'var(--green)' : k === 'lost' ? 'var(--red)' : 'var(--text2)'), border: '1px solid var(--border)', fontWeight: (k === 'done' || k === 'lost') ? 600 : 400 }}>{lbl}</button>
+              )
+            })}
           </div>
         </>}
         <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
@@ -144,16 +149,14 @@ export default function Orders() {
         </div>
       </div>
 
-      {filter === 'archived' && !loading && (() => {
-        const won = filtered.filter(o => o.outcome === 'won')
-        const lost = filtered.filter(o => o.outcome === 'lost')
+      {(filter === 'done' || filter === 'lost') && !loading && (() => {
         const sum = arr => arr.reduce((s, o) => s + (Number(o.total) || 0), 0)
-        if (!won.length && !lost.length) return null
+        if (!filtered.length) return null
+        const label = filter === 'done' ? 'Виконані' : 'Програні'
+        const color = filter === 'done' ? 'var(--green)' : 'var(--red)'
         return (
           <div style={{ display: 'flex', gap: 20, marginBottom: 14, flexWrap: 'wrap', fontSize: 13 }}>
-            <span style={{ color: OUTCOME.won.color, fontWeight: 600 }}><i className={`ti ${OUTCOME.won.icon}`} /> Виграно: {won.length} · {fmtInt(sum(won))} грн</span>
-            <span style={{ color: OUTCOME.lost.color, fontWeight: 600 }}><i className={`ti ${OUTCOME.lost.icon}`} /> Програно: {lost.length} · {fmtInt(sum(lost))} грн</span>
-            {won.length + lost.length > 0 && <span style={{ color: 'var(--text2)' }}>Win-rate: {Math.round(won.length / (won.length + lost.length) * 100)}%</span>}
+            <span style={{ color, fontWeight: 600 }}><i className={`ti ${filter === 'done' ? 'ti-circle-check' : 'ti-mood-sad'}`} /> {label}: {filtered.length} · {fmtInt(sum(filtered))} грн</span>
           </div>
         )
       })()}

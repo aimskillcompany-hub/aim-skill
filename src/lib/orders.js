@@ -6,7 +6,7 @@ export const TYPE_COLORS = { trade: '#2563EB', service: '#7C3AED', agent: '#0D94
 
 // Результат замовлення (тендер/конкурс) — задається при архівуванні
 export const OUTCOME = {
-  won: { label: 'Виграно', icon: 'ti-trophy', color: 'var(--green)', bg: 'var(--green-bg, #e7f7ec)' },
+  won: { label: 'Виконано', icon: 'ti-circle-check', color: 'var(--green)', bg: 'var(--green-bg, #e7f7ec)' },
   lost: { label: 'Програно', icon: 'ti-mood-sad', color: 'var(--red)', bg: 'var(--red-bg)' },
 }
 

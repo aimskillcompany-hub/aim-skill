@@ -40,7 +40,6 @@ export default function OrderCard() {
   const [tab, setTab] = useState('details')
   const [busy, setBusy] = useState('')
   const [confirmDel, setConfirmDel] = useState(false)
-  const [archiveMenu, setArchiveMenu] = useState(false)
   const [msg, setMsg] = useState(null)
   const [itemsDirty, setItemsDirty] = useState(false)
 
@@ -59,9 +58,9 @@ export default function OrderCard() {
 
   if (!o) return <div className="page-header"><h1>Завантаження…</h1></div>
 
-  // Архівувати з результатом (won/lost/null). Відновлення — archive(false).
+  // Завершити замовлення з результатом (won=виконано / lost=програно). Повернути в роботу — unarchive.
   const archive = async (outcome) => {
-    setBusy('archive'); setMsg(null); setArchiveMenu(false)
+    setBusy('archive'); setMsg(null)
     const upd = { archived_at: new Date().toISOString(), outcome: outcome || null }
     let { error } = await qc('orders').update(upd).eq('id', id)
     // Колонка outcome може ще не існувати (міграція 028) — тоді архівуємо без неї
@@ -160,24 +159,16 @@ export default function OrderCard() {
             </button>
             {o.archived_at ? (
               <button className="btn" onClick={unarchive} disabled={!!busy}>
-                <i className="ti ti-archive-off" /> {busy === 'archive' ? '…' : 'Відновити'}
-              </button>
-            ) : !archiveMenu ? (
-              <button className="btn" onClick={() => { setMsg(null); setArchiveMenu(true) }} disabled={!!busy}>
-                <i className="ti ti-archive" /> Архівувати
+                <i className="ti ti-rotate-2" /> {busy === 'archive' ? '…' : 'Повернути в роботу'}
               </button>
             ) : (
               <>
-                <button className="btn" onClick={() => archive('won')} disabled={busy === 'archive'} style={{ color: 'var(--green)' }} title="Замовлення виграно (тендер/конкурс)">
-                  <i className="ti ti-trophy" /> Виграно
+                <button className="btn" onClick={() => archive('won')} disabled={busy === 'archive'} style={{ color: 'var(--green)' }} title="Замовлення виконано">
+                  <i className="ti ti-circle-check" /> Виконано
                 </button>
                 <button className="btn" onClick={() => archive('lost')} disabled={busy === 'archive'} style={{ color: 'var(--red)' }} title="Замовлення програно">
                   <i className="ti ti-mood-sad" /> Програно
                 </button>
-                <button className="btn" onClick={() => archive(null)} disabled={busy === 'archive'} title="Заархівувати без результату">
-                  <i className="ti ti-archive" /> Без результату
-                </button>
-                <button className="btn" onClick={() => setArchiveMenu(false)} disabled={busy === 'archive'}>Скасувати</button>
               </>
             )}
             {!confirmDel ? (
@@ -202,20 +193,19 @@ export default function OrderCard() {
         </div>
       )}
 
-      {o.archived_at && (
-        <div style={{ background: 'var(--surface2)', color: 'var(--text2)', borderRadius: 10, padding: '10px 16px', marginBottom: 14, fontSize: 13, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span><i className="ti ti-archive" /> Замовлення в архіві (з {o.archived_at.slice(0, 10)}) — приховане з реєстру.</span>
+      {o.archived_at && (() => {
+        const lost = o.outcome === 'lost'
+        return (
+        <div style={{ background: lost ? 'var(--red-bg)' : 'var(--green-bg, #e7f7ec)', color: lost ? 'var(--red)' : 'var(--green)', borderRadius: 10, padding: '10px 16px', marginBottom: 14, fontSize: 13, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 600 }}><i className={`ti ${lost ? 'ti-mood-sad' : 'ti-circle-check'}`} /> {lost ? 'Програно' : 'Виконано'} (з {o.archived_at.slice(0, 10)})</span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
-            Результат:
-            {['won', 'lost', null].map((v, i) => (
-              <button key={i} className="btn" onClick={() => setOutcome(v)} disabled={(o.outcome || null) === v}
-                style={{ fontSize: 12, padding: '3px 10px', color: v ? OUTCOME[v].color : 'var(--text2)', fontWeight: (o.outcome || null) === v ? 700 : 400, opacity: (o.outcome || null) === v ? 1 : 0.75 }}>
-                {v ? <><i className={`ti ${OUTCOME[v].icon}`} /> {OUTCOME[v].label}</> : 'Без результату'}
-              </button>
-            ))}
+            <button className="btn" onClick={() => setOutcome('won')} disabled={o.outcome === 'won' || o.outcome == null} style={{ fontSize: 12, padding: '3px 10px', color: 'var(--green)' }}><i className="ti ti-circle-check" /> Виконано</button>
+            <button className="btn" onClick={() => setOutcome('lost')} disabled={o.outcome === 'lost'} style={{ fontSize: 12, padding: '3px 10px', color: 'var(--red)' }}><i className="ti ti-mood-sad" /> Програно</button>
+            <button className="btn" onClick={unarchive} style={{ fontSize: 12, padding: '3px 10px' }}><i className="ti ti-rotate-2" /> В роботу</button>
           </span>
         </div>
-      )}
+        )
+      })()}
 
       {overdue && (
         <div style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
