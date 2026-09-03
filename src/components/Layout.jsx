@@ -16,6 +16,7 @@ const NAV = [
   { to: '/documents',   label: 'Документи',    icon: 'ti-files' },
   { to: '/mail',        label: 'Пошта',        icon: 'ti-mail' },
   { to: '/analytics',   label: 'Аналітика',    icon: 'ti-chart-dots-3',   section: 'Аналіз' },
+  { to: '/investor',    label: 'Інвестору',    icon: 'ti-diamond',        accent: '#7C3AED' },
   { to: '/period-close', label: 'Закриття періоду', icon: 'ti-lock-square', section: 'Система' },
   { to: '/settings',    label: 'Налаштування', icon: 'ti-settings' },
 ]
@@ -59,8 +60,9 @@ export default function Layout() {
             to={item.to}
             onClick={close}
             className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+            style={item.accent ? { color: item.accent, fontWeight: 600 } : undefined}
           >
-            <i className={`ti ${item.icon}`} aria-hidden="true" />
+            <i className={`ti ${item.icon}`} aria-hidden="true" style={item.accent ? { color: item.accent } : undefined} />
             {item.label}
           </NavLink>
         </div>

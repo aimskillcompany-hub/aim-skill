@@ -42,12 +42,15 @@ export default function OwnerReport() {
   async function generate() {
     setLoading(true); setErr(null)
     try {
-      const [{ data: ords, error: oErr }, { data: comps }] = await Promise.all([
+      let [{ data: ords, error: oErr }, { data: comps }] = await Promise.all([
         supabase.from('orders')
           .select('id, order_number, created_at, client_id, company_id, agent_commission_pct, contractors(name)')
-          .is('archived_at', null).order('order_number'),
+          .is('archived_at', null).eq('in_investor', true).order('order_number'),
         supabase.from('companies').select('id, short_name, name, is_vat_payer'),
       ])
+      if (oErr && /in_investor/.test(oErr.message || '')) {
+        throw new Error('Запустіть міграцію 047 (відмітка «Інвестор» на замовленнях).')
+      }
       if (oErr) throw oErr
       const compById = {}; (comps || []).forEach(c => { compById[c.id] = c })
       const ids = (ords || []).map(o => o.id)

@@ -34,6 +34,7 @@ const PriceLists = lazyPage(() => import('./pages/PriceLists'))
 const Documents = lazyPage(() => import('./pages/Documents'))
 const Mail = lazyPage(() => import('./pages/Mail'))
 const Analytics = lazyPage(() => import('./pages/Analytics'))
+const Investor = lazyPage(() => import('./pages/Investor'))
 const Settings = lazyPage(() => import('./pages/Settings'))
 const PeriodClose = lazyPage(() => import('./pages/PeriodClose'))
 const Tasks = lazyPage(() => import('./pages/Tasks'))
@@ -73,6 +74,7 @@ export default function App() {
               <Route path="/documents" element={<Gate section="documents"><Documents /></Gate>} />
               <Route path="/mail" element={<Gate section="mail"><Mail /></Gate>} />
               <Route path="/analytics" element={<Gate section="analytics"><Analytics /></Gate>} />
+              <Route path="/investor" element={<Gate section="investor"><Investor /></Gate>} />
               <Route path="/period-close" element={<Gate section="period-close"><PeriodClose /></Gate>} />
               <Route path="/tasks" element={<Gate section="tasks"><Tasks /></Gate>} />
               <Route path="/settings" element={<Gate section="settings"><Settings /></Gate>} />

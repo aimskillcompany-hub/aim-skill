@@ -4,7 +4,6 @@ import { supabase } from '../lib/supabase'
 import { qc } from '../lib/companyScope'
 import { useUser } from '../lib/auth'
 import { getDocType } from '../lib/docgen'
-import OwnerReport from '../components/OwnerReport'
 import DocModal from '../components/DocModal'
 import GeneratedDocModal from '../components/GeneratedDocModal'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts'
@@ -54,12 +53,11 @@ export default function Analytics() {
     <div>
       <div className="page-header"><h1>Аналітика</h1></div>
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 18, overflowX: 'auto' }}>
-        {[['overview', 'Огляд', 'ti-dashboard'], ['owner', 'Розрахунок', 'ti-calculator'], ['pl', 'P&L', 'ti-report-money'], ['profit', 'Рентабельність', 'ti-percentage'], ['vat', 'ПДВ', 'ti-receipt-tax'], ['aging', 'Борги', 'ti-clock-dollar']].map(([id, lbl, icon]) => (
+        {[['overview', 'Огляд', 'ti-dashboard'], ['pl', 'P&L', 'ti-report-money'], ['profit', 'Рентабельність', 'ti-percentage'], ['vat', 'ПДВ', 'ti-receipt-tax'], ['aging', 'Борги', 'ti-clock-dollar']].map(([id, lbl, icon]) => (
           <button key={id} onClick={() => setTab(id)} style={tabStyle(tab === id)}><i className={`ti ${icon}`} style={{ fontSize: 15 }} />{lbl}</button>
         ))}
       </div>
       {tab === 'overview' && <Overview />}
-      {tab === 'owner' && <OwnerReport />}
       {tab === 'pl' && <PLView />}
       {tab === 'profit' && <ProfitView />}
       {tab === 'vat' && <VatView />}

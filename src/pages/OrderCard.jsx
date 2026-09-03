@@ -293,6 +293,7 @@ function DetailsTab({ o, onSaved }) {
     contract_id: o.contract_id || '',
     company_id: o.company_id || activeId || '',
     agent_commission_pct: o.agent_commission_pct != null ? String(Math.round(o.agent_commission_pct * 10000) / 100) : '',
+    in_investor: !!o.in_investor,
   })
   const [saved, setSaved] = useState(false)
   const [users, setUsers] = useState([])
@@ -329,11 +330,12 @@ function DetailsTab({ o, onSaved }) {
       manager_id: form.manager_id || null,
       contract_id: form.contract_id || null,
       agent_commission_pct: Math.max(0, (Number(form.agent_commission_pct) || 0)) / 100,
+      in_investor: !!form.in_investor,
     }
     let { error } = await qc('orders').update(upd).eq('id', o.id)
-    // Колонки можуть ще не існувати (міграції 033/037/040/046) — тоді зберігаємо без них
-    if (error && /(procurement_id|manager_id|contract_id|agent_commission_pct)/.test(error.message || '')) {
-      const { procurement_id, manager_id, contract_id, agent_commission_pct, ...rest } = upd
+    // Колонки можуть ще не існувати (міграції 033/037/040/046/047) — тоді зберігаємо без них
+    if (error && /(procurement_id|manager_id|contract_id|agent_commission_pct|in_investor)/.test(error.message || '')) {
+      const { procurement_id, manager_id, contract_id, agent_commission_pct, in_investor, ...rest } = upd
       ;({ error } = await qc('orders').update(rest).eq('id', o.id))
     }
     if (error) { alert('Помилка збереження: ' + error.message); return }
@@ -391,6 +393,14 @@ function DetailsTab({ o, onSaved }) {
         </div>
         <div className="form-group"><label>% агентських (від чистого прибутку)</label>
           <input className="form-input" type="number" placeholder="напр. 10" value={form.agent_commission_pct} onChange={e => setForm(f => ({ ...f, agent_commission_pct: e.target.value }))} />
+        </div>
+        <div className="form-group full">
+          <label>Розрахунок інвестора</label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '8px 12px', borderRadius: 10, border: `1px solid ${form.in_investor ? '#7C3AED' : 'var(--border)'}`, background: form.in_investor ? 'rgba(124,58,237,.08)' : 'var(--surface)' }}>
+            <input type="checkbox" checked={form.in_investor} onChange={e => setForm(f => ({ ...f, in_investor: e.target.checked }))} style={{ width: 18, height: 18 }} />
+            <i className="ti ti-diamond-filled" style={{ fontSize: 18, color: form.in_investor ? '#7C3AED' : 'var(--text3)' }} />
+            <span style={{ fontSize: 13, color: 'var(--text2)' }}>Врахувати це замовлення в розрахунку «Інвестору» (реальне/підтверджене)</span>
+          </label>
         </div>
         {form.procurement_type === 'tender' && (
           <div className="form-group"><label>Ідентифікатор закупівлі</label>
