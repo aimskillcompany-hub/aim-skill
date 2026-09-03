@@ -292,6 +292,7 @@ function DetailsTab({ o, onSaved }) {
     manager_id: o.manager_id || '',
     contract_id: o.contract_id || '',
     company_id: o.company_id || activeId || '',
+    agent_commission_pct: o.agent_commission_pct != null ? String(Math.round(o.agent_commission_pct * 10000) / 100) : '',
   })
   const [saved, setSaved] = useState(false)
   const [users, setUsers] = useState([])
@@ -327,11 +328,12 @@ function DetailsTab({ o, onSaved }) {
       closed_at: form.closed_at ? new Date(form.closed_at).toISOString() : null,
       manager_id: form.manager_id || null,
       contract_id: form.contract_id || null,
+      agent_commission_pct: Math.max(0, (Number(form.agent_commission_pct) || 0)) / 100,
     }
     let { error } = await qc('orders').update(upd).eq('id', o.id)
-    // Колонки можуть ще не існувати (міграції 033/037/040) — тоді зберігаємо без них
-    if (error && /(procurement_id|manager_id|contract_id)/.test(error.message || '')) {
-      const { procurement_id, manager_id, contract_id, ...rest } = upd
+    // Колонки можуть ще не існувати (міграції 033/037/040/046) — тоді зберігаємо без них
+    if (error && /(procurement_id|manager_id|contract_id|agent_commission_pct)/.test(error.message || '')) {
+      const { procurement_id, manager_id, contract_id, agent_commission_pct, ...rest } = upd
       ;({ error } = await qc('orders').update(rest).eq('id', o.id))
     }
     if (error) { alert('Помилка збереження: ' + error.message); return }
@@ -386,6 +388,9 @@ function DetailsTab({ o, onSaved }) {
             <option value="direct">Пряма закупівля</option>
             <option value="tender">Тендер</option>
           </select>
+        </div>
+        <div className="form-group"><label>% агентських (від чистого прибутку)</label>
+          <input className="form-input" type="number" placeholder="напр. 10" value={form.agent_commission_pct} onChange={e => setForm(f => ({ ...f, agent_commission_pct: e.target.value }))} />
         </div>
         {form.procurement_type === 'tender' && (
           <div className="form-group"><label>Ідентифікатор закупівлі</label>
