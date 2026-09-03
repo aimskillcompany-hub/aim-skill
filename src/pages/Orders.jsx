@@ -81,7 +81,6 @@ export default function Orders() {
       if (filter === 'done') { if (!done || lost) return false }        // Виконані = завершені, крім програних
       else if (filter === 'lost') { if (!lost) return false }           // Програні
       else { if (done) return false }                                    // усі інші фільтри — лише в роботі
-      if (filter === 'overdue' && !o.overdue) return false
       if (filter === 'mine' && o.manager_id !== user?.id) return false
       if (!term) return true
       return o.clientName.toLowerCase().includes(term) || (o.order_number || '').toLowerCase().includes(term)
@@ -111,7 +110,7 @@ export default function Orders() {
   })
 
   const FILTERS = [
-    ['all', 'Всі'], ['mine', 'Мої'], ['overdue', 'Прострочено'],
+    ['all', 'Всі'], ['mine', 'Мої'],
     ['done', 'Виконані'], ['lost', 'Програні'],
   ]
 
