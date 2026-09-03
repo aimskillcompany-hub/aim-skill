@@ -43,9 +43,11 @@ export default function OwnerReport() {
     setLoading(true); setErr(null)
     try {
       let [{ data: ords, error: oErr }, { data: comps }] = await Promise.all([
+        // Архівні НЕ виключаємо: виконані/заархівовані угоди — найреальніші.
+        // Джерело правди — ручна відмітка in_investor (курується власником).
         supabase.from('orders')
           .select('id, order_number, created_at, client_id, company_id, agent_commission_pct, contractors(name)')
-          .is('archived_at', null).eq('in_investor', true).order('order_number'),
+          .eq('in_investor', true).order('order_number'),
         supabase.from('companies').select('id, short_name, name, is_vat_payer'),
       ])
       if (oErr && /in_investor/.test(oErr.message || '')) {
