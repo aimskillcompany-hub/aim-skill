@@ -14,6 +14,7 @@ export default function VendorRegTab({ o }) {
   const [sel, setSel] = useState(new Set()) // індекси обраних позицій
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
+  const [includePrice, setIncludePrice] = useState(false) // ціна за замовч. порожня
   const [suppliers, setSuppliers] = useState([]) // постачальники з кодом дилера
   const vendor = getVendor(vendorKey)
 
@@ -99,7 +100,9 @@ export default function VendorRegTab({ o }) {
         if (f.type === 'date' && values[f.key]) values[f.key] = new Date(values[f.key])
       }
       try { if (form.dealerCode) localStorage.setItem(`vendor_${vendor.key}_dealer_${o.company_id || ''}`, form.dealerCode) } catch {}
-      const blob = await fillVendorForm(vendor, values, selectedItems)
+      // Ціна — лише якщо увімкнено «Вказувати ціну», інакше порожня
+      const outItems = selectedItems.map(x => ({ ...x, price: includePrice ? x.price : null }))
+      const blob = await fillVendorForm(vendor, values, outItems)
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url; a.download = vendor.fileName(o); a.click()
@@ -150,12 +153,17 @@ export default function VendorRegTab({ o }) {
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
           Устаткування для {vendor.name} <span style={{ color: 'var(--text3)', fontWeight: 400 }}>· обрано {selectedItems.length} (у форму — до {maxRows})</span>
         </div>
-        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 8 }}>Позначте позиції цього вендора (авто-підбір за назвою — перевірте).</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+          <span style={{ fontSize: 12, color: 'var(--text3)' }}>Позначте позиції цього вендора (авто-підбір за назвою — перевірте).</span>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--text2)', marginLeft: 'auto', cursor: 'pointer' }}>
+            <input type="checkbox" checked={includePrice} onChange={e => setIncludePrice(e.target.checked)} style={{ width: 15, height: 15 }} /> Вказувати ціну
+          </label>
+        </div>
         {items.length === 0
           ? <p style={{ fontSize: 13, color: 'var(--text3)' }}>У замовленні немає позицій — додайте товари у вкладці «Товари».</p>
           : (
             <div className="tbl-wrap" style={{ border: 'none' }}>
-              <table><thead><tr><th style={{ width: 34 }}></th><th>Модель / артикул</th><th style={{ textAlign: 'right', width: 70 }}>К-сть</th><th style={{ textAlign: 'right', width: 110 }}>Ціна</th></tr></thead>
+              <table><thead><tr><th style={{ width: 34 }}></th><th>Модель / артикул</th><th style={{ textAlign: 'right', width: 70 }}>К-сть</th>{includePrice && <th style={{ textAlign: 'right', width: 110 }}>Ціна</th>}</tr></thead>
                 <tbody>{items.map((x, i) => {
                   const on = sel.has(i)
                   const over = on && [...sel].filter(j => j <= i).length > maxRows // понад ліміт → не увійде
@@ -164,7 +172,7 @@ export default function VendorRegTab({ o }) {
                       <td style={{ textAlign: 'center' }}><input type="checkbox" checked={on} onChange={() => toggle(i)} style={{ width: 16, height: 16, cursor: 'pointer' }} /></td>
                       <td>{x.name}{x.sku ? <span style={{ color: 'var(--text3)', fontSize: 11 }}> · {x.sku}</span> : ''}{over && <span style={{ color: 'var(--amber, #b45309)', fontSize: 11 }}> · понад ліміт</span>}</td>
                       <td style={{ textAlign: 'right' }}>{x.qty}</td>
-                      <td style={{ textAlign: 'right' }}>{fmt(x.price)}</td>
+                      {includePrice && <td style={{ textAlign: 'right' }}>{fmt(x.price)}</td>}
                     </tr>
                   )
                 })}</tbody>

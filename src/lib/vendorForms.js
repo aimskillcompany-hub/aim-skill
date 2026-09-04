@@ -56,7 +56,8 @@ export async function fillVendorForm(vendor, values, items) {
     const row = it.startRow + i
     ws.getCell(`${it.model}${row}`).value = x.name || ''
     ws.getCell(`${it.qty}${row}`).value = Number(x.qty) || 0
-    if (it.price) ws.getCell(`${it.price}${row}`).value = Number(x.price) || 0
+    // Ціна — лише якщо задана (порожнє поле лишаємо порожнім)
+    if (it.price && x.price != null && x.price !== '') ws.getCell(`${it.price}${row}`).value = Number(x.price)
   })
 
   const out = await wb.xlsx.writeBuffer()
