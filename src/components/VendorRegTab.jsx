@@ -14,7 +14,20 @@ export default function VendorRegTab({ o }) {
   const [sel, setSel] = useState(new Set()) // індекси обраних позицій
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
+  const [suppliers, setSuppliers] = useState([]) // постачальники з кодом дилера
   const vendor = getVendor(vendorKey)
+
+  useEffect(() => {
+    supabase.from('contractors').select('id, name, short_name, dealer_code').eq('is_supplier', true).order('name')
+      .then(({ data, error }) => { if (!error) setSuppliers(data || []) })
+  }, [])
+
+  // Обрати дилера зі списку → підтягнути назву дистриб'ютора (D15) + код дилера (D3)
+  const pickDealer = (id) => {
+    const s = suppliers.find(x => x.id === id)
+    if (!s) return
+    setForm(f => ({ ...f, distributor: s.short_name || s.name || f.distributor, dealerCode: s.dealer_code || f.dealerCode }))
+  }
 
   // Авто-дані + позиції
   useEffect(() => {
@@ -111,6 +124,14 @@ export default function VendorRegTab({ o }) {
         </button>
       </div>
       {msg && <div style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 13 }}><i className="ti ti-alert-circle" /> {msg}</div>}
+
+      <div className="form-group" style={{ marginBottom: 14 }}>
+        <label>Обрати дилера (дистриб'ютора) <span style={{ color: 'var(--text3)', fontWeight: 400, fontSize: 11 }}>· підтягне назву й код дилера</span></label>
+        <select className="form-input" defaultValue="" onChange={e => { pickDealer(e.target.value); e.target.value = '' }} style={{ maxWidth: 420 }}>
+          <option value="">— обрати постачальника —</option>
+          {suppliers.map(s => <option key={s.id} value={s.id}>{(s.short_name || s.name)}{s.dealer_code ? ` · код ${s.dealer_code}` : ''}</option>)}
+        </select>
+      </div>
 
       <div className="form-grid">
         {vendor.fields.map(f => (

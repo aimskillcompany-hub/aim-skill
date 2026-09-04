@@ -184,8 +184,8 @@ function DetailsTab({ c, onSaved }) {
     let { error } = await supabase.from('contractors').update(upd).eq('id', c.id)
     // Колонки витягу (edr_extract_*) можуть ще не існувати в БД (міграція 024) —
     // тоді зберігаємо реквізити без них, щоб розпізнані дані не губились.
-    if (error && /edr_extract/.test(error.message || '')) {
-      delete upd.edr_extract_path; delete upd.edr_extract_name
+    if (error && /(edr_extract|dealer_code)/.test(error.message || '')) {
+      delete upd.edr_extract_path; delete upd.edr_extract_name; delete upd.dealer_code
       ;({ error } = await supabase.from('contractors').update(upd).eq('id', c.id))
     }
     setSaving(false)
@@ -254,6 +254,12 @@ function DetailsTab({ c, onSaved }) {
                 <div style={{ fontSize: 13.5, wordBreak: 'break-word' }}>{String(form[key])}</div>
               </div>
             ))}
+          {form.is_supplier && form.dealer_code && (
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 1 }}>Код компанії у дилера</div>
+              <div style={{ fontSize: 13.5, wordBreak: 'break-word' }}>{form.dealer_code}</div>
+            </div>
+          )}
         </div>
 
         <Contacts contractorId={c.id} readOnly />
@@ -308,6 +314,19 @@ function DetailsTab({ c, onSaved }) {
           </div>
         </div>
       ))}
+
+      {form.is_supplier && (
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10 }}>Дилер / дистриб'ютор</div>
+          <div className="form-grid">
+            <div className="form-group">
+              <label>Код компанії у дилера</label>
+              <input className="form-input" value={form.dealer_code ?? ''} onChange={e => set('dealer_code', e.target.value)} placeholder="напр. 501684" />
+              <span style={{ fontSize: 11, color: 'var(--text3)' }}>Наш дилерський код у цього постачальника — підтягнеться у форму реєстрації проекту.</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Contacts contractorId={c.id} />
 
