@@ -287,6 +287,7 @@ function DetailsTab({ o, onSaved }) {
     company_id: o.company_id || activeId || '',
     agent_commission_pct: o.agent_commission_pct != null ? String(Math.round(o.agent_commission_pct * 10000) / 100) : '',
     in_investor: !!o.in_investor,
+    created_at: o.created_at ? o.created_at.slice(0, 10) : '',
   })
   const [saved, setSaved] = useState(false)
   const [users, setUsers] = useState([])
@@ -324,6 +325,7 @@ function DetailsTab({ o, onSaved }) {
       contract_id: form.contract_id || null,
       agent_commission_pct: Math.max(0, (Number(form.agent_commission_pct) || 0)) / 100,
       in_investor: !!form.in_investor,
+      ...(form.created_at ? { created_at: new Date(form.created_at).toISOString() } : {}),
     }
     let { error } = await qc('orders').update(upd).eq('id', o.id)
     // Колонки можуть ще не існувати (міграції 033/037/040/046/047) — тоді зберігаємо без них
@@ -401,7 +403,7 @@ function DetailsTab({ o, onSaved }) {
           </div>
         )}
         <div className="form-group"><label>Дата створення заявки</label>
-          <input className="form-input" value={o.created_at ? o.created_at.slice(0, 10) : '—'} disabled style={{ background: 'var(--surface2)' }} />
+          <input className="form-input" type="date" value={form.created_at} onChange={e => setForm(f => ({ ...f, created_at: e.target.value }))} />
         </div>
         <div className="form-group"><label>Дата закриття заявки</label>
           <input className="form-input" type="date" value={form.closed_at} onChange={e => setForm(f => ({ ...f, closed_at: e.target.value }))} />

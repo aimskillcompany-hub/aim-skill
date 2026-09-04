@@ -92,7 +92,7 @@ export default function OwnerReport() {
         const comp = compById[o.company_id] || {}
         const vatPayer = comp.is_vat_payer !== false
         const paid = paidByOrder[o.id] || null
-        const refDate = paid || (o.created_at || '').slice(0, 10)
+        const refDate = (o.created_at || '').slice(0, 10) // період — за датою створення замовлення
         if (from && refDate < from) continue
         if (to && refDate > to) continue
         if (!paid && !showUnpaid) continue
@@ -252,7 +252,7 @@ export default function OwnerReport() {
           </div>
           <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>
             Закупка/реалізація — з позицій замовлення (без ПДВ). ПДВ і податок нараховуються лише для компаній-платників ПДВ.
-            «Дата оплати» — за прив'язаною банківською оплатою; фільтр періоду: оплачені — за датою оплати, неоплачені — за датою замовлення.
+            Фільтр періоду — за датою створення замовлення. «Дата оплати» — за прив'язаною банківською оплатою (довідково).
           </p>
         </div>
       )}
