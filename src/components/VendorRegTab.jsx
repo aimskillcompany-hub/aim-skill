@@ -18,8 +18,9 @@ export default function VendorRegTab({ o }) {
   const vendor = getVendor(vendorKey)
 
   useEffect(() => {
+    // Лише дилери/дистриб'ютори — постачальники із заповненим кодом дилера.
     supabase.from('contractors').select('id, name, short_name, dealer_code').eq('is_supplier', true).order('name')
-      .then(({ data, error }) => { if (!error) setSuppliers(data || []) })
+      .then(({ data, error }) => { if (!error) setSuppliers((data || []).filter(s => s.dealer_code && String(s.dealer_code).trim())) })
   }, [])
 
   // Обрати дилера зі списку → підтягнути назву дистриб'ютора (D15) + код дилера (D3)
@@ -127,10 +128,11 @@ export default function VendorRegTab({ o }) {
 
       <div className="form-group" style={{ marginBottom: 14 }}>
         <label>Обрати дилера (дистриб'ютора) <span style={{ color: 'var(--text3)', fontWeight: 400, fontSize: 11 }}>· підтягне назву й код дилера</span></label>
-        <select className="form-input" defaultValue="" onChange={e => { pickDealer(e.target.value); e.target.value = '' }} style={{ maxWidth: 420 }}>
-          <option value="">— обрати постачальника —</option>
-          {suppliers.map(s => <option key={s.id} value={s.id}>{(s.short_name || s.name)}{s.dealer_code ? ` · код ${s.dealer_code}` : ''}</option>)}
+        <select className="form-input" defaultValue="" onChange={e => { pickDealer(e.target.value); e.target.value = '' }} style={{ maxWidth: 420 }} disabled={!suppliers.length}>
+          <option value="">{suppliers.length ? '— обрати дилера —' : '— немає дилерів з кодом —'}</option>
+          {suppliers.map(s => <option key={s.id} value={s.id}>{(s.short_name || s.name)} · код {s.dealer_code}</option>)}
         </select>
+        {!suppliers.length && <span style={{ fontSize: 11, color: 'var(--text3)' }}>Заповніть «Код компанії у дилера» в картці постачальника — і він з'явиться тут.</span>}
       </div>
 
       <div className="form-grid">
