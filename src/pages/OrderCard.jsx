@@ -15,6 +15,7 @@ import ProductSelect from '../components/ui/ProductSelect'
 import AutoTextarea from '../components/ui/AutoTextarea'
 import PricePickerModal from '../components/ui/PricePickerModal'
 import ContractorSelect from '../components/ui/ContractorSelect'
+import VendorRegTab from '../components/VendorRegTab'
 import {
   ORDER_TYPES, TYPE_COLORS, OUTCOME, flowFor, proposalOverdue,
 } from '../lib/orders'
@@ -27,6 +28,7 @@ const TABS = [
   { id: 'proposals', label: 'КП', icon: 'ti-file-text' },
   { id: 'documents', label: 'Документи', icon: 'ti-files' },
   { id: 'suppliers', label: 'Субзамовлення', icon: 'ti-truck-delivery' },
+  { id: 'vendorreg', label: 'Реєстрація у вендора', icon: 'ti-clipboard-check' },
   { id: 'transactions', label: 'Транзакції', icon: 'ti-building-bank' },
   { id: 'stock', label: 'Склад', icon: 'ti-package' },
 ]
@@ -229,6 +231,7 @@ export default function OrderCard() {
       {tab === 'proposals' && <ProposalsTab o={o} onChange={load} />}
       {tab === 'documents' && <DocumentsTab o={o} />}
       {tab === 'suppliers' && <SuppliersTab o={o} />}
+      {tab === 'vendorreg' && <VendorRegTab o={o} />}
       {tab === 'transactions' && <TransactionsTab o={o} />}
       {tab === 'stock' && <StockTab o={o} />}
     </div>
