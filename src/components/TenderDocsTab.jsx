@@ -39,7 +39,7 @@ export default function TenderDocsTab({ o }) {
         doc_date: (r.date && /^\d{4}-\d{2}-\d{2}$/.test(r.date)) ? r.date : prev.doc_date,
       }))
     } catch (e) {
-      setMsg('Не вдалося розпізнати автоматично — заповніть вручну.')
+      setMsg(e.message || 'Не вдалося розпізнати автоматично — заповніть вручну.')
     } finally { setRecognizing(false) }
   }
 

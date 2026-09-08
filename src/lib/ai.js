@@ -35,6 +35,35 @@ export async function callClaude(requestBody, { retries = 4 } = {}) {
 // (проксі /api/ai має ліміт ~4.5МБ на тіло; фото з телефону + base64 його перевищують → HTTP 413).
 const OCR_MAX_DIM = 2200   // максимальний довший бік (тексту вистачає для розпізнавання)
 const OCR_JPEG_Q = 0.82
+// Проксі /api/ai — звичайна Vercel-функція (не Next.js), тож config.bodyParser не діє;
+// тримаємо тіло під платформенним лімітом. base64 ≈ bytes×1.33 → цільовий розмір файлу.
+const MAX_UPLOAD_BYTES = 3_400_000  // ~3.4МБ файл → ~4.5МБ base64
+
+// Стиснути зображення під заданий розмір (ітеративно зменшуючи бік/якість).
+async function shrinkImageToLimit(file, maxBytes = MAX_UPLOAD_BYTES) {
+  const draw = (dim, q) => new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height
+      const scale = Math.min(1, dim / Math.max(w, h))
+      const cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale))
+      const canvas = document.createElement('canvas'); canvas.width = cw; canvas.height = ch
+      canvas.getContext('2d').drawImage(img, 0, 0, cw, ch)
+      canvas.toBlob(b => { URL.revokeObjectURL(url); b ? resolve(b) : reject(new Error('canvas')) }, 'image/jpeg', q)
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Не вдалося прочитати зображення. Збережіть як JPEG.')) }
+    img.src = url
+  })
+  let blob = null
+  for (const [dim, q] of [[2200, 0.82], [1800, 0.75], [1400, 0.68], [1100, 0.6]]) {
+    blob = await draw(dim, q)
+    if (blob.size <= maxBytes) break
+  }
+  const name = (file.name || 'photo').replace(/\.(heic|heif|png|webp|gif)$/i, '.jpg')
+  return new File([blob], /\.jpe?g$/i.test(name) ? name : name + '.jpg', { type: 'image/jpeg' })
+}
+
 async function normalizeImage(file) {
   const isHeic = ['image/heic', 'image/heif'].includes(file.type.toLowerCase()) || /\.(heic|heif)$/i.test(file.name)
   const isImage = isHeic || file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(file.name)
@@ -312,10 +341,13 @@ export async function extractCompanyExtract(files) {
 
 // ── Розпізнати найменування / вихідний номер / дату тендерного документа ──
 export async function extractTenderDoc(file) {
-  file = await normalizeImage(file)
+  const isPDF = file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
+  const isImage = file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|heic|heif)$/i.test(file.name)
+  if (!isPDF && !isImage) throw new Error('Автоформат лише для PDF/зображень — заповніть поля вручну.')
+  // Зображення — стискаємо під ліміт; PDF стиснути не можемо → гейт за розміром
+  if (isImage) file = await shrinkImageToLimit(file)
+  else if (file.size > MAX_UPLOAD_BYTES) throw new Error('PDF завеликий для авторозпізнавання — заповніть поля вручну (або завантажте як фото / менший PDF).')
   const base64 = await toBase64(file)
-  const isPDF = file.type === 'application/pdf'
-  if (!isPDF && !file.type.startsWith('image/')) throw new Error(`Непідтримуваний формат: ${file.name}`)
   const supported = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
   const block = isPDF
     ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
