@@ -433,6 +433,7 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `046_orders_agent_pct.sql` | Замовлення: `agent_commission_pct` (% агентських для звіту «Розрахунок») | ✅ застосовано (звірено 2026-09-03) |
 | `047_orders_investor.sql` | Замовлення: `in_investor` (відмітка «врахувати в розрахунку інвестора») + частк. індекс | ✅ застосовано (звірено 2026-09-03: 19 позначено) |
 | `048_contractor_dealer_code.sql` | Контрагенти: `dealer_code` (код компанії у дилера, для форм реєстрації вендора) | ✅ застосовано (звірено 2026-09-04) |
+| `049_tender_documents.sql` | Тендерна документація замовлення: таблиця `tender_documents` (окрема від documents) + RLS | ✅ застосовано (звірено 2026-09-08) |
 | `validate.mjs` | Перевірка цілісності Фази 1 (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 | `probe.mjs` | Звірка наявності колонок/таблиць усіх міграцій у БД (`SUPABASE_SERVICE_KEY=... node migrations/probe.mjs`) | — |
 
