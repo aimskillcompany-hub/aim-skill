@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
+import { extractTenderDoc } from '../lib/ai'
 
 // Вкладка «Тендерна документація» — файли зберігаються ЛИШЕ в замовленні (не в загальних Документах),
 // з прив'язкою до ідентифікатора закупівлі. Авто-нумерація: останні 6 цифр закупівлі/N.
@@ -21,7 +22,26 @@ export default function TenderDocsTab({ o }) {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
   const [zipping, setZipping] = useState(false)
+  const [recognizing, setRecognizing] = useState(false)
   const fileRef = useRef(null)
+
+  // Обрати файл → авто-розпізнати найменування/вих.номер/дату (не затираємо вручну введене)
+  const onFile = async (f) => {
+    setFile(f); setMsg(null)
+    if (!f) return
+    setRecognizing(true)
+    try {
+      const r = await extractTenderDoc(f)
+      setForm(prev => ({
+        ...prev,
+        name: prev.name.trim() ? prev.name : (r.name || ''),
+        out_number: prev.out_number.trim() ? prev.out_number : (r.outNumber || ''),
+        doc_date: (r.date && /^\d{4}-\d{2}-\d{2}$/.test(r.date)) ? r.date : prev.doc_date,
+      }))
+    } catch (e) {
+      setMsg('Не вдалося розпізнати автоматично — заповніть вручну.')
+    } finally { setRecognizing(false) }
+  }
 
   const base = procBase(o.procurement_id)
 
@@ -128,13 +148,14 @@ export default function TenderDocsTab({ o }) {
           <div className="form-group"><label>Дата документа</label>
             <input className="form-input" type="date" value={form.doc_date} onChange={e => setForm(f => ({ ...f, doc_date: e.target.value }))} />
           </div>
-          <div className="form-group full"><label>Файл (скан){base && <span style={{ color: 'var(--text3)', fontWeight: 400, fontSize: 11 }}> · буде № {base}/{nextSeq()}</span>}</label>
-            <input ref={fileRef} className="form-input" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" onChange={e => setFile(e.target.files?.[0] || null)} />
+          <div className="form-group full"><label>Файл (скан){base && <span style={{ color: 'var(--text3)', fontWeight: 400, fontSize: 11 }}> · буде № {base}/{nextSeq()}</span>}{recognizing && <span style={{ color: 'var(--blue)', fontWeight: 400, fontSize: 11 }}> · <i className="ti ti-loader-2" style={{ animation: 'spin 1s linear infinite' }} /> розпізнаю…</span>}</label>
+            <input ref={fileRef} className="form-input" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" onChange={e => onFile(e.target.files?.[0] || null)} />
+            <span style={{ fontSize: 11, color: 'var(--text3)' }}>Після вибору файлу система спробує сама заповнити найменування, вихідний номер і дату — перевірте.</span>
           </div>
         </div>
         {msg && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 8 }}><i className="ti ti-alert-circle" /> {msg}</div>}
         <div style={{ marginTop: 12 }}>
-          <button className="btn btn-primary" onClick={upload} disabled={busy}>{busy ? 'Завантаження…' : <><i className="ti ti-upload" /> Додати документ</>}</button>
+          <button className="btn btn-primary" onClick={upload} disabled={busy || recognizing}>{busy ? 'Завантаження…' : <><i className="ti ti-upload" /> Додати документ</>}</button>
         </div>
       </div>
 

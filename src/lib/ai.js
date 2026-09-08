@@ -310,6 +310,34 @@ export async function extractCompanyExtract(files) {
   try { return JSON.parse(text) } catch { throw new Error('Не вдалось розпізнати витяг. Спробуйте інший файл.') }
 }
 
+// ── Розпізнати найменування / вихідний номер / дату тендерного документа ──
+export async function extractTenderDoc(file) {
+  file = await normalizeImage(file)
+  const base64 = await toBase64(file)
+  const isPDF = file.type === 'application/pdf'
+  if (!isPDF && !file.type.startsWith('image/')) throw new Error(`Непідтримуваний формат: ${file.name}`)
+  const supported = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+  const block = isPDF
+    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
+    : { type: 'image', source: { type: 'base64', media_type: supported.includes(file.type) ? file.type : 'image/jpeg', data: base64 } }
+
+  const systemPrompt = `Ти розпізнаєш реквізити ділового/тендерного документа (лист, довідка, наказ, гарантія, пропозиція тощо).
+Поверни ТІЛЬКИ валідний JSON без markdown:
+{
+  "name": "найменування/тип документа стисло (напр. «Лист-гарантія», «Довідка про досвід», «Тендерна пропозиція») або null",
+  "outNumber": "вихідний/реєстраційний номер документа (те що після «№») або null",
+  "date": "YYYY-MM-DD дата документа або null"
+}
+"name" — коротка суть документа (до 60 символів), без номера й дати. Якщо є явна назва вгорі — бери її. Не вигадуй.`
+
+  const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 500, system: systemPrompt, messages: [{ role: 'user', content: [block, { type: 'text', text: 'Розпізнай найменування, вихідний номер і дату цього документа.' }] }] })
+  let text = data.content?.find(b => b.type === 'text')?.text || ''
+  text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+  const m = text.match(/\{[\s\S]*\}/)
+  if (m) text = m[0]
+  try { return JSON.parse(text) } catch { return {} }
+}
+
 // ── Розпізнати реквізити компанії з тексту ──
 export async function parseCompanyFromText(text) {
   if (!USE_PROXY && !API_KEY) throw new Error('API ключ не налаштовано')
