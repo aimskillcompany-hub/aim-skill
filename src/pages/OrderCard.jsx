@@ -16,6 +16,7 @@ import AutoTextarea from '../components/ui/AutoTextarea'
 import PricePickerModal from '../components/ui/PricePickerModal'
 import ContractorSelect from '../components/ui/ContractorSelect'
 import VendorRegTab from '../components/VendorRegTab'
+import TenderDocsTab from '../components/TenderDocsTab'
 import {
   ORDER_TYPES, TYPE_COLORS, OUTCOME, flowFor, proposalOverdue,
 } from '../lib/orders'
@@ -29,6 +30,7 @@ const TABS = [
   { id: 'documents', label: 'Документи', icon: 'ti-files' },
   { id: 'suppliers', label: 'Субзамовлення', icon: 'ti-truck-delivery' },
   { id: 'vendorreg', label: 'Реєстрація у вендора', icon: 'ti-clipboard-check' },
+  { id: 'tender', label: 'Тендерна документація', icon: 'ti-gavel', tenderOnly: true },
   { id: 'transactions', label: 'Транзакції', icon: 'ti-building-bank' },
   { id: 'stock', label: 'Склад', icon: 'ti-package' },
 ]
@@ -216,7 +218,7 @@ export default function OrderCard() {
       )}
 
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 18, overflowX: 'auto' }}>
-        {TABS.map(t => (
+        {TABS.filter(t => !t.tenderOnly || o.procurement_type === 'tender').map(t => (
           <button key={t.id} onClick={() => switchTab(t.id)} style={{
             padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
             fontSize: 13, fontWeight: 500, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6,
@@ -232,6 +234,7 @@ export default function OrderCard() {
       {tab === 'documents' && <DocumentsTab o={o} />}
       {tab === 'suppliers' && <SuppliersTab o={o} />}
       {tab === 'vendorreg' && <VendorRegTab o={o} />}
+      {tab === 'tender' && o.procurement_type === 'tender' && <TenderDocsTab o={o} />}
       {tab === 'transactions' && <TransactionsTab o={o} />}
       {tab === 'stock' && <StockTab o={o} />}
     </div>
