@@ -337,21 +337,22 @@ export function pdf(company, contractor, items, options) {
       // ═══ ШАПКА: лого зліва · реквізити справа (велика назва компанії) ═══
       {
         columns: [
-          logoImg ? { image: logoImg, width: 104, margin: [0, 8, 0, 0] } : { text: '', width: 1 },
+          logoImg ? { image: logoImg, width: 108, margin: [0, 6, 0, 0] } : { text: '', width: 1 },
           {
             width: '*',
             stack: [
-              { text: companyName, fontSize: 17, bold: true, color: BLACK, alignment: 'right', characterSpacing: 0.3, margin: [0, 0, 0, 6] },
-              { text: company.address || '', fontSize: 8.5, color: G1, alignment: 'right', lineHeight: 1.3 },
-              company.phone ? { text: `телефон: ${company.phone}`, fontSize: 8.5, color: G1, alignment: 'right' } : null,
-              company.email ? { text: `email: ${company.email}`, fontSize: 8.5, color: G1, alignment: 'right' } : null,
+              { text: (company.name || companyName).replace(/"([^"]*)"/g, '«$1»'), fontSize: 12, bold: true, color: BLACK, alignment: 'center', lineHeight: 1.15, margin: [0, 0, 0, 4] },
+              company.address ? { text: `Адреса для листування: ${company.address}`, fontSize: 8, color: G1, alignment: 'center', lineHeight: 1.3 } : null,
+              (company.edrpou || company.ipn) ? { text: [company.edrpou ? `Код ЄДРПОУ ${company.edrpou}` : '', (company.edrpou && company.ipn) ? '  ·  ' : '', company.ipn ? `Індивідуальний податковий номер ${company.ipn}` : ''].join(''), fontSize: 8, color: G1, alignment: 'center', lineHeight: 1.3 } : null,
+              company.iban ? { text: `IBAN ${company.iban}${company.bankName ? `, ${company.bankName}` : ''}${company.mfo ? `, МФО ${company.mfo}` : ''}`, fontSize: 8, color: G1, alignment: 'center', lineHeight: 1.3 } : null,
+              { text: [company.phone ? `Тел./факс: ${company.phone}` : '', company.email ? `${company.phone ? '  ·  ' : ''}e-mail: ${company.email}` : '', company.email ? `  ·  www.${company.email.split('@')[1] || ''}` : ''].join(''), fontSize: 8, color: G1, alignment: 'center', lineHeight: 1.3 },
             ].filter(Boolean),
           },
         ],
-        columnGap: 16,
-        margin: [0, 0, 0, 10],
+        columnGap: 14,
+        margin: [0, 0, 0, 12],
       },
-      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 499, y2: 0, lineWidth: 0.6, lineColor: DARK }], margin: [0, 0, 0, 10] },
+      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 499, y2: 0, lineWidth: 1.4, lineColor: '#3DBE59' }], margin: [0, 0, 0, 14] },
 
       // ═══ НОМЕР + ТЕРМІН ДІЇ ═══
       { text: `№ ${docNumber} від ${formatDateLong(docDate)}`, fontSize: 10.5, color: BLACK, margin: [0, 0, 0, 1] },
