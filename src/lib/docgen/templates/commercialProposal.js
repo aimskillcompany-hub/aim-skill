@@ -60,15 +60,14 @@ export function pdf(company, contractor, items, options) {
   const ctaBg = aim ? '#F7FAF8' : '#F4F4F5'
 
   // Спільна таблиця товарів (обидві теми)
+  const priceHdr = vatPayer ? 'Ціна без ПДВ' : 'Ціна'
+  const sumHdr = vatPayer ? 'Сума без ПДВ' : 'Сума'
   const productsTable = {
     table: {
       headerRows: 1,
-      widths: vatPayer ? [18, '*', 26, 28, 58, 22, 44, 54] : [18, '*', 32, 34, 78, 78],
+      widths: [18, '*', 30, 32, 74, 82],
       body: [
-        (vatPayer
-          ? ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна без ПДВ', 'ПДВ', 'Сума ПДВ', 'Сума']
-          : ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна', 'Сума']
-        ).map((t, ci) => ({
+        ['№', 'Найменування', 'Од.', 'К-сть', priceHdr, sumHdr].map((t, ci) => ({
           text: t, fontSize: 6.5, bold: true, color: '#FFF', fillColor: DARK,
           alignment: ci === 1 ? 'left' : 'center', margin: [0, 4, 0, 4],
         })),
@@ -77,12 +76,8 @@ export function pdf(company, contractor, items, options) {
           nameCell(r, G2),
           { text: r.u, alignment: 'center', fontSize: 8, color: G2 },
           { text: r.q, alignment: 'center', fontSize: 8.5 },
-          { text: formatMoney(vatPayer ? r.p : (r.q ? r.t / r.q : r.t)), alignment: 'right', fontSize: 8.5 },
-          ...(vatPayer ? [
-            { text: r.vr > 0 ? `${r.vr}%` : '—', alignment: 'center', fontSize: 7, color: G2 },
-            { text: formatMoney(r.v), alignment: 'right', fontSize: 8.5, color: G2 },
-          ] : []),
-          { text: formatMoney(r.t), alignment: 'right', fontSize: 8.5, bold: true, color: BLACK },
+          { text: formatMoney(r.p), alignment: 'right', fontSize: 8.5 },
+          { text: formatMoney(r.a), alignment: 'right', fontSize: 8.5, bold: true, color: BLACK },
         ]),
       ],
     },
@@ -129,23 +124,17 @@ export function pdf(company, contractor, items, options) {
     const bitTable = {
       table: {
         headerRows: 1,
-        widths: vatPayer ? [18, '*', 26, 28, 58, 22, 44, 54] : [18, '*', 32, 34, 78, 78],
+        widths: [18, '*', 30, 32, 74, 82],
         body: [
-          (vatPayer
-            ? ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна без ПДВ', 'ПДВ', 'Сума ПДВ', 'Сума']
-            : ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна', 'Сума']
-          ).map((t, ci) => ({ text: t, fontSize: 6.5, bold: true, color: '#FFF', fillColor: IND, alignment: ci === 1 ? 'left' : 'center', margin: [0, 5, 0, 5] })),
+          ['№', 'Найменування', 'Од.', 'К-сть', vatPayer ? 'Ціна без ПДВ' : 'Ціна', vatPayer ? 'Сума без ПДВ' : 'Сума']
+          .map((t, ci) => ({ text: t, fontSize: 6.5, bold: true, color: '#FFF', fillColor: IND, alignment: ci === 1 ? 'left' : 'center', margin: [0, 5, 0, 5] })),
           ...rows.map(r => [
             { text: r.n, alignment: 'center', fontSize: 8.5, color: G2 },
             nameCell(r, G2),
             { text: r.u, alignment: 'center', fontSize: 8, color: G2 },
             { text: r.q, alignment: 'center', fontSize: 8.5 },
-            { text: formatMoney(vatPayer ? r.p : (r.q ? r.t / r.q : r.t)), alignment: 'right', fontSize: 8.5 },
-            ...(vatPayer ? [
-              { text: r.vr > 0 ? `${r.vr}%` : '—', alignment: 'center', fontSize: 7, color: G2 },
-              { text: formatMoney(r.v), alignment: 'right', fontSize: 8.5, color: G2 },
-            ] : []),
-            { text: formatMoney(r.t), alignment: 'right', fontSize: 8.5, bold: true, color: INDD },
+            { text: formatMoney(r.p), alignment: 'right', fontSize: 8.5 },
+            { text: formatMoney(r.a), alignment: 'right', fontSize: 8.5, bold: true, color: INDD },
           ]),
         ],
       },
