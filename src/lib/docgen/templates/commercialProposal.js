@@ -118,7 +118,8 @@ export function pdf(company, contractor, items, options) {
 
   // ══════════════ ТЕМА BIT GROUP (індиго, сучасна tech) ══════════════
   if (brand.theme === 'bit') {
-    const IND = '#4F46E5', INDL = '#EEF2FF', INDD = '#3730A3'
+    // Стримана корпоративна палітра (темний слейт-наві) замість яскравого індиго
+    const IND = '#243447', INDL = '#F1F4F8', INDD = '#334155'
     const bitName = company.shortName || shortenName(company.name) || ''
     const contactLine = [company.phone, company.email].filter(Boolean).join('    ·    ')
     const bitTable = {
@@ -141,7 +142,7 @@ export function pdf(company, contractor, items, options) {
       layout: {
         hLineWidth: (i) => i <= 1 ? 0 : 0.5, vLineWidth: () => 0, hLineColor: () => '#E5E7EB',
         paddingLeft: (ci) => ci === 1 ? 7 : 3, paddingRight: (ci) => ci === 1 ? 7 : 3, paddingTop: () => 5, paddingBottom: () => 5,
-        fillColor: (i) => i > 0 && i % 2 === 0 ? '#F8FAFF' : null,
+        fillColor: (i) => i > 0 && i % 2 === 0 ? '#F7F8FA' : null,
       },
     }
     const bitTotals = {
@@ -176,7 +177,7 @@ export function pdf(company, contractor, items, options) {
       footer: (page, count) => ({
         margin: [46, 0, 46, 18],
         stack: [
-          { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 503, y2: 0, lineWidth: 2, lineColor: IND }], margin: [0, 0, 0, 5] },
+          { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 503, y2: 0, lineWidth: 0.8, lineColor: '#CBD5E1' }], margin: [0, 0, 0, 5] },
           {
             columns: [
               { text: [{ text: bitName + '   ', bold: true, color: INDD }, { text: company.address || '', color: G2 }], fontSize: 7.5, width: '*' },
@@ -192,13 +193,13 @@ export function pdf(company, contractor, items, options) {
           table: { widths: ['*'], body: [[{
             columns: [
               { width: '*', stack: [
-                { text: bitName, color: '#FFFFFF', fontSize: 17, bold: true, characterSpacing: 0.3 },
-                contactLine ? { text: contactLine, color: '#C7D2FE', fontSize: 8.5, margin: [0, 4, 0, 0] } : null,
+                { text: bitName, color: '#FFFFFF', fontSize: 15, bold: true, characterSpacing: 0.3 },
+                contactLine ? { text: contactLine, color: '#B8C2CF', fontSize: 8.5, margin: [0, 4, 0, 0] } : null,
               ].filter(Boolean) },
-              logoImg ? { width: 60, image: logoImg, fit: [60, 42], alignment: 'right' } : { width: 1, text: '' },
+              logoImg ? { width: 56, image: logoImg, fit: [56, 40], alignment: 'right' } : { width: 1, text: '' },
             ],
           }]] },
-          layout: { fillColor: () => IND, defaultBorder: false, paddingLeft: () => 18, paddingRight: () => 18, paddingTop: () => 15, paddingBottom: () => 15 },
+          layout: { fillColor: () => IND, defaultBorder: false, paddingLeft: () => 18, paddingRight: () => 18, paddingTop: () => 13, paddingBottom: () => 13 },
           margin: [0, 0, 0, 16],
         },
         // Кому + картка документа
