@@ -337,22 +337,22 @@ export function pdf(company, contractor, items, options) {
       // ═══ ШАПКА: лого зліва · реквізити справа (велика назва компанії) ═══
       {
         columns: [
-          logoImg ? { image: logoImg, width: 108, margin: [0, 6, 0, 0] } : { text: '', width: 1 },
+          logoImg ? { image: logoImg, width: 84, margin: [0, 2, 0, 0] } : { text: '', width: 1 },
           {
             width: '*',
             stack: [
-              { text: (company.name || companyName).replace(/"([^"]*)"/g, '«$1»'), fontSize: 12, bold: true, color: BLACK, alignment: 'center', lineHeight: 1.15, margin: [0, 0, 0, 4] },
-              company.address ? { text: `Адреса для листування: ${company.address}`, fontSize: 8, color: G1, alignment: 'center', lineHeight: 1.3 } : null,
-              (company.edrpou || company.ipn) ? { text: [company.edrpou ? `Код ЄДРПОУ ${company.edrpou}` : '', (company.edrpou && company.ipn) ? '  ·  ' : '', company.ipn ? `Індивідуальний податковий номер ${company.ipn}` : ''].join(''), fontSize: 8, color: G1, alignment: 'center', lineHeight: 1.3 } : null,
-              company.iban ? { text: `IBAN ${company.iban}${company.bankName ? `, ${company.bankName}` : ''}${company.mfo ? `, МФО ${company.mfo}` : ''}`, fontSize: 8, color: G1, alignment: 'center', lineHeight: 1.3 } : null,
-              { text: [company.phone ? `Тел./факс: ${company.phone}` : '', company.email ? `${company.phone ? '  ·  ' : ''}e-mail: ${company.email}` : '', company.email ? `  ·  www.${company.email.split('@')[1] || ''}` : ''].join(''), fontSize: 8, color: G1, alignment: 'center', lineHeight: 1.3 },
+              { text: (company.name || companyName).replace(/"([^"]*)"/g, '«$1»'), fontSize: 10.5, bold: true, color: BLACK, alignment: 'center', lineHeight: 1.1, margin: [0, 0, 0, 3] },
+              company.address ? { text: `Адреса для листування: ${company.address}`, fontSize: 7, color: G1, alignment: 'center', lineHeight: 1.2 } : null,
+              (company.edrpou || company.ipn) ? { text: [company.edrpou ? `Код ЄДРПОУ ${company.edrpou}` : '', (company.edrpou && company.ipn) ? '  ·  ' : '', company.ipn ? `Індивідуальний податковий номер ${company.ipn}` : ''].join(''), fontSize: 7, color: G1, alignment: 'center', lineHeight: 1.2 } : null,
+              company.iban ? { text: `IBAN ${company.iban}${company.bankName ? `, ${company.bankName}` : ''}${company.mfo ? `, МФО ${company.mfo}` : ''}`, fontSize: 7, color: G1, alignment: 'center', lineHeight: 1.2 } : null,
+              { text: [company.phone ? `Тел./факс: ${company.phone}` : '', company.email ? `${company.phone ? '  ·  ' : ''}e-mail: ${company.email}` : '', company.email ? `  ·  www.${company.email.split('@')[1] || ''}` : ''].join(''), fontSize: 7, color: G1, alignment: 'center', lineHeight: 1.2 },
             ].filter(Boolean),
           },
         ],
-        columnGap: 14,
-        margin: [0, 0, 0, 12],
+        columnGap: 12,
+        margin: [0, 0, 0, 8],
       },
-      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 499, y2: 0, lineWidth: 1.4, lineColor: '#3DBE59' }], margin: [0, 0, 0, 14] },
+      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 499, y2: 0, lineWidth: 1.2, lineColor: '#3DBE59' }], margin: [0, 0, 0, 12] },
 
       // ═══ НОМЕР + ТЕРМІН ДІЇ ═══
       { text: `№ ${docNumber} від ${formatDateLong(docDate)}`, fontSize: 10.5, color: BLACK, margin: [0, 0, 0, 1] },
@@ -398,69 +398,9 @@ export function pdf(company, contractor, items, options) {
         alignment: 'justify', fontSize: 10, color: DARK, lineHeight: 1.35, leadingIndent: 26, margin: [0, 0, 0, 10],
       },
 
-      // ═══ ТАБЛИЦЯ ТОВАРІВ ═══
-      {
-        table: {
-          headerRows: 1,
-          widths: vatPayer ? [18, '*', 26, 28, 58, 22, 44, 54] : [18, '*', 32, 34, 78, 78],
-          body: [
-            (vatPayer
-              ? ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна без ПДВ', 'ПДВ', 'Сума ПДВ', 'Сума']
-              : ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна', 'Сума']
-            ).map((t, ci) => ({
-              text: t, fontSize: 6.5, bold: true, color: '#FFF', fillColor: DARK,
-              alignment: ci === 1 ? 'left' : 'center', margin: [0, 4, 0, 4],
-            })),
-            ...rows.map(r => [
-              { text: r.n, alignment: 'center', fontSize: 8.5, color: G2 },
-              nameCell(r, G2),
-              { text: r.u, alignment: 'center', fontSize: 8, color: G2 },
-              { text: r.q, alignment: 'center', fontSize: 8.5 },
-              { text: formatMoney(vatPayer ? r.p : (r.q ? r.t / r.q : r.t)), alignment: 'right', fontSize: 8.5 },
-              ...(vatPayer ? [
-                { text: r.vr > 0 ? `${r.vr}%` : '—', alignment: 'center', fontSize: 7, color: G2 },
-                { text: formatMoney(r.v), alignment: 'right', fontSize: 8.5, color: G2 },
-              ] : []),
-              { text: formatMoney(r.t), alignment: 'right', fontSize: 8.5, bold: true, color: BLACK },
-            ]),
-          ],
-        },
-        layout: {
-          hLineWidth: (i) => i === 0 ? 0 : i === 1 ? 1 : 0.5,
-          vLineWidth: () => 0,
-          hLineColor: (i) => i === 1 ? DARK : G4,
-          paddingLeft: () => 6, paddingRight: () => 6,
-          paddingTop: () => 5, paddingBottom: () => 5,
-          fillColor: (i) => i > 0 && i % 2 === 0 ? '#FAFAFA' : null,
-        },
-      },
-
-      // ═══ ПІДСУМКИ ═══
-      {
-        columns: [
-          { width: '*', text: '' },
-          {
-            width: 220,
-            table: {
-              widths: [110, 110],
-              body: [
-                ...(vatPayer ? [
-                  [{ text: 'Сума без ПДВ:', alignment: 'right', fontSize: 9, color: G2 }, { text: `${formatMoney(subtotal)} грн`, alignment: 'right', fontSize: 9 }],
-                  ...(vatAmount > 0
-                    ? Object.entries(vatByRate).map(([rate, amt]) => [{ text: `ПДВ ${rate}%:`, alignment: 'right', fontSize: 9, color: G2 }, { text: `${formatMoney(amt)} грн`, alignment: 'right', fontSize: 9 }])
-                    : [[{ text: 'ПДВ:', alignment: 'right', fontSize: 9, color: G2 }, { text: 'без ПДВ', alignment: 'right', fontSize: 9, color: G2 }]]),
-                ] : []),
-                [
-                  { text: vatPayer ? 'Всього з ПДВ:' : 'Всього:', alignment: 'right', fontSize: 10.5, bold: true, color: BLACK, fillColor: totalBg, margin: [0, 4, 0, 4] },
-                  { text: `${formatMoney(total)} грн`, alignment: 'right', fontSize: 10.5, bold: true, color: BLACK, fillColor: totalBg, margin: [0, 4, 4, 4] },
-                ],
-              ],
-            },
-            layout: { defaultBorder: false, paddingTop: () => 2, paddingBottom: () => 2, paddingLeft: () => 4, paddingRight: () => 0 },
-            margin: [0, 6, 0, 0],
-          },
-        ],
-      },
+      // ═══ ТАБЛИЦЯ ТОВАРІВ + ПІДСУМКИ (спільні) ═══
+      productsTable,
+      totalsBlock,
 
       notes ? { text: notes, fontSize: 9, color: G1, margin: [0, 10, 0, 0], lineHeight: 1.4 } : {},
 
