@@ -65,19 +65,19 @@ export function pdf(company, contractor, items, options) {
   const productsTable = {
     table: {
       headerRows: 1,
-      widths: [18, '*', 30, 32, 74, 82],
+      widths: [16, '*', 24, 28, 60, 76],
       body: [
         ['№', 'Найменування', 'Од.', 'К-сть', priceHdr, sumHdr].map((t, ci) => ({
           text: t, fontSize: 6.5, bold: true, color: '#FFF', fillColor: DARK,
           alignment: ci === 1 ? 'left' : 'center', margin: [0, 4, 0, 4],
         })),
         ...rows.map(r => [
-          { text: r.n, alignment: 'center', fontSize: 8.5, color: G2 },
+          { text: r.n, alignment: 'center', fontSize: 8.5, color: G2, noWrap: true },
           nameCell(r, G2),
-          { text: r.u, alignment: 'center', fontSize: 8, color: G2 },
-          { text: r.q, alignment: 'center', fontSize: 8.5 },
-          { text: formatMoney(r.p), alignment: 'right', fontSize: 8.5 },
-          { text: formatMoney(r.a), alignment: 'right', fontSize: 8.5, bold: true, color: BLACK },
+          { text: r.u, alignment: 'center', fontSize: 8, color: G2, noWrap: true },
+          { text: r.q, alignment: 'center', fontSize: 8.5, noWrap: true },
+          { text: formatMoney(r.p), alignment: 'right', fontSize: 8.5, noWrap: true },
+          { text: formatMoney(r.a), alignment: 'right', fontSize: 8.5, bold: true, color: BLACK, noWrap: true },
         ]),
       ],
     },
@@ -85,7 +85,7 @@ export function pdf(company, contractor, items, options) {
       hLineWidth: (i) => i === 0 ? 0 : i === 1 ? 1 : 0.5,
       vLineWidth: () => 0,
       hLineColor: (i) => i === 1 ? DARK : G4,
-      paddingLeft: () => 6, paddingRight: () => 6,
+      paddingLeft: (ci) => ci === 1 ? 6 : 3, paddingRight: (ci) => ci === 1 ? 6 : 3,
       paddingTop: () => 5, paddingBottom: () => 5,
       fillColor: (i) => i > 0 && i % 2 === 0 ? '#FAFAFA' : null,
     },
@@ -124,23 +124,23 @@ export function pdf(company, contractor, items, options) {
     const bitTable = {
       table: {
         headerRows: 1,
-        widths: [18, '*', 30, 32, 74, 82],
+        widths: [16, '*', 24, 28, 60, 76],
         body: [
           ['№', 'Найменування', 'Од.', 'К-сть', vatPayer ? 'Ціна без ПДВ' : 'Ціна', vatPayer ? 'Сума без ПДВ' : 'Сума']
           .map((t, ci) => ({ text: t, fontSize: 6.5, bold: true, color: '#FFF', fillColor: IND, alignment: ci === 1 ? 'left' : 'center', margin: [0, 5, 0, 5] })),
           ...rows.map(r => [
-            { text: r.n, alignment: 'center', fontSize: 8.5, color: G2 },
+            { text: r.n, alignment: 'center', fontSize: 8.5, color: G2, noWrap: true },
             nameCell(r, G2),
-            { text: r.u, alignment: 'center', fontSize: 8, color: G2 },
-            { text: r.q, alignment: 'center', fontSize: 8.5 },
-            { text: formatMoney(r.p), alignment: 'right', fontSize: 8.5 },
-            { text: formatMoney(r.a), alignment: 'right', fontSize: 8.5, bold: true, color: INDD },
+            { text: r.u, alignment: 'center', fontSize: 8, color: G2, noWrap: true },
+            { text: r.q, alignment: 'center', fontSize: 8.5, noWrap: true },
+            { text: formatMoney(r.p), alignment: 'right', fontSize: 8.5, noWrap: true },
+            { text: formatMoney(r.a), alignment: 'right', fontSize: 8.5, bold: true, color: INDD, noWrap: true },
           ]),
         ],
       },
       layout: {
         hLineWidth: (i) => i <= 1 ? 0 : 0.5, vLineWidth: () => 0, hLineColor: () => '#E5E7EB',
-        paddingLeft: () => 7, paddingRight: () => 7, paddingTop: () => 5, paddingBottom: () => 5,
+        paddingLeft: (ci) => ci === 1 ? 7 : 3, paddingRight: (ci) => ci === 1 ? 7 : 3, paddingTop: () => 5, paddingBottom: () => 5,
         fillColor: (i) => i > 0 && i % 2 === 0 ? '#F8FAFF' : null,
       },
     }
