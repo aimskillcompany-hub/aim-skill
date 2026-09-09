@@ -1,5 +1,5 @@
 // ── Шаблон: Комерційна пропозиція ──
-import { formatMoney, formatDate, formatDateLong, calcTotals } from '../formatUtils'
+import { formatMoney, formatDate, formatDateLong, calcTotals, amountInWords } from '../formatUtils'
 import { createWorkbook, addSheet } from '../xlsxBuilder'
 import { LOGO_BASE64 } from '../logo'
 import { stampOverlay } from '../stamp'
@@ -120,6 +120,91 @@ export function pdf(company, contractor, items, options) {
     ],
   }
 
+
+  // ══════════════ ТЕМА BIT: офіційний діловий лист (за зразком БІ АЙ ТІ ГРУП) ══════════════
+  if (bit) {
+    const fullName = (company.name || companyName).replace(/"([^"]*)"/g, '«$1»')
+    const shortNm = (company.shortName || shortenName(company.name) || fullName).replace(/"([^"]*)"/g, '«$1»')
+    const dp = (company.director || '').trim().split(/\s+/).filter(Boolean)
+    const dirShort = dp.length ? dp[0] + (dp[1] ? ` ${dp[1][0]}.` : '') + (dp[2] ? ` ${dp[2][0]}.` : '') : ''
+    const amtWords = amountInWords(total).charAt(0).toLowerCase() + amountInWords(total).slice(1)
+    // Клітинка назви для рамкової таблиці (назва жирна + характеристики дрібним)
+    const cellName = (r) => { const s = [{ text: r.name, fontSize: 9.5, bold: true, lineHeight: 1.15 }]; if (r.ch) s.push({ text: r.ch, fontSize: 8, color: G1, lineHeight: 1.2, margin: [0, 1, 0, 0] }); return { stack: s } }
+    const hd = (t, al) => ({ text: t, bold: true, fontSize: 9, alignment: al || 'center', margin: [0, 2, 0, 2] })
+    return {
+      pageSize: 'A4',
+      pageMargins: [64, 42, 56, 92],
+      defaultStyle: { fontSize: 11, color: BLACK, lineHeight: 1.2 },
+      footer: () => ({
+        margin: [56, 0, 56, 22],
+        stack: [
+          { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 483, y2: 0, lineWidth: 0.8, lineColor: BLACK }], margin: [0, 0, 0, 4] },
+          { text: fullName, fontSize: 8, bold: true, alignment: 'center', lineHeight: 1.2 },
+          { text: `${company.address || ''}${company.edrpou ? `  ·  код ЄДРПОУ ${company.edrpou}` : ''}`, fontSize: 8, color: G1, alignment: 'center', lineHeight: 1.2 },
+          company.iban ? { text: `IBAN ${company.iban}${company.bankName ? ` в ${company.bankName}` : ''}${company.mfo ? `, МФО ${company.mfo}` : ''}`, fontSize: 8, color: G1, alignment: 'center', lineHeight: 1.2 } : null,
+        ].filter(Boolean),
+      }),
+      content: [
+        // Лого зліва + отримувач справа
+        {
+          columns: [
+            logoImg ? { image: logoImg, width: 92, margin: [0, 0, 0, 0] } : { text: '', width: 92 },
+            { width: '*', stack: [
+              { text: contractor.name || contractor.short_name || '—', fontSize: 11, bold: true, alignment: 'right', lineHeight: 1.25 },
+              (contractor.legal_address || contractor.address) ? { text: contractor.legal_address || contractor.address, fontSize: 10, color: G1, alignment: 'right', margin: [0, 1, 0, 0], lineHeight: 1.25 } : null,
+            ].filter(Boolean) },
+          ],
+          columnGap: 16, margin: [0, 0, 0, 26],
+        },
+        // Заголовок по центру
+        { text: 'КОМЕРЦІЙНА ПРОПОЗИЦІЯ', fontSize: 13, bold: true, alignment: 'center', characterSpacing: 0.5, margin: [0, 0, 0, 2] },
+        { text: `№ ${docNumber} від ${formatDateLong(docDate)}`, fontSize: 11, alignment: 'center', margin: [0, 0, 0, 16] },
+        // Вступ
+        { text: `На виконання Вашого запиту ${shortNm} пропонує до постачання наступні товари:`, fontSize: 11, alignment: 'justify', margin: [0, 0, 0, 12], lineHeight: 1.3 },
+        // Рамкова таблиця
+        {
+          table: {
+            headerRows: 1,
+            widths: [24, '*', 40, 36, 62, 72],
+            body: [
+              [hd('№ з/п'), hd('Найменування товару, технічні характеристики', 'center'), hd('Одиниця виміру'), hd('Кількість'), hd('Ціна за одиницю, грн'), hd('Загальна вартість, грн')],
+              ...rows.map(r => [
+                { text: r.n, alignment: 'center', fontSize: 9.5 },
+                cellName(r),
+                { text: r.u, alignment: 'center', fontSize: 9.5, noWrap: true },
+                { text: r.q, alignment: 'center', fontSize: 9.5, noWrap: true },
+                { text: formatMoney(r.p), alignment: 'right', fontSize: 9.5, noWrap: true },
+                { text: formatMoney(r.t), alignment: 'right', fontSize: 9.5, noWrap: true },
+              ]),
+              [{ text: 'Усього:', colSpan: 5, alignment: 'right', bold: true, fontSize: 10, margin: [0, 2, 0, 2] }, {}, {}, {}, {}, { text: formatMoney(total), alignment: 'right', bold: true, fontSize: 10, noWrap: true }],
+            ],
+          },
+          layout: {
+            hLineWidth: () => 0.6, vLineWidth: () => 0.6, hLineColor: () => '#333', vLineColor: () => '#333',
+            paddingLeft: () => 5, paddingRight: () => 5, paddingTop: () => 4, paddingBottom: () => 4,
+          },
+        },
+        // Сума прописом + примітка ПДВ
+        { text: `Загальна вартість пропозиції становить ${formatMoney(total)} грн (${amtWords}), ${vatPayer ? (vatAmount > 0 ? `у тому числі ПДВ 20% — ${formatMoney(vatAmount)} грн` : 'з ПДВ') : 'без ПДВ'}.`, fontSize: 11, alignment: 'justify', margin: [0, 14, 0, 4], lineHeight: 1.3 },
+        !vatPayer ? { text: 'Постачальник не є платником податку на додану вартість.', fontSize: 11, margin: [0, 0, 0, 4] } : null,
+        // Підпис
+        { text: '', margin: [0, 22] },
+        {
+          columns: [
+            { width: '*', stack: [
+              { text: company.directorPosition || 'Директор', fontSize: 11 },
+              { text: shortNm, fontSize: 11, margin: [0, 1, 0, 0] },
+            ] },
+            { width: 200, stack: [
+              { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 190, y2: 0, lineWidth: 0.6, lineColor: '#999' }], margin: [0, 18, 0, 0] },
+              { text: dirShort, fontSize: 11, bold: true, alignment: 'center', margin: [0, 3, 0, 0] },
+              stampOverlay(options, { x: 30, y: -70, w: 140 }),
+            ] },
+          ],
+        },
+      ].filter(Boolean),
+    }
+  }
 
   // ══════════════ ЧИСТА ТЕМА (ФОП/інше): лист з реквізитами продавця внизу ══════════════
   // Отримувач угорі справа · заголовок по центру · таблиця · підпис · реквізити продавця внизу (синім)
