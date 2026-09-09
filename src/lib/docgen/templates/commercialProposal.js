@@ -31,7 +31,14 @@ function itm(it, i) {
   const q = parseFloat(it.quantity) || 0, p = parseFloat(it.unitPrice) || 0
   const a = parseFloat(it.amount) || q * p, vr = parseFloat(it.vatRate) || 0
   const v = vr > 0 ? a * vr / 100 : 0
-  return { n: i + 1, name: it.name || '', q, u: it.unit || 'шт', p, vr, v, t: a + v, a }
+  return { n: i + 1, name: it.name || '', ch: (it.characteristics || '').trim(), q, u: it.unit || 'шт', p, vr, v, t: a + v, a }
+}
+
+// Клітинка «Найменування»: назва жирна, характеристики — дрібним сірим під нею.
+function nameCell(r, G2) {
+  const stack = [{ text: r.name, fontSize: 9, bold: true, color: '#0A0A0A', lineHeight: 1.15 }]
+  if (r.ch) stack.push({ text: r.ch, fontSize: 7.5, color: G2, lineHeight: 1.2, margin: [0, 2, 0, 0] })
+  return { stack }
 }
 
 export function pdf(company, contractor, items, options) {
@@ -67,7 +74,7 @@ export function pdf(company, contractor, items, options) {
         })),
         ...rows.map(r => [
           { text: r.n, alignment: 'center', fontSize: 8.5, color: G2 },
-          { text: r.name, fontSize: 8.5, color: BLACK, lineHeight: 1.2 },
+          nameCell(r, G2),
           { text: r.u, alignment: 'center', fontSize: 8, color: G2 },
           { text: r.q, alignment: 'center', fontSize: 8.5 },
           { text: formatMoney(vatPayer ? r.p : (r.q ? r.t / r.q : r.t)), alignment: 'right', fontSize: 8.5 },
@@ -130,7 +137,7 @@ export function pdf(company, contractor, items, options) {
           ).map((t, ci) => ({ text: t, fontSize: 6.5, bold: true, color: '#FFF', fillColor: IND, alignment: ci === 1 ? 'left' : 'center', margin: [0, 5, 0, 5] })),
           ...rows.map(r => [
             { text: r.n, alignment: 'center', fontSize: 8.5, color: G2 },
-            { text: r.name, fontSize: 8.5, color: BLACK, lineHeight: 1.2 },
+            nameCell(r, G2),
             { text: r.u, alignment: 'center', fontSize: 8, color: G2 },
             { text: r.q, alignment: 'center', fontSize: 8.5 },
             { text: formatMoney(vatPayer ? r.p : (r.q ? r.t / r.q : r.t)), alignment: 'right', fontSize: 8.5 },
@@ -338,14 +345,14 @@ export function pdf(company, contractor, items, options) {
     }),
 
     content: [
-      // ═══ ШАПКА: лого зліва · реквізити справа ═══
+      // ═══ ШАПКА: лого зліва · реквізити справа (велика назва компанії) ═══
       {
         columns: [
-          logoImg ? { image: logoImg, width: 96, margin: [0, 6, 0, 0] } : { text: '', width: 1 },
+          logoImg ? { image: logoImg, width: 104, margin: [0, 8, 0, 0] } : { text: '', width: 1 },
           {
             width: '*',
             stack: [
-              { text: companyName, fontSize: 12, bold: true, color: BLACK, alignment: 'right', characterSpacing: 0.3, margin: [0, 0, 0, 4] },
+              { text: companyName, fontSize: 17, bold: true, color: BLACK, alignment: 'right', characterSpacing: 0.3, margin: [0, 0, 0, 6] },
               { text: company.address || '', fontSize: 8.5, color: G1, alignment: 'right', lineHeight: 1.3 },
               company.phone ? { text: `телефон: ${company.phone}`, fontSize: 8.5, color: G1, alignment: 'right' } : null,
               company.email ? { text: `email: ${company.email}`, fontSize: 8.5, color: G1, alignment: 'right' } : null,
@@ -353,7 +360,7 @@ export function pdf(company, contractor, items, options) {
           },
         ],
         columnGap: 16,
-        margin: [0, 0, 0, 8],
+        margin: [0, 0, 0, 10],
       },
       { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 499, y2: 0, lineWidth: 0.6, lineColor: DARK }], margin: [0, 0, 0, 10] },
 
@@ -416,7 +423,7 @@ export function pdf(company, contractor, items, options) {
             })),
             ...rows.map(r => [
               { text: r.n, alignment: 'center', fontSize: 8.5, color: G2 },
-              { text: r.name, fontSize: 8.5, color: BLACK, lineHeight: 1.2 },
+              nameCell(r, G2),
               { text: r.u, alignment: 'center', fontSize: 8, color: G2 },
               { text: r.q, alignment: 'center', fontSize: 8.5 },
               { text: formatMoney(vatPayer ? r.p : (r.q ? r.t / r.q : r.t)), alignment: 'right', fontSize: 8.5 },

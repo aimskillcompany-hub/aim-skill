@@ -678,14 +678,18 @@ function ItemsTab({ o, onChange, onDirty }) {
         product_id = res?.productId || null
       }
       resolved.push({
-        order_id: o.id, product_id, name: r.name.trim(), sku: r.sku || null, unit: r.unit || 'шт',
+        order_id: o.id, product_id, name: r.name.trim(), characteristics: r.characteristics || null, sku: r.sku || null, unit: r.unit || 'шт',
         qty: Number(r.qty) || 0, cost_price: Number(r.cost_price) || 0,
         unit_price: Number(r.unit_price) || 0, vat_rate: Number(r.vat_rate) || 0, price_includes_vat: !!r.price_includes_vat, total: rowTotal(r), supplier_id: r.supplier_id || null,
       })
     }
     // Замінюємо повний набір позицій замовлення
     await supabase.from('order_items').delete().eq('order_id', o.id)
-    if (resolved.length) await supabase.from('order_items').insert(resolved)
+    if (resolved.length) {
+      let { error } = await supabase.from('order_items').insert(resolved)
+      if (error && /characteristics/.test(error.message || '')) // ґрейсфул до 050
+        await supabase.from('order_items').insert(resolved.map(({ characteristics, ...x }) => x))
+    }
     // Сума замовлення = сума цін продажу товарів (синхронізуємо автоматично)
     if (resolved.length) await qc('orders').update({ total: sum }).eq('id', o.id)
     setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000)
@@ -798,13 +802,17 @@ function ItemsTab({ o, onChange, onDirty }) {
                 </div>
                 {/* Розкриті рідкісні поля */}
                 {open && (
-                  <div style={{ display: 'flex', gap: 14, padding: '0 14px 10px', fontSize: 12, color: 'var(--text2)', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>Од.
-                      <input className="form-input" value={r.unit || ''} onChange={e => setRow(i, { unit: e.target.value })} style={{ width: 60, height: 30, padding: '4px 8px', fontSize: 12 }} /></label>
-                    {vatOn && <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>ПДВ
-                      <select className="form-input" value={Number(r.vat_rate) || 0} onChange={e => setRow(i, { vat_rate: Number(e.target.value) })} style={{ width: 66, height: 30, padding: '4px 6px', fontSize: 12 }}>{VAT_RATES.map(v => <option key={v} value={v}>{v}%</option>)}</select></label>}
-                    {vatOn && <span>Без ПДВ <b style={{ color: 'var(--text)' }}>{fmt(rowNet(r))}</b></span>}
-                    <button onClick={() => removeRow(i)} style={{ marginLeft: 'auto', border: 'none', background: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: 12 }}><i className="ti ti-trash" /> прибрати</button>
+                  <div style={{ padding: '0 14px 10px' }}>
+                    <div style={{ display: 'flex', gap: 14, fontSize: 12, color: 'var(--text2)', alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>Од.
+                        <input className="form-input" value={r.unit || ''} onChange={e => setRow(i, { unit: e.target.value })} style={{ width: 60, height: 30, padding: '4px 8px', fontSize: 12 }} /></label>
+                      {vatOn && <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>ПДВ
+                        <select className="form-input" value={Number(r.vat_rate) || 0} onChange={e => setRow(i, { vat_rate: Number(e.target.value) })} style={{ width: 66, height: 30, padding: '4px 6px', fontSize: 12 }}>{VAT_RATES.map(v => <option key={v} value={v}>{v}%</option>)}</select></label>}
+                      {vatOn && <span>Без ПДВ <b style={{ color: 'var(--text)' }}>{fmt(rowNet(r))}</b></span>}
+                      <button onClick={() => removeRow(i)} style={{ marginLeft: 'auto', border: 'none', background: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: 12 }}><i className="ti ti-trash" /> прибрати</button>
+                    </div>
+                    <label style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginBottom: 3 }}>Характеристики (специфікація — окремо від назви, у КП дрібним під назвою)</label>
+                    <textarea className="form-input" rows={2} value={r.characteristics || ''} onChange={e => setRow(i, { characteristics: e.target.value })} style={{ width: '100%', fontSize: 12.5, resize: 'vertical' }} placeholder="напр. 27&quot;, 1920×1080, 120 Гц, VGA/HDMI/DP, аудіо колонки" />
                   </div>
                 )}
               </div>
@@ -852,10 +860,12 @@ function ProposalsTab({ o, onChange }) {
 
   // Нова версія КП префілиться позиціями товарів замовлення (якщо є)
   const startNew = async () => {
-    const { data: items } = await supabase.from('order_items').select('name, unit, qty, unit_price, vat_rate, price_includes_vat').eq('order_id', o.id).order('created_at')
+    let { data: items, error } = await supabase.from('order_items').select('name, characteristics, unit, qty, unit_price, vat_rate, price_includes_vat').eq('order_id', o.id).order('created_at')
+    if (error && /characteristics/.test(error.message || '')) // ґрейсфул до 050
+      ({ data: items } = await supabase.from('order_items').select('name, unit, qty, unit_price, vat_rate, price_includes_vat').eq('order_id', o.id).order('created_at'))
     const seed = (items || []).length
-      ? items.map(it => ({ name: it.name, unit: it.unit || 'шт', qty: Number(it.qty) || 1, price: Number(it.unit_price) || 0, vat: Number(it.vat_rate) || 0, incl: !!it.price_includes_vat }))
-      : [{ name: '', unit: 'шт', qty: 1, price: 0, vat: 20, incl: false }]
+      ? items.map(it => ({ name: it.name, characteristics: it.characteristics || '', unit: it.unit || 'шт', qty: Number(it.qty) || 1, price: Number(it.unit_price) || 0, vat: Number(it.vat_rate) || 0, incl: !!it.price_includes_vat }))
+      : [{ name: '', characteristics: '', unit: 'шт', qty: 1, price: 0, vat: 20, incl: false }]
     setEditing({ version: (rows[0]?.version || 0) + 1, items: seed })
   }
   // price трактується за i.incl (з прайсу = з ПДВ; вручну/склад = без ПДВ, ПДВ зверху)
@@ -895,7 +905,7 @@ function ProposalsTab({ o, onChange }) {
         const price = Number(it.price) || 0, vr = Number(it.vat) || 0
         // КП-шаблон чекає ціну БЕЗ ПДВ: якщо ціна вже з ПДВ — ділимо, якщо ні — лишаємо
         const net = it.incl ? (vr > 0 ? price / (1 + vr / 100) : price) : price
-        return { name: it.name, quantity: Number(it.qty) || 0, unit: it.unit || unitByName[it.name] || 'шт', unitPrice: net, vatRate: vr }
+        return { name: it.name, characteristics: it.characteristics || '', quantity: Number(it.qty) || 0, unit: it.unit || unitByName[it.name] || 'шт', unitPrice: net, vatRate: vr }
       })
       const today = new Date().toISOString().slice(0, 10)
       const opts = { docNumber: `КП-${o.order_number || o.id.slice(0, 6)}`, docDate: today, withStamp: stampCP }
@@ -921,22 +931,27 @@ function ProposalsTab({ o, onChange }) {
         <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 16 }}>
           <div style={{ fontWeight: 600, marginBottom: 10 }}>Версія {editing.version}</div>
           {editing.items.map((it, i) => (
-            <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-              <input className="form-input" placeholder="Найменування" value={it.name} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, name: e.target.value }; return { ...d, items } })} style={{ flex: 2 }} />
-              <input className="form-input" type="number" placeholder="К-сть" value={it.qty} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, qty: e.target.value }; return { ...d, items } })} style={{ width: 80 }} />
-              <input className="form-input" placeholder="Од." value={it.unit || ''} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, unit: e.target.value }; return { ...d, items } })} style={{ width: 64 }} />
-              <input className="form-input" type="number" placeholder="Ціна з ПДВ" value={it.price} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, price: e.target.value }; return { ...d, items } })} style={{ width: 110 }} />
-              <select className="form-input" value={Number(it.vat) || 0} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, vat: Number(e.target.value) }; return { ...d, items } })} style={{ width: 72, padding: '8px 6px' }}>
-                {VAT_RATES.map(v => <option key={v} value={v}>{v}%</option>)}
-              </select>
-              <select className="form-input" value={it.incl ? '1' : '0'} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, incl: e.target.value === '1' }; return { ...d, items } })} style={{ width: 116, padding: '8px 6px' }}>
-                <option value="0">+ПДВ зверху</option>
-                <option value="1">ціна з ПДВ</option>
-              </select>
-              <button className="btn" onClick={() => setEditing(d => ({ ...d, items: d.items.filter((_, j) => j !== i) }))}><i className="ti ti-x" /></button>
+            <div key={i} style={{ marginBottom: 12, paddingBottom: 10, borderBottom: '1px dashed var(--border)' }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                <input className="form-input" placeholder="Найменування (назва моделі)" value={it.name} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, name: e.target.value }; return { ...d, items } })} style={{ flex: 2 }} />
+                <input className="form-input" type="number" placeholder="К-сть" value={it.qty} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, qty: e.target.value }; return { ...d, items } })} style={{ width: 80 }} />
+                <input className="form-input" placeholder="Од." value={it.unit || ''} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, unit: e.target.value }; return { ...d, items } })} style={{ width: 64 }} />
+                <input className="form-input" type="number" placeholder="Ціна з ПДВ" value={it.price} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, price: e.target.value }; return { ...d, items } })} style={{ width: 110 }} />
+                <select className="form-input" value={Number(it.vat) || 0} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, vat: Number(e.target.value) }; return { ...d, items } })} style={{ width: 72, padding: '8px 6px' }}>
+                  {VAT_RATES.map(v => <option key={v} value={v}>{v}%</option>)}
+                </select>
+                <select className="form-input" value={it.incl ? '1' : '0'} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, incl: e.target.value === '1' }; return { ...d, items } })} style={{ width: 116, padding: '8px 6px' }}>
+                  <option value="0">+ПДВ зверху</option>
+                  <option value="1">ціна з ПДВ</option>
+                </select>
+                <button className="btn" onClick={() => setEditing(d => ({ ...d, items: d.items.filter((_, j) => j !== i) }))}><i className="ti ti-x" /></button>
+              </div>
+              <textarea className="form-input" placeholder="Характеристики (опис/специфікація — показуються дрібним під назвою)" rows={2}
+                value={it.characteristics || ''} onChange={e => setEditing(d => { const items = [...d.items]; items[i] = { ...it, characteristics: e.target.value }; return { ...d, items } })}
+                style={{ width: '100%', fontSize: 12.5, resize: 'vertical' }} />
             </div>
           ))}
-          <button className="btn" onClick={() => setEditing(d => ({ ...d, items: [...d.items, { name: '', unit: 'шт', qty: 1, price: 0, vat: 20, incl: false }] }))} style={{ marginBottom: 10 }}><i className="ti ti-plus" /> Позиція</button>
+          <button className="btn" onClick={() => setEditing(d => ({ ...d, items: [...d.items, { name: '', characteristics: '', unit: 'шт', qty: 1, price: 0, vat: 20, incl: false }] }))} style={{ marginBottom: 10 }}><i className="ti ti-plus" /> Позиція</button>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontWeight: 600 }}>Без ПДВ: {fmt(itemsNet(editing.items))} · ПДВ: {fmt(itemsTotal(editing.items) - itemsNet(editing.items))} · Всього з ПДВ: {fmt(itemsTotal(editing.items))} грн</div>
             <div style={{ display: 'flex', gap: 8 }}>
