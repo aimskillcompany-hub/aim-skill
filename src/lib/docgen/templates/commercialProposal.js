@@ -196,8 +196,12 @@ export function pdf(company, contractor, items, options) {
                 { text: bitName, color: '#FFFFFF', fontSize: 15, bold: true, characterSpacing: 0.3 },
                 contactLine ? { text: contactLine, color: '#B8C2CF', fontSize: 8.5, margin: [0, 4, 0, 0] } : null,
               ].filter(Boolean) },
-              logoImg ? { width: 56, image: logoImg, fit: [56, 40], alignment: 'right' } : { width: 1, text: '' },
+              // Лого на білій підкладці (щоб темний логотип читався на темному банері)
+              logoImg
+                ? { width: 78, table: { widths: [62], body: [[{ image: logoImg, fit: [62, 44] }]] }, layout: { fillColor: () => '#FFFFFF', defaultBorder: false, paddingLeft: () => 6, paddingRight: () => 6, paddingTop: () => 5, paddingBottom: () => 5 } }
+                : { width: 1, text: '' },
             ],
+            columnGap: 12,
           }]] },
           layout: { fillColor: () => IND, defaultBorder: false, paddingLeft: () => 18, paddingRight: () => 18, paddingTop: () => 13, paddingBottom: () => 13 },
           margin: [0, 0, 0, 16],
