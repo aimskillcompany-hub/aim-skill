@@ -291,6 +291,8 @@ function DetailsTab({ o, onSaved }) {
     agent_commission_pct: o.agent_commission_pct != null ? String(Math.round(o.agent_commission_pct * 10000) / 100) : '',
     in_investor: !!o.in_investor,
     created_at: o.created_at ? o.created_at.slice(0, 10) : '',
+    invoice_to_sign: !!o.invoice_to_sign,
+    waybill_to_sign: !!o.waybill_to_sign,
   })
   const [saved, setSaved] = useState(false)
   const [users, setUsers] = useState([])
@@ -328,12 +330,14 @@ function DetailsTab({ o, onSaved }) {
       contract_id: form.contract_id || null,
       agent_commission_pct: Math.max(0, (Number(form.agent_commission_pct) || 0)) / 100,
       in_investor: !!form.in_investor,
+      invoice_to_sign: !!form.invoice_to_sign,
+      waybill_to_sign: !!form.waybill_to_sign,
       ...(form.created_at ? { created_at: new Date(form.created_at).toISOString() } : {}),
     }
     let { error } = await qc('orders').update(upd).eq('id', o.id)
-    // Колонки можуть ще не існувати (міграції 033/037/040/046/047) — тоді зберігаємо без них
-    if (error && /(procurement_id|manager_id|contract_id|agent_commission_pct|in_investor)/.test(error.message || '')) {
-      const { procurement_id, manager_id, contract_id, agent_commission_pct, in_investor, ...rest } = upd
+    // Колонки можуть ще не існувати (міграції 033/037/040/046/047/052) — тоді зберігаємо без них
+    if (error && /(procurement_id|manager_id|contract_id|agent_commission_pct|in_investor|invoice_to_sign|waybill_to_sign)/.test(error.message || '')) {
+      const { procurement_id, manager_id, contract_id, agent_commission_pct, in_investor, invoice_to_sign, waybill_to_sign, ...rest } = upd
       ;({ error } = await qc('orders').update(rest).eq('id', o.id))
     }
     if (error) { alert('Помилка збереження: ' + error.message); return }
@@ -399,6 +403,18 @@ function DetailsTab({ o, onSaved }) {
             <i className="ti ti-diamond-filled" style={{ fontSize: 18, color: form.in_investor ? '#7C3AED' : 'var(--text3)' }} />
             <span style={{ fontSize: 13, color: 'var(--text2)' }}>Врахувати це замовлення в розрахунку «Інвестору» (реальне/підтверджене)</span>
           </label>
+        </div>
+        <div className="form-group full">
+          <label>Передано клієнту на підпис</label>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {[['invoice_to_sign', 'Рахунок', 'ti-file-invoice'], ['waybill_to_sign', 'Видаткова', 'ti-truck-delivery']].map(([k, lbl, icon]) => (
+              <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '8px 12px', borderRadius: 10, border: `1px solid ${form[k] ? 'var(--green)' : 'var(--border)'}`, background: form[k] ? 'var(--green-bg, #e7f7ec)' : 'var(--surface)' }}>
+                <input type="checkbox" checked={form[k]} onChange={e => setForm(f => ({ ...f, [k]: e.target.checked }))} style={{ width: 18, height: 18 }} />
+                <i className={`ti ${icon}`} style={{ fontSize: 16, color: form[k] ? 'var(--green)' : 'var(--text3)' }} />
+                <span style={{ fontSize: 13, color: 'var(--text2)' }}>{lbl}</span>
+              </label>
+            ))}
+          </div>
         </div>
         {form.procurement_type === 'tender' && (
           <div className="form-group"><label>Ідентифікатор закупівлі</label>
