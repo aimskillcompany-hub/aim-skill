@@ -48,6 +48,7 @@ export function pdf(company, contractor, items, options) {
     : [brand.phone, brand.email].filter(Boolean).join('  ·  ')
   const { subtotal, vatAmount, total, vatByRate } = calcTotals(items)
   const rows = items.map((it, i) => itm(it, i))
+  const dateHdr = docDate ? formatDateLong(docDate) : '«____» ____________ 20__ р.' // порожня дата → місце для ручного заповнення
   const contractStr = contractNum ? `№${contractNum}${contractDate ? ` від ${formatDate(contractDate)}` : ''}` : null
   const invoiceStr = invoiceRef ? `№${invoiceRef}${invoiceRefDate ? ` від ${formatDate(invoiceRefDate)}` : ''}` : null
   const itemCount = items.length
@@ -90,7 +91,7 @@ export function pdf(company, contractor, items, options) {
     content: [
       // ═══ НАЗВА ═══
       { text: 'ВИДАТКОВА НАКЛАДНА', fontSize: 19, bold: true, color: BLACK, margin: [0, 0, 0, 4] },
-      { text: `№ ${docNumber}  ·  від ${formatDateLong(docDate)}${city ? '  ·  ' + city : ''}`, fontSize: 10.5, color: G1, margin: [0, 0, 0, 12] },
+      { text: `№ ${docNumber}  ·  від ${dateHdr}${city ? '  ·  ' + city : ''}`, fontSize: 10.5, color: G1, margin: [0, 0, 0, 12] },
 
       // ═══ РЕКВІЗИТИ ═══
       {

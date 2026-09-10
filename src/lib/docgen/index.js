@@ -57,7 +57,7 @@ export async function generatePdf(docTypeKey, contractor, items, options) {
   const seller = dt.direction === 'incoming' ? enriched : company
   const buyer = dt.direction === 'incoming' ? company : enriched
   const docDef = dt.template.pdf(seller, buyer, cleanItems(items), docOptions(options, company))
-  const fileName = `${dt.label}_${options.docNumber}_${options.docDate}.pdf`
+  const fileName = `${dt.label}_${options.docNumber}${options.docDate ? '_' + options.docDate : ''}.pdf`
   downloadPdf(docDef, fileName)
 }
 
@@ -72,7 +72,7 @@ export async function generateOrderDoc(docTypeKey, contractor, items, options, {
   const clean = cleanItems(items)
   const docDef = dt.template.pdf(seller, buyer, clean, docOptions(options, company))
   const { total, vatAmount } = calcTotals(clean)
-  const fileName = `${dt.label}_${options.docNumber}_${options.docDate}.pdf`
+  const fileName = `${dt.label}_${options.docNumber}${options.docDate ? '_' + options.docDate : ''}.pdf`
 
   // 1) Завантажуємо PDF одразу (перевірений шлях) — користувач завжди отримує файл
   downloadPdf(docDef, fileName)
@@ -85,7 +85,7 @@ export async function generateOrderDoc(docTypeKey, contractor, items, options, {
   await qc('documents').delete().eq('order_id', orderId).eq('type', docTypeKey).eq('doc_number', options.docNumber)
   const { error: insErr } = await qc('documents').insert(withCompany({
     type: docTypeKey, order_id: orderId, contractor_id: contractorId || contractor?.id || null,
-    doc_number: options.docNumber, doc_date: options.docDate, amount: total || null, vat_amount: vatAmount || null,
+    doc_number: options.docNumber, doc_date: options.docDate || null, amount: total || null, vat_amount: vatAmount || null,
     file_name: fileName, storage_path: path, direction: dt.direction === 'incoming' ? 'payable' : 'receivable',
   }))
   if (insErr) throw insErr
@@ -181,7 +181,7 @@ export async function generateXlsx(docTypeKey, contractor, items, options) {
   const seller = dt.direction === 'incoming' ? enriched : company
   const buyer = dt.direction === 'incoming' ? company : enriched
   const wb = dt.template.xlsx(seller, buyer, cleanItems(items), docOptions(options, company))
-  const fileName = `${dt.label}_${options.docNumber}_${options.docDate}.xlsx`
+  const fileName = `${dt.label}_${options.docNumber}${options.docDate ? '_' + options.docDate : ''}.xlsx`
   downloadXlsx(wb, fileName)
 }
 
@@ -219,7 +219,7 @@ export async function saveDoc({ docType, docNumber, docDate, contractorId, contr
   const base = {
     doc_type: docType,
     doc_number: docNumber,
-    doc_date: docDate,
+    doc_date: docDate || null,
     contractor_id: contractorId,
     contractor_name: contractorName,
     items: JSON.stringify(cleanItems(items)),
@@ -258,7 +258,7 @@ export async function saveDoc({ docType, docNumber, docDate, contractorId, contr
     const { count: existing } = await dup
     if (existing) return data // вже є такий документ — дзеркало не створюємо
     await qc('documents').insert(withCompany({
-      type: docType, doc_number: docNumber, doc_date: docDate,
+      type: docType, doc_number: docNumber, doc_date: docDate || null,
       contractor_id: contractorId || null, order_id: orderId || null,
       amount: total ?? null, vat_amount: vatAmount ?? null,
       direction: dt.direction === 'incoming' ? 'payable' : 'receivable',
@@ -339,7 +339,7 @@ export async function createStockFromDoc(docId, docType, items, date, userId) {
 export async function updateDoc(id, { docNumber, docDate, items, subtotal, vatAmount, total, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress }) {
   const base = {
     doc_number: docNumber,
-    doc_date: docDate,
+    doc_date: docDate || null,
     items: JSON.stringify(cleanItems(items)),
     subtotal, vat_amount: vatAmount, total,
     notes: notes || null,
@@ -360,7 +360,7 @@ export async function updateDoc(id, { docNumber, docDate, items, subtotal, vatAm
   }
   if (error) throw new Error(error.message)
   // Синхронізувати дзеркальний рядок у documents (сума/номер/дата)
-  await qc('documents').update({ doc_number: docNumber, doc_date: docDate, amount: total ?? null, vat_amount: vatAmount ?? null }).eq('generated_doc_id', id)
+  await qc('documents').update({ doc_number: docNumber, doc_date: docDate || null, amount: total ?? null, vat_amount: vatAmount ?? null }).eq('generated_doc_id', id)
 }
 
 // ── Оновити статус ──

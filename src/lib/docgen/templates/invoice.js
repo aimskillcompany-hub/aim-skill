@@ -43,8 +43,10 @@ export function pdf(company, contractor, items, options) {
     : [brand.phone, brand.email].filter(Boolean).join('  ·  ')
   const { subtotal, vatAmount, total, vatByRate } = calcTotals(items)
   const rows = items.map((it, i) => itm(it, i))
+  const dateHdr = docDate ? formatDateLong(docDate) : '«____» ____________ 20__ р.' // порожня дата → місце для ручного заповнення
+  const dateShort = docDate ? formatDate(docDate) : '«___» ____________'
   const contractStr = contractNum ? `№${contractNum}${contractDate ? ` від ${formatDate(contractDate)}` : ''}` : null
-  const paymentPurpose = `Оплата за товари/послуги згідно рахунку №${docNumber} від ${formatDate(docDate)}${contractStr ? `, Договір ${contractStr}` : ''}. ${(vatPayer && vatAmount > 0) ? `В т.ч. ПДВ 20% — ${formatMoney(vatAmount)} грн` : 'Без ПДВ'}`
+  const paymentPurpose = `Оплата за товари/послуги згідно рахунку №${docNumber} від ${dateShort}${contractStr ? `, Договір ${contractStr}` : ''}. ${(vatPayer && vatAmount > 0) ? `В т.ч. ПДВ 20% — ${formatMoney(vatAmount)} грн` : 'Без ПДВ'}`
 
   const addInfo = [
     contractStr ? [{ text: 'Договір: ', color: G2 }, { text: contractStr, color: G1 }] : null,
@@ -80,7 +82,7 @@ export function pdf(company, contractor, items, options) {
     content: [
       // ═══ НАЗВА ═══
       { text: 'РАХУНОК НА ОПЛАТУ', fontSize: 19, bold: true, color: BLACK, margin: [0, 0, 0, 4] },
-      { text: `№ ${docNumber}  ·  від ${formatDateLong(docDate)}${city ? '  ·  ' + city : ''}`, fontSize: 10.5, color: G1, margin: [0, 0, 0, 12] },
+      { text: `№ ${docNumber}  ·  від ${dateHdr}${city ? '  ·  ' + city : ''}`, fontSize: 10.5, color: G1, margin: [0, 0, 0, 12] },
 
       // ═══ РЕКВІЗИТИ ═══
       {

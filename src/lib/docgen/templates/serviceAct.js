@@ -80,7 +80,7 @@ export function pdf(company, contractor, items, options) {
     content: [
       // ═══ НАЗВА ═══
       { text: 'АКТ НАДАНИХ ПОСЛУГ', fontSize: 19, bold: true, color: BLACK, margin: [0, 0, 0, 4] },
-      { text: `№ ${docNumber}  ·  від ${formatDateLong(docDate)}${city ? '  ·  ' + city : ''}`, fontSize: 10.5, color: G1, margin: [0, 0, 0, 12] },
+      { text: `№ ${docNumber}  ·  від ${docDate ? formatDateLong(docDate) : '«____» ____________ 20__ р.'}${city ? '  ·  ' + city : ''}`, fontSize: 10.5, color: G1, margin: [0, 0, 0, 12] },
 
       // ═══ ПРЕАМБУЛА ═══
       {

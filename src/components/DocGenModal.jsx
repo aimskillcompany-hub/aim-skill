@@ -285,7 +285,11 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
               </div>
               <div className="form-group">
                 <label>Дата</label>
-                <input type="date" className="form-input" value={docDate} onChange={e => setDocDate(e.target.value)} />
+                <input type="date" className="form-input" value={docDate} onChange={e => setDocDate(e.target.value)} disabled={!docDate} />
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text2)', marginTop: 5, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!docDate} onChange={e => setDocDate(e.target.checked ? '' : today())} style={{ width: 15, height: 15 }} />
+                  Без дати (вписати вручну на друкованому документі)
+                </label>
               </div>
               <div className="form-group">
                 <label>Місто</label>
