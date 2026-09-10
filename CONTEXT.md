@@ -448,6 +448,9 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `047_orders_investor.sql` | Замовлення: `in_investor` (відмітка «врахувати в розрахунку інвестора») + частк. індекс | ✅ застосовано (звірено 2026-09-03: 19 позначено) |
 | `048_contractor_dealer_code.sql` | Контрагенти: `dealer_code` (код компанії у дилера, для форм реєстрації вендора) | ✅ застосовано (звірено 2026-09-04) |
 | `049_tender_documents.sql` | Тендерна документація замовлення: таблиця `tender_documents` (окрема від documents) + RLS | ✅ застосовано (звірено 2026-09-08) |
+| `050_order_items_characteristics.sql` | Позиції замовлення: `characteristics` (окремо від назви, для КП) | ✅ застосовано |
+| `051_doc_date_nullable.sql` | `generated_docs`/`documents`.doc_date → nullable (генерація «Без дати») | ✅ застосовано (звірено 2026-09-10, live-тест null) |
+| `052_orders_docs_to_sign.sql` | Замовлення: `invoice_to_sign`/`waybill_to_sign` (передано клієнту на підпис) | ✅ застосовано (звірено 2026-09-10) |
 | `validate.mjs` | Перевірка цілісності Фази 1 (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 | `probe.mjs` | Звірка наявності колонок/таблиць усіх міграцій у БД (`SUPABASE_SERVICE_KEY=... node migrations/probe.mjs`) | — |
 
