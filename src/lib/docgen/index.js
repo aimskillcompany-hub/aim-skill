@@ -194,8 +194,8 @@ export async function getNextDocNumber(docTypeKey) {
   if (!dt) return '0001'
   const prefix = dt.prefix
 
-  const { data } = await supabase
-    .from('generated_docs')
+  // Нумерація ОКРЕМА на кожну юрособу: qc() скоупить за активною компанією (company_id).
+  const { data } = await qc('generated_docs')
     .select('doc_number')
     .eq('doc_type', docTypeKey)
 
