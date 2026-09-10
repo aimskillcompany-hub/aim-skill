@@ -450,7 +450,8 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `049_tender_documents.sql` | Тендерна документація замовлення: таблиця `tender_documents` (окрема від documents) + RLS | ✅ застосовано (звірено 2026-09-08) |
 | `050_order_items_characteristics.sql` | Позиції замовлення: `characteristics` (окремо від назви, для КП) | ✅ застосовано |
 | `051_doc_date_nullable.sql` | `generated_docs`/`documents`.doc_date → nullable (генерація «Без дати») | ✅ застосовано (звірено 2026-09-10, live-тест null) |
-| `052_orders_docs_to_sign.sql` | Замовлення: `invoice_to_sign`/`waybill_to_sign` (передано клієнту на підпис) | ✅ застосовано (звірено 2026-09-10) |
+| `052_orders_docs_to_sign.sql` | Замовлення: `invoice_to_sign`/`waybill_to_sign` (передано на підпис) — замінено на 053, колонки невживані | ✅ застосовано (звірено 2026-09-10) |
+| `053_docs_to_sign.sql` | Документи: `generated_docs.to_sign`/`documents.to_sign` (помітка «на підпис» на документі) | ✅ застосовано (звірено 2026-09-10) |
 | `validate.mjs` | Перевірка цілісності Фази 1 (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 | `probe.mjs` | Звірка наявності колонок/таблиць усіх міграцій у БД (`SUPABASE_SERVICE_KEY=... node migrations/probe.mjs`) | — |
 
