@@ -994,9 +994,9 @@ function DocumentsTab({ o }) {
   const [showUpload, setShowUpload] = useState(false)
   const [gen, setGen] = useState(null) // { contractor, editDoc }
   const load = async () => {
-    const cols = 'id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, source, posted, to_sign, contractors(name)'
+    const cols = 'id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, source, posted, to_sign, to_sign_at, contractors(name)'
     let { data, error } = await qc('documents').select(cols).eq('order_id', o.id).order('created_at', { ascending: false })
-    if (error) ({ data } = await qc('documents').select(cols.replace(', posted', '').replace(', to_sign', '')).eq('order_id', o.id).order('created_at', { ascending: false })) // фолбек, якщо колонок posted/to_sign ще нема
+    if (error) ({ data } = await qc('documents').select(cols.replace(', posted', '').replace(', to_sign_at', '').replace(', to_sign', '')).eq('order_id', o.id).order('created_at', { ascending: false })) // фолбек, якщо колонок posted/to_sign/to_sign_at ще нема
     setRows((data || []).filter(d => d.source !== 'generated')) // згенеровані показані окремою секцією
   }
   // Провести / зняти з проведення (додати/прибрати з розділу «Документи»)
@@ -1007,24 +1007,39 @@ function DocumentsTab({ o }) {
   }
   const loadGen = () => qc('generated_docs').select('*').eq('order_id', o.id).order('created_at', { ascending: false }).then(({ data }) => setGenDocs(data || []))
   useEffect(() => { load(); loadGen() }, [o.id])
-  // Помітка «передано клієнту на підпис» на самому документі
+  // Помітка «передано клієнту на підпис» на самому документі + дата помітки
+  const signUpd = (on) => on ? { to_sign: true, to_sign_at: new Date().toISOString() } : { to_sign: false, to_sign_at: null }
   const toggleSignGen = async (d) => {
-    setGenDocs(gs => gs.map(x => x.id === d.id ? { ...x, to_sign: !x.to_sign } : x))
-    const { error } = await qc('generated_docs').update({ to_sign: !d.to_sign }).eq('id', d.id)
-    if (error) { setGenDocs(gs => gs.map(x => x.id === d.id ? { ...x, to_sign: d.to_sign } : x)); alert('Не вдалося: ' + (/to_sign/.test(error.message) ? 'запустіть міграцію 053' : error.message)) }
+    const on = !d.to_sign, u = signUpd(on)
+    setGenDocs(gs => gs.map(x => x.id === d.id ? { ...x, ...u } : x))
+    let { error } = await qc('generated_docs').update(u).eq('id', d.id)
+    if (error && /to_sign_at/.test(error.message)) ({ error } = await qc('generated_docs').update({ to_sign: on }).eq('id', d.id)) // ґрейсфул до 054
+    if (error) { setGenDocs(gs => gs.map(x => x.id === d.id ? { ...x, to_sign: d.to_sign, to_sign_at: d.to_sign_at } : x)); alert('Не вдалося: ' + (/to_sign\b/.test(error.message) ? 'запустіть міграцію 053' : error.message)) }
   }
   const toggleSignDoc = async (d) => {
-    setRows(rs => rs.map(x => x.id === d.id ? { ...x, to_sign: !x.to_sign } : x))
-    const { error } = await qc('documents').update({ to_sign: !d.to_sign }).eq('id', d.id)
-    if (error) { setRows(rs => rs.map(x => x.id === d.id ? { ...x, to_sign: d.to_sign } : x)); alert('Не вдалося: ' + (/to_sign/.test(error.message) ? 'запустіть міграцію 053' : error.message)) }
+    const on = !d.to_sign, u = signUpd(on)
+    setRows(rs => rs.map(x => x.id === d.id ? { ...x, ...u } : x))
+    let { error } = await qc('documents').update(u).eq('id', d.id)
+    if (error && /to_sign_at/.test(error.message)) ({ error } = await qc('documents').update({ to_sign: on }).eq('id', d.id)) // ґрейсфул до 054
+    if (error) { setRows(rs => rs.map(x => x.id === d.id ? { ...x, to_sign: d.to_sign, to_sign_at: d.to_sign_at } : x)); alert('Не вдалося: ' + (/to_sign\b/.test(error.message) ? 'запустіть міграцію 053' : error.message)) }
   }
-  // Кнопка-перемикач «На підпис»
-  const SignToggle = ({ on, onClick }) => (
-    <button className="btn" onClick={e => { e.stopPropagation(); onClick() }} title={on ? 'Передано клієнту на підпис' : 'Позначити: передано на підпис'}
-      style={{ fontSize: 12, padding: '3px 10px', color: on ? 'var(--green)' : 'var(--text3)', borderColor: on ? 'var(--green)' : undefined }}>
-      <i className={`ti ${on ? 'ti-signature' : 'ti-signature'}`} /> {on ? 'На підписі' : 'На підпис'}
-    </button>
-  )
+  // Яскрава кнопка-перемикач «На підпис» + дата помітки
+  const SignToggle = ({ d, onClick }) => {
+    const on = !!d.to_sign
+    const dt = d.to_sign_at ? d.to_sign_at.slice(0, 10).split('-').reverse().join('.') : ''
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-start' }}>
+        <button onClick={e => { e.stopPropagation(); onClick() }} title={on ? 'Передано клієнту на підпис — натисніть, щоб зняти' : 'Позначити: передано на підпис'}
+          style={{ fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: 'inherit',
+            border: on ? 'none' : '1px dashed var(--border)',
+            background: on ? 'var(--green)' : 'transparent', color: on ? '#fff' : 'var(--text3)',
+            boxShadow: on ? '0 1px 4px rgba(22,163,74,.35)' : 'none' }}>
+          <i className={`ti ${on ? 'ti-checkbox' : 'ti-signature'}`} style={{ fontSize: 14 }} /> {on ? 'На підписі' : 'На підпис'}
+        </button>
+        {on && dt && <span style={{ fontSize: 10.5, color: 'var(--green)', fontWeight: 500 }}>від {dt}</span>}
+      </div>
+    )
+  }
   const unlink = async (d) => { await qc('documents').update({ order_id: null }).eq('id', d.id); load() }
   const delGen = async (d) => {
     // Спершу прибрати складські рухи дзеркального документа (FK = SET NULL, тож каскад їх не видалить),
@@ -1085,7 +1100,7 @@ function DocumentsTab({ o }) {
                     <td style={{ fontSize: 12, color: 'var(--text2)' }}>{d.doc_number}</td>
                     <td style={{ textAlign: 'right' }}>{fmt(d.total)}</td>
                     <td style={{ fontSize: 12 }}>{(d.doc_date || d.created_at || '').slice(0, 10)}</td>
-                    <td onClick={e => e.stopPropagation()}><SignToggle on={!!d.to_sign} onClick={() => toggleSignGen(d)} /></td>
+                    <td onClick={e => e.stopPropagation()}><SignToggle d={d} onClick={() => toggleSignGen(d)} /></td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       <button className="btn" title="Переглянути" onClick={e => { e.stopPropagation(); viewGen(d) }}><i className="ti ti-eye" /></button>
                       <button className="btn" title="Завантажити PDF" onClick={e => { e.stopPropagation(); downloadGen(d) }} style={{ marginLeft: 4 }}><i className="ti ti-file-download" /></button>
@@ -1115,7 +1130,7 @@ function DocumentsTab({ o }) {
                   <td style={{ color: 'var(--text2)', fontSize: 12 }}>{d.doc_number || '—'}</td>
                   <td><div className="trunc">{d.file_name}</div></td>
                   <td style={{ textAlign: 'right' }}>{d.amount ? fmt(d.amount) : '—'}</td>
-                  <td onClick={e => e.stopPropagation()}><SignToggle on={!!d.to_sign} onClick={() => toggleSignDoc(d)} /></td>
+                  <td onClick={e => e.stopPropagation()}><SignToggle d={d} onClick={() => toggleSignDoc(d)} /></td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {draft
                       ? <button className="btn" title="Провести — додати в розділ «Документи»" onClick={e => { e.stopPropagation(); setPosted(d, true) }} style={{ fontSize: 12, padding: '3px 10px', color: 'var(--amber)' }}><i className="ti ti-file-off" /> Чернетка</button>
