@@ -21,6 +21,7 @@ export const SCOPED_TABLES = new Set([
   'emails',
   'plans',
   'notes',
+  'finance_projects', // фінрезультат проекту (company_id, міграція 055)
 ])
 
 export const isScoped = (table) => SCOPED_TABLES.has(table)

@@ -20,7 +20,7 @@ export const ROLE_HINTS = {
 }
 
 // Ключ розділу = сегмент маршруту без «/» (напр. '/period-close' → 'period-close')
-const ALL = ['orders', 'tasks', 'contractors', 'bank', 'inventory', 'prices', 'documents', 'mail', 'analytics', 'investor', 'period-close', 'settings']
+const ALL = ['orders', 'tasks', 'contractors', 'bank', 'inventory', 'prices', 'documents', 'mail', 'analytics', 'investor', 'finance', 'period-close', 'settings']
 
 export const ROLE_SECTIONS = {
   admin: ALL,
