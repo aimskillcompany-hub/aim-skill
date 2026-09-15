@@ -458,6 +458,8 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `051_doc_date_nullable.sql` | `generated_docs`/`documents`.doc_date → nullable (генерація «Без дати») | ✅ застосовано (звірено 2026-09-10, live-тест null) |
 | `052_orders_docs_to_sign.sql` | Замовлення: `invoice_to_sign`/`waybill_to_sign` (передано на підпис) — замінено на 053, колонки невживані | ✅ застосовано (звірено 2026-09-10) |
 | `053_docs_to_sign.sql` | Документи: `generated_docs.to_sign`/`documents.to_sign` (помітка «на підпис» на документі) | ✅ застосовано (звірено 2026-09-10) |
+| `054_docs_to_sign_at.sql` | Документи: `to_sign_at` (дата помітки «на підпис») на generated_docs/documents | ✅ застосовано (звірено 2026-09-15) |
+| `055_finance_projects.sql` | Фінрезультат проекту: `finance_projects` + `finance_project_items` + RLS | ✅ застосовано (звірено 2026-09-15) |
 | `validate.mjs` | Перевірка цілісності Фази 1 (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 | `probe.mjs` | Звірка наявності колонок/таблиць усіх міграцій у БД (`SUPABASE_SERVICE_KEY=... node migrations/probe.mjs`) | — |
 
