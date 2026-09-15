@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { fmt, fmtInt } from '../lib/fmt'
+import { labelForStatus, statusAccent } from '../lib/orders'
 
 // Звіт власника («Розрахунок») — по-замовленнєвий прибуток + агентські, ПО ВСІХ КОМПАНІЯХ.
 // Навмисно БЕЗ company-scope (крос-компанійний): запити напряму через supabase.
@@ -46,7 +47,7 @@ export default function OwnerReport() {
         // Архівні НЕ виключаємо: виконані/заархівовані угоди — найреальніші.
         // Джерело правди — ручна відмітка in_investor (курується власником).
         supabase.from('orders')
-          .select('id, order_number, created_at, client_id, company_id, agent_commission_pct, commission_paid, contractors(name)')
+          .select('id, order_number, created_at, client_id, company_id, status, agent_commission_pct, commission_paid, contractors(name)')
           .eq('in_investor', true).order('order_number'),
         supabase.from('companies').select('id, short_name, name, is_vat_payer'),
       ])
@@ -104,7 +105,7 @@ export default function OwnerReport() {
         result.push({
           id: o.id, number: o.order_number || o.id.slice(0, 6),
           client: o.contractors?.name || '— без клієнта —', clientId: o.client_id || '_none',
-          company: comp.short_name || comp.name || '—',
+          company: comp.short_name || comp.name || '—', status: o.status,
           paid, cost: agg.cost, rev: agg.rev, vat, tax, net, pct, agent: net * pct,
           commissionPaid: !!o.commission_paid,
         })
@@ -150,13 +151,13 @@ export default function OwnerReport() {
   async function exportXlsx() {
     if (!rows?.length) return
     const XLSX = await import('xlsx')
-    const head = ['Клієнт', 'Компанія', 'Замовлення №', 'Дата оплати', 'Закупка без ПДВ', 'Реалізація без ПДВ', 'ПДВ до сплати', 'Податок на прибуток', 'Чистий прибуток', '% агент.', 'Сума агентських', 'Агентські сплачені']
+    const head = ['Клієнт', 'Компанія', 'Статус', 'Замовлення №', 'Дата оплати', 'Закупка без ПДВ', 'Реалізація без ПДВ', 'ПДВ до сплати', 'Податок на прибуток', 'Чистий прибуток', '% агент.', 'Сума агентських', 'Агентські сплачені']
     const body = []
     for (const g of groups) {
-      g.rows.forEach(r => body.push([g.client, r.company, r.number, r.paid || 'не оплачено', r.cost, r.rev, r.vat, r.tax, r.net, r.pct, r.agent, r.commissionPaid ? 'так' : 'ні']))
-      body.push([`РАЗОМ ${g.client}`, '', '', '', g.sum.cost, g.sum.rev, g.sum.vat, g.sum.tax, g.sum.net, '', g.sum.agent, ''])
+      g.rows.forEach(r => body.push([g.client, r.company, labelForStatus(r.status), r.number, r.paid || 'не оплачено', r.cost, r.rev, r.vat, r.tax, r.net, r.pct, r.agent, r.commissionPaid ? 'так' : 'ні']))
+      body.push([`РАЗОМ ${g.client}`, '', '', '', '', g.sum.cost, g.sum.rev, g.sum.vat, g.sum.tax, g.sum.net, '', g.sum.agent, ''])
     }
-    body.push(['ВСЬОГО', '', '', '', grand.cost, grand.rev, grand.vat, grand.tax, grand.net, '', grand.agent, ''])
+    body.push(['ВСЬОГО', '', '', '', '', grand.cost, grand.rev, grand.vat, grand.tax, grand.net, '', grand.agent, ''])
     const ws = XLSX.utils.aoa_to_sheet([head, ...body])
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Розрахунок')
     XLSX.writeFile(wb, `Розрахунок_${from}_${to}.xlsx`)
@@ -196,9 +197,9 @@ export default function OwnerReport() {
       {groups && (
         <div className="card">
           <div className="tbl-wrap" style={{ border: 'none', overflowX: 'auto' }}>
-            <table style={{ minWidth: 1060 }}>
+            <table style={{ minWidth: 1160 }}>
               <thead><tr>
-                <th>Замовлення</th><th>Компанія</th><th>Дата оплати</th>
+                <th>Замовлення</th><th>Компанія</th><th>Статус</th><th>Дата оплати</th>
                 <th style={{ textAlign: 'right' }}>Закупка</th><th style={{ textAlign: 'right' }}>Реалізація</th>
                 <th style={{ textAlign: 'right' }}>ПДВ</th><th style={{ textAlign: 'right' }}>Податок</th>
                 <th style={{ textAlign: 'right' }}>Чистий</th><th style={{ textAlign: 'right', width: 70 }}>% агент.</th><th style={{ textAlign: 'right' }}>Агентські</th>
@@ -208,12 +209,17 @@ export default function OwnerReport() {
                 {groups.map(g => (
                   <Fragmentish key={g.client}>
                     <tr style={{ background: 'var(--surface2)' }}>
-                      <td colSpan={11} style={{ fontWeight: 700, color: 'var(--text)' }}>{g.client}</td>
+                      <td colSpan={12} style={{ fontWeight: 700, color: 'var(--text)' }}>{g.client}</td>
                     </tr>
                     {g.rows.map(r => (
                       <tr key={r.id}>
                         <td style={{ fontWeight: 500 }}>{r.number}</td>
                         <td style={{ fontSize: 13, color: 'var(--text2)' }}><div className="trunc">{r.company}</div></td>
+                        <td style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>
+                          {statusAccent(r.status)
+                            ? <span style={{ background: statusAccent(r.status), color: '#fff', borderRadius: 6, padding: '1px 8px', fontWeight: 600 }}>{labelForStatus(r.status)}</span>
+                            : <span style={{ color: 'var(--text2)' }}>{labelForStatus(r.status)}</span>}
+                        </td>
                         <td style={{ whiteSpace: 'nowrap', color: r.paid ? 'var(--text2)' : 'var(--text3)', fontSize: 13 }}>{r.paid ? d(r.paid) : 'не оплачено'}</td>
                         <Num v={r.cost} /><Num v={r.rev} />
                         <Num v={r.vat} color="var(--text3)" /><Num v={r.tax} color="var(--text3)" />
@@ -229,7 +235,7 @@ export default function OwnerReport() {
                       </tr>
                     ))}
                     <tr style={{ borderTop: '1px solid var(--border)' }}>
-                      <td colSpan={3} style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text2)', fontSize: 12.5 }}>Разом {g.client}</td>
+                      <td colSpan={4} style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text2)', fontSize: 12.5 }}>Разом {g.client}</td>
                       <Num v={g.sum.cost} bold /><Num v={g.sum.rev} bold />
                       <Num v={g.sum.vat} bold color="var(--text3)" /><Num v={g.sum.tax} bold color="var(--text3)" />
                       <Num v={g.sum.net} bold /><td /><Num v={g.sum.agent} bold />
@@ -237,11 +243,11 @@ export default function OwnerReport() {
                     </tr>
                   </Fragmentish>
                 ))}
-                {rows.length === 0 && <tr><td colSpan={11} style={{ textAlign: 'center', color: 'var(--text3)', padding: 28 }}>За вибіркою немає замовлень з позиціями</td></tr>}
+                {rows.length === 0 && <tr><td colSpan={12} style={{ textAlign: 'center', color: 'var(--text3)', padding: 28 }}>За вибіркою немає замовлень з позиціями</td></tr>}
               </tbody>
               {rows.length > 0 && (
                 <tfoot><tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700 }}>
-                  <td colSpan={3} style={{ textAlign: 'right' }}>ВСЬОГО</td>
+                  <td colSpan={4} style={{ textAlign: 'right' }}>ВСЬОГО</td>
                   <Num v={grand.cost} bold /><Num v={grand.rev} bold />
                   <Num v={grand.vat} bold color="var(--text3)" /><Num v={grand.tax} bold color="var(--text3)" />
                   <Num v={grand.net} bold color={grand.net >= 0 ? 'var(--green)' : 'var(--red)'} /><td /><Num v={grand.agent} bold />
