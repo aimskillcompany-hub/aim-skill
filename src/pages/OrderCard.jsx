@@ -621,15 +621,17 @@ function ItemsTab({ o, onChange, onDirty }) {
   const removeRow = (i) => { markDirty(); setRows(rs => rs.filter((_, j) => j !== i)) }
   // unit_price трактується залежно від price_includes_vat:
   //   true  → ціна вже з ПДВ (прайс); false → ціна без ПДВ, ПДВ зверху (склад)
-  const rate = (r) => Number(r.vat_rate) || 0
-  const grossUnit = (r) => { const p = Number(r.unit_price) || 0; const v = rate(r); return r.price_includes_vat ? p : p * (1 + v / 100) }
-  const netUnit = (r) => { const p = Number(r.unit_price) || 0; const v = rate(r); return r.price_includes_vat ? (v > 0 ? p / (1 + v / 100) : p) : p }
+  // Неплатник ПДВ: ігноруємо ПДВ-прапорці рядка (можуть лишитися з прайсу/іншої юрособи) → net = gross
+  const incl = (r) => vatOn && !!r.price_includes_vat
+  const rate = (r) => vatOn ? (Number(r.vat_rate) || 0) : 0
+  const grossUnit = (r) => { const p = Number(r.unit_price) || 0; const v = rate(r); return incl(r) ? p : p * (1 + v / 100) }
+  const netUnit = (r) => { const p = Number(r.unit_price) || 0; const v = rate(r); return incl(r) ? (v > 0 ? p / (1 + v / 100) : p) : p }
   const rowTotal = (r) => grossUnit(r) * (Number(r.qty) || 0)            // з ПДВ
   const rowNet = (r) => netUnit(r) * (Number(r.qty) || 0)               // без ПДВ
   // Маржа — net-to-net. «Тип ціни = ціна з ПДВ» стосується І продажу, І закупівлі:
   // тоді ПДВ віднімається з обох (собівартість теж введена з ПДВ). Інакше обидві вже net.
-  const netCost = (r) => { const c = Number(r.cost_price) || 0; const v = rate(r); return r.price_includes_vat ? (v > 0 ? c / (1 + v / 100) : c) : c }
-  const grossCost = (r) => { const c = Number(r.cost_price) || 0; const v = rate(r); return r.price_includes_vat ? c : c * (1 + v / 100) }
+  const netCost = (r) => { const c = Number(r.cost_price) || 0; const v = rate(r); return incl(r) ? (v > 0 ? c / (1 + v / 100) : c) : c }
+  const grossCost = (r) => { const c = Number(r.cost_price) || 0; const v = rate(r); return incl(r) ? c : c * (1 + v / 100) }
   const rowMargin = (r) => (netUnit(r) - netCost(r)) * (Number(r.qty) || 0)
   const marginPct = (r) => { const n = netUnit(r); return n > 0 ? ((n - netCost(r)) / n) * 100 : 0 }
   // Націнка (markup) = (ціна − закупівля) / закупівля. Рахуємо на введених значеннях —
