@@ -43,20 +43,34 @@ export default function OwnerReport() {
   async function generate() {
     setLoading(true); setErr(null)
     try {
+      // Архівні НЕ виключаємо: виконані/заархівовані угоди — найреальніші.
+      // Джерело правди — ручна відмітка in_investor (курується власником).
+      let ordCols = 'id, order_number, created_at, client_id, company_id, status, agent_commission_pct, commission_paid, paid_transaction_id, contractors(name)'
       let [{ data: ords, error: oErr }, { data: comps }] = await Promise.all([
-        // Архівні НЕ виключаємо: виконані/заархівовані угоди — найреальніші.
-        // Джерело правди — ручна відмітка in_investor (курується власником).
-        supabase.from('orders')
-          .select('id, order_number, created_at, client_id, company_id, status, agent_commission_pct, commission_paid, contractors(name)')
-          .eq('in_investor', true).order('order_number'),
+        supabase.from('orders').select(ordCols).eq('in_investor', true).order('order_number'),
         supabase.from('companies').select('id, short_name, name, is_vat_payer'),
       ])
+      // paid_transaction_id ще не створено (міграція 056) — повторюємо без нього
+      if (oErr && /paid_transaction_id/.test(oErr.message || '')) {
+        ordCols = ordCols.replace(', paid_transaction_id', '')
+        ;({ data: ords, error: oErr } = await supabase.from('orders').select(ordCols).eq('in_investor', true).order('order_number'))
+      }
       if (oErr && /in_investor/.test(oErr.message || '')) {
         throw new Error('Запустіть міграцію 047 (відмітка «Інвестор» на замовленнях).')
       }
       if (oErr) throw oErr
       const compById = {}; (comps || []).forEach(c => { compById[c.id] = c })
       const ids = (ords || []).map(o => o.id)
+
+      // Пряма прив'язка оплати (orders.paid_transaction_id) — пріоритетне джерело дати й суми
+      const directIds = [...new Set((ords || []).map(o => o.paid_transaction_id).filter(Boolean))]
+      const directTxs = directIds.length ? await chunkedIn('bank_transactions', 'id, date, amount', 'id', directIds) : []
+      const directById = {}; directTxs.forEach(t => { directById[t.id] = t })
+      const directPay = {}
+      ;(ords || []).forEach(o => {
+        const t = o.paid_transaction_id && directById[o.paid_transaction_id]
+        if (t) directPay[o.id] = { date: String(t.date).slice(0, 10), amount: Math.abs(Number(t.amount) || 0) }
+      })
 
       // Позиції + ланцюг оплати (документи → transaction_documents → банк)
       const items = ids.length ? await chunkedIn('order_items', 'order_id, qty, unit_price, cost_price, vat_rate, price_includes_vat', 'order_id', ids) : []
@@ -92,7 +106,8 @@ export default function OwnerReport() {
         if (agg.rev === 0 && agg.cost === 0) continue // порожні замовлення пропускаємо (як в Excel)
         const comp = compById[o.company_id] || {}
         const vatPayer = comp.is_vat_payer !== false
-        const paid = paidByOrder[o.id] || null
+        const direct = directPay[o.id]
+        const paid = direct?.date || paidByOrder[o.id] || null // пряма прив'язка має пріоритет
         const refDate = (o.created_at || '').slice(0, 10) // період — за датою створення замовлення
         if (from && refDate < from) continue
         if (to && refDate > to) continue
@@ -106,7 +121,7 @@ export default function OwnerReport() {
           id: o.id, number: o.order_number || o.id.slice(0, 6),
           client: o.contractors?.name || '— без клієнта —', clientId: o.client_id || '_none',
           company: comp.short_name || comp.name || '—', status: o.status,
-          paid, cost: agg.cost, rev: agg.rev, vat, tax, net, pct, agent: net * pct,
+          paid, paidAmount: direct?.amount ?? null, cost: agg.cost, rev: agg.rev, vat, tax, net, pct, agent: net * pct,
           commissionPaid: !!o.commission_paid,
         })
       }
@@ -151,13 +166,13 @@ export default function OwnerReport() {
   async function exportXlsx() {
     if (!rows?.length) return
     const XLSX = await import('xlsx')
-    const head = ['Клієнт', 'Компанія', 'Статус', 'Замовлення №', 'Дата оплати', 'Закупка без ПДВ', 'Реалізація без ПДВ', 'ПДВ до сплати', 'Податок на прибуток', 'Чистий прибуток', '% агент.', 'Сума агентських', 'Агентські сплачені']
+    const head = ['Клієнт', 'Компанія', 'Статус', 'Замовлення №', 'Дата оплати', 'Сума оплати', 'Закупка без ПДВ', 'Реалізація без ПДВ', 'ПДВ до сплати', 'Податок на прибуток', 'Чистий прибуток', '% агент.', 'Сума агентських', 'Агентські сплачені']
     const body = []
     for (const g of groups) {
-      g.rows.forEach(r => body.push([g.client, r.company, labelForStatus(r.status), r.number, r.paid || 'не оплачено', r.cost, r.rev, r.vat, r.tax, r.net, r.pct, r.agent, r.commissionPaid ? 'так' : 'ні']))
-      body.push([`РАЗОМ ${g.client}`, '', '', '', '', g.sum.cost, g.sum.rev, g.sum.vat, g.sum.tax, g.sum.net, '', g.sum.agent, ''])
+      g.rows.forEach(r => body.push([g.client, r.company, labelForStatus(r.status), r.number, r.paid || 'не оплачено', r.paidAmount || '', r.cost, r.rev, r.vat, r.tax, r.net, r.pct, r.agent, r.commissionPaid ? 'так' : 'ні']))
+      body.push([`РАЗОМ ${g.client}`, '', '', '', '', '', g.sum.cost, g.sum.rev, g.sum.vat, g.sum.tax, g.sum.net, '', g.sum.agent, ''])
     }
-    body.push(['ВСЬОГО', '', '', '', '', grand.cost, grand.rev, grand.vat, grand.tax, grand.net, '', grand.agent, ''])
+    body.push(['ВСЬОГО', '', '', '', '', '', grand.cost, grand.rev, grand.vat, grand.tax, grand.net, '', grand.agent, ''])
     const ws = XLSX.utils.aoa_to_sheet([head, ...body])
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Розрахунок')
     XLSX.writeFile(wb, `Розрахунок_${from}_${to}.xlsx`)
@@ -220,7 +235,9 @@ export default function OwnerReport() {
                             ? <span style={{ background: statusAccent(r.status), color: '#fff', borderRadius: 6, padding: '1px 8px', fontWeight: 600 }}>{labelForStatus(r.status)}</span>
                             : <span style={{ color: 'var(--text2)' }}>{labelForStatus(r.status)}</span>}
                         </td>
-                        <td style={{ whiteSpace: 'nowrap', color: r.paid ? 'var(--text2)' : 'var(--text3)', fontSize: 13 }}>{r.paid ? d(r.paid) : 'не оплачено'}</td>
+                        <td style={{ whiteSpace: 'nowrap', color: r.paid ? 'var(--text2)' : 'var(--text3)', fontSize: 13 }}>
+                          {r.paid ? <>{d(r.paid)}{r.paidAmount ? <div style={{ fontSize: 11, color: 'var(--green)' }}>{fmt(r.paidAmount)} грн</div> : null}</> : 'не оплачено'}
+                        </td>
                         <Num v={r.cost} /><Num v={r.rev} />
                         <Num v={r.vat} color="var(--text3)" /><Num v={r.tax} color="var(--text3)" />
                         <Num v={r.net} bold color={r.net >= 0 ? 'var(--green)' : 'var(--red)'} />
@@ -258,7 +275,7 @@ export default function OwnerReport() {
           </div>
           <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>
             Закупка/реалізація — з позицій замовлення (без ПДВ). ПДВ і податок нараховуються лише для компаній-платників ПДВ.
-            Фільтр періоду — за датою створення замовлення. «Дата оплати» — за прив'язаною банківською оплатою (довідково).
+            Фільтр періоду — за датою створення замовлення. «Дата/сума оплати» — за прямою прив'язкою оплати до замовлення (orders.paid_transaction_id); фолбек — оплата через прив'язаний документ.
           </p>
         </div>
       )}
