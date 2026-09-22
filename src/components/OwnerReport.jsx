@@ -211,8 +211,8 @@ export default function OwnerReport() {
 
       {groups && (
         <div className="card">
-          <div className="tbl-wrap" style={{ border: 'none', overflowX: 'auto' }}>
-            <table style={{ minWidth: 940 }}>
+          <div className="tbl-wrap compact" style={{ border: 'none', overflowX: 'auto' }}>
+            <table style={{ minWidth: 820 }}>
               <thead><tr>
                 <th style={{ width: 44 }}>№</th><th>Компанія</th><th style={{ width: 92 }}>Статус</th><th>Дата оплати</th>
                 <th style={{ textAlign: 'right' }}>Закупка</th><th style={{ textAlign: 'right' }}>Реалізація</th>

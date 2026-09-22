@@ -207,6 +207,10 @@ export const css = `
   .tbl-wrap tbody tr:last-child { border-bottom: none; }
   .tbl-wrap tbody tr:hover { background: var(--bg); }
   .tbl-wrap tbody td { padding: 14px 16px; vertical-align: top; }
+  /* Компактна таблиця (напр. звіт «Інвестору») — щоб уміститись без гориз. скролу */
+  .tbl-wrap.compact table { font-size: 12px; }
+  .tbl-wrap.compact thead th { padding: 8px 7px; font-size: 10px; letter-spacing: .2px; }
+  .tbl-wrap.compact tbody td { padding: 7px 7px; }
   .amt-pos { color: var(--green); font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .amt-neg { color: var(--red); font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .amt-zero { color: var(--text3); }
