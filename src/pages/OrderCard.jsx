@@ -35,7 +35,6 @@ const TABS = [
   { id: 'vendorreg', label: 'Реєстрація у вендора', icon: 'ti-clipboard-check' },
   { id: 'tender', label: 'Тендерна документація', icon: 'ti-gavel', tenderOnly: true },
   { id: 'finance', label: 'Прибутковість', icon: 'ti-report-money' },
-  { id: 'transactions', label: 'Транзакції', icon: 'ti-building-bank' },
   { id: 'stock', label: 'Склад', icon: 'ti-package' },
 ]
 
@@ -252,7 +251,6 @@ export default function OrderCard() {
       {tab === 'vendorreg' && <VendorRegTab o={o} />}
       {tab === 'tender' && o.procurement_type === 'tender' && <TenderDocsTab o={o} />}
       {tab === 'finance' && <OrderFinanceTab o={o} onOrderChange={load} />}
-      {tab === 'transactions' && <TransactionsTab o={o} />}
       {tab === 'stock' && <StockTab o={o} />}
     </div>
   )
@@ -1415,29 +1413,6 @@ function SuppliersTab({ o }) {
 const SUB_STATUS = { new: 'Новий', ordered: 'Замовлено', in_transit: 'В дорозі', received: 'Отримано', paid: 'Оплачено' }
 
 // ───────── Транзакції ─────────
-function TransactionsTab({ o }) {
-  const [rows, setRows] = useState(null)
-  useEffect(() => {
-    (async () => {
-      const { data: docs } = await qc('documents').select('id').eq('order_id', o.id)
-      const docIds = (docs || []).map(d => d.id)
-      if (!docIds.length) { setRows([]); return }
-      const { data } = await supabase.from('transaction_documents')
-        .select('amount, bank_transactions(id, date, description, amount, direction)')
-        .in('document_id', docIds)
-      setRows(data || [])
-    })()
-  }, [o.id])
-  if (rows == null) return <Loading />
-  if (!rows.length) return <Empty text="Прив'язаних транзакцій немає. Прив'язка робиться в модулі Банк/Каса (Фаза 5)." />
-  return <Table head={['Дата', 'Опис', 'Покриття', 'Напрям']}>
-    {rows.map((r, i) => { const t = r.bank_transactions || {}; return (
-      <tr key={i}><td style={{ fontSize: 12 }}>{t.date}</td><td><div className="trunc">{t.description}</div></td>
-        <td style={{ textAlign: 'right' }}>{fmt(r.amount || t.amount)}</td><td>{t.direction}</td></tr>
-    )})}
-  </Table>
-}
-
 // ───────── Склад ─────────
 function StockTab({ o }) {
   const [rows, setRows] = useState(null)
