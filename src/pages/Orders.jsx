@@ -5,10 +5,13 @@ import { qc, withCompany } from '../lib/companyScope'
 import { useUser } from '../lib/auth'
 import { nextOrderNumber } from '../lib/orderNumber'
 import { fmt, fmtInt } from '../lib/fmt'
+
+const fmtDate = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('.') : ''
 import {
   ORDER_TYPES, TYPE_COLORS, OUTCOME, statusLabel, statusAccent, isOpen,
   proposalOverdue, paymentOverdue,
 } from '../lib/orders'
+import { autoLinkPayment } from '../lib/orderPayments'
 import Kanban from '../components/Kanban'
 import OrderReport from '../components/OrderReport'
 import { useSort, SortTh } from '../components/Sort'
@@ -40,16 +43,39 @@ export default function Orders() {
     const userMap = {}
     ;(profs || []).forEach(p => { userMap[p.id] = p.full_name || p.email || '—' })
 
+    // Прив'язані оплати клієнтів (статус «Оплачено клієнтом»)
+    const payIds = [...new Set((ords || []).map(o => o.paid_transaction_id).filter(Boolean))]
+    const payMap = {}
+    if (payIds.length) {
+      const { data: ptx } = await supabase.from('bank_transactions').select('id, date, amount').in('id', payIds)
+      ;(ptx || []).forEach(t => { payMap[t.id] = t })
+    }
+
     const enriched = (ords || []).map(o => ({
       ...o,
       clientName: o.contractors?.name || '—',
       managerName: o.manager_id ? (userMap[o.manager_id] || '—') : '—',
+      payment: o.paid_transaction_id ? (payMap[o.paid_transaction_id] || null) : null,
       overdue: proposalOverdue(o, lastSent[o.id]) || paymentOverdue(subsByOrder[o.id]),
     }))
     setOrders(enriched)
     setLoading(false)
   }
   useEffect(() => { load() }, [])
+
+  // Автопідбір оплат: лінкує замовлення до вхідних оплат з тим самим контрагентом і сумою.
+  const [linking, setLinking] = useState(false)
+  const autoLinkPayments = async () => {
+    setLinking(true)
+    let n = 0
+    const targets = orders.filter(o => !o.paid_transaction_id && o.client_id && Number(o.total) > 0)
+    for (const o of targets) {
+      try { if (await autoLinkPayment(o)) n++ } catch { /* напр. міграція 056 ще не запущена */ }
+    }
+    setLinking(false)
+    await load()
+    alert(n ? `Прив'язано оплат: ${n}` : 'Нових однозначних збігів не знайдено')
+  }
 
   // Відмітка «комісійні сплачені» — перемикач прямо в реєстрі (без переходу в картку)
   const toggleCommission = async (o) => {
@@ -141,6 +167,11 @@ export default function Orders() {
             })}
           </div>
         </>}
+        {view !== 'report' && (
+          <button className="btn" onClick={autoLinkPayments} disabled={linking} title="Знайти й прив'язати оплати клієнтів (збіг контрагента і суми)">
+            <i className="ti ti-cash" /> {linking ? 'Підбір…' : 'Підтягнути оплати'}
+          </button>
+        )}
         <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
           <button className="btn" onClick={() => setView('table')} style={{ background: view === 'table' ? 'var(--surface2)' : 'var(--surface)' }} title="Таблиця"><i className="ti ti-list" /></button>
           <button className="btn" onClick={() => setView('kanban')} style={{ background: view === 'kanban' ? 'var(--surface2)' : 'var(--surface)' }} title="Канбан"><i className="ti ti-layout-kanban" /></button>
@@ -196,6 +227,12 @@ export default function Orders() {
                       {OUTCOME[o.outcome] && (
                         <span style={{ marginLeft: 6, color: OUTCOME[o.outcome].color, fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' }}>
                           <i className={`ti ${OUTCOME[o.outcome].icon}`} /> {OUTCOME[o.outcome].label}
+                        </span>
+                      )}
+                      {o.paid_transaction_id && (
+                        <span title={o.payment ? `Оплата ${fmtDate(o.payment.date)} · ${fmt(Math.abs(o.payment.amount))} грн` : 'Оплачено клієнтом'}
+                          style={{ marginLeft: 6, background: 'var(--green-bg, #e7f7ec)', color: 'var(--green)', borderRadius: 6, padding: '1px 7px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                          <i className="ti ti-cash" /> Оплачено клієнтом
                         </span>
                       )}
                     </td>

@@ -20,8 +20,12 @@ import TenderDocsTab from '../components/TenderDocsTab'
 import {
   ORDER_TYPES, TYPE_COLORS, OUTCOME, flowFor, proposalOverdue,
 } from '../lib/orders'
+import { paymentCandidates, clientPayments } from '../lib/orderPayments'
 
 const VAT_RATES = [0, 20]
+
+// Дата ISO → ДД.ММ.РРРР (для показу)
+const fmtDate = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('.') : ''
 
 const TABS = [
   { id: 'details', label: 'Деталі', icon: 'ti-info-circle' },
@@ -41,6 +45,7 @@ export default function OrderCard() {
   const navigate = useNavigate()
   const [o, setO] = useState(null)
   const [lastSent, setLastSent] = useState(null)
+  const [payment, setPayment] = useState(null) // прив'язана оплата клієнта (bank_transaction)
   const [tab, setTab] = useState('details')
   const [busy, setBusy] = useState('')
   const [confirmDel, setConfirmDel] = useState(false)
@@ -57,6 +62,12 @@ export default function OrderCard() {
     setO(data)
     const { data: props } = await qc('commercial_proposals').select('sent_at').eq('order_id', id).not('sent_at', 'is', null).order('sent_at', { ascending: false }).limit(1)
     setLastSent(props?.[0]?.sent_at || null)
+    // Прив'язана оплата клієнта (окремий «статус оплати»)
+    if (data?.paid_transaction_id) {
+      const { data: tx } = await supabase.from('bank_transactions')
+        .select('id, date, amount, description, counterparty, direction').eq('id', data.paid_transaction_id).single()
+      setPayment(tx || null)
+    } else setPayment(null)
   }
   useEffect(() => { load() }, [id])
 
@@ -153,6 +164,11 @@ export default function OrderCard() {
               {OUTCOME[o.outcome] && (
                 <span style={{ background: OUTCOME[o.outcome].bg, color: OUTCOME[o.outcome].color, borderRadius: 6, padding: '2px 10px', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   <i className={`ti ${OUTCOME[o.outcome].icon}`} /> {OUTCOME[o.outcome].label}
+                </span>
+              )}
+              {o.paid_transaction_id && payment && (
+                <span title={payment.description || ''} style={{ background: 'var(--green-bg, #e7f7ec)', color: 'var(--green)', borderRadius: 6, padding: '2px 10px', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <i className="ti ti-cash" /> Оплачено клієнтом · {fmtDate(payment.date)} · {fmt(Math.abs(payment.amount))} грн
                 </span>
               )}
             </div>
@@ -346,6 +362,7 @@ function DetailsTab({ o, onSaved }) {
     setSaved(true); setTimeout(() => setSaved(false), 2000); onSaved()
   }
   return (
+    <>
     <div className="card">
       <div className="form-grid">
         <div className="form-group full"><label>Клієнт{!form.client_id && <span style={{ color: 'var(--red)', marginLeft: 6, fontSize: 12 }}>не призначений</span>}</label>
@@ -417,6 +434,112 @@ function DetailsTab({ o, onSaved }) {
         <button className="btn btn-primary" onClick={save}>Зберегти</button>
         {saved && <span style={{ color: 'var(--green)', fontSize: 13 }}>Збережено!</span>}
       </div>
+    </div>
+    <PaymentBlock o={o} onChange={onSaved} />
+    </>
+  )
+}
+
+// ───────── Оплата від клієнта (статус «Оплачено клієнтом») ─────────
+// Пряма прив'язка замовлення до банківської оплати. Авто: контрагент+сума збігаються.
+// Ручна: обрати будь-яку вхідну оплату клієнта. Незалежно від статусу замовлення.
+function PaymentBlock({ o, onChange }) {
+  const [tx, setTx] = useState(null)       // прив'язана оплата
+  const [cands, setCands] = useState(null) // кандидати (контрагент+сума) коли не прив'язано
+  const [busy, setBusy] = useState(false)
+  const [pickList, setPickList] = useState(null) // список для ручного вибору (null=закрито)
+
+  const load = async () => {
+    if (o.paid_transaction_id) {
+      const { data } = await supabase.from('bank_transactions')
+        .select('id, date, amount, description, counterparty, direction').eq('id', o.paid_transaction_id).single()
+      setTx(data || null); setCands(null)
+    } else {
+      setTx(null)
+      setCands(await paymentCandidates(o).catch(() => []))
+    }
+  }
+  useEffect(() => { load() }, [o.id, o.paid_transaction_id, o.client_id, o.total])
+
+  const link = async (txId) => {
+    setBusy(true)
+    const { error } = await qc('orders').update({ paid_transaction_id: txId }).eq('id', o.id)
+    setBusy(false)
+    if (error) {
+      alert('Не вдалося прив\'язати оплату: ' + (/paid_transaction_id/.test(error.message || '') ? 'запустіть міграцію 056' : error.message))
+      return
+    }
+    setPickList(null); onChange()
+  }
+  const unlink = async () => {
+    setBusy(true)
+    await qc('orders').update({ paid_transaction_id: null }).eq('id', o.id)
+    setBusy(false); onChange()
+  }
+  const openPicker = async () => setPickList(await clientPayments(o).catch(() => []))
+
+  const Row = ({ t, recommended }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8, background: recommended ? 'rgba(16,185,129,.06)' : 'var(--surface)' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>{fmt(Math.abs(t.amount))} грн <span style={{ color: 'var(--text3)', fontWeight: 400 }}>· {fmtDate(t.date)}</span>
+          {recommended && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--green)', fontWeight: 600 }}>рекомендовано (сума збігається)</span>}</div>
+        <div className="trunc" style={{ fontSize: 12, color: 'var(--text2)' }}>{t.description || t.counterparty || ''}</div>
+      </div>
+      <button className="btn" disabled={busy} onClick={() => link(t.id)} style={{ fontSize: 12, padding: '4px 12px' }}>Прив'язати</button>
+    </div>
+  )
+
+  return (
+    <div className="card" style={{ marginTop: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <i className="ti ti-cash" style={{ fontSize: 18, color: 'var(--green)' }} />
+        <h3 style={{ margin: 0, fontSize: 15 }}>Оплата від клієнта</h3>
+      </div>
+
+      {o.paid_transaction_id && tx ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 14px', borderRadius: 10, background: 'var(--green-bg, #e7f7ec)' }}>
+          <span style={{ color: 'var(--green)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <i className="ti ti-circle-check" /> Оплачено клієнтом
+          </span>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>{fmt(Math.abs(tx.amount))} грн</span>
+          <span style={{ fontSize: 13, color: 'var(--text2)' }}>{fmtDate(tx.date)}</span>
+          {tx.description && <span className="trunc" style={{ fontSize: 12, color: 'var(--text3)', maxWidth: 320 }}>{tx.description}</span>}
+          <button className="btn" disabled={busy} onClick={unlink} style={{ marginLeft: 'auto', fontSize: 12, padding: '4px 12px', color: 'var(--red)' }}>
+            <i className="ti ti-unlink" /> Відв'язати
+          </button>
+        </div>
+      ) : !o.client_id ? (
+        <p style={{ color: 'var(--text3)', fontSize: 13, margin: 0 }}>Призначте клієнта в «Деталях», щоб підтягнути оплату.</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {cands === null ? (
+            <p style={{ color: 'var(--text3)', fontSize: 13, margin: 0 }}>Пошук оплат…</p>
+          ) : cands.length ? (
+            <>
+              <p style={{ fontSize: 13, color: 'var(--text2)', margin: 0 }}>Знайдено оплату від цього клієнта на суму замовлення:</p>
+              {cands.map(t => <Row key={t.id} t={t} recommended />)}
+            </>
+          ) : (
+            <p style={{ fontSize: 13, color: 'var(--text3)', margin: 0 }}>Оплати з таким контрагентом і сумою не знайдено. Можна прив'язати вручну.</p>
+          )}
+
+          {pickList === null ? (
+            <button className="btn" onClick={openPicker} style={{ alignSelf: 'flex-start', fontSize: 12 }}>
+              <i className="ti ti-link" /> Прив'язати вручну
+            </button>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 12, color: 'var(--text2)' }}>Вхідні оплати клієнта:</span>
+                <button className="btn" onClick={() => setPickList(null)} style={{ fontSize: 12, padding: '2px 10px' }}>Сховати</button>
+              </div>
+              {pickList.length ? pickList.map(t => (
+                <Row key={t.id} t={t} recommended={cands?.some(c => c.id === t.id)} />
+              )) : <p style={{ fontSize: 13, color: 'var(--text3)', margin: 0 }}>У клієнта немає вхідних банківських оплат.</p>}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
