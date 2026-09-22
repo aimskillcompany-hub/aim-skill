@@ -71,7 +71,8 @@ export default function OrderFinanceTab({ o, onOrderChange }) {
 
   if (items == null) return <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
 
-  // Блок прив'язки оплати клієнта (кандидати/ручний вибір/відв'язка)
+  // Блок прив'язки оплати показуємо ЛИШЕ поки оплату не прив'язано (кандидати/ручний вибір).
+  // Після прив'язки оплата живе єдиним рядком у «Надходженнях» (без дублювання).
   const PayRow = ({ t, recommended }) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8, background: recommended ? 'rgba(16,185,129,.06)' : 'var(--surface)' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -88,15 +89,7 @@ export default function OrderFinanceTab({ o, onOrderChange }) {
         <i className="ti ti-cash" style={{ fontSize: 18, color: 'var(--green)' }} />
         <h3 style={{ margin: 0, fontSize: 15 }}>Оплата від клієнта</h3>
       </div>
-      {o.paid_transaction_id && payTx ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 14px', borderRadius: 10, background: 'var(--green-bg, #e7f7ec)' }}>
-          <span style={{ color: 'var(--green)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}><i className="ti ti-circle-check" /> Оплачено клієнтом</span>
-          <span style={{ fontSize: 14, fontWeight: 600 }}>{fmt(Math.abs(payTx.amount))} грн</span>
-          <span style={{ fontSize: 13, color: 'var(--text2)' }}>{d(payTx.date)}</span>
-          {payTx.description && <span className="trunc" style={{ fontSize: 12, color: 'var(--text3)', maxWidth: 320 }}>{payTx.description}</span>}
-          <button className="btn" disabled={payBusy} onClick={unlinkPayment} style={{ marginLeft: 'auto', fontSize: 12, padding: '4px 12px', color: 'var(--red)' }}><i className="ti ti-unlink" /> Відв'язати</button>
-        </div>
-      ) : !o.client_id ? (
+      {!o.client_id ? (
         <p style={{ color: 'var(--text3)', fontSize: 13, margin: 0 }}>Призначте клієнта в «Деталях», щоб підтягнути оплату.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -166,7 +159,7 @@ export default function OrderFinanceTab({ o, onOrderChange }) {
         <div className="card"><p style={{ color: 'var(--text3)', fontSize: 13, textAlign: 'center', padding: 16 }}>Запустіть міграцію 057 (таблиця <code>order_transactions</code>), щоб прив'язувати надходження/витрати до замовлення. Оплату клієнта можна прив'язати вже зараз.</p></div>
       ) : null}
 
-      {paymentBlock}
+      {!o.paid_transaction_id && paymentBlock}
 
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="kpi-grid">
