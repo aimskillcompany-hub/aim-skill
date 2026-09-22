@@ -17,6 +17,7 @@ import PricePickerModal from '../components/ui/PricePickerModal'
 import ContractorSelect from '../components/ui/ContractorSelect'
 import VendorRegTab from '../components/VendorRegTab'
 import TenderDocsTab from '../components/TenderDocsTab'
+import OrderFinanceTab from '../components/OrderFinanceTab'
 import {
   ORDER_TYPES, TYPE_COLORS, OUTCOME, flowFor, proposalOverdue,
 } from '../lib/orders'
@@ -35,6 +36,7 @@ const TABS = [
   { id: 'suppliers', label: 'Субзамовлення', icon: 'ti-truck-delivery' },
   { id: 'vendorreg', label: 'Реєстрація у вендора', icon: 'ti-clipboard-check' },
   { id: 'tender', label: 'Тендерна документація', icon: 'ti-gavel', tenderOnly: true },
+  { id: 'finance', label: 'Прибутковість', icon: 'ti-report-money' },
   { id: 'transactions', label: 'Транзакції', icon: 'ti-building-bank' },
   { id: 'stock', label: 'Склад', icon: 'ti-package' },
 ]
@@ -251,6 +253,7 @@ export default function OrderCard() {
       {tab === 'suppliers' && <SuppliersTab o={o} />}
       {tab === 'vendorreg' && <VendorRegTab o={o} />}
       {tab === 'tender' && o.procurement_type === 'tender' && <TenderDocsTab o={o} />}
+      {tab === 'finance' && <OrderFinanceTab o={o} />}
       {tab === 'transactions' && <TransactionsTab o={o} />}
       {tab === 'stock' && <StockTab o={o} />}
     </div>
