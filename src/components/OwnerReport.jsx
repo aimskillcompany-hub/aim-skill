@@ -212,13 +212,13 @@ export default function OwnerReport() {
       {groups && (
         <div className="card">
           <div className="tbl-wrap" style={{ border: 'none', overflowX: 'auto' }}>
-            <table style={{ minWidth: 1160 }}>
+            <table style={{ minWidth: 940 }}>
               <thead><tr>
-                <th>Замовлення</th><th>Компанія</th><th>Статус</th><th>Дата оплати</th>
+                <th style={{ width: 44 }}>№</th><th>Компанія</th><th style={{ width: 92 }}>Статус</th><th>Дата оплати</th>
                 <th style={{ textAlign: 'right' }}>Закупка</th><th style={{ textAlign: 'right' }}>Реалізація</th>
                 <th style={{ textAlign: 'right' }}>ПДВ</th><th style={{ textAlign: 'right' }}>Податок</th>
-                <th style={{ textAlign: 'right' }}>Чистий</th><th style={{ textAlign: 'right', width: 70 }}>% агент.</th><th style={{ textAlign: 'right' }}>Агентські</th>
-                <th style={{ textAlign: 'center', width: 78 }}>Сплачено</th>
+                <th style={{ textAlign: 'right' }}>Чистий</th><th style={{ textAlign: 'right', width: 58 }}>% аг.</th><th style={{ textAlign: 'right' }}>Агентські</th>
+                <th style={{ textAlign: 'center', width: 62 }}>Сплач.</th>
               </tr></thead>
               <tbody>
                 {groups.map(g => (
@@ -228,11 +228,11 @@ export default function OwnerReport() {
                     </tr>
                     {g.rows.map(r => (
                       <tr key={r.id}>
-                        <td style={{ fontWeight: 500 }}>{r.number}</td>
+                        <td style={{ fontWeight: 500, fontSize: 12.5, whiteSpace: 'nowrap' }}>{r.number}</td>
                         <td style={{ fontSize: 13, color: 'var(--text2)' }}><div className="trunc">{r.company}</div></td>
-                        <td style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>
+                        <td style={{ fontSize: 11 }}>
                           {statusAccent(r.status)
-                            ? <span style={{ background: statusAccent(r.status), color: '#fff', borderRadius: 6, padding: '1px 8px', fontWeight: 600 }}>{labelForStatus(r.status)}</span>
+                            ? <span style={{ background: statusAccent(r.status), color: '#fff', borderRadius: 6, padding: '1px 6px', fontWeight: 600, display: 'inline-block', lineHeight: 1.25 }}>{labelForStatus(r.status)}</span>
                             : <span style={{ color: 'var(--text2)' }}>{labelForStatus(r.status)}</span>}
                         </td>
                         <td style={{ whiteSpace: 'nowrap', color: r.paid ? 'var(--text2)' : 'var(--text3)', fontSize: 13 }}>
