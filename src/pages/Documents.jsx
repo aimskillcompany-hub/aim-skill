@@ -7,6 +7,7 @@ import { DOCUMENT_TYPES, getDocType } from '../lib/docgen'
 import ContractorSelect from '../components/ui/ContractorSelect'
 import DocGenModal from '../components/DocGenModal'
 import DocModal from '../components/DocModal'
+import BatchDocUploadModal from '../components/BatchDocUploadModal'
 import GeneratedDocModal from '../components/GeneratedDocModal'
 import { useSort, SortTh } from '../components/Sort'
 
@@ -22,6 +23,7 @@ export default function Documents() {
   const [signedFilter, setSignedFilter] = useState('all')
   const [verFilter, setVerFilter] = useState('all')
   const [showOcr, setShowOcr] = useState(false)
+  const [showBatch, setShowBatch] = useState(false)
   const [genContractor, setGenContractor] = useState(null)
   const [pickGen, setPickGen] = useState(false)
   const [openDoc, setOpenDoc] = useState(null) // { doc, autoOcr }
@@ -81,6 +83,7 @@ export default function Documents() {
         <h1>Документи</h1>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn" onClick={() => setShowOcr(true)}><i className="ti ti-scan" /> Завантажити скан (OCR)</button>
+          <button className="btn" onClick={() => setShowBatch(true)}><i className="ti ti-stack-2" /> Масове завантаження</button>
           <button className="btn btn-primary" onClick={() => setPickGen(true)}><i className="ti ti-file-plus" /> Згенерувати</button>
         </div>
       </div>
@@ -148,6 +151,7 @@ export default function Documents() {
       </div>
 
       {showOcr && <DocModal user={user} onClose={() => setShowOcr(false)} onSaved={() => { setShowOcr(false); load() }} />}
+      {showBatch && <BatchDocUploadModal user={user} onClose={() => { setShowBatch(false); load() }} onSaved={() => load()} />}
       {openDoc && <DocModal user={user} existingDoc={openDoc.doc} autoOcr={openDoc.autoOcr} onClose={() => { setOpenDoc(null); load() }} onSaved={() => { setOpenDoc(null); load() }} />}
       {genDoc && <GeneratedDocModal doc={genDoc} onClose={() => setGenDoc(null)} onDeleted={() => { setGenDoc(null); load() }}
         onScanUploaded={(d) => { setGenDoc(null); load(); setOpenDoc({ doc: d, autoOcr: false }) }} />}

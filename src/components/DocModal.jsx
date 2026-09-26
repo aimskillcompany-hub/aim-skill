@@ -19,8 +19,12 @@ export const dirFromType = (key) => {
 export const typeFromOcr = (docType, docRole) => {
   const t = (docType || '').trim().toLowerCase()
   if (t.startsWith('акт')) return 'serviceAct'            // «Акт …» (не плутати з «фАКТура»)
-  if (t.includes('рахунок')) return 'invoice'             // рахунок / рахунок-фактура
+  if (t.includes('комерц') || t.includes('пропозиц')) return 'commercialProposal'
+  if (t.includes('договір') || t.includes('договор') || t.includes('угода'))
+    return (t.includes('фін') || t.includes('позик') || t.includes('поворотн')) ? 'loanAgreement' : 'supplyAgreement'
+  if (t.includes('рахунок') || t.includes('фактура')) return 'invoice'   // рахунок / рахунок-фактура
   if (t.includes('накладна')) return docRole === 'outgoing' ? 'waybill' : 'incomingWaybill'
+  if (t.includes('інше') || t.includes('інший')) return 'other'          // ТТН/довіреність тощо — без боргу/складу
   return docRole === 'outgoing' ? 'waybill' : 'incomingWaybill'
 }
 
