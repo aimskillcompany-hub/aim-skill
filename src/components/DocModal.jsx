@@ -250,6 +250,33 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
         await syncDocStock(existingDoc.id)
         onSaved(); return
       }
+      // Guard від дублів (лише для нового документа): той самий тип + № + контрагент
+      // у межах активної компанії найімовірніше означає повторне завантаження.
+      // Сума — додатковий сигнал у тексті. Дублі видаткових подвоюють борг і списання
+      // зі складу, тому попереджаємо ПЕРЕД завантаженням файлу в Storage.
+      {
+        const num = form.doc_number?.trim()
+        const amt = Number(form.amount) || null
+        if (num || (form.contractor_id && amt != null)) {
+          let dq = qc('documents').select('id, doc_number, amount, doc_date').eq('type', form.type)
+          dq = form.contractor_id ? dq.eq('contractor_id', form.contractor_id) : dq.is('contractor_id', null)
+          if (num) dq = dq.eq('doc_number', num)
+          else dq = dq.eq('amount', amt)
+          const { data: dups } = await dq.limit(1)
+          if (dups?.length) {
+            const d = dups[0]
+            const lbl = getDocType(form.type)?.label || 'Документ'
+            const ok = confirm(
+              `Схоже, такий документ уже завантажено:\n` +
+              `${lbl} №${d.doc_number || '—'}` +
+              `${d.amount != null ? ` на ${d.amount} грн` : ''}` +
+              `${d.doc_date ? ` від ${d.doc_date}` : ''}.\n\n` +
+              `Зберегти все одно (створити дубль)?`
+            )
+            if (!ok) { setBusy(false); return }
+          }
+        }
+      }
       let storage_path = null, file_name = null, file_type = null
       if (files[0]) {
         const f = files[0]
