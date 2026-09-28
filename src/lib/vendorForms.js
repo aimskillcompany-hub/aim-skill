@@ -27,6 +27,29 @@ export const VENDORS = [
     items: { startRow: 10, maxRows: 4, model: 'D', qty: 'F', price: 'G' },
     fileName: (order) => `Canon_Project_Registration_${order?.order_number || ''}.xlsx`,
   },
+  {
+    key: 'comel',
+    name: 'Комел',
+    template: '/vendor-forms/comel.xlsx',
+    sheet: 'Лист1',
+    // Форма для отримання партнерського листа ТОВ «Комел».
+    // Мітки в колонці A, значення пишемо в колонку B. У формі перелічуються ВСІ
+    // товари закупівлі (не за брендом) → selectAll.
+    selectAll: true,
+    fields: [
+      { key: 'partner',        cell: 'B4',  label: 'Назва юр. особи партнера',            auto: 'company' },
+      { key: 'partnerEdrpou',  cell: 'B5',  label: 'ОКПО партнера',                       auto: 'companyEdrpou' },
+      { key: 'partnerAddress', cell: 'B6',  label: 'Юр. адреса партнера',                 auto: 'companyAddress', type: 'text' },
+      { key: 'contract',       cell: 'B7',  label: 'Номер та дата договору з ТОВ «Комел»', manual: true, type: 'text' },
+      { key: 'procurementId',  cell: 'B9',  label: 'Ідентифікатор закупівлі',             auto: 'procurementId' },
+      { key: 'procurementUrl', cell: 'B10', label: 'Посилання на закупівлю',              manual: true, type: 'text' },
+      { key: 'client',         cell: 'B11', label: 'Назва замовника',                     auto: 'clientName' },
+      { key: 'clientAddress',  cell: 'B12', label: 'Адреса замовника',                    auto: 'clientAddress', type: 'text' },
+    ],
+    // Устаткування → один текстовий осередок «Предмет закупівлі» (B14), позиції списком
+    items: { mode: 'join', cell: 'B14', sep: '\n', withQty: true, maxRows: 200 },
+    fileName: (order) => `Комел_партнерський_лист_${order?.order_number || ''}.xlsx`,
+  },
 ]
 
 export const getVendor = (key) => VENDORS.find(v => v.key === key)
@@ -48,17 +71,29 @@ export async function fillVendorForm(vendor, values, items) {
     ws.getCell(f.cell).value = v
   }
 
-  // Устаткування (модель / к-сть / ціна)
+  // Устаткування
   const it = vendor.items
   const list = (items || []).filter(x => (x.name || '').trim())
   const shown = list.slice(0, it.maxRows)
-  shown.forEach((x, i) => {
-    const row = it.startRow + i
-    ws.getCell(`${it.model}${row}`).value = x.name || ''
-    ws.getCell(`${it.qty}${row}`).value = Number(x.qty) || 0
-    // Ціна — лише якщо задана (порожнє поле лишаємо порожнім)
-    if (it.price && x.price != null && x.price !== '') ws.getCell(`${it.price}${row}`).value = Number(x.price)
-  })
+  if (it.mode === 'join') {
+    // Усі позиції списком в один осередок (напр. «Предмет закупівлі»)
+    const text = shown.map(x => {
+      const q = Number(x.qty) || 0
+      return it.withQty && q ? `${x.name} — ${q} шт` : x.name
+    }).join(it.sep || '\n')
+    const cell = ws.getCell(it.cell)
+    cell.value = text
+    cell.alignment = { ...(cell.alignment || {}), wrapText: true, vertical: 'top' }
+  } else {
+    // Рядки таблиці (модель / к-сть / ціна)
+    shown.forEach((x, i) => {
+      const row = it.startRow + i
+      ws.getCell(`${it.model}${row}`).value = x.name || ''
+      ws.getCell(`${it.qty}${row}`).value = Number(x.qty) || 0
+      // Ціна — лише якщо задана (порожнє поле лишаємо порожнім)
+      if (it.price && x.price != null && x.price !== '') ws.getCell(`${it.price}${row}`).value = Number(x.price)
+    })
+  }
 
   const out = await wb.xlsx.writeBuffer()
   return new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })

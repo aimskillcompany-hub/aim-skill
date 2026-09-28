@@ -36,8 +36,8 @@ export default function VendorRegTab({ o }) {
     let cancel = false
     ;(async () => {
       const [{ data: comp }, { data: client }, { data: contacts }, { data: its }, { data: subs }] = await Promise.all([
-        o.company_id ? supabase.from('companies').select('short_name, name').eq('id', o.company_id).maybeSingle() : { data: null },
-        o.client_id ? supabase.from('contractors').select('name, edrpou, phone, email, contact_person').eq('id', o.client_id).maybeSingle() : { data: null },
+        o.company_id ? supabase.from('companies').select('short_name, name, edrpou, address').eq('id', o.company_id).maybeSingle() : { data: null },
+        o.client_id ? supabase.from('contractors').select('name, edrpou, phone, email, contact_person, legal_address, address').eq('id', o.client_id).maybeSingle() : { data: null },
         o.client_id ? supabase.from('contractor_contacts').select('name, phone, email, is_signer').eq('contractor_id', o.client_id) : { data: [] },
         supabase.from('order_items').select('name, sku, qty, unit_price').eq('order_id', o.id).order('created_at'),
         supabase.from('supplier_orders').select('supplier_id, contractors:supplier_id(name)').eq('order_id', o.id),
@@ -49,11 +49,15 @@ export default function VendorRegTab({ o }) {
       const distributor = (subs || []).map(s => s.contractors?.name).filter(Boolean)[0] || ''
       setCtx({
         company: comp?.short_name || comp?.name || '',
+        companyEdrpou: comp?.edrpou || '',
+        companyAddress: comp?.address || '',
         clientName: client?.name || o.contractors?.name || '',
         clientEdrpou: client?.edrpou || '',
+        clientAddress: client?.legal_address || client?.address || '',
         clientContact: contactStr,
         responsible: signer?.name || client?.contact_person || '',
         distributor,
+        procurementId: o.procurement_id || '',
       })
       setItems((its || []).map(x => ({ name: x.name || '', sku: x.sku || '', qty: Number(x.qty) || 0, price: Number(x.unit_price) || 0 })))
     })()
@@ -64,9 +68,14 @@ export default function VendorRegTab({ o }) {
   // Ручні галочки не затираються (ефект не залежить від sel).
   useEffect(() => {
     if (!vendor || !items.length) { setSel(new Set()); return }
-    const needle = vendor.name.toLowerCase()
     const next = new Set()
-    items.forEach((x, i) => { if (`${x.name} ${x.sku}`.toLowerCase().includes(needle)) next.add(i) })
+    if (vendor.selectAll) {
+      // Вендор-дистриб'ютор: у лист ідуть усі товари закупівлі (не за брендом)
+      items.forEach((_, i) => next.add(i))
+    } else {
+      const needle = vendor.name.toLowerCase()
+      items.forEach((x, i) => { if (`${x.name} ${x.sku}`.toLowerCase().includes(needle)) next.add(i) })
+    }
     setSel(next)
   }, [vendorKey, items])
 
@@ -89,6 +98,7 @@ export default function VendorRegTab({ o }) {
   const toggle = (i) => setSel(s => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n })
 
   const selectedItems = useMemo(() => items.filter((_, i) => sel.has(i)), [items, sel])
+  const isJoin = vendor?.items?.mode === 'join'
   const maxRows = vendor?.items?.maxRows || 4
   const overflow = selectedItems.length - maxRows
 
@@ -129,6 +139,7 @@ export default function VendorRegTab({ o }) {
       </div>
       {msg && <div style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 13 }}><i className="ti ti-alert-circle" /> {msg}</div>}
 
+      {vendor.fields.some(f => f.key === 'dealerCode' || f.key === 'distributor') && (
       <div className="form-group" style={{ marginBottom: 14 }}>
         <label>Обрати дилера (дистриб'ютора) <span style={{ color: 'var(--text3)', fontWeight: 400, fontSize: 11 }}>· підтягне назву й код дилера</span></label>
         <select className="form-input" defaultValue="" onChange={e => { pickDealer(e.target.value); e.target.value = '' }} style={{ maxWidth: 420 }} disabled={!suppliers.length}>
@@ -137,6 +148,7 @@ export default function VendorRegTab({ o }) {
         </select>
         {!suppliers.length && <span style={{ fontSize: 11, color: 'var(--text3)' }}>Заповніть «Код компанії у дилера» в картці постачальника — і він з'явиться тут.</span>}
       </div>
+      )}
 
       <div className="form-grid">
         {vendor.fields.map(f => (
@@ -151,13 +163,15 @@ export default function VendorRegTab({ o }) {
 
       <div style={{ marginTop: 18 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
-          Устаткування для {vendor.name} <span style={{ color: 'var(--text3)', fontWeight: 400 }}>· обрано {selectedItems.length} (у форму — до {maxRows})</span>
+          Устаткування для {vendor.name} <span style={{ color: 'var(--text3)', fontWeight: 400 }}>· обрано {selectedItems.length}{isJoin ? '' : ` (у форму — до ${maxRows})`}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
-          <span style={{ fontSize: 12, color: 'var(--text3)' }}>Позначте позиції цього вендора (авто-підбір за назвою — перевірте).</span>
+          <span style={{ fontSize: 12, color: 'var(--text3)' }}>{vendor.selectAll ? 'Обрано всі товари закупівлі — зніміть зайві за потреби.' : 'Позначте позиції цього вендора (авто-підбір за назвою — перевірте).'}</span>
+          {!isJoin && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--text2)', marginLeft: 'auto', cursor: 'pointer' }}>
             <input type="checkbox" checked={includePrice} onChange={e => setIncludePrice(e.target.checked)} style={{ width: 15, height: 15 }} /> Вказувати ціну
           </label>
+          )}
         </div>
         {items.length === 0
           ? <p style={{ fontSize: 13, color: 'var(--text3)' }}>У замовленні немає позицій — додайте товари у вкладці «Товари».</p>
@@ -179,7 +193,7 @@ export default function VendorRegTab({ o }) {
               </table>
             </div>
           )}
-        {overflow > 0 && <p style={{ fontSize: 12, color: 'var(--amber, #b45309)', marginTop: 6 }}>⚠ Обрано {selectedItems.length}, у шаблон Canon увійде лише перші {maxRows}. Решту {overflow} надішліть окремо (як зазначено у формі) або зменшіть вибір.</p>}
+        {!isJoin && overflow > 0 && <p style={{ fontSize: 12, color: 'var(--amber, #b45309)', marginTop: 6 }}>⚠ Обрано {selectedItems.length}, у шаблон {vendor.name} увійде лише перші {maxRows}. Решту {overflow} надішліть окремо (як зазначено у формі) або зменшіть вибір.</p>}
       </div>
     </div>
   )
