@@ -45,9 +45,10 @@ export const VENDORS = [
       { key: 'procurementUrl', cell: 'B10', label: 'Посилання на закупівлю',              auto: 'procurementUrl', type: 'text' },
       { key: 'client',         cell: 'B11', label: 'Назва замовника',                     auto: 'clientName' },
       { key: 'clientAddress',  cell: 'B12', label: 'Адреса замовника',                    auto: 'clientAddress', type: 'text' },
+      { key: 'subject',        cell: 'B14', label: 'Предмет закупівлі',                    auto: 'procurementSubject', type: 'text' },
     ],
-    // Устаткування → один текстовий осередок «Предмет закупівлі» (B14), позиції списком
-    items: { mode: 'join', cell: 'B14', sep: '\n', withQty: true, maxRows: 200 },
+    // Перелік техніки → осередок «Перелік товару для листа» (B13), позиції списком
+    items: { mode: 'join', cell: 'B13', sep: '\n', withQty: true, maxRows: 200 },
     fileName: (order) => `Комел_партнерський_лист_${order?.order_number || ''}.xlsx`,
   },
 ]

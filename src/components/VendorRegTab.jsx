@@ -63,6 +63,7 @@ export default function VendorRegTab({ o }) {
         distributor,
         procurementId: o.procurement_id || '',
         procurementUrl: o.procurement_url || '',
+        procurementSubject: o.procurement_subject || '',
       })
       setItems((its || []).map(x => {
         const it = { name: x.name || '', sku: x.sku || '', qty: Number(x.qty) || 0, price: Number(x.unit_price) || 0 }
