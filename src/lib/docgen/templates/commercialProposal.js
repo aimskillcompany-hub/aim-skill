@@ -48,11 +48,13 @@ export function pdf(company, contractor, items, options) {
   const footerLine = brand.theme === 'aim'
     ? 'Сформовано в системі AiM Skill  ·  aim-skill.com.ua'
     : [brand.name, brand.phone, brand.email].filter(Boolean).join('  ·  ')
-  const { subtotal, vatAmount, total, vatByRate } = calcTotals(items)
-  const rows = items.map((it, i) => itm(it, i))
+  const vatPayer = options.vatPayer !== false
+  // Неплатник ПДВ (ФОП) — жодного ПДВ у розрахунках, хоч би що містили позиції.
+  const vItems = vatPayer ? items : items.map(it => ({ ...it, vatRate: 0 }))
+  const { subtotal, vatAmount, total, vatByRate } = calcTotals(vItems)
+  const rows = vItems.map((it, i) => itm(it, i))
   const companyName = company.shortName || shortenName(company.name) || 'ТОВ «ЕЙМ СКІЛ»'
   const validTo = formatDate(addDays(docDate, validityDays))
-  const vatPayer = options.vatPayer !== false
   // Теми: aim (ЕЙМ СКІЛ, зелений) · bit (БІ АЙ ТІ ГРУП, фіолетовий) — обидві на єдиному
   // чистому бланку. clean — окремий лист ФОП (нижче).
   const aim = brand.theme === 'aim'
@@ -402,13 +404,15 @@ export function pdf(company, contractor, items, options) {
 
 export function xlsx(company, contractor, items, options) {
   const { docNumber, docDate } = options
-  const { subtotal, vatAmount, total } = calcTotals(items)
+  const vatPayer = options.vatPayer !== false
+  const vItems = vatPayer ? items : items.map(it => ({ ...it, vatRate: 0 }))
+  const { subtotal, vatAmount, total } = calcTotals(vItems)
   const data = [
     [`Комерційна пропозиція №${docNumber} від ${formatDate(docDate)}`],
     [], ['Від:', company.shortName || company.name, 'ЄДРПОУ:', company.edrpou],
     ['Кому:', contractor.short_name || contractor.name, 'ЄДРПОУ:', contractor.edrpou],
     [], ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна', 'Сума'],
-    ...items.map((it, i) => { const r = itm(it, i); return [r.n, r.name, r.u, r.q, r.p, r.t] }),
+    ...vItems.map((it, i) => { const r = itm(it, i); return [r.n, r.name, r.u, r.q, r.p, r.t] }),
     [], ...(vatAmount > 0 ? [['', '', '', '', 'Без ПДВ:', subtotal], ['', '', '', '', 'ПДВ:', vatAmount]] : []), ['', '', '', '', 'Всього:', total],
   ].filter(r => r.length > 0)
   const wb = createWorkbook(); addSheet(wb, data, 'КП'); return wb

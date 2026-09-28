@@ -883,6 +883,8 @@ function ItemsTab({ o, onChange, onDirty }) {
 
 // ───────── КП ─────────
 function ProposalsTab({ o, onChange }) {
+  const { active } = useCompany()
+  const vatOn = active?.is_vat_payer !== false   // неплатник ПДВ (ФОП) → жодного ПДВ у КП
   const [rows, setRows] = useState([])
   const [editing, setEditing] = useState(null) // new proposal draft
   const [stampCP, setStampCP] = useState(false) // печатка на КП
@@ -899,9 +901,10 @@ function ProposalsTab({ o, onChange }) {
       : [{ name: '', characteristics: '', unit: 'шт', qty: 1, price: 0, vat: 20, incl: false }]
     setEditing({ version: (rows[0]?.version || 0) + 1, items: seed })
   }
-  // price трактується за i.incl (з прайсу = з ПДВ; вручну/склад = без ПДВ, ПДВ зверху)
-  const lineGross = (i) => { const p = (Number(i.qty) || 0) * (Number(i.price) || 0); const v = Number(i.vat) || 0; return i.incl ? p : p * (1 + v / 100) }
-  const lineNet = (i) => { const p = (Number(i.qty) || 0) * (Number(i.price) || 0); const v = Number(i.vat) || 0; return i.incl ? (v > 0 ? p / (1 + v / 100) : p) : p }
+  // price трактується за i.incl (з прайсу = з ПДВ; вручну/склад = без ПДВ, ПДВ зверху).
+  // Для неплатника ПДВ (ФОП) ПДВ ігнорується повністю — ціна як є (як у вкладці «Товари»).
+  const lineGross = (i) => { const p = (Number(i.qty) || 0) * (Number(i.price) || 0); const v = vatOn ? (Number(i.vat) || 0) : 0; return (vatOn && i.incl) ? p : p * (1 + v / 100) }
+  const lineNet = (i) => { const p = (Number(i.qty) || 0) * (Number(i.price) || 0); const v = vatOn ? (Number(i.vat) || 0) : 0; return (vatOn && i.incl) ? (v > 0 ? p / (1 + v / 100) : p) : p }
   const itemsTotal = (items) => items.reduce((s, i) => s + lineGross(i), 0)
   const itemsNet = (items) => items.reduce((s, i) => s + lineNet(i), 0)
 
@@ -933,13 +936,14 @@ function ProposalsTab({ o, onChange }) {
         unitByName = Object.fromEntries((oi || []).map(r => [r.name, r.unit]).filter(([, u]) => u))
       }
       const items = (p.items || []).map(it => {
-        const price = Number(it.price) || 0, vr = Number(it.vat) || 0
-        // КП-шаблон чекає ціну БЕЗ ПДВ: якщо ціна вже з ПДВ — ділимо, якщо ні — лишаємо
-        const net = it.incl ? (vr > 0 ? price / (1 + vr / 100) : price) : price
+        const price = Number(it.price) || 0, vr = vatOn ? (Number(it.vat) || 0) : 0
+        // Платник ПДВ: шаблон чекає ціну БЕЗ ПДВ (ділимо, якщо ціна вже з ПДВ).
+        // Неплатник (ФОП): ПДВ немає — ціна як є, ставка 0 (узгоджено з вкладкою «Товари»).
+        const net = (vatOn && it.incl) ? (vr > 0 ? price / (1 + vr / 100) : price) : price
         return { name: it.name, characteristics: it.characteristics || '', quantity: Number(it.qty) || 0, unit: it.unit || unitByName[it.name] || 'шт', unitPrice: net, vatRate: vr }
       })
       const today = new Date().toISOString().slice(0, 10)
-      const opts = { docNumber: `КП-${o.order_number || o.id.slice(0, 6)}`, docDate: today, withStamp: stampCP }
+      const opts = { docNumber: `КП-${o.order_number || o.id.slice(0, 6)}`, docDate: today, withStamp: stampCP, vatPayer: vatOn }
       await previewPdf('commercialProposal', c || { name: o.contractors?.name }, items, opts)
     } catch (e) { alert('Помилка формування: ' + e.message) }
     setGenId(null)
