@@ -3,15 +3,19 @@ import { supabase } from '../lib/supabase'
 import { VENDORS, getVendor, fillVendorForm } from '../lib/vendorForms'
 import { fmt } from '../lib/fmt'
 
+// Позиція за замовч. увімкнена: для дистриб'ютора (selectAll) — усі; інакше — ті, що містять назву вендора.
+const matchInclude = (vendor, x) => vendor?.selectAll
+  ? true
+  : `${x.name} ${x.sku}`.toLowerCase().includes((vendor?.name || '').toLowerCase())
+
 // Вкладка «Реєстрація у вендора»: заповнює оригінальний .xlsx-шаблон вендора даними замовлення.
-// В одному замовленні можуть бути товари різних вендорів — у форму йдуть лише ОБРАНІ позиції
-// (авто-підбір за назвою/артикулом, що містить назву вендора; можна коригувати галочками).
+// В одному замовленні можуть бути товари різних вендорів — у форму йдуть лише ОБРАНІ позиції.
+// Позиції редаговані локально (назва/к-сть/додати/видалити) — не змінюють order_items.
 export default function VendorRegTab({ o }) {
   const [vendorKey, setVendorKey] = useState(VENDORS[0]?.key || '')
   const [ctx, setCtx] = useState(null)      // авто-дані з замовлення
   const [form, setForm] = useState({})      // значення полів
-  const [items, setItems] = useState([])    // усі позиції замовлення
-  const [sel, setSel] = useState(new Set()) // індекси обраних позицій
+  const [items, setItems] = useState([])    // позиції для форми (редаговані, з прапорцем include)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
   const [includePrice, setIncludePrice] = useState(false) // ціна за замовч. порожня
@@ -58,26 +62,21 @@ export default function VendorRegTab({ o }) {
         responsible: signer?.name || client?.contact_person || '',
         distributor,
         procurementId: o.procurement_id || '',
+        procurementUrl: o.procurement_url || '',
       })
-      setItems((its || []).map(x => ({ name: x.name || '', sku: x.sku || '', qty: Number(x.qty) || 0, price: Number(x.unit_price) || 0 })))
+      setItems((its || []).map(x => {
+        const it = { name: x.name || '', sku: x.sku || '', qty: Number(x.qty) || 0, price: Number(x.unit_price) || 0 }
+        return { ...it, include: matchInclude(vendor, it) }
+      }))
     })()
     return () => { cancel = true }
   }, [o.id])
 
-  // Авто-підбір обраних позицій під вендора (при завантаженні позицій і зміні вендора).
-  // Ручні галочки не затираються (ефект не залежить від sel).
+  // Зміна вендора → перерахувати, які позиції за замовч. увімкнені (ручні правки назв/к-стей не втрачаються).
   useEffect(() => {
-    if (!vendor || !items.length) { setSel(new Set()); return }
-    const next = new Set()
-    if (vendor.selectAll) {
-      // Вендор-дистриб'ютор: у лист ідуть усі товари закупівлі (не за брендом)
-      items.forEach((_, i) => next.add(i))
-    } else {
-      const needle = vendor.name.toLowerCase()
-      items.forEach((x, i) => { if (`${x.name} ${x.sku}`.toLowerCase().includes(needle)) next.add(i) })
-    }
-    setSel(next)
-  }, [vendorKey, items])
+    if (!vendor) return
+    setItems(arr => arr.map(x => ({ ...x, include: matchInclude(vendor, x) })))
+  }, [vendorKey])
 
   // Форма під вендора
   useEffect(() => {
@@ -87,17 +86,22 @@ export default function VendorRegTab({ o }) {
     try { savedDealer = localStorage.getItem(dealerKey) || '' } catch {}
     const next = {}
     for (const f of vendor.fields) {
-      if (f.auto) next[f.key] = ctx[f.auto] || ''
-      else if (f.key === 'dealerCode') next[f.key] = savedDealer
-      else next[f.key] = ''
+      if (f.auto && ctx[f.auto]) next[f.key] = ctx[f.auto]
+      else if (f.key === 'dealerCode' && savedDealer) next[f.key] = savedDealer
+      else next[f.key] = f.default || ''       // стале значення за замовч. (напр. договір/ОКПО Комел)
     }
     setForm(next)
   }, [vendorKey, ctx])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-  const toggle = (i) => setSel(s => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n })
 
-  const selectedItems = useMemo(() => items.filter((_, i) => sel.has(i)), [items, sel])
+  // Редагування позицій ЛОКАЛЬНО для форми (не змінює order_items) — вибір/назва/к-сть/додати/видалити
+  const setItem = (i, patch) => setItems(arr => arr.map((x, j) => j === i ? { ...x, ...patch } : x))
+  const toggle = (i) => setItem(i, { include: !items[i]?.include })
+  const addItem = () => setItems(arr => [...arr, { name: '', sku: '', qty: 1, price: 0, include: true }])
+  const removeItem = (i) => setItems(arr => arr.filter((_, j) => j !== i))
+
+  const selectedItems = useMemo(() => items.filter(x => x.include), [items])
   const isJoin = vendor?.items?.mode === 'join'
   const maxRows = vendor?.items?.maxRows || 4
   const overflow = selectedItems.length - maxRows
@@ -173,26 +177,29 @@ export default function VendorRegTab({ o }) {
           </label>
           )}
         </div>
-        {items.length === 0
-          ? <p style={{ fontSize: 13, color: 'var(--text3)' }}>У замовленні немає позицій — додайте товари у вкладці «Товари».</p>
-          : (
-            <div className="tbl-wrap" style={{ border: 'none' }}>
-              <table><thead><tr><th style={{ width: 34 }}></th><th>Модель / артикул</th><th style={{ textAlign: 'right', width: 70 }}>К-сть</th>{includePrice && <th style={{ textAlign: 'right', width: 110 }}>Ціна</th>}</tr></thead>
-                <tbody>{items.map((x, i) => {
-                  const on = sel.has(i)
-                  const over = on && [...sel].filter(j => j <= i).length > maxRows // понад ліміт → не увійде
-                  return (
-                    <tr key={i} style={{ opacity: on ? 1 : 0.5 }}>
-                      <td style={{ textAlign: 'center' }}><input type="checkbox" checked={on} onChange={() => toggle(i)} style={{ width: 16, height: 16, cursor: 'pointer' }} /></td>
-                      <td>{x.name}{x.sku ? <span style={{ color: 'var(--text3)', fontSize: 11 }}> · {x.sku}</span> : ''}{over && <span style={{ color: 'var(--amber, #b45309)', fontSize: 11 }}> · понад ліміт</span>}</td>
-                      <td style={{ textAlign: 'right' }}>{x.qty}</td>
-                      {includePrice && <td style={{ textAlign: 'right' }}>{fmt(x.price)}</td>}
-                    </tr>
-                  )
-                })}</tbody>
-              </table>
-            </div>
-          )}
+        <div className="tbl-wrap" style={{ border: 'none' }}>
+          <table><thead><tr><th style={{ width: 34 }}></th><th>Модель / артикул</th><th style={{ textAlign: 'right', width: 80 }}>К-сть</th>{includePrice && <th style={{ textAlign: 'right', width: 110 }}>Ціна</th>}<th style={{ width: 34 }}></th></tr></thead>
+            <tbody>{items.map((x, i) => {
+              const on = !!x.include
+              const over = on && !isJoin && items.slice(0, i + 1).filter(y => y.include).length > maxRows // понад ліміт → не увійде
+              return (
+                <tr key={i} style={{ opacity: on ? 1 : 0.55 }}>
+                  <td style={{ textAlign: 'center' }}><input type="checkbox" checked={on} onChange={() => toggle(i)} style={{ width: 16, height: 16, cursor: 'pointer' }} /></td>
+                  <td>
+                    <input className="form-input" value={x.name} onChange={e => setItem(i, { name: e.target.value })} placeholder="Назва позиції" style={{ fontSize: 12.5, padding: '3px 6px' }} />
+                    {x.sku ? <span style={{ color: 'var(--text3)', fontSize: 11 }}>{x.sku}</span> : null}{over && <span style={{ color: 'var(--amber, #b45309)', fontSize: 11 }}> · понад ліміт</span>}
+                  </td>
+                  <td style={{ textAlign: 'right' }}><input className="form-input" type="number" min="0" value={x.qty} onChange={e => setItem(i, { qty: e.target.value })} style={{ width: 70, fontSize: 12.5, padding: '3px 6px', textAlign: 'right' }} /></td>
+                  {includePrice && <td style={{ textAlign: 'right' }}>{fmt(x.price)}</td>}
+                  <td style={{ textAlign: 'center' }}><button className="btn-icon" onClick={() => removeItem(i)} title="Видалити позицію" style={{ color: 'var(--text3)' }}><i className="ti ti-x" /></button></td>
+                </tr>
+              )
+            })}
+            {items.length === 0 && <tr><td colSpan={includePrice ? 5 : 4} style={{ color: 'var(--text3)', fontSize: 12.5, padding: 10 }}>Позицій немає — додайте нижче або у вкладці «Товари».</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        <button className="btn" onClick={addItem} style={{ marginTop: 8, fontSize: 12.5 }}><i className="ti ti-plus" /> Додати позицію</button>
         {!isJoin && overflow > 0 && <p style={{ fontSize: 12, color: 'var(--amber, #b45309)', marginTop: 6 }}>⚠ Обрано {selectedItems.length}, у шаблон {vendor.name} увійде лише перші {maxRows}. Решту {overflow} надішліть окремо (як зазначено у формі) або зменшіть вибір.</p>}
       </div>
     </div>

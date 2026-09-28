@@ -297,6 +297,7 @@ function DetailsTab({ o, onSaved }) {
     description: o.description || '',
     procurement_type: o.procurement_type || 'direct',
     procurement_id: o.procurement_id || '',
+    procurement_url: o.procurement_url || '',
     client_id: o.client_id || null,
     clientName: o.contractors?.name || '',
     closed_at: o.closed_at ? o.closed_at.slice(0, 10) : '',
@@ -337,6 +338,7 @@ function DetailsTab({ o, onSaved }) {
       description: form.description || null,
       procurement_type: form.procurement_type,
       procurement_id: form.procurement_type === 'tender' ? (form.procurement_id || null) : null,
+      procurement_url: form.procurement_type === 'tender' ? (form.procurement_url || null) : null,
       client_id: form.client_id || null,
       closed_at: form.closed_at ? new Date(form.closed_at).toISOString() : null,
       manager_id: form.manager_id || null,
@@ -347,8 +349,8 @@ function DetailsTab({ o, onSaved }) {
     }
     let { error } = await qc('orders').update(upd).eq('id', o.id)
     // Колонки можуть ще не існувати (міграції 033/037/040/046/047) — тоді зберігаємо без них
-    if (error && /(procurement_id|manager_id|contract_id|agent_commission_pct|in_investor)/.test(error.message || '')) {
-      const { procurement_id, manager_id, contract_id, agent_commission_pct, in_investor, ...rest } = upd
+    if (error && /(procurement_id|procurement_url|manager_id|contract_id|agent_commission_pct|in_investor)/.test(error.message || '')) {
+      const { procurement_id, procurement_url, manager_id, contract_id, agent_commission_pct, in_investor, ...rest } = upd
       ;({ error } = await qc('orders').update(rest).eq('id', o.id))
     }
     if (error) { alert('Помилка збереження: ' + error.message); return }
@@ -418,6 +420,11 @@ function DetailsTab({ o, onSaved }) {
         {form.procurement_type === 'tender' && (
           <div className="form-group"><label>Ідентифікатор закупівлі</label>
             <input className="form-input" placeholder="напр. UA-2026-01-000000-a" value={form.procurement_id} onChange={e => setForm(f => ({ ...f, procurement_id: e.target.value }))} />
+          </div>
+        )}
+        {form.procurement_type === 'tender' && (
+          <div className="form-group full"><label>Посилання на закупівлю</label>
+            <input className="form-input" placeholder="https://prozorro.gov.ua/tender/…" value={form.procurement_url} onChange={e => setForm(f => ({ ...f, procurement_url: e.target.value }))} />
           </div>
         )}
         <div className="form-group"><label>Дата створення заявки</label>
