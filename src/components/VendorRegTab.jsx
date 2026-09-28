@@ -184,14 +184,14 @@ export default function VendorRegTab({ o }) {
               const over = on && !isJoin && items.slice(0, i + 1).filter(y => y.include).length > maxRows // понад ліміт → не увійде
               return (
                 <tr key={i} style={{ opacity: on ? 1 : 0.55 }}>
-                  <td style={{ textAlign: 'center' }}><input type="checkbox" checked={on} onChange={() => toggle(i)} style={{ width: 16, height: 16, cursor: 'pointer' }} /></td>
+                  <td style={{ textAlign: 'center', verticalAlign: 'top', paddingTop: 16 }}><input type="checkbox" checked={on} onChange={() => toggle(i)} style={{ width: 16, height: 16, cursor: 'pointer' }} /></td>
                   <td>
-                    <input className="form-input" value={x.name} onChange={e => setItem(i, { name: e.target.value })} placeholder="Назва позиції" style={{ fontSize: 12.5, padding: '3px 6px' }} />
-                    {x.sku ? <span style={{ color: 'var(--text3)', fontSize: 11 }}>{x.sku}</span> : null}{over && <span style={{ color: 'var(--amber, #b45309)', fontSize: 11 }}> · понад ліміт</span>}
+                    <input className="form-input" value={x.name} onChange={e => setItem(i, { name: e.target.value })} placeholder="Назва позиції" style={{ width: '100%', fontSize: 13.5, padding: '8px 10px' }} />
+                    {(x.sku || over) && <div style={{ fontSize: 11, marginTop: 3 }}>{x.sku && <span style={{ color: 'var(--text3)' }}>арт. {x.sku}</span>}{over && <span style={{ color: 'var(--amber, #b45309)' }}>{x.sku ? ' · ' : ''}понад ліміт</span>}</div>}
                   </td>
-                  <td style={{ textAlign: 'right' }}><input className="form-input" type="number" min="0" value={x.qty} onChange={e => setItem(i, { qty: e.target.value })} style={{ width: 70, fontSize: 12.5, padding: '3px 6px', textAlign: 'right' }} /></td>
+                  <td style={{ textAlign: 'right', verticalAlign: 'top' }}><input className="form-input" type="number" min="0" value={x.qty} onChange={e => setItem(i, { qty: e.target.value })} style={{ width: 90, fontSize: 13.5, padding: '8px 10px', textAlign: 'right' }} /></td>
                   {includePrice && <td style={{ textAlign: 'right' }}>{fmt(x.price)}</td>}
-                  <td style={{ textAlign: 'center' }}><button className="btn-icon" onClick={() => removeItem(i)} title="Видалити позицію" style={{ color: 'var(--text3)' }}><i className="ti ti-x" /></button></td>
+                  <td style={{ textAlign: 'center', verticalAlign: 'top', paddingTop: 10 }}><button className="btn-icon" onClick={() => removeItem(i)} title="Видалити позицію" style={{ color: 'var(--text3)' }}><i className="ti ti-x" /></button></td>
                 </tr>
               )
             })}
