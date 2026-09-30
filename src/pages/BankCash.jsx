@@ -10,6 +10,7 @@ import { getContractorMatcher, txEdrpou, resetContractorMatchCache } from '../li
 import { getAccountBalances } from '../lib/accounts'
 import { getDocType } from '../lib/docgen'
 import { matchScore, confidentMatch } from '../lib/docMatch'
+import { countsAsDebt } from '../lib/debts'
 import ContractorSelect from '../components/ui/ContractorSelect'
 import DocModal from '../components/DocModal'
 import { useSort, SortTh } from '../components/Sort'
@@ -177,7 +178,8 @@ function TransactionsTab({ accounts, onChange }) {
         covByTx[t.transaction_id] = (covByTx[t.transaction_id] || 0) + Math.abs(Number(t.amount) || 0)
       })
       const docsByContractor = {}
-      ;(docs || []).forEach(d => { (docsByContractor[d.contractor_id] ||= []).push(d) })
+      // Лише боргові документи (накладні/акт) — рахунки на оплату не фіксують оплату.
+      ;(docs || []).filter(d => countsAsDebt(d.type)).forEach(d => { (docsByContractor[d.contractor_id] ||= []).push(d) })
 
       const inserts = []
       for (const t of (txs || [])) {
@@ -533,7 +535,9 @@ function TxLinkModal({ tx, onClose }) {
     let qb = qc('documents').select('id, type, file_name, amount, contractor_id, order_id, direction, doc_date, created_at').order('created_at', { ascending: false }).limit(100)
     if (tx.contractor_id) qb = qb.eq('contractor_id', tx.contractor_id)
     const { data } = await qb
-    setDocs(data || [])
+    // До оплати прив'язуємо ЛИШЕ фіксуючі документи (видаткова/прихідна накладна, акт).
+    // Рахунок на оплату — лише намір, не борг → не даємо прив'язувати.
+    setDocs((data || []).filter(d => countsAsDebt(d.type)))
     // покриття кандидатів з УСІХ транзакцій (для коректного залишку при частковій оплаті)
     const ids = (data || []).map(d => d.id)
     if (ids.length) {
