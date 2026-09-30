@@ -140,13 +140,13 @@ export function pdf(company, contractor, items, options) {
       {
         table: {
           headerRows: 1,
-          widths: vatPayer ? [18, '*', 28, 28, 58, 22, 42, 56] : [18, '*', 34, 34, 80, 80],
+          widths: [18, '*', 34, 34, 80, 80],
           body: [
             (vatPayer
-              ? ['№', 'Найменування товару', 'Од.', 'К-сть', 'Ціна без ПДВ', 'ПДВ', 'Сума ПДВ', 'Сума']
+              ? ['№', 'Найменування товару', 'Од.', 'К-сть', 'Ціна без ПДВ', 'Сума без ПДВ']
               : ['№', 'Найменування товару', 'Од.', 'К-сть', 'Ціна', 'Сума']
             ).map(t => ({
-              text: t, fontSize: 6, bold: true, color: '#FFF', fillColor: DARK,
+              text: t, fontSize: 7, bold: true, color: '#FFF', fillColor: DARK,
               alignment: 'center', margin: [0, 3, 0, 3],
             })),
             ...rows.map(r => [
@@ -155,11 +155,7 @@ export function pdf(company, contractor, items, options) {
               { text: r.u, alignment: 'center', fontSize: 8, color: G2 },
               { text: r.q, alignment: 'center', fontSize: 8.5 },
               { text: formatMoney(vatPayer ? r.p : (r.q ? r.t / r.q : r.t)), alignment: 'right', fontSize: 8.5 },
-              ...(vatPayer ? [
-                { text: r.vr > 0 ? `${r.vr}%` : '—', alignment: 'center', fontSize: 7, color: G2 },
-                { text: formatMoney(r.v), alignment: 'right', fontSize: 8.5, color: G2 },
-              ] : []),
-              { text: formatMoney(r.t), alignment: 'right', fontSize: 8.5, bold: true, color: BLACK },
+              { text: formatMoney(vatPayer ? r.a : r.t), alignment: 'right', fontSize: 8.5, bold: true, color: BLACK },
             ]),
           ],
         },
