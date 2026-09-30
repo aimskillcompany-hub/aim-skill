@@ -208,10 +208,21 @@ function TransactionsTab({ accounts, onChange }) {
     if (bulkArt) { upd.article = bulkArt; upd.article_id = articles.find(a => a.name === bulkArt)?.id || null }
     if (bulkValidate) upd.is_validated = true
     const ids = [...sel]
-    for (let i = 0; i < ids.length; i += 200) {
-      await qc('bank_transactions').update(upd).in('id', ids.slice(i, i + 200))
+    // Оновлюємо по одній транзакції: закритий період (тригер PERIOD_CLOSED) чи RLS
+    // на окремому рядку не валить усю пачку; рахуємо успіхи/помилки й показуємо підсумок.
+    let done = 0, blocked = 0, lastErr = null
+    for (const id of ids) {
+      const { data, error } = await qc('bank_transactions').update(upd).eq('id', id).select('id')
+      if (error) { lastErr = error; blocked++ }
+      else if (data?.length) done++
+      else blocked++   // 0 рядків — RLS/закритий період, без явної помилки
     }
-    setBulkBusy(false); setBulkDir(''); setBulkArt(''); setBulkValidate(false)
+    setBulkBusy(false)
+    if (done > 0) { setBulkDir(''); setBulkArt(''); setBulkValidate(false) }
+    if (blocked > 0) {
+      alert(`Оновлено ${done} із ${ids.length}. Не збережено ${blocked}` +
+        (lastErr ? ` — ${lastErr.message}` : ' (можливо, закритий період або немає прав).'))
+    }
     load(); onChange()
   }
 
