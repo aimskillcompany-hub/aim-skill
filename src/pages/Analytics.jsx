@@ -1,24 +1,20 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { useEffect, useMemo, useState } from 'react'
 import { qc } from '../lib/companyScope'
-import { useUser } from '../lib/auth'
-import { getDocType } from '../lib/docgen'
-import DocModal from '../components/DocModal'
-import GeneratedDocModal from '../components/GeneratedDocModal'
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts'
 import { fmt, fmtInt } from '../lib/fmt'
 import { PL_ORDER, PL_LABELS } from '../lib/articles'
 import * as XLSX from 'xlsx'
-import { computePL, computePLBreakdown, computeAging, computeForecast, dashboardStats, plDrill, salesProfitReport } from '../lib/pl'
-import { vatReport } from '../lib/periodClose'
+import { computePL, computePLBreakdown, computeForecast, plDrill } from '../lib/pl'
+import { computeCashFlow } from '../lib/cashflow'
+import { computeSnapshot } from '../lib/periodClose'
 
 const NOW = new Date()
 const YEARS = [NOW.getFullYear(), NOW.getFullYear() - 1, NOW.getFullYear() - 2]
 const MONTHS = ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Лип', 'Сер', 'Вер', 'Жов', 'Лис', 'Гру']
 
-// Доходи зеленуваті, витрати червонуваті
 const GREEN = '#15803D', RED = '#DC2626', AMBER = '#B45309'
+const si = (v) => (v < 0 ? '−' : '') + fmtInt(v)          // ціле зі знаком (fmtInt віддає abs)
+const signColor = (v) => (v >= 0 ? GREEN : RED)
+
 const INCOME_LEVELS = new Set(['revenue', 'other_income'])
 function plColor(r, v) {
   if (!v) return 'var(--text3)'
@@ -26,42 +22,20 @@ function plColor(r, v) {
   return INCOME_LEVELS.has(r.level) ? GREEN : RED
 }
 
-// Клітинка матриці: основне (підтверджене) число + дрібне превʼю непідтверджених
-function Cell({ r, v, pv, bucketKey, colLabel, setDrill, showPending, bold }) {
-  const clickable = r.articles && v
-  return (
-    <>
-      <span
-        onClick={clickable ? () => setDrill({ articles: r.articles, bucketKey, title: `${r.label} · ${colLabel}`, validated: true }) : undefined}
-        style={{ color: plColor(r, v), fontWeight: bold ? 700 : undefined, cursor: clickable ? 'pointer' : 'default', textDecoration: clickable ? 'underline dotted' : 'none', textUnderlineOffset: 3 }}>
-        {v ? fmtInt(v) : '·'}
-      </span>
-      {showPending && pv ? (
-        <div title="Непідтверджені (не входять у підсумок)"
-          onClick={r.articles ? () => setDrill({ articles: r.articles, bucketKey, title: `${r.label} · ${colLabel} (непідтверджені)`, validated: false }) : undefined}
-          style={{ fontSize: 10, color: AMBER, cursor: r.articles ? 'pointer' : 'default', marginTop: 1 }}>
-          ~{fmtInt(pv)}
-        </div>
-      ) : null}
-    </>
-  )
-}
-
+// ───────── Каркас ─────────
 export default function Analytics() {
-  const [tab, setTab] = useState('overview')
+  const [tab, setTab] = useState('cashflow')
   return (
     <div>
       <div className="page-header"><h1>Аналітика</h1></div>
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 18, overflowX: 'auto' }}>
-        {[['overview', 'Огляд', 'ti-dashboard'], ['pl', 'P&L', 'ti-report-money'], ['profit', 'Рентабельність', 'ti-percentage'], ['vat', 'ПДВ', 'ti-receipt-tax'], ['aging', 'Борги', 'ti-clock-dollar']].map(([id, lbl, icon]) => (
+        {[['cashflow', 'Cash Flow', 'ti-arrows-exchange'], ['pl', 'P&L', 'ti-report-money'], ['balance', 'Баланс', 'ti-scale']].map(([id, lbl, icon]) => (
           <button key={id} onClick={() => setTab(id)} style={tabStyle(tab === id)}><i className={`ti ${icon}`} style={{ fontSize: 15 }} />{lbl}</button>
         ))}
       </div>
-      {tab === 'overview' && <Overview />}
+      {tab === 'cashflow' && <CashFlowView />}
       {tab === 'pl' && <PLView />}
-      {tab === 'profit' && <ProfitView />}
-      {tab === 'vat' && <VatView />}
-      {tab === 'aging' && <AgingView />}
+      {tab === 'balance' && <BalanceView />}
     </div>
   )
 }
@@ -71,80 +45,122 @@ const tabStyle = (active) => ({
   borderBottom: active ? '2px solid var(--blue)' : '2px solid transparent', color: active ? 'var(--blue)' : 'var(--text2)',
 })
 
-// ───────── Огляд (Dashboard) ─────────
-function Overview() {
-  const navigate = useNavigate()
-  const [s, setS] = useState(null)
-  useEffect(() => { dashboardStats(NOW.getFullYear()).then(setS) }, [])
-  if (!s) return <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
-
-  const chartData = s.series.map((r, i) => ({ ...r, month: MONTHS[i] }))
+// Спільний вибір періоду (рік + місяць)
+function PeriodPicker({ year, setYear, month, setMonth }) {
   return (
-    <div>
-      <div className="kpi-grid" style={{ marginBottom: 18 }}>
-        <Kpi label="Виручка (місяць)" value={s.revenue} color="var(--green)" />
-        <Kpi label="Витрати (місяць)" value={s.expenses} color="var(--red)" />
-        <Kpi label="Прибуток (місяць)" value={s.profit} color={s.profit >= 0 ? 'var(--green)' : 'var(--red)'} />
-        <Kpi label="Дебіторка" value={s.receivable} color="var(--green)" onClick={() => {}} />
-        <Kpi label="Кредиторка" value={s.payable} color="var(--red)" />
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 18 }}>
-        {s.accounts.map(a => (
-          <div className="kpi" key={a.name}>
-            <div className="kpi-label">{a.name}</div>
-            <div className="kpi-value" style={{ fontSize: 20, color: a.balance >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtInt(a.balance)} <span style={{ fontSize: 12, color: 'var(--text3)' }}>грн</span></div>
-          </div>
-        ))}
-      </div>
-
-      <div className="card" style={{ marginBottom: 18 }}>
-        <div className="card-title">Доходи / Витрати по місяцях ({NOW.getFullYear()})</div>
-        <ResponsiveContainer width="100%" height={280}>
-          <BarChart data={chartData} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-            <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => fmtInt(v / 1000) + 'k'} width={48} />
-            <Tooltip formatter={v => fmtInt(v) + ' грн'} />
-            <Legend />
-            <Bar dataKey="Доходи" fill="#16A34A" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="Витрати" fill="#DC2626" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      <div className="card">
-        <div className="card-title">Топ клієнтів за доходом ({NOW.getFullYear()})</div>
-        {s.topClients.length === 0 ? <p style={{ color: 'var(--text3)', fontSize: 13 }}>Немає даних</p> : (
-          <div className="tbl-wrap" style={{ border: 'none' }}>
-            <table><thead><tr><th>Клієнт</th><th style={{ textAlign: 'right' }}>Дохід</th></tr></thead>
-              <tbody>{s.topClients.map((c, i) => <tr key={i}><td><div className="trunc">{c.name}</div></td><td className="amt-pos" style={{ textAlign: 'right' }}>{fmtInt(c.amount)}</td></tr>)}</tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
+    <>
+      <select className="form-input" value={year} onChange={e => setYear(Number(e.target.value))} style={{ width: 110 }}>{YEARS.map(y => <option key={y} value={y}>{y}</option>)}</select>
+      <select className="form-input" value={month} onChange={e => setMonth(Number(e.target.value))} style={{ width: 130 }}>
+        <option value={0}>Весь рік</option>
+        {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+      </select>
+    </>
   )
 }
 
-function Kpi({ label, value, color, onClick }) {
+// ───────── Cash Flow (рух грошей, прямий метод) ─────────
+function CashFlowView() {
+  const [year, setYear] = useState(NOW.getFullYear())
+  const [month, setMonth] = useState(0)
+  const [d, setD] = useState(null)
+
+  useEffect(() => { setD(null); computeCashFlow(year, month || null).then(setD) }, [year, month])
+
+  const exportXlsx = () => {
+    if (!d) return
+    const head = ['Стаття', ...d.cols.map(c => c.label), 'Разом']
+    const aoa = [head]
+    const secToAoa = (title, sec, sign) => {
+      aoa.push([title, ...d.cols.map(c => sec.totalByCol[c.key] ? sign * sec.totalByCol[c.key] : ''), sign * sec.total])
+      sec.rows.forEach(r => aoa.push([r.article, ...d.cols.map(c => r.cells[c.key] ? sign * r.cells[c.key] : ''), sign * r.total]))
+    }
+    secToAoa('НАДХОДЖЕННЯ', d.inflow, 1)
+    secToAoa('ВИТРАТИ', d.outflow, -1)
+    aoa.push(['Чистий грошовий потік', ...d.cols.map(c => d.netByCol[c.key] || ''), d.netTotal])
+    aoa.push(['Залишок на початок', ...d.cols.map(() => ''), d.openingCash])
+    aoa.push(['Залишок на кінець', ...d.cols.map(c => d.closingByCol[c.key]), d.closingCash])
+    const ws = XLSX.utils.aoa_to_sheet(aoa)
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Cash Flow')
+    XLSX.writeFile(wb, `CashFlow_${year}${month ? '-' + String(month).padStart(2, '0') : ''}.xlsx`)
+  }
+
   return (
-    <div className="kpi" onClick={onClick} style={onClick ? { cursor: 'pointer' } : undefined}>
-      <div className="kpi-label">{label}</div>
-      <div className="kpi-value" style={{ color }}>{fmtInt(value)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>грн</span></div>
+    <div>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <PeriodPicker year={year} setYear={setYear} month={month} setMonth={setMonth} />
+        <button className="btn" onClick={exportXlsx} disabled={!d} style={{ marginLeft: 'auto' }}><i className="ti ti-file-spreadsheet" /> Експорт Excel</button>
+      </div>
+
+      {!d ? <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div> : (
+        <>
+          <div className="kpi-grid" style={{ marginBottom: 16 }}>
+            <div className="kpi"><div className="kpi-label">Надходження</div><div className="kpi-value" style={{ color: GREEN }}>{fmtInt(d.inflow.total)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>грн</span></div></div>
+            <div className="kpi"><div className="kpi-label">Витрати</div><div className="kpi-value" style={{ color: RED }}>{fmtInt(d.outflow.total)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>грн</span></div></div>
+            <div className="kpi"><div className="kpi-label">Чистий потік</div><div className="kpi-value" style={{ color: signColor(d.netTotal) }}>{si(d.netTotal)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>грн</span></div></div>
+            <div className="kpi"><div className="kpi-label">Залишок на кінець</div><div className="kpi-value" style={{ color: signColor(d.closingCash) }}>{si(d.closingCash)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>грн</span></div></div>
+          </div>
+
+          <div className="card">
+            <div className="tbl-wrap" style={{ border: 'none' }}>
+              <table>
+                <thead><tr>
+                  <th style={{ position: 'sticky', left: 0, background: 'var(--surface)', zIndex: 1 }}>Стаття</th>
+                  {d.cols.map(c => <th key={c.key} style={{ textAlign: 'right' }}>{c.label}</th>)}
+                  <th style={{ textAlign: 'right' }}>Разом</th>
+                </tr></thead>
+                <tbody>
+                  <CfHeader label="Надходження" sec={d.inflow} cols={d.cols} color={GREEN} />
+                  {d.inflow.rows.map((r, i) => <CfRow key={'i' + i} r={r} cols={d.cols} color={GREEN} />)}
+                  <CfHeader label="Витрати" sec={d.outflow} cols={d.cols} color={RED} />
+                  {d.outflow.rows.map((r, i) => <CfRow key={'o' + i} r={r} cols={d.cols} color={RED} />)}
+                  <tr style={{ fontWeight: 700, background: 'var(--surface2)' }}>
+                    <td style={{ position: 'sticky', left: 0, background: 'var(--surface2)', whiteSpace: 'nowrap' }}>Чистий грошовий потік</td>
+                    {d.cols.map(c => <td key={c.key} style={{ textAlign: 'right', color: signColor(d.netByCol[c.key] || 0) }}>{d.netByCol[c.key] ? si(d.netByCol[c.key]) : '·'}</td>)}
+                    <td style={{ textAlign: 'right', color: signColor(d.netTotal) }}>{si(d.netTotal)}</td>
+                  </tr>
+                  <tr style={{ color: 'var(--text2)' }}>
+                    <td style={{ position: 'sticky', left: 0, background: 'var(--surface)', whiteSpace: 'nowrap' }}>Залишок на кінець</td>
+                    {d.cols.map(c => <td key={c.key} style={{ textAlign: 'right' }}>{si(d.closingByCol[c.key])}</td>)}
+                    <td style={{ textAlign: 'right', fontWeight: 700, color: signColor(d.closingCash) }}>{si(d.closingCash)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>Залишок на початок періоду: <b>{si(d.openingCash)} грн</b>. Прямий метод: усі фактичні рухи коштів (валідовані й ні), на відміну від P&L (лише підтверджені). «Залишок на кінець» — накопичувально.</p>
+          </div>
+        </>
+      )}
     </div>
+  )
+}
+function CfHeader({ label, sec, cols, color }) {
+  return (
+    <tr style={{ fontWeight: 600, background: 'var(--surface2)' }}>
+      <td style={{ position: 'sticky', left: 0, background: 'var(--surface2)', whiteSpace: 'nowrap', color }}>{label}</td>
+      {cols.map(c => <td key={c.key} style={{ textAlign: 'right', color }}>{sec.totalByCol[c.key] ? fmtInt(sec.totalByCol[c.key]) : '·'}</td>)}
+      <td style={{ textAlign: 'right', color, fontWeight: 700 }}>{fmtInt(sec.total)}</td>
+    </tr>
+  )
+}
+function CfRow({ r, cols, color }) {
+  return (
+    <tr>
+      <td style={{ paddingLeft: 24, position: 'sticky', left: 0, background: 'var(--surface)', whiteSpace: 'nowrap' }}>{r.article}</td>
+      {cols.map(c => <td key={c.key} style={{ textAlign: 'right' }}>{r.cells[c.key] ? fmtInt(r.cells[c.key]) : '·'}</td>)}
+      <td style={{ textAlign: 'right', fontWeight: 600, color }}>{fmtInt(r.total)}</td>
+    </tr>
   )
 }
 
 // ───────── P&L ─────────
 function PLView() {
   const [year, setYear] = useState(NOW.getFullYear())
-  const [month, setMonth] = useState(0) // 0 = весь рік
+  const [month, setMonth] = useState(0)
   const [mode, setMode] = useState('fact') // fact | plan | compare
   const [data, setData] = useState(null)
-  const [bd, setBd] = useState(null) // матриця Факт по періодах
-  const [drill, setDrill] = useState(null) // { articles, bucketKey, title, validated }
-  const [showPending, setShowPending] = useState(false) // превʼю непідтверджених
+  const [bd, setBd] = useState(null)
+  const [drill, setDrill] = useState(null)
+  const [showPending, setShowPending] = useState(false)
 
   useEffect(() => {
     setData(null); setBd(null)
@@ -173,11 +189,7 @@ function PLView() {
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <select className="form-input" value={year} onChange={e => setYear(Number(e.target.value))} style={{ width: 110 }}>{YEARS.map(y => <option key={y} value={y}>{y}</option>)}</select>
-        <select className="form-input" value={month} onChange={e => setMonth(Number(e.target.value))} style={{ width: 130 }}>
-          <option value={0}>Весь рік</option>
-          {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-        </select>
+        <PeriodPicker year={year} setYear={setYear} month={month} setMonth={setMonth} />
         {mode === 'fact' && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: AMBER, cursor: 'pointer', userSelect: 'none' }}>
             <input type="checkbox" checked={showPending} onChange={e => setShowPending(e.target.checked)} />
@@ -266,7 +278,27 @@ function PLView() {
   )
 }
 
-// ───────── Прогноз: очікуваний результат з майбутніми операціями ─────────
+// Клітинка матриці Факт: основне (підтверджене) число + дрібне превʼю непідтверджених
+function Cell({ r, v, pv, bucketKey, colLabel, setDrill, showPending, bold }) {
+  const clickable = r.articles && v
+  return (
+    <>
+      <span
+        onClick={clickable ? () => setDrill({ articles: r.articles, bucketKey, title: `${r.label} · ${colLabel}`, validated: true }) : undefined}
+        style={{ color: plColor(r, v), fontWeight: bold ? 700 : undefined, cursor: clickable ? 'pointer' : 'default', textDecoration: clickable ? 'underline dotted' : 'none', textUnderlineOffset: 3 }}>
+        {v ? fmtInt(v) : '·'}
+      </span>
+      {showPending && pv ? (
+        <div title="Непідтверджені (не входять у підсумок)"
+          onClick={r.articles ? () => setDrill({ articles: r.articles, bucketKey, title: `${r.label} · ${colLabel} (непідтверджені)`, validated: false }) : undefined}
+          style={{ fontSize: 10, color: AMBER, cursor: r.articles ? 'pointer' : 'default', marginTop: 1 }}>
+          ~{fmtInt(pv)}
+        </div>
+      ) : null}
+    </>
+  )
+}
+
 function ForecastCard({ year, month }) {
   const [f, setF] = useState(null)
   useEffect(() => { setF(null); computeForecast(year, month).then(setF) }, [year, month])
@@ -274,7 +306,7 @@ function ForecastCard({ year, month }) {
   const line = (label, val, hint) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0' }}>
       <span style={{ color: 'var(--text2)', fontSize: 13 }}>{label}{hint && <span style={{ color: 'var(--text3)', fontSize: 11, marginLeft: 6 }}>{hint}</span>}</span>
-      <span style={{ fontWeight: 600, color: val >= 0 ? GREEN : RED, fontVariantNumeric: 'tabular-nums' }}>{val >= 0 ? '+' : ''}{fmtInt(val)}</span>
+      <span style={{ fontWeight: 600, color: signColor(val), fontVariantNumeric: 'tabular-nums' }}>{val >= 0 ? '+' : ''}{fmtInt(val)}</span>
     </div>
   )
   return (
@@ -285,13 +317,13 @@ function ForecastCard({ year, month }) {
       <div style={{ maxWidth: 520 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0' }}>
           <span style={{ color: 'var(--text2)', fontSize: 13 }}>Фактичний результат (Net)</span>
-          <span style={{ fontWeight: 600, color: f.factNet >= 0 ? GREEN : RED, fontVariantNumeric: 'tabular-nums' }}>{fmtInt(f.factNet)}</span>
+          <span style={{ fontWeight: 600, color: signColor(f.factNet), fontVariantNumeric: 'tabular-nums' }}>{fmtInt(f.factNet)}</span>
         </div>
         {line('Дебіторка — виписано, чекає оплати', f.receivable)}
         {line('Очікувана маржа з відкритих замовлень', f.pipelineMargin, `${f.pipelineCount} зам.`)}
         <div style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <span style={{ fontWeight: 700 }}>≈ Очікуваний результат</span>
-          <span style={{ fontWeight: 700, fontSize: 18, color: f.expected >= 0 ? GREEN : RED, fontVariantNumeric: 'tabular-nums' }}>{fmtInt(f.expected)} грн</span>
+          <span style={{ fontWeight: 700, fontSize: 18, color: signColor(f.expected), fontVariantNumeric: 'tabular-nums' }}>{fmtInt(f.expected)} грн</span>
         </div>
       </div>
       <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 10, marginBottom: 0 }}>
@@ -302,7 +334,6 @@ function ForecastCard({ year, month }) {
   )
 }
 
-// ───────── Drill-down: операції за клітинкою P&L ─────────
 function DrillModal({ drill, year, month, onClose }) {
   const [rows, setRows] = useState(null)
   useEffect(() => { plDrill(year, month, drill.bucketKey, drill.articles, { validated: drill.validated }).then(setRows) }, [drill])
@@ -337,285 +368,70 @@ function DrillModal({ drill, year, month, onClose }) {
   )
 }
 
-// ───────── Рентабельність по видаткових ─────────
-function ProfitView() {
-  const { user } = useUser()
+// ───────── Управлінський баланс ─────────
+function BalanceView() {
   const [year, setYear] = useState(NOW.getFullYear())
   const [month, setMonth] = useState(0)
-  const [data, setData] = useState(null)
-  const [open, setOpen] = useState(() => new Set()) // розгорнуті накладні (doc.id)
-  const [openDoc, setOpenDoc] = useState(null)
-  const [genDoc, setGenDoc] = useState(null)
+  const [s, setS] = useState(null)
 
-  useEffect(() => { setData(null); setOpen(new Set()); salesProfitReport(year, month || null).then(setData) }, [year, month])
+  useEffect(() => { setS(null); computeSnapshot(year, month || null).then(setS) }, [year, month])
 
-  // Відкрити документ-джерело (видаткову або прихідну) — регенерований чи завантажений
-  const openDocById = async (id) => {
-    if (!id) return
-    const { data: d } = await qc('documents').select('*, contractors(name)').eq('id', id).maybeSingle()
-    if (!d) return
-    if (d.source === 'generated' && d.generated_doc_id) setGenDoc(d)
-    else setOpenDoc(d)
-  }
+  if (!s) return (
+    <div>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}><PeriodPicker year={year} setYear={setYear} month={month} setMonth={setMonth} /></div>
+      <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
+    </div>
+  )
 
-  const toggle = (id) => setOpen(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
-  const allOpen = data?.groups?.length && data.groups.every(g => open.has(g.doc.id))
-  const toggleAll = () => setOpen(allOpen ? new Set() : new Set(data.groups.map(g => g.doc.id)))
-  const docLabel = (d) => `${getDocType(d.type)?.label || d.type} №${d.doc_number || ''} від ${(d.doc_date || '').slice(0, 10)}`
+  const cash = s.cashBankTotal || 0
+  const stock = s.stock?.totalValue || 0
+  const recv = s.receivable || 0
+  const pay = s.payable || 0
+  const assets = cash + stock + recv
+  const equity = assets - pay
+  const accounts = (s.balances || []).filter(b => Math.abs(b.balance) > 0.005)
 
-  const exportXlsx = () => {
-    if (!data) return
-    const COLS = ['Найменування', 'Постачальник', 'Джерело закупівлі', 'К-сть', 'Ціна прод./од (з ПДВ)', 'Сума прод.', 'Ціна закуп./од', 'Сума закуп.', 'Маржа/од', 'Маржа сума', 'Маржин. %', 'ПДВ', 'Валовий прибуток', 'Податок 18%', 'Чистий прибуток']
-    const n2 = v => typeof v === 'number' ? Math.round(v * 100) / 100 : v
-    const aoa = [COLS]
-    data.groups.forEach(g => {
-      aoa.push([`${docLabel(g.doc)} · ${g.doc.contractors?.name || ''}`])
-      g.rows.forEach(r => aoa.push([r.name, r.supplier, r.purchaseRef, r.qty, n2(r.sellUnit), n2(r.sellSum), n2(r.costUnit), n2(r.costSum), n2(r.marginUnit), n2(r.marginSum), Math.round(r.marginPct * 1000) / 10, n2(r.vat), n2(r.gross), n2(r.tax), n2(r.net)]))
-      const t = g.totals
-      aoa.push(['Разом по накладній', '', '', '', '', n2(t.sellSum), '', n2(t.costSum), '', n2(t.marginSum), '', n2(t.vat), n2(t.gross), n2(t.tax), n2(t.net)])
-      aoa.push([])
-    })
-    if (data.grand) { const g = data.grand; aoa.push(['ВСЬОГО', '', '', '', '', n2(g.sellSum), '', n2(g.costSum), '', n2(g.marginSum), '', n2(g.vat), n2(g.gross), n2(g.tax), n2(g.net)]) }
-    const ws = XLSX.utils.aoa_to_sheet(aoa)
-    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Рентабельність')
-    XLSX.writeFile(wb, `Рентабельність_${year}${month ? '-' + String(month).padStart(2, '0') : ''}.xlsx`)
-  }
-
-  const DCOLS = ['Найменування', 'Постачальник', 'Джерело', 'К-сть', 'Сума прод.', 'Сума закуп.', 'Маржа', '%', 'Чистий']
-  const si = v => (v < 0 ? '−' : '') + fmtInt(v)          // ціле зі знаком
-  const col = v => (v >= 0 ? 'var(--green)' : 'var(--red)')
+  const Row = ({ label, value, indent, bold, color, sub }) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '6px 0', borderBottom: sub ? 'none' : '1px solid var(--border)', paddingLeft: indent ? 18 : 0 }}>
+      <span style={{ fontWeight: bold ? 700 : 400, color: sub ? 'var(--text2)' : 'var(--text)', fontSize: sub ? 12.5 : 14 }}>{label}</span>
+      <span style={{ fontWeight: bold ? 700 : 500, color: color || 'var(--text)', fontVariantNumeric: 'tabular-nums', fontSize: bold ? 15 : 13.5 }}>{si(value)}</span>
+    </div>
+  )
 
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <select className="form-input" value={year} onChange={e => setYear(Number(e.target.value))} style={{ width: 110 }}>{YEARS.map(y => <option key={y} value={y}>{y}</option>)}</select>
-        <select className="form-input" value={month} onChange={e => setMonth(Number(e.target.value))} style={{ width: 130 }}>
-          <option value={0}>Весь рік</option>{MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-        </select>
-        {data?.groups?.length > 0 && <button className="btn" onClick={toggleAll}><i className={`ti ${allOpen ? 'ti-fold' : 'ti-fold-down'}`} /> {allOpen ? 'Згорнути всі' : 'Розгорнути всі'}</button>}
-        <button className="btn" onClick={exportXlsx} disabled={!data?.groups?.length} style={{ marginLeft: 'auto' }}><i className="ti ti-file-spreadsheet" /> Експорт Excel</button>
+        <PeriodPicker year={year} setYear={setYear} month={month} setMonth={setMonth} />
+        <span style={{ fontSize: 12, color: 'var(--text3)' }}>станом на кінець періоду</span>
       </div>
-      {!data ? <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
-        : data.groups.length === 0 ? <div className="card"><p style={{ color: 'var(--text3)' }}>Немає видаткових зі складськими рухами за період.</p></div>
-        : (
-          <div className="card">
-            {data.grand && (
-              <div className="kpi-grid" style={{ marginBottom: 16 }}>
-                {[['Продаж (з ПДВ)', data.grand.sellSum, false], ['Маржа (з ПДВ)', data.grand.marginSum, true], ['Валовий прибуток', data.grand.gross, true], ['Чистий прибуток', data.grand.net, true]].map(([lbl, val, signed]) => (
-                  <div className="kpi" key={lbl}><div className="kpi-label">{lbl}</div><div className="kpi-value" style={{ color: signed ? col(val) : 'var(--text)' }}>{signed ? si(val) : fmtInt(val)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>грн</span></div></div>
-                ))}
-              </div>
-            )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {data.groups.map(g => {
-                const isOpen = open.has(g.doc.id)
-                return (
-                  <div key={g.doc.id} style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-                    <div onClick={() => toggle(g.doc.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', cursor: 'pointer', background: 'var(--surface2)', flexWrap: 'wrap' }}>
-                      <i className={`ti ${isOpen ? 'ti-chevron-down' : 'ti-chevron-right'}`} style={{ color: 'var(--text3)' }} />
-                      <span onClick={(e) => { e.stopPropagation(); openDocById(g.doc.id) }} title="Відкрити документ" style={{ fontWeight: 600, fontSize: 13, color: 'var(--blue)', cursor: 'pointer' }}><i className="ti ti-file" /> {docLabel(g.doc)}</span>
-                      <span style={{ color: 'var(--text2)', fontSize: 12 }}>{g.doc.contractors?.name || '—'}</span>
-                      <span style={{ marginLeft: 'auto', display: 'flex', gap: 14, fontSize: 12, whiteSpace: 'nowrap' }}>
-                        <span style={{ color: 'var(--text3)' }}>Продаж <b style={{ color: 'var(--text)' }}>{fmtInt(g.totals.sellSum)}</b></span>
-                        <span style={{ color: 'var(--text3)' }}>Маржа <b style={{ color: col(g.totals.marginSum) }}>{si(g.totals.marginSum)}</b></span>
-                        <span style={{ color: 'var(--text3)' }}>Чистий <b style={{ color: col(g.totals.net) }}>{si(g.totals.net)}</b></span>
-                      </span>
-                    </div>
-                    {isOpen && (
-                      <div className="tbl-wrap" style={{ border: 'none', overflowX: 'auto' }}>
-                        <table style={{ fontSize: 12 }}>
-                          <thead><tr>{DCOLS.map((c, i) => <th key={i} style={{ textAlign: i === 0 || i === 1 || i === 2 ? 'left' : 'right', whiteSpace: 'nowrap' }}>{c}</th>)}</tr></thead>
-                          <tbody>
-                            {g.rows.map((r, ri) => (
-                              <tr key={ri}>
-                                <td><div className="trunc" title={r.name} style={{ maxWidth: 260 }}>{r.name}</div></td>
-                                <td style={{ color: 'var(--text2)' }}><div className="trunc" style={{ maxWidth: 130 }}>{r.supplier || '—'}</div></td>
-                                <td style={{ fontSize: 11 }}>{r.purchaseDocId
-                                  ? <a onClick={() => openDocById(r.purchaseDocId)} title="Відкрити прихідну накладну" style={{ color: 'var(--blue)', cursor: 'pointer' }}><div className="trunc" style={{ maxWidth: 140 }}>{r.purchaseRef}</div></a>
-                                  : <div className="trunc" style={{ maxWidth: 140, color: 'var(--text3)' }}>{r.purchaseRef || '—'}</div>}</td>
-                                <td style={{ textAlign: 'right' }}>{fmt(r.qty)}</td>
-                                <td style={{ textAlign: 'right' }}>{fmtInt(r.sellSum)}</td>
-                                <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{fmtInt(r.costSum)}</td>
-                                <td style={{ textAlign: 'right', color: col(r.marginSum) }}>{si(r.marginSum)}</td>
-                                <td style={{ textAlign: 'right', color: col(r.marginSum) }}>{(r.marginPct * 100).toFixed(1)}%</td>
-                                <td style={{ textAlign: 'right', fontWeight: 600, color: col(r.net) }}>{si(r.net)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-            <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 12 }}>Собівартість — FIFO зі складу. ПДВ 20%, податок 18% (Чистий = Валовий/1.18). Повний набір колонок (ПДВ, валовий, податок, ціни за од.) — в експорті Excel.</p>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
+        <div className="card">
+          <div className="card-title" style={{ color: GREEN }}>Активи</div>
+          <Row label="Гроші (рахунки/каса)" value={cash} bold color={signColor(cash)} />
+          {accounts.map(a => <Row key={a.id} label={a.name} value={a.balance} indent sub color={signColor(a.balance)} />)}
+          <Row label="Склад (товари за собівартістю)" value={stock} bold />
+          <Row label="Дебіторка (нам винні)" value={recv} bold color={GREEN} />
+          <div style={{ marginTop: 8, paddingTop: 8, borderTop: '2px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ fontWeight: 700, fontSize: 15 }}>Усього активів</span>
+            <span style={{ fontWeight: 700, fontSize: 17, color: signColor(assets), fontVariantNumeric: 'tabular-nums' }}>{si(assets)} грн</span>
           </div>
-        )}
-      {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />}
-      {genDoc && <GeneratedDocModal doc={genDoc} onClose={() => setGenDoc(null)} />}
-    </div>
-  )
-}
-
-// ───────── ПДВ ─────────
-function VatView() {
-  const { user } = useUser()
-  const [year, setYear] = useState(NOW.getFullYear())
-  const [data, setData] = useState(null)
-  const [openM, setOpenM] = useState(null) // розгорнутий місяць
-  const [openDoc, setOpenDoc] = useState(null)
-
-  useEffect(() => { setData(null); vatReport(year).then(setData) }, [year])
-
-  const openDocById = async (id) => {
-    const { data: d } = await qc('documents')
-      .select('*, contractors(name)').eq('id', id).single()
-    if (d) setOpenDoc(d)
-  }
-
-  if (!data) return <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
-  const t = data.totals
-  const si = v => (v < 0 ? '−' : '') + fmt(v) // fmt віддає abs, тож додаємо мінус вручну
-
-  return (
-    <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-        <select className="form-input" value={year} onChange={e => setYear(Number(e.target.value))} style={{ width: 120 }}>
-          {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
-        {t.noVat > 0 && <span style={{ fontSize: 12.5, color: AMBER }}><i className="ti ti-alert-circle" /> {t.noVat} документ(ів) без ПДВ — можливо, ПДВ не захоплено</span>}
-      </div>
-
-      <div className="kpi-grid" style={{ marginBottom: 18 }}>
-        <Kpi label="Податкове зобов'язання (рік)" value={t.outVat} color={GREEN} />
-        <Kpi label="Податковий кредит (рік)" value={t.inVat} color={RED} />
-        <Kpi label="ПДВ до сплати (рік, з переносом)" value={t.toPay} color={'var(--text)'} />
-        <div className="kpi">
-          <div className="kpi-label">Залишок кредиту (перенос далі)</div>
-          <div className="kpi-value" style={{ color: GREEN }}>{fmtInt(t.carryOut)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>грн</span></div>
-          {t.carryIn > 0 && <div style={{ fontSize: 11, color: 'var(--text3)' }}>на початок року перенесено {fmt(t.carryIn)}</div>}
         </div>
-      </div>
 
-      <div className="card">
-        <div className="tbl-wrap" style={{ border: 'none' }}>
-          <table>
-            <thead><tr>
-              <th>Місяць</th>
-              <th style={{ textAlign: 'right' }}>Зобов'язання</th>
-              <th style={{ textAlign: 'right' }}>Кредит</th>
-              <th style={{ textAlign: 'right' }}>Перенос з мин.</th>
-              <th style={{ textAlign: 'right' }}>До сплати</th>
-              <th style={{ textAlign: 'right' }}>Залишок кредиту →</th>
-            </tr></thead>
-            <tbody>
-              {data.months.map(m => {
-                const has = m.sales.length + m.purchases.length > 0
-                const isOpen = openM === m.month
-                const active = m.outVat || m.inVat || m.carryIn
-                return (
-                  <Fragment key={m.month}>
-                    <tr style={{ cursor: has ? 'pointer' : 'default', background: isOpen ? 'var(--surface2)' : undefined }}
-                      onClick={() => has && setOpenM(isOpen ? null : m.month)}>
-                      <td style={{ fontWeight: 500 }}>{has && <i className={`ti ti-chevron-${isOpen ? 'down' : 'right'}`} style={{ fontSize: 12, marginRight: 4, color: 'var(--text3)' }} />}{MONTHS[m.month - 1]}</td>
-                      <td style={{ textAlign: 'right', color: m.outVat ? GREEN : 'var(--text3)' }}>{m.outVat ? fmt(m.outVat) : '—'}</td>
-                      <td style={{ textAlign: 'right', color: m.inVat ? RED : 'var(--text3)' }}>{m.inVat ? fmt(m.inVat) : '—'}</td>
-                      <td style={{ textAlign: 'right', color: m.carryIn ? GREEN : 'var(--text3)' }}>{m.carryIn ? fmt(m.carryIn) : '—'}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 600, color: m.toPay > 0 ? 'var(--text)' : 'var(--text3)' }}>{active ? fmt(m.toPay) : '—'}</td>
-                      <td style={{ textAlign: 'right', color: m.carryOut ? GREEN : 'var(--text3)' }}>{m.carryOut ? fmt(m.carryOut) : '—'}</td>
-                    </tr>
-                    {isOpen && (
-                      <tr><td colSpan={6} style={{ background: 'var(--surface2)', padding: '4px 12px 12px' }}>
-                        <VatDocs title="Продажі (зобов'язання)" docs={m.sales} color={GREEN} onOpen={openDocById} />
-                        <VatDocs title="Закупівлі (кредит)" docs={m.purchases} color={RED} onOpen={openDocById} />
-                      </td></tr>
-                    )}
-                  </Fragment>
-                )
-              })}
-            </tbody>
-            <tfoot>
-              <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700 }}>
-                <td>Разом {year}</td>
-                <td style={{ textAlign: 'right', color: GREEN }}>{fmt(t.outVat)}</td>
-                <td style={{ textAlign: 'right', color: RED }}>{fmt(t.inVat)}</td>
-                <td style={{ textAlign: 'right', color: 'var(--text3)' }}>{t.carryIn ? fmt(t.carryIn) : '—'}</td>
-                <td style={{ textAlign: 'right' }}>{fmt(t.toPay)}</td>
-                <td style={{ textAlign: 'right', color: GREEN }}>{t.carryOut ? fmt(t.carryOut) : '—'}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-        <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 8 }}>
-          Управлінський огляд за реалізованими документами (накладні/акти; рахунки не рахуються). <b>Перенос кредиту:</b> якщо кредит перевищує зобов'язання, надлишок («Залишок кредиту →») переноситься й зменшує «До сплати» наступних місяців. Накопичення рахується по всій історії, тож січень може вже мати «Перенос з мин.» з попереднього року. Клікни місяць — розкриються документи.
-        </div>
-      </div>
-
-      {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />}
-    </div>
-  )
-}
-
-function VatDocs({ title, docs, color, onOpen }) {
-  if (!docs.length) return null
-  return (
-    <div style={{ marginTop: 8 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color, marginBottom: 4 }}>{title} ({docs.length})</div>
-      <table style={{ width: '100%', fontSize: 12 }}>
-        <tbody>
-          {docs.map(d => (
-            <tr key={d.id} style={{ cursor: 'pointer', borderBottom: '1px solid var(--border)' }} onClick={() => onOpen(d.id)} title="Відкрити документ">
-              <td style={{ color: 'var(--text3)', whiteSpace: 'nowrap' }}>{d.doc_date}</td>
-              <td style={{ paddingLeft: 8 }}>{getDocType(d.type)?.label || d.type} №{d.doc_number || '—'} · {d.contractor}</td>
-              <td style={{ textAlign: 'right', color: 'var(--text2)', whiteSpace: 'nowrap' }}>{fmt(d.amount)} з ПДВ</td>
-              <td style={{ textAlign: 'right', fontWeight: 500, whiteSpace: 'nowrap', color: d.vat ? color : AMBER }}>{d.vat ? `ПДВ ${fmt(d.vat)}` : 'без ПДВ'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-// ───────── Борги (Aging) ─────────
-function AgingView() {
-  const [data, setData] = useState(null)
-  useEffect(() => { computeAging().then(setData) }, [])
-  if (!data) return <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
-
-  return (
-    <div style={{ display: 'grid', gap: 18 }}>
-      <AgingBlock title="Дебіторка — клієнти винні нам" data={data.receivable} keys={data.bucketKeys} color="var(--green)" />
-      <AgingBlock title="Кредиторка — ми винні постачальникам" data={data.payable} keys={data.bucketKeys} color="var(--red)" />
-      {data.receivable.total === 0 && data.payable.total === 0 && (
-        <p style={{ color: 'var(--text3)', fontSize: 13, textAlign: 'center' }}>Боргів немає. (Суми наповнюються з документів — додавайте суми документів через OCR/генерацію та прив'язуйте оплати.)</p>
-      )}
-    </div>
-  )
-}
-
-function AgingBlock({ title, data, keys, color }) {
-  if (data.total === 0) return null
-  return (
-    <div className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
-        <div className="card-title" style={{ marginBottom: 0 }}>{title}</div>
-        <div style={{ fontSize: 22, fontWeight: 700, color }}>{fmtInt(data.total)} грн</div>
-      </div>
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-        {keys.map(k => (
-          <div key={k} style={{ flex: '1 1 100px', background: 'var(--surface2)', borderRadius: 8, padding: '10px 12px' }}>
-            <div style={{ fontSize: 12, color: 'var(--text3)' }}>{k} дн</div>
-            <div style={{ fontWeight: 600 }}>{fmtInt(data.buckets[k])}</div>
+        <div className="card">
+          <div className="card-title" style={{ color: RED }}>Пасиви та капітал</div>
+          <Row label="Кредиторка (ми винні)" value={pay} bold color={RED} />
+          <Row label="Власний капітал (активи − зобов'язання)" value={equity} bold color={signColor(equity)} />
+          <div style={{ marginTop: 8, paddingTop: 8, borderTop: '2px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ fontWeight: 700, fontSize: 15 }}>Усього пасивів</span>
+            <span style={{ fontWeight: 700, fontSize: 17, color: signColor(pay + equity), fontVariantNumeric: 'tabular-nums' }}>{si(pay + equity)} грн</span>
           </div>
-        ))}
+        </div>
       </div>
-      <div className="tbl-wrap" style={{ border: 'none' }}>
-        <table><thead><tr><th>Контрагент</th><th style={{ textAlign: 'right' }}>Сума</th></tr></thead>
-          <tbody>{data.top.slice(0, 15).map((c, i) => <tr key={i}><td><div className="trunc">{c.name}</div></td><td style={{ textAlign: 'right', fontWeight: 600 }}>{fmtInt(c.amount)}</td></tr>)}</tbody>
-        </table>
-      </div>
+
+      <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 14 }}>
+        Управлінський баланс: <b>Активи</b> = гроші на рахунках + оцінка складу (товари × собівартість, лише goods) + дебіторка (неоплачені видаткові/акти). <b>Пасиви</b> = кредиторка (неоплачені прихідні). <b>Капітал</b> = Активи − Зобов'язання (балансуюча величина; позики/ОЗ поки не враховуються). Дебіторка/кредиторка — неоплачені документи-борги станом на кінець періоду.
+      </p>
     </div>
   )
 }
