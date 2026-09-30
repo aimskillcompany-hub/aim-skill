@@ -72,6 +72,7 @@ function TransactionsTab({ accounts, onChange }) {
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState('unconfirmed') // unconfirmed | all
   const [acc, setAcc] = useState('all')
+  const [art, setArt] = useState('all')               // фільтр за статтею
   const [q, setQ] = useState('')
   const [linkTx, setLinkTx] = useState(null)
   const [editTx, setEditTx] = useState(null)
@@ -92,6 +93,8 @@ function TransactionsTab({ accounts, onChange }) {
       .eq('is_ignored', false).order('date', { ascending: false }).limit(500)
     if (status === 'unconfirmed') qb = qb.eq('is_validated', false)
     if (acc !== 'all') qb = qb.eq('account_id', acc)
+    if (art === '__none__') qb = qb.is('article', null)
+    else if (art !== 'all') qb = qb.eq('article', art)
     const term = q.trim()
     if (term) {
       const esc = term.replace(/[%,()]/g, ' ')
@@ -121,7 +124,7 @@ function TransactionsTab({ accounts, onChange }) {
     setLoading(false)
   }
   useEffect(() => { fetchArticles().then(setArticles) }, [])
-  useEffect(() => { const t = setTimeout(load, q ? 350 : 0); return () => clearTimeout(t) }, [status, acc, q])
+  useEffect(() => { const t = setTimeout(load, q ? 350 : 0); return () => clearTimeout(t) }, [status, acc, art, q])
 
   const grouped = useMemo(() => groupByType(articles), [articles])
   const { sort, onSort, sorted } = useSort('date', 'desc')
@@ -225,6 +228,15 @@ function TransactionsTab({ accounts, onChange }) {
         <select className="form-input" value={acc} onChange={e => setAcc(e.target.value)} style={{ width: 180 }}>
           <option value="all">Всі рахунки</option>
           {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+        </select>
+        <select className="form-input" value={art} onChange={e => setArt(e.target.value)} style={{ width: 200 }}>
+          <option value="all">Всі статті</option>
+          <option value="__none__">Без статті</option>
+          {Object.entries(grouped).map(([type, arts]) => (
+            <optgroup key={type} label={TYPE_LABELS[type] || type}>
+              {arts.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+            </optgroup>
+          ))}
         </select>
         <button className="btn btn-primary" onClick={() => setShowAdd(true)}><i className="ti ti-plus" /> Додати операцію</button>
         {status === 'unconfirmed' && rows.length > 0 && <button className="btn" onClick={autoFill}><i className="ti ti-wand" /> Авто-класифікація</button>}
