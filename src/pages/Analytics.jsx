@@ -3,7 +3,7 @@ import { qc } from '../lib/companyScope'
 import { fmtInt } from '../lib/fmt'
 import { PL_ORDER, PL_LABELS, fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import * as XLSX from 'xlsx'
-import { computePL, computePLBreakdown, computeForecast, plDrill } from '../lib/pl'
+import { computePL, computePLBreakdown, computeForecast, plDrill, computeAging } from '../lib/pl'
 import { computeCashFlow, cashFlowDrill } from '../lib/cashflow'
 import { computeSnapshot } from '../lib/periodClose'
 
@@ -65,10 +65,12 @@ function CashFlowView() {
   const [year, setYear] = useState(NOW.getFullYear())
   const [month, setMonth] = useState(0)
   const [d, setD] = useState(null)
+  const [debt, setDebt] = useState(null)   // дебіторка/кредиторка (нам винні / ми винні)
   const [drill, setDrill] = useState(null)
 
   const reload = () => { setD(null); computeCashFlow(year, month || null).then(setD) }
   useEffect(() => { reload() }, [year, month])
+  useEffect(() => { computeAging().then(setDebt) }, [])
 
   // Відкрити перелік транзакцій за клітинкою (стаття × період × напрям руху)
   const openDrill = (article, bucketKey, sign, name, colLabel) =>
@@ -105,8 +107,20 @@ function CashFlowView() {
             <div className="kpi"><div className="kpi-label">Надходження</div><div className="kpi-value" style={{ color: GREEN }}>{fmtInt(d.inflow.total)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>грн</span></div></div>
             <div className="kpi"><div className="kpi-label">Витрати</div><div className="kpi-value" style={{ color: RED }}>{fmtInt(d.outflow.total)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>грн</span></div></div>
             <div className="kpi"><div className="kpi-label">Чистий потік</div><div className="kpi-value" style={{ color: signColor(d.netTotal) }}>{si(d.netTotal)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>грн</span></div></div>
+            {debt && debt.receivable.total > 0 && (
+              <div className="kpi" style={{ borderLeft: `3px solid ${AMBER}`, background: '#FFFBEB' }}>
+                <div className="kpi-label" style={{ color: AMBER }}>Нам винні (дебіторка)</div>
+                <div className="kpi-value" style={{ color: AMBER }}>{fmtInt(debt.receivable.total)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>грн</span></div>
+              </div>
+            )}
             <div className="kpi"><div className="kpi-label">Залишок на кінець</div><div className="kpi-value" style={{ color: signColor(d.closingCash) }}>{si(d.closingCash)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>грн</span></div></div>
           </div>
+          {debt && debt.receivable.total > 0 && (
+            <div style={{ marginBottom: 16, padding: '10px 14px', background: '#FFFBEB', border: `1px solid ${AMBER}33`, borderRadius: 8, fontSize: 13, color: 'var(--text2)' }}>
+              <i className="ti ti-cash" style={{ color: AMBER }} /> З урахуванням дебіторки чистий потік був би <b style={{ color: AMBER }}>{si(d.netTotal + debt.receivable.total)} грн</b>
+              <span style={{ color: 'var(--text3)' }}> — це вже зароблені гроші за виписаними видатковими/актами, які ще не надійшли на рахунок.</span>
+            </div>
+          )}
 
           <div className="card">
             <div className="tbl-wrap" style={{ border: 'none' }}>
@@ -400,10 +414,10 @@ function ForecastCard({ year, month }) {
   const [f, setF] = useState(null)
   useEffect(() => { setF(null); computeForecast(year, month).then(setF) }, [year, month])
   if (!f) return null
-  const line = (label, val, hint) => (
+  const line = (label, val, hint, color) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0' }}>
       <span style={{ color: 'var(--text2)', fontSize: 13 }}>{label}{hint && <span style={{ color: 'var(--text3)', fontSize: 11, marginLeft: 6 }}>{hint}</span>}</span>
-      <span style={{ fontWeight: 600, color: signColor(val), fontVariantNumeric: 'tabular-nums' }}>{val >= 0 ? '+' : ''}{fmtInt(val)}</span>
+      <span style={{ fontWeight: 600, color: color || signColor(val), fontVariantNumeric: 'tabular-nums' }}>{val >= 0 ? '+' : ''}{fmtInt(val)}</span>
     </div>
   )
   return (
@@ -416,7 +430,7 @@ function ForecastCard({ year, month }) {
           <span style={{ color: 'var(--text2)', fontSize: 13 }}>Фактичний результат (Net)</span>
           <span style={{ fontWeight: 600, color: signColor(f.factNet), fontVariantNumeric: 'tabular-nums' }}>{fmtInt(f.factNet)}</span>
         </div>
-        {line('Дебіторка — виписано, чекає оплати', f.receivable)}
+        {line('Дебіторка — виписано, чекає оплати', f.receivable, null, AMBER)}
         {line('Очікувана маржа з відкритих замовлень', f.pipelineMargin, `${f.pipelineCount} зам.`)}
         <div style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <span style={{ fontWeight: 700 }}>≈ Очікуваний результат</span>
@@ -508,7 +522,7 @@ function BalanceView() {
           <Row label="Гроші (рахунки/каса)" value={cash} bold color={signColor(cash)} />
           {accounts.map(a => <Row key={a.id} label={a.name} value={a.balance} indent sub color={signColor(a.balance)} />)}
           <Row label="Склад (товари за собівартістю)" value={stock} bold />
-          <Row label="Дебіторка (нам винні)" value={recv} bold color={GREEN} />
+          <Row label="Дебіторка (нам винні)" value={recv} bold color={AMBER} />
           <div style={{ marginTop: 8, paddingTop: 8, borderTop: '2px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ fontWeight: 700, fontSize: 15 }}>Усього активів</span>
             <span style={{ fontWeight: 700, fontSize: 17, color: signColor(assets), fontVariantNumeric: 'tabular-nums' }}>{si(assets)} грн</span>
