@@ -79,6 +79,11 @@ function TransactionsTab({ accounts, onChange }) {
   const [linkMsg, setLinkMsg] = useState(null)
   const [linking, setLinking] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
+  const [sel, setSel] = useState(() => new Set())     // масовий вибір транзакцій
+  const [bulkDir, setBulkDir] = useState('')
+  const [bulkArt, setBulkArt] = useState('')
+  const [bulkValidate, setBulkValidate] = useState(false)
+  const [bulkBusy, setBulkBusy] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -112,6 +117,7 @@ function TransactionsTab({ accounts, onChange }) {
       list.forEach(r => { r._docs = byTx[r.id] || [] })
     }
     setRows(list)
+    setSel(new Set())
     setLoading(false)
   }
   useEffect(() => { fetchArticles().then(setArticles) }, [])
@@ -187,6 +193,25 @@ function TransactionsTab({ accounts, onChange }) {
   }
 
 
+  // ── Масове редагування напряму/статті ──
+  const toggleSel = (id) => setSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const allSelected = view.length > 0 && view.every(r => sel.has(r.id))
+  const toggleAll = () => setSel(allSelected ? new Set() : new Set(view.map(r => r.id)))
+  const applyBulk = async () => {
+    if (!sel.size || (!bulkDir && !bulkArt && !bulkValidate)) return
+    setBulkBusy(true)
+    const upd = {}
+    if (bulkDir) upd.direction = bulkDir
+    if (bulkArt) { upd.article = bulkArt; upd.article_id = articles.find(a => a.name === bulkArt)?.id || null }
+    if (bulkValidate) upd.is_validated = true
+    const ids = [...sel]
+    for (let i = 0; i < ids.length; i += 200) {
+      await qc('bank_transactions').update(upd).in('id', ids.slice(i, i + 200))
+    }
+    setBulkBusy(false); setBulkDir(''); setBulkArt(''); setBulkValidate(false)
+    load(); onChange()
+  }
+
   if (loading) return <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
 
   return (
@@ -208,10 +233,36 @@ function TransactionsTab({ accounts, onChange }) {
       </div>
       {linkMsg && <div style={{ background: 'var(--green-bg)', color: 'var(--green)', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 13 }}>{linkMsg}</div>}
 
+      {sel.size > 0 && (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px' }}>
+          <span style={{ fontWeight: 600, fontSize: 13 }}>Обрано {sel.size}</span>
+          <select className="form-input" value={bulkDir} onChange={e => setBulkDir(e.target.value)} style={{ width: 170 }}>
+            <option value="">Напрям — не змінювати</option>
+            {DIRECTIONS.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+          <select className="form-input" value={bulkArt} onChange={e => setBulkArt(e.target.value)} style={{ width: 220 }}>
+            <option value="">Стаття — не змінювати</option>
+            {Object.entries(grouped).map(([type, arts]) => (
+              <optgroup key={type} label={TYPE_LABELS[type] || type}>
+                {arts.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+              </optgroup>
+            ))}
+          </select>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--text2)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={bulkValidate} onChange={e => setBulkValidate(e.target.checked)} /> підтвердити
+          </label>
+          <button className="btn btn-primary" onClick={applyBulk} disabled={bulkBusy || (!bulkDir && !bulkArt && !bulkValidate)}>
+            <i className="ti ti-check" /> {bulkBusy ? 'Застосування…' : `Застосувати до ${sel.size}`}
+          </button>
+          <button className="btn" onClick={() => setSel(new Set())} style={{ color: 'var(--text3)' }}>Зняти вибір</button>
+        </div>
+      )}
+
       <div className="card">
         <div className="tbl-wrap" style={{ border: 'none' }}>
           <table>
             <thead><tr>
+              <th style={{ width: 34, textAlign: 'center' }}><input type="checkbox" checked={allSelected} onChange={toggleAll} title="Обрати всі видимі" style={{ cursor: 'pointer' }} /></th>
               <SortTh label="Дата" k="date" sort={sort} onSort={onSort} />
               <SortTh label="Контрагент" k="counterparty" sort={sort} onSort={onSort} />
               <SortTh label="Сума" k="amount" sort={sort} onSort={onSort} align="right" />
@@ -222,7 +273,8 @@ function TransactionsTab({ accounts, onChange }) {
             </tr></thead>
             <tbody>
               {view.map(r => (
-                <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setEditTx(r)}>
+                <tr key={r.id} style={{ cursor: 'pointer', background: sel.has(r.id) ? 'var(--surface2)' : undefined }} onClick={() => setEditTx(r)}>
+                  <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}><input type="checkbox" checked={sel.has(r.id)} onChange={() => toggleSel(r.id)} style={{ cursor: 'pointer' }} /></td>
                   <td style={{ fontSize: 12, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{r.date}</td>
                   <td>
                     <div className="trunc" style={{ fontWeight: 500 }}>{r.counterparty || '—'}</div>
@@ -246,7 +298,7 @@ function TransactionsTab({ accounts, onChange }) {
                   </td>
                 </tr>
               ))}
-              {view.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Немає транзакцій</td></tr>}
+              {view.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Немає транзакцій</td></tr>}
             </tbody>
           </table>
         </div>
