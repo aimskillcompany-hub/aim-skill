@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { qc } from '../lib/companyScope'
-import { fmt, fmtInt } from '../lib/fmt'
-import { PL_ORDER, PL_LABELS } from '../lib/articles'
+import { fmtInt } from '../lib/fmt'
+import { PL_ORDER, PL_LABELS, fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import * as XLSX from 'xlsx'
 import { computePL, computePLBreakdown, computeForecast, plDrill } from '../lib/pl'
-import { computeCashFlow } from '../lib/cashflow'
+import { computeCashFlow, cashFlowDrill } from '../lib/cashflow'
 import { computeSnapshot } from '../lib/periodClose'
+
+const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД']
 
 const NOW = new Date()
 const YEARS = [NOW.getFullYear(), NOW.getFullYear() - 1, NOW.getFullYear() - 2]
@@ -63,8 +65,14 @@ function CashFlowView() {
   const [year, setYear] = useState(NOW.getFullYear())
   const [month, setMonth] = useState(0)
   const [d, setD] = useState(null)
+  const [drill, setDrill] = useState(null)
 
-  useEffect(() => { setD(null); computeCashFlow(year, month || null).then(setD) }, [year, month])
+  const reload = () => { setD(null); computeCashFlow(year, month || null).then(setD) }
+  useEffect(() => { reload() }, [year, month])
+
+  // Відкрити перелік транзакцій за клітинкою (стаття × період × напрям руху)
+  const openDrill = (article, bucketKey, sign, name, colLabel) =>
+    setDrill({ year, month: month || null, article, bucketKey, sign, title: `${name} · ${colLabel}` })
 
   const exportXlsx = () => {
     if (!d) return
@@ -109,14 +117,14 @@ function CashFlowView() {
                   <th style={{ textAlign: 'right' }}>Разом</th>
                 </tr></thead>
                 <tbody>
-                  <CfHeader label="Надходження" sec={d.inflow} cols={d.cols} color={GREEN} />
-                  {d.inflow.rows.map((r, i) => <CfRow key={'i' + i} r={r} cols={d.cols} color={GREEN} />)}
-                  <CfHeader label="Витрати" sec={d.outflow} cols={d.cols} color={RED} />
-                  {d.outflow.rows.map((r, i) => <CfRow key={'o' + i} r={r} cols={d.cols} color={RED} />)}
+                  <CfHeader label="Надходження" sec={d.inflow} cols={d.cols} color={GREEN} sign="in" openDrill={openDrill} />
+                  {d.inflow.rows.map((r, i) => <CfRow key={'i' + i} r={r} cols={d.cols} color={GREEN} sign="in" openDrill={openDrill} />)}
+                  <CfHeader label="Витрати" sec={d.outflow} cols={d.cols} color={RED} sign="out" openDrill={openDrill} />
+                  {d.outflow.rows.map((r, i) => <CfRow key={'o' + i} r={r} cols={d.cols} color={RED} sign="out" openDrill={openDrill} />)}
                   <tr style={{ fontWeight: 700, background: 'var(--surface2)' }}>
                     <td style={{ position: 'sticky', left: 0, background: 'var(--surface2)', whiteSpace: 'nowrap' }}>Чистий грошовий потік</td>
-                    {d.cols.map(c => <td key={c.key} style={{ textAlign: 'right', color: signColor(d.netByCol[c.key] || 0) }}>{d.netByCol[c.key] ? si(d.netByCol[c.key]) : '·'}</td>)}
-                    <td style={{ textAlign: 'right', color: signColor(d.netTotal) }}>{si(d.netTotal)}</td>
+                    {d.cols.map(c => <DrillCell key={c.key} value={d.netByCol[c.key]} signed color={signColor(d.netByCol[c.key] || 0)} onClick={() => openDrill(null, c.key, null, 'Чистий потік', c.label)} />)}
+                    <DrillCell value={d.netTotal} signed color={signColor(d.netTotal)} bold onClick={() => openDrill(null, 'total', null, 'Чистий потік', 'Разом')} />
                   </tr>
                   <tr style={{ color: 'var(--text2)' }}>
                     <td style={{ position: 'sticky', left: 0, background: 'var(--surface)', whiteSpace: 'nowrap' }}>Залишок на кінець</td>
@@ -126,29 +134,118 @@ function CashFlowView() {
                 </tbody>
               </table>
             </div>
-            <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>Залишок на початок періоду: <b>{si(d.openingCash)} грн</b>. Прямий метод: усі фактичні рухи коштів (валідовані й ні), на відміну від P&L (лише підтверджені). «Залишок на кінець» — накопичувально.</p>
+            <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>Залишок на початок періоду: <b>{si(d.openingCash)} грн</b>. Прямий метод: усі фактичні рухи коштів (валідовані й ні), на відміну від P&L (лише підтверджені). Натисніть на цифру — побачите й зможете відредагувати транзакції. «Залишок на кінець» — накопичувально.</p>
           </div>
         </>
       )}
+      {drill && <CashFlowDrillModal drill={drill} onClose={() => setDrill(null)} onSaved={() => { setDrill(null); reload() }} />}
     </div>
   )
 }
-function CfHeader({ label, sec, cols, color }) {
+// Клітинка-число з drill-down по кліку (якщо є значення)
+function DrillCell({ value, color, bold, signed, onClick }) {
+  const v = Number(value) || 0
+  const text = v ? (signed ? si(v) : fmtInt(Math.abs(v))) : '·'
+  const clickable = !!v && onClick
+  return (
+    <td style={{ textAlign: 'right', color, fontWeight: bold ? 700 : undefined }}>
+      <span onClick={clickable ? onClick : undefined} style={{ cursor: clickable ? 'pointer' : 'default', textDecoration: clickable ? 'underline dotted' : 'none', textUnderlineOffset: 3 }}>{text}</span>
+    </td>
+  )
+}
+function CfHeader({ label, sec, cols, color, sign, openDrill }) {
   return (
     <tr style={{ fontWeight: 600, background: 'var(--surface2)' }}>
       <td style={{ position: 'sticky', left: 0, background: 'var(--surface2)', whiteSpace: 'nowrap', color }}>{label}</td>
-      {cols.map(c => <td key={c.key} style={{ textAlign: 'right', color }}>{sec.totalByCol[c.key] ? fmtInt(sec.totalByCol[c.key]) : '·'}</td>)}
-      <td style={{ textAlign: 'right', color, fontWeight: 700 }}>{fmtInt(sec.total)}</td>
+      {cols.map(c => <DrillCell key={c.key} value={sec.totalByCol[c.key]} color={color} onClick={() => openDrill(null, c.key, sign, label, c.label)} />)}
+      <DrillCell value={sec.total} color={color} bold onClick={() => openDrill(null, 'total', sign, label, 'Разом')} />
     </tr>
   )
 }
-function CfRow({ r, cols, color }) {
+function CfRow({ r, cols, color, sign, openDrill }) {
   return (
     <tr>
       <td style={{ paddingLeft: 24, position: 'sticky', left: 0, background: 'var(--surface)', whiteSpace: 'nowrap' }}>{r.article}</td>
-      {cols.map(c => <td key={c.key} style={{ textAlign: 'right' }}>{r.cells[c.key] ? fmtInt(r.cells[c.key]) : '·'}</td>)}
-      <td style={{ textAlign: 'right', fontWeight: 600, color }}>{fmtInt(r.total)}</td>
+      {cols.map(c => <DrillCell key={c.key} value={r.cells[c.key]} onClick={() => openDrill(r.article, c.key, sign, r.article, c.label)} />)}
+      <DrillCell value={r.total} color={color} bold onClick={() => openDrill(r.article, 'total', sign, r.article, 'Разом')} />
     </tr>
+  )
+}
+
+// Перелік транзакцій за клітинкою Cash Flow + інлайн-редагування напряму/статті
+function CashFlowDrillModal({ drill, onClose, onSaved }) {
+  const [rows, setRows] = useState(null)
+  const [articles, setArticles] = useState([])
+  const [edits, setEdits] = useState({})
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { fetchArticles().then(setArticles) }, [])
+  useEffect(() => { setRows(null); setEdits({}); cashFlowDrill(drill.year, drill.month, drill).then(setRows) }, [drill])
+  const grouped = useMemo(() => groupByType(articles), [articles])
+  const setEdit = (id, patch) => setEdits(e => ({ ...e, [id]: { ...e[id], ...patch } }))
+  const val = (t, f) => (edits[t.id]?.[f] !== undefined ? edits[t.id][f] : (t[f] || ''))
+  const dirty = Object.keys(edits).filter(id => { const e = edits[id]; return e && (e.direction !== undefined || e.article !== undefined) }).length
+
+  const save = async () => {
+    setBusy(true)
+    for (const [id, patch] of Object.entries(edits)) {
+      const upd = {}
+      if (patch.direction !== undefined) upd.direction = patch.direction || null
+      if (patch.article !== undefined) { upd.article = patch.article || null; upd.article_id = articles.find(a => a.name === patch.article)?.id || null }
+      if (Object.keys(upd).length) await qc('bank_transactions').update(upd).eq('id', id)
+    }
+    setBusy(false); onSaved()
+  }
+  const total = (rows || []).reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0)
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', zIndex: 1000, overflow: 'auto' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: 12, padding: 20, width: '100%', maxWidth: 860, boxShadow: '0 10px 40px rgba(0,0,0,.3)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, gap: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>{drill.title}</div>
+          <button className="btn" onClick={onClose} style={{ flexShrink: 0 }}><i className="ti ti-x" /></button>
+        </div>
+        {!rows ? <p style={{ color: 'var(--text3)' }}>Завантаження…</p> : rows.length === 0 ? <p style={{ color: 'var(--text3)' }}>Немає транзакцій</p> : (
+          <div className="tbl-wrap" style={{ border: 'none', maxHeight: '60vh', overflow: 'auto' }}>
+            <table>
+              <thead><tr><th>Дата</th><th>Контрагент</th><th style={{ textAlign: 'right' }}>Сума</th><th>Напрям</th><th>Стаття</th></tr></thead>
+              <tbody>
+                {rows.map(t => {
+                  const changed = edits[t.id] && (edits[t.id].direction !== undefined || edits[t.id].article !== undefined)
+                  return (
+                    <tr key={t.id} style={{ background: changed ? 'var(--surface2)' : undefined }}>
+                      <td style={{ whiteSpace: 'nowrap', fontSize: 12, color: 'var(--text2)' }}>{t.date}</td>
+                      <td><div className="trunc" title={t.counterparty || ''}>{t.counterparty || '—'}</div>{t.description && <div className="trunc" style={{ fontSize: 11, color: 'var(--text3)' }}>{t.description}</div>}</td>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: Number(t.amount) >= 0 ? GREEN : RED, fontWeight: 600 }}>{Number(t.amount) >= 0 ? '+' : '−'}{fmtInt(Math.abs(Number(t.amount) || 0))}</td>
+                      <td>
+                        <select className="form-input" style={{ fontSize: 12, padding: '3px 6px', minWidth: 110 }} value={val(t, 'direction')} onChange={e => setEdit(t.id, { direction: e.target.value })}>
+                          <option value="">—</option>{DIRECTIONS.map(x => <option key={x} value={x}>{x}</option>)}
+                        </select>
+                      </td>
+                      <td>
+                        <select className="form-input" style={{ fontSize: 12, padding: '3px 6px', minWidth: 160 }} value={val(t, 'article')} onChange={e => setEdit(t.id, { article: e.target.value })}>
+                          <option value="">—</option>
+                          {Object.entries(grouped).map(([type, arts]) => (
+                            <optgroup key={type} label={TYPE_LABELS[type] || type}>
+                              {arts.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+                            </optgroup>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+              <tfoot><tr style={{ fontWeight: 700 }}><td colSpan={2}>Разом ({rows.length})</td><td style={{ textAlign: 'right' }}>{fmtInt(total)}</td><td colSpan={2} /></tr></tfoot>
+            </table>
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16, alignItems: 'center' }}>
+          {dirty > 0 && <span style={{ fontSize: 12, color: 'var(--text3)', marginRight: 'auto' }}>Змінено: {dirty}</span>}
+          <button className="btn" onClick={onClose}>Закрити</button>
+          <button className="btn btn-primary" onClick={save} disabled={busy || dirty === 0}><i className="ti ti-check" /> {busy ? 'Збереження…' : 'Зберегти зміни'}</button>
+        </div>
+      </div>
+    </div>
   )
 }
 

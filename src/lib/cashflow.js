@@ -7,6 +7,7 @@ import { periodRange } from './pl'
 
 const MONTHS = ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Лип', 'Сер', 'Вер', 'Жов', 'Лис', 'Гру']
 const monthEnd = (y, m) => new Date(y, m, 0).getDate()
+const pad = (n) => String(n).padStart(2, '0')
 
 export async function computeCashFlow(year, month) {
   const { from, to } = periodRange(year, month)
@@ -68,4 +69,27 @@ export async function computeCashFlow(year, month) {
     netByCol, netTotal,
     openingCash, closingCash: openingCash + netTotal, closingByCol,
   }
+}
+
+// Drill-down: транзакції, з яких складається клітинка Cash Flow.
+// opts: { bucketKey ('total'|'1'|'2'…), article (назва|'Без статті'|null=всі), sign ('in'|'out'|null=всі) }
+export async function cashFlowDrill(year, month, { bucketKey, article, sign } = {}) {
+  const base = periodRange(year, month)
+  let from, to
+  if (!bucketKey || bucketKey === 'total') { from = base.from; to = base.to }
+  else if (month) { const d = `${year}-${pad(month)}-${pad(Number(bucketKey))}`; from = d; to = d }
+  else { const m = Number(bucketKey); from = `${year}-${pad(m)}-01`; to = `${year}-${pad(m)}-${pad(monthEnd(year, m))}` }
+
+  const { data } = await qc('bank_transactions')
+    .select('id, date, amount, article, direction, counterparty, contractor_id, description, is_validated, account_id')
+    .eq('is_ignored', false).gte('date', from).lte('date', to).order('date', { ascending: true })
+
+  let list = (data || []).filter(t => Number(t.amount) !== 0)
+  if (sign === 'in') list = list.filter(t => Number(t.amount) >= 0)
+  else if (sign === 'out') list = list.filter(t => Number(t.amount) < 0)
+  if (article != null) {
+    if (article === 'Без статті') list = list.filter(t => !(t.article || '').trim())
+    else list = list.filter(t => (t.article || '').trim() === article)
+  }
+  return list
 }
