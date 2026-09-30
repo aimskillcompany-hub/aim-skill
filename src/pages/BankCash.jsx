@@ -205,7 +205,9 @@ function TransactionsTab({ accounts, onChange }) {
 
   // Відновити ігноровану транзакцію (повертає в облік)
   const unignore = async (id) => {
-    await qc('bank_transactions').update({ is_ignored: false }).eq('id', id)
+    const { data, error } = await qc('bank_transactions').update({ is_ignored: false }).eq('id', id).select('id')
+    if (error) { alert('Не вдалося відновити: ' + error.message); return }
+    if (!data?.length) { alert('Не відновлено (0 рядків) — можливо, закритий період або немає прав.'); return }
     load(); onChange()
   }
 
