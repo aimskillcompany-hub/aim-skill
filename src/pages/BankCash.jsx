@@ -90,7 +90,7 @@ function TransactionsTab({ accounts, onChange }) {
     setLoading(true)
     let qb = qc('bank_transactions')
       .select('id, date, amount, counterparty, description, edrpou, direction, article, article_id, contractor_id, account_id, is_validated')
-      .eq('is_ignored', false).order('date', { ascending: false }).limit(500)
+      .eq('is_ignored', status === 'ignored').order('date', { ascending: false }).limit(500)
     if (status === 'unconfirmed') qb = qb.eq('is_validated', false)
     if (acc !== 'all') qb = qb.eq('account_id', acc)
     if (art === '__none__') qb = qb.is('article', null)
@@ -203,6 +203,12 @@ function TransactionsTab({ accounts, onChange }) {
   }
 
 
+  // Відновити ігноровану транзакцію (повертає в облік)
+  const unignore = async (id) => {
+    await qc('bank_transactions').update({ is_ignored: false }).eq('id', id)
+    load(); onChange()
+  }
+
   // ── Масове редагування напряму/статті ──
   const toggleSel = (id) => setSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
   const allSelected = view.length > 0 && view.every(r => sel.has(r.id))
@@ -242,6 +248,7 @@ function TransactionsTab({ accounts, onChange }) {
         <select className="form-input" value={status} onChange={e => setStatus(e.target.value)} style={{ width: 180 }}>
           <option value="unconfirmed">Непідтверджені</option>
           <option value="all">Всі</option>
+          <option value="ignored">Ігноровані</option>
         </select>
         <select className="form-input" value={acc} onChange={e => setAcc(e.target.value)} style={{ width: 180 }}>
           <option value="all">Всі рахунки</option>
@@ -321,10 +328,16 @@ function TransactionsTab({ accounts, onChange }) {
                       : <span style={{ color: 'var(--text3)' }}>не прив'язано</span>}
                   </td>
                   <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    {r.is_validated
-                      ? <span style={{ color: 'var(--green)', marginRight: 8 }} title="Підтверджено"><i className="ti ti-check" /></span>
-                      : <span style={{ color: '#D97706', marginRight: 8 }} title="Потребує підтвердження">●</span>}
-                    <button className="btn" onClick={(e) => { e.stopPropagation(); setLinkTx(r) }} title="Прив'язати документ" style={{ padding: '2px 8px' }}><i className="ti ti-link" /></button>
+                    {status === 'ignored' ? (
+                      <button className="btn" onClick={(e) => { e.stopPropagation(); unignore(r.id) }} title="Повернути в облік" style={{ padding: '2px 8px', color: 'var(--green)' }}><i className="ti ti-restore" /> Відновити</button>
+                    ) : (
+                      <>
+                        {r.is_validated
+                          ? <span style={{ color: 'var(--green)', marginRight: 8 }} title="Підтверджено"><i className="ti ti-check" /></span>
+                          : <span style={{ color: '#D97706', marginRight: 8 }} title="Потребує підтвердження">●</span>}
+                        <button className="btn" onClick={(e) => { e.stopPropagation(); setLinkTx(r) }} title="Прив'язати документ" style={{ padding: '2px 8px' }}><i className="ti ti-link" /></button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}
