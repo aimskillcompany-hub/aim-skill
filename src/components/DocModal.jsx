@@ -15,6 +15,16 @@ export const dirFromType = (key) => {
   return t?.direction === 'incoming' ? 'payable' : 'receivable'
 }
 
+// Напрямок документа. Для ДВОНАПРЯМНИХ типів (акт/рахунок/інше — постачальник
+// виставляє НАМ або ми клієнту) напрямок визначає doc_role, а не дефолт типу.
+// Для однозначних (видаткова=outgoing, прихідна=incoming) — за типом.
+const AMBIG_DIR = new Set(['serviceAct', 'invoice', 'other'])
+export function resolveDocDir(type, docRole) {
+  const td = getDocType(type)?.direction // 'incoming' | 'outgoing'
+  const role = AMBIG_DIR.has(type) ? (docRole || td || 'incoming') : (td || docRole || 'incoming')
+  return { role, direction: role === 'incoming' ? 'payable' : 'receivable' }
+}
+
 // Тип документа з розпізнаного OCR (docType + напрям), а не лише з напряму
 export const typeFromOcr = (docType, docRole) => {
   const t = (docType || '').trim().toLowerCase()
@@ -234,12 +244,14 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
     setBusy(true); setError(null)
     try {
       if (existingDoc) {
+        const { role: resRole, direction: resDir } = resolveDocDir(form.type, form.doc_role || existingDoc.doc_role)
         const upd = {
           type: form.type,
           contractor_id: form.contractor_id || null,
           amount: Number(form.amount) || null,
           vat_amount: Number(form.vat_amount) || 0,
-          direction: dirFromType(form.type),
+          direction: resDir,
+          doc_role: resRole,
           is_signed: form.is_signed,
           file_name: form.file_name?.trim() || existingDoc.file_name,
           doc_number: form.doc_number?.trim() || null,
@@ -296,11 +308,11 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
         contractor_id: form.contractor_id || null,
         amount: Number(form.amount) || null,
         vat_amount: Number(form.vat_amount) || 0,
-        direction: dirFromType(form.type),
+        direction: resolveDocDir(form.type, form.doc_role).direction,
         is_signed: form.is_signed,
         signed_scan_url: form.is_signed ? storage_path : null,
         storage_path, file_name, file_type, file_path: storage_path,
-        doc_role: getDocType(form.type)?.direction || 'incoming',
+        doc_role: resolveDocDir(form.type, form.doc_role).role,
         ocr_data: form, uploaded_by: user?.id || null,
         order_id: orderId || null,
         posted: form.posted !== false,
@@ -396,6 +408,14 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
                     {DOCUMENT_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
                   </select>
                 </div>
+                {['serviceAct', 'invoice', 'other'].includes(form.type) && (
+                  <div className="form-group"><label>Напрям</label>
+                    <select className="form-input" value={form.doc_role === 'outgoing' ? 'outgoing' : 'incoming'} onChange={e => setForm(f => ({ ...f, doc_role: e.target.value }))}>
+                      <option value="incoming">Вхідний — постачальник нам (ми винні)</option>
+                      <option value="outgoing">Вихідний — ми клієнту (нам винні)</option>
+                    </select>
+                  </div>
+                )}
                 <div className="form-group full"><label>Контрагент {form.edrpou && `(ЄДРПОУ ${form.edrpou})`}</label>
                   <ContractorSelect value={form.contractorName} placeholder="Контрагент"
                     onChange={(v) => setForm(f => ({ ...f, contractorName: v }))}
