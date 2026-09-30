@@ -19,9 +19,17 @@ export const dirFromType = (key) => {
 // виставляє НАМ або ми клієнту) напрямок визначає doc_role, а не дефолт типу.
 // Для однозначних (видаткова=outgoing, прихідна=incoming) — за типом.
 const AMBIG_DIR = new Set(['serviceAct', 'invoice', 'other'])
-export function resolveDocDir(type, docRole) {
+export function resolveDocDir(type, docRole, contractor) {
   const td = getDocType(type)?.direction // 'incoming' | 'outgoing'
-  const role = AMBIG_DIR.has(type) ? (docRole || td || 'incoming') : (td || docRole || 'incoming')
+  if (AMBIG_DIR.has(type)) {
+    // Найнадійніший сигнал — тип контрагента: чистий постачальник → вхідний (ми винні),
+    // чистий клієнт → вихідний (нам винні). Інакше — за розпізнаним doc_role.
+    if (contractor?.is_supplier && !contractor?.is_client) return { role: 'incoming', direction: 'payable' }
+    if (contractor?.is_client && !contractor?.is_supplier) return { role: 'outgoing', direction: 'receivable' }
+    const role = docRole || td || 'incoming'
+    return { role, direction: role === 'incoming' ? 'payable' : 'receivable' }
+  }
+  const role = td || docRole || 'incoming'
   return { role, direction: role === 'incoming' ? 'payable' : 'receivable' }
 }
 
@@ -243,8 +251,14 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
   const save = async () => {
     setBusy(true); setError(null)
     try {
+      // Тип контрагента (постачальник/клієнт) — надійний сигнал напряму для акта/рахунка
+      let cflags = null
+      if (['serviceAct', 'invoice', 'other'].includes(form.type) && form.contractor_id) {
+        const { data: cf } = await supabase.from('contractors').select('is_supplier, is_client').eq('id', form.contractor_id).maybeSingle()
+        cflags = cf
+      }
       if (existingDoc) {
-        const { role: resRole, direction: resDir } = resolveDocDir(form.type, form.doc_role || existingDoc.doc_role)
+        const { role: resRole, direction: resDir } = resolveDocDir(form.type, form.doc_role || existingDoc.doc_role, cflags)
         const upd = {
           type: form.type,
           contractor_id: form.contractor_id || null,
@@ -308,11 +322,11 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
         contractor_id: form.contractor_id || null,
         amount: Number(form.amount) || null,
         vat_amount: Number(form.vat_amount) || 0,
-        direction: resolveDocDir(form.type, form.doc_role).direction,
+        direction: resolveDocDir(form.type, form.doc_role, cflags).direction,
         is_signed: form.is_signed,
         signed_scan_url: form.is_signed ? storage_path : null,
         storage_path, file_name, file_type, file_path: storage_path,
-        doc_role: resolveDocDir(form.type, form.doc_role).role,
+        doc_role: resolveDocDir(form.type, form.doc_role, cflags).role,
         ocr_data: form, uploaded_by: user?.id || null,
         order_id: orderId || null,
         posted: form.posted !== false,
