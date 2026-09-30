@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { qc } from '../lib/companyScope'
 import { fmtInt } from '../lib/fmt'
 import { PL_ORDER, PL_LABELS, fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
@@ -6,6 +6,7 @@ import * as XLSX from 'xlsx'
 import { computePL, computePLBreakdown, computeForecast, plDrill, computeAging } from '../lib/pl'
 import { computeCashFlow, cashFlowDrill } from '../lib/cashflow'
 import { computeSnapshot } from '../lib/periodClose'
+import { getDocType } from '../lib/docgen'
 
 const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД']
 
@@ -67,6 +68,7 @@ function CashFlowView() {
   const [d, setD] = useState(null)
   const [debt, setDebt] = useState(null)   // дебіторка/кредиторка (нам винні / ми винні)
   const [drill, setDrill] = useState(null)
+  const [aging, setAging] = useState(null) // { title, data, color } для модалки боргів
 
   const reload = () => { setD(null); computeCashFlow(year, month || null).then(setD) }
   useEffect(() => { reload() }, [year, month])
@@ -108,9 +110,17 @@ function CashFlowView() {
             <div className="kpi"><div className="kpi-label">Витрати</div><div className="kpi-value" style={{ color: RED }}>{fmtInt(d.outflow.total)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>грн</span></div></div>
             <div className="kpi"><div className="kpi-label">Чистий потік</div><div className="kpi-value" style={{ color: signColor(d.netTotal) }}>{si(d.netTotal)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>грн</span></div></div>
             {debt && debt.receivable.total > 0 && (
-              <div className="kpi" style={{ borderLeft: `3px solid ${AMBER}`, background: '#FFFBEB' }}>
-                <div className="kpi-label" style={{ color: AMBER }}>Нам винні (дебіторка)</div>
+              <div className="kpi" onClick={() => setAging({ title: 'Дебіторка — нам винні', data: debt.receivable, color: AMBER })}
+                style={{ borderLeft: `3px solid ${AMBER}`, background: '#FFFBEB', cursor: 'pointer' }} title="Показати неоплачені видаткові/акти по контрагентах">
+                <div className="kpi-label" style={{ color: AMBER }}>Нам винні (дебіторка) <i className="ti ti-chevron-right" style={{ fontSize: 12 }} /></div>
                 <div className="kpi-value" style={{ color: AMBER }}>{fmtInt(debt.receivable.total)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>грн</span></div>
+              </div>
+            )}
+            {debt && debt.payable.total > 0 && (
+              <div className="kpi" onClick={() => setAging({ title: 'Кредиторка — ми винні', data: debt.payable, color: RED })}
+                style={{ borderLeft: `3px solid ${RED}`, background: '#FEF2F2', cursor: 'pointer' }} title="Показати неоплачені прихідні по контрагентах">
+                <div className="kpi-label" style={{ color: RED }}>Ми винні (кредиторка) <i className="ti ti-chevron-right" style={{ fontSize: 12 }} /></div>
+                <div className="kpi-value" style={{ color: RED }}>{fmtInt(debt.payable.total)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>грн</span></div>
               </div>
             )}
             <div className="kpi"><div className="kpi-label">Залишок на кінець</div><div className="kpi-value" style={{ color: signColor(d.closingCash) }}>{si(d.closingCash)} <span style={{ fontSize: 13, color: 'var(--text3)' }}>грн</span></div></div>
@@ -153,6 +163,52 @@ function CashFlowView() {
         </>
       )}
       {drill && <CashFlowDrillModal drill={drill} onClose={() => setDrill(null)} onSaved={() => { setDrill(null); reload() }} />}
+      {aging && <AgingModal title={aging.title} data={aging.data} color={aging.color} onClose={() => setAging(null)} />}
+    </div>
+  )
+}
+
+// Список неоплачених боргів, згрупований по контрагентах (дебіторка/кредиторка)
+function AgingModal({ title, data, color, onClose }) {
+  const groups = useMemo(() => {
+    const byC = {}
+    ;(data.docs || []).forEach(d => {
+      const g = (byC[d.contractor_id] ||= { name: d.contractorName, rows: [], total: 0 })
+      g.rows.push(d); g.total += d.outstanding
+    })
+    return Object.values(byC).sort((a, b) => b.total - a.total)
+  }, [data])
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', zIndex: 1000, overflow: 'auto' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: 12, padding: 20, width: '100%', maxWidth: 760, boxShadow: '0 10px 40px rgba(0,0,0,.3)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, gap: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>{title}</div>
+          <button className="btn" onClick={onClose} style={{ flexShrink: 0 }}><i className="ti ti-x" /></button>
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 14 }}>Разом <b style={{ color }}>{fmtInt(data.total)} грн</b> · {groups.length} контрагент(ів). Неоплачені видаткові/акти (рахунки/замовлення не рахуються).</div>
+        <div className="tbl-wrap" style={{ border: 'none', maxHeight: '62vh', overflow: 'auto' }}>
+          <table>
+            <tbody>
+              {groups.map((g, gi) => (
+                <Fragment key={gi}>
+                  <tr style={{ background: 'var(--surface2)', fontWeight: 700 }}>
+                    <td colSpan={2}>{g.name}</td>
+                    <td style={{ textAlign: 'right', color, whiteSpace: 'nowrap' }}>{fmtInt(g.total)} грн</td>
+                  </tr>
+                  {g.rows.sort((a, b) => b.ageDays - a.ageDays).map(r => (
+                    <tr key={r.id}>
+                      <td style={{ paddingLeft: 18, fontSize: 12.5 }}>{getDocType(r.type)?.label || r.type} №{r.doc_number || '—'}</td>
+                      <td style={{ fontSize: 12, color: 'var(--text3)', whiteSpace: 'nowrap' }}>{r.doc_date} <span style={{ color: r.ageDays > 30 ? RED : 'var(--text3)' }}>· {r.ageDays} дн</span></td>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{fmtInt(r.outstanding)}</td>
+                    </tr>
+                  ))}
+                </Fragment>
+              ))}
+              {groups.length === 0 && <tr><td style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Немає неоплачених боргів</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   )
 }

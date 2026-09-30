@@ -243,14 +243,14 @@ const BUCKETS = [['0-7', 0, 7], ['8-14', 8, 14], ['15-30', 15, 30], ['30+', 31, 
 export async function computeAging() {
   const today = new Date()
   const [{ data: docs }, { data: tdocs }, { data: contractors }] = await Promise.all([
-    qc('documents').select('id, contractor_id, amount, direction, type, doc_date, created_at').not('amount', 'is', null).not('direction', 'is', null),
+    qc('documents').select('id, contractor_id, amount, direction, type, doc_number, doc_date, created_at').not('amount', 'is', null).not('direction', 'is', null),
     supabase.from('transaction_documents').select('document_id, amount'),
     supabase.from('contractors').select('id, name'),
   ])
   const paidByDoc = {}; (tdocs || []).forEach(t => { paidByDoc[t.document_id] = (paidByDoc[t.document_id] || 0) + Math.abs(Number(t.amount) || 0) })
   const cname = {}; (contractors || []).forEach(c => { cname[c.id] = c.name })
 
-  const make = () => ({ total: 0, buckets: Object.fromEntries(BUCKETS.map(b => [b[0], 0])), byContractor: {} })
+  const make = () => ({ total: 0, buckets: Object.fromEntries(BUCKETS.map(b => [b[0], 0])), byContractor: {}, docs: [] })
   const recv = make(), pay = make()
 
   ;(docs || []).forEach(d => {
@@ -265,6 +265,7 @@ export async function computeAging() {
     tgt.buckets[bucket] += outstanding
     const key = d.contractor_id || 'unknown'
     tgt.byContractor[key] = (tgt.byContractor[key] || 0) + outstanding
+    tgt.docs.push({ id: d.id, type: d.type, doc_number: d.doc_number, doc_date: (d.doc_date || d.created_at || '').slice(0, 10), contractor_id: key, contractorName: cname[d.contractor_id] || 'Без контрагента', outstanding, ageDays })
   })
 
   const topList = (obj) => Object.entries(obj.byContractor)
