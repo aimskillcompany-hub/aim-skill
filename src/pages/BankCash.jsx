@@ -98,7 +98,14 @@ function TransactionsTab({ accounts, onChange }) {
     const term = q.trim()
     if (term) {
       const esc = term.replace(/[%,()]/g, ' ')
-      qb = qb.or(`counterparty.ilike.%${esc}%,edrpou.ilike.%${esc}%,description.ilike.%${esc}%`)
+      const ors = [`counterparty.ilike.%${esc}%`, `edrpou.ilike.%${esc}%`, `description.ilike.%${esc}%`]
+      // Також транзакції, прив'язані до контрагента з такою назвою/ЄДРПОУ
+      // (сира назва у виписці часто відрізняється від канонічної назви контрагента).
+      const { data: cs } = await supabase.from('contractors')
+        .select('id').or(`name.ilike.%${esc}%,short_name.ilike.%${esc}%,edrpou.ilike.%${esc}%`).limit(300)
+      const cids = (cs || []).map(c => c.id)
+      if (cids.length) ors.push(`contractor_id.in.(${cids.join(',')})`)
+      qb = qb.or(ors.join(','))
     }
     const { data } = await qb
     const list = data || []
