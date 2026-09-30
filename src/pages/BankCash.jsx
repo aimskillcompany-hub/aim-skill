@@ -74,6 +74,7 @@ function TransactionsTab({ accounts, onChange }) {
   const [status, setStatus] = useState('unconfirmed') // unconfirmed | all
   const [acc, setAcc] = useState('all')
   const [art, setArt] = useState('all')               // фільтр за статтею
+  const [limit, setLimit] = useState(500)             // пагінація «показати ще»
   const [q, setQ] = useState('')
   const [linkTx, setLinkTx] = useState(null)
   const [editTx, setEditTx] = useState(null)
@@ -91,7 +92,7 @@ function TransactionsTab({ accounts, onChange }) {
     setLoading(true)
     let qb = qc('bank_transactions')
       .select('id, date, amount, counterparty, description, edrpou, direction, article, article_id, contractor_id, account_id, is_validated')
-      .eq('is_ignored', status === 'ignored').order('date', { ascending: false }).limit(500)
+      .eq('is_ignored', status === 'ignored').order('date', { ascending: false }).limit(limit)
     if (status === 'unconfirmed') qb = qb.eq('is_validated', false)
     if (acc !== 'all') qb = qb.eq('account_id', acc)
     if (art === '__none__') qb = qb.is('article', null)
@@ -132,7 +133,8 @@ function TransactionsTab({ accounts, onChange }) {
     setLoading(false)
   }
   useEffect(() => { fetchArticles().then(setArticles) }, [])
-  useEffect(() => { const t = setTimeout(load, q ? 350 : 0); return () => clearTimeout(t) }, [status, acc, art, q])
+  useEffect(() => { const t = setTimeout(load, q ? 350 : 0); return () => clearTimeout(t) }, [status, acc, art, q, limit])
+  useEffect(() => { setLimit(500) }, [status, acc, art, q])   // нові фільтри — з початку
 
   const grouped = useMemo(() => groupByType(articles), [articles])
   const { sort, onSort, sorted } = useSort('date', 'desc')
@@ -349,6 +351,11 @@ function TransactionsTab({ accounts, onChange }) {
             </tbody>
           </table>
         </div>
+        {rows.length >= limit && (
+          <div style={{ textAlign: 'center', marginTop: 12 }}>
+            <button className="btn" onClick={() => setLimit(l => l + 500)}><i className="ti ti-chevron-down" /> Показати ще 500</button>
+          </div>
+        )}
       </div>
 
       {showAdd && <AddTxModal accounts={accounts} grouped={grouped} onClose={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); load(); onChange() }} />}
