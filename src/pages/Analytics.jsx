@@ -62,9 +62,12 @@ function PeriodPicker({ year, setYear, month, setMonth }) {
 }
 
 // ───────── Cash Flow (рух грошей, прямий метод) ─────────
-function CashFlowView() {
-  const [year, setYear] = useState(NOW.getFullYear())
-  const [month, setMonth] = useState(0)
+// fixedYear/fixedMonth — коли задані (напр. у «Закритті періоду»), період фіксований і селектор ховається.
+export function CashFlowView({ fixedYear = null, fixedMonth = null } = {}) {
+  const locked = fixedYear != null
+  const [year, setYear] = useState(fixedYear ?? NOW.getFullYear())
+  const [month, setMonth] = useState(fixedMonth ?? 0)
+  useEffect(() => { if (locked) { setYear(fixedYear); setMonth(fixedMonth) } }, [fixedYear, fixedMonth])
   const [d, setD] = useState(null)
   const [debt, setDebt] = useState(null)   // дебіторка/кредиторка (нам винні / ми винні)
   const [drill, setDrill] = useState(null)
@@ -99,7 +102,7 @@ function CashFlowView() {
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <PeriodPicker year={year} setYear={setYear} month={month} setMonth={setMonth} />
+        {!locked && <PeriodPicker year={year} setYear={setYear} month={month} setMonth={setMonth} />}
         <button className="btn" onClick={exportXlsx} disabled={!d} style={{ marginLeft: 'auto' }}><i className="ti ti-file-spreadsheet" /> Експорт Excel</button>
       </div>
 
@@ -320,9 +323,11 @@ function CashFlowDrillModal({ drill, onClose, onSaved }) {
 }
 
 // ───────── P&L ─────────
-function PLView() {
-  const [year, setYear] = useState(NOW.getFullYear())
-  const [month, setMonth] = useState(0)
+export function PLView({ fixedYear = null, fixedMonth = null } = {}) {
+  const locked = fixedYear != null
+  const [year, setYear] = useState(fixedYear ?? NOW.getFullYear())
+  const [month, setMonth] = useState(fixedMonth ?? 0)
+  useEffect(() => { if (locked) { setYear(fixedYear); setMonth(fixedMonth) } }, [fixedYear, fixedMonth])
   const [mode, setMode] = useState('fact') // fact | plan | compare
   const [data, setData] = useState(null)
   const [bd, setBd] = useState(null)
@@ -356,7 +361,7 @@ function PLView() {
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <PeriodPicker year={year} setYear={setYear} month={month} setMonth={setMonth} />
+        {!locked && <PeriodPicker year={year} setYear={setYear} month={month} setMonth={setMonth} />}
         {mode === 'fact' && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: AMBER, cursor: 'pointer', userSelect: 'none' }}>
             <input type="checkbox" checked={showPending} onChange={e => setShowPending(e.target.checked)} />
@@ -536,16 +541,18 @@ function DrillModal({ drill, year, month, onClose }) {
 }
 
 // ───────── Управлінський баланс ─────────
-function BalanceView() {
-  const [year, setYear] = useState(NOW.getFullYear())
-  const [month, setMonth] = useState(0)
+export function BalanceView({ fixedYear = null, fixedMonth = null } = {}) {
+  const locked = fixedYear != null
+  const [year, setYear] = useState(fixedYear ?? NOW.getFullYear())
+  const [month, setMonth] = useState(fixedMonth ?? 0)
+  useEffect(() => { if (locked) { setYear(fixedYear); setMonth(fixedMonth) } }, [fixedYear, fixedMonth])
   const [s, setS] = useState(null)
 
   useEffect(() => { setS(null); computeSnapshot(year, month || null).then(setS) }, [year, month])
 
   if (!s) return (
     <div>
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}><PeriodPicker year={year} setYear={setYear} month={month} setMonth={setMonth} /></div>
+      {!locked && <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}><PeriodPicker year={year} setYear={setYear} month={month} setMonth={setMonth} /></div>}
       <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
     </div>
   )
@@ -568,7 +575,7 @@ function BalanceView() {
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <PeriodPicker year={year} setYear={setYear} month={month} setMonth={setMonth} />
+        {!locked && <PeriodPicker year={year} setYear={setYear} month={month} setMonth={setMonth} />}
         <span style={{ fontSize: 12, color: 'var(--text3)' }}>станом на кінець періоду</span>
       </div>
 

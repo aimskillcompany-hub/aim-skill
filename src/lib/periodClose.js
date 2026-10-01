@@ -62,6 +62,34 @@ export async function runChecklist(year, month) {
   }
 }
 
+// ── Повнота даних: що з транзакцій періоду НЕ потрапляє у звіти і чому ──
+// Звіряльний місток: усі рухи грошей = (увійшло в P&L) + (виключене за умовами).
+// Кожна виключена група повертається з транзакціями для перегляду/дії.
+export async function computeCompleteness(year, month) {
+  const { from, to } = periodRange(year, month)
+  const txs = await fetchAll('bank_transactions',
+    'id, date, amount, direction, article, counterparty, description, is_validated, is_ignored, account_id',
+    q => q.gte('date', from).lte('date', to))
+  const num = x => Math.abs(Number(x) || 0)
+  const mk = () => ({ n: 0, sum: 0, items: [] })
+  const b = { inPL: { n: 0, sum: 0 }, ignored: mk(), unvalidated: mk(), noArticle: mk(), otherFin: mk() }
+  const active = { n: 0, sum: 0 } // неігноровані
+
+  txs.forEach(t => {
+    const a = num(t.amount)
+    if (t.is_ignored) { b.ignored.n++; b.ignored.sum += a; b.ignored.items.push(t); return }
+    active.n++; active.sum += a
+    if (!t.is_validated) { b.unvalidated.n++; b.unvalidated.sum += a; b.unvalidated.items.push(t); return }
+    if (!String(t.article || '').trim()) { b.noArticle.n++; b.noArticle.sum += a; b.noArticle.items.push(t); return }
+    if (t.direction === 'Інше' || t.direction === 'ПФД') { b.otherFin.n++; b.otherFin.sum += a; b.otherFin.items.push(t); return }
+    b.inPL.n++; b.inPL.sum += a
+  })
+  // «Увага» — суми, що тихо випадають із P&L і які варто переглянути (без Інше/ПФД — вони поза P&L свідомо)
+  b.needsReview = b.ignored.n + b.noArticle.n + b.unvalidated.n
+  b.active = active
+  return b
+}
+
 // ── Знімок цифр станом на кінець періоду ──
 export async function computeSnapshot(year, month) {
   const { to } = periodRange(year, month)
@@ -157,10 +185,12 @@ export function snapshotDiff(snap) {
 }
 
 // ── Закрити період ──
-export async function closePeriod(year, month, userId, { notes } = {}) {
+export async function closePeriod(year, month, userId, { notes, reportsConfirmed } = {}) {
   const { data: existing } = await supabase.from('period_closings')
     .select('snapshot, closed_at').eq('period_year', year).eq('period_month', month).maybeSingle()
   const snapshot = await computeSnapshot(year, month)
+  // Підтверджені звіти (Cash Flow / P&L / Баланс), на основі яких закрито період
+  if (reportsConfirmed) snapshot.reportsConfirmed = reportsConfirmed
   // Якщо період уже закривався — зберегти компактний попередній знімок для діфу
   if (existing?.snapshot) snapshot._prev = snapshotSummary(existing.snapshot, existing.closed_at)
   const payload = {
