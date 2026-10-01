@@ -1022,6 +1022,8 @@ const PROP_STATUS = { draft: 'Чернетка', sent: 'Надіслано', acc
 // ───────── Документи ─────────
 function DocumentsTab({ o }) {
   const { user } = useUser()
+  const { active } = useCompany()
+  const vatOn = active?.is_vat_payer !== false   // неплатник ПДВ (ФОП) → без ПДВ у документах
   const [rows, setRows] = useState(null)
   const [genDocs, setGenDocs] = useState([])
   const [openDoc, setOpenDoc] = useState(null)
@@ -1102,8 +1104,9 @@ function DocumentsTab({ o }) {
       supabase.from('order_items').select('*').eq('order_id', o.id).order('created_at'),
     ])
     const items = (oi || []).map(it => {
-      const v = Number(it.vat_rate) || 0
-      const net = it.price_includes_vat ? (v > 0 ? Number(it.unit_price) / (1 + v / 100) : Number(it.unit_price)) : Number(it.unit_price)
+      // Неплатник ПДВ (ФОП): ПДВ ігнорується — ціна як є, ставка 0 (узгоджено з вкладкою «Товари»).
+      const v = vatOn ? (Number(it.vat_rate) || 0) : 0
+      const net = (vatOn && it.price_includes_vat) ? (v > 0 ? Number(it.unit_price) / (1 + v / 100) : Number(it.unit_price)) : Number(it.unit_price)
       return { name: it.name, quantity: Number(it.qty) || 0, unit: it.unit || 'шт', unitPrice: Math.round((net || 0) * 100) / 100, vatRate: v, amount: '', productId: it.product_id || null }
     })
     setGen({ contractor: c || { id: o.client_id, name: o.contractors?.name }, editDoc: { doc_type: docType, items } })
