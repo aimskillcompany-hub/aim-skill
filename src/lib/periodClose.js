@@ -127,16 +127,26 @@ export async function computeSnapshot(year, month) {
   const balances = (accs || []).map(a => ({ id: a.id, name: a.name, type: a.type, balance: (Number(a.opening_balance) || 0) + (accAgg[a.id] || 0) }))
   const cashBankTotal = balances.reduce((s, b) => s + b.balance, 0)
 
-  // Дебіторка/кредиторка станом на кінець періоду (неоплачені документи-борги без bank_transaction_id)
+  // Дебіторка/кредиторка станом на кінець періоду.
+  // Оплата рахується через transaction_documents (повні/часткові оплати) — як у computeAging і картці
+  // контрагента, а НЕ по documents.bank_transaction_id (старий прямий лінк, не бачив transaction_documents).
   const debtDocs = await fetchAll('documents', 'id, type, direction, amount, doc_date, doc_number, contractor_id', q =>
-    q.lte('doc_date', to).is('bank_transaction_id', null).not('amount', 'is', null))
+    q.lte('doc_date', to).not('amount', 'is', null).not('direction', 'is', null))
+  const relevant = debtDocs.filter(d => countsAsDebt(d.type) && (d.direction === 'payable' || d.direction === 'receivable'))
+  const debtIds = relevant.map(d => d.id)
+  const paidByDoc = {}
+  for (let i = 0; i < debtIds.length; i += 200) {
+    const { data } = await supabase.from('transaction_documents').select('document_id, amount').in('document_id', debtIds.slice(i, i + 200))
+    ;(data || []).forEach(t => { paidByDoc[t.document_id] = (paidByDoc[t.document_id] || 0) + Math.abs(Number(t.amount) || 0) })
+  }
   let receivable = 0, payable = 0
   const receivableDocs = [], payableDocs = []
-  debtDocs.forEach(d => {
-    if (!countsAsDebt(d.type)) return
-    const amt = Number(d.amount) || 0
-    const row = { id: d.id, type: d.type, doc_number: d.doc_number, doc_date: d.doc_date, amount: amt, contractor_id: d.contractor_id }
-    if (d.direction === 'payable') { payable += amt; payableDocs.push(row) } else { receivable += amt; receivableDocs.push(row) }
+  relevant.forEach(d => {
+    const amt = Math.abs(Number(d.amount) || 0)
+    const outstanding = amt - (paidByDoc[d.id] || 0)
+    if (outstanding <= 0.5) return // повністю оплачено — не борг
+    const row = { id: d.id, type: d.type, doc_number: d.doc_number, doc_date: d.doc_date, amount: outstanding, contractor_id: d.contractor_id }
+    if (d.direction === 'payable') { payable += outstanding; payableDocs.push(row) } else { receivable += outstanding; receivableDocs.push(row) }
   })
   // імена контрагентів для розшифровки боргу
   const dcids = [...new Set([...receivableDocs, ...payableDocs].map(r => r.contractor_id).filter(Boolean))]
