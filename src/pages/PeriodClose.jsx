@@ -267,7 +267,7 @@ function GoodsReportView({ year, month }) {
   const t = d.totals
 
   const Item = ({ r, children }) => (
-    <div onClick={() => openById(r.docId)} title={r.docId ? 'Відкрити документ приходу для звірки' : 'Документ приходу не знайдено'}
+    <div onClick={() => openById(r.docId)} title={r.docId ? 'Відкрити документ для звірки' : 'Документ не знайдено'}
       style={{ padding: '7px 0', borderBottom: '1px solid var(--border)', cursor: r.docId ? 'pointer' : 'default' }}>
       <div style={{ fontSize: 12.5, fontWeight: 500, display: 'flex', gap: 4, alignItems: 'baseline', color: r.docId ? 'var(--blue)' : 'var(--text)' }}>
         {r.docId && <i className="ti ti-paperclip" style={{ fontSize: 11, flexShrink: 0 }} />}
@@ -296,7 +296,7 @@ function GoodsReportView({ year, month }) {
           render={r => <>{fmt(r.qty)} шт · {fmt(r.unitCost)} грн/од · Σ <b style={{ color: 'var(--text2)' }}>{fmtInt(r.value)}</b></>} />
       </div>
       <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 10, marginBottom: 0 }}>
-        <i className="ti ti-paperclip" /> Клік по товару відкриває документ приходу (прихідну накладну) — щоб звірити ціну закупівлі й продажу з оригіналом. Ціни без ПДВ.
+        <i className="ti ti-paperclip" /> Клік по товару відкриває документ: у «Куплено» й «Залишок» — прихідну накладну, у «Продано» — вашу видаткову. Щоб звірити ціни з оригіналом. Ціни без ПДВ.
       </p>
       {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />}
     </>
