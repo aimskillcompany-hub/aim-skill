@@ -7,6 +7,9 @@ import { computePL, computePLBreakdown, computeForecast, plDrill, computeAging }
 import { computeCashFlow, cashFlowDrill } from '../lib/cashflow'
 import { computeSnapshot } from '../lib/periodClose'
 import { getDocType } from '../lib/docgen'
+import { supabase } from '../lib/supabase'
+import DocModal from '../components/DocModal'
+import { useUser } from '../lib/auth'
 
 const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД']
 
@@ -228,6 +231,33 @@ function DrillCell({ value, color, bold, signed, onClick }) {
     </td>
   )
 }
+// Клітинка «Документ»: показує прив'язані до транзакції документи; клік відкриває для звірки.
+function LinkedDocCell({ docs }) {
+  const { user } = useUser()
+  const [openDoc, setOpenDoc] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const open = async (id) => {
+    if (!id || busy) return
+    setBusy(true)
+    const { data } = await qc('documents').select('*').eq('id', id).maybeSingle()
+    setBusy(false)
+    if (data) setOpenDoc(data)
+  }
+  if (!docs || docs.length === 0) return <span style={{ color: 'var(--text3)', fontSize: 11.5 }}>не прив'язано</span>
+  return (
+    <>
+      {docs.map((d, i) => (
+        <span key={d.id || i} onClick={() => open(d.id)}
+          style={{ display: 'block', cursor: 'pointer', color: 'var(--blue)', fontSize: 11.5, textDecoration: 'underline dotted', textUnderlineOffset: 2, whiteSpace: 'nowrap' }}
+          title="Відкрити документ для звірки">
+          <i className="ti ti-paperclip" style={{ marginRight: 3 }} />{getDocType(d.type)?.label || d.type || 'документ'}{d.doc_number ? ` №${d.doc_number}` : ''}
+        </span>
+      ))}
+      {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />}
+    </>
+  )
+}
+
 function CfHeader({ label, sec, cols, color, sign, openDrill }) {
   return (
     <tr style={{ fontWeight: 600, background: 'var(--surface2)' }}>
@@ -282,7 +312,7 @@ function CashFlowDrillModal({ drill, onClose, onSaved }) {
         {!rows ? <p style={{ color: 'var(--text3)' }}>Завантаження…</p> : rows.length === 0 ? <p style={{ color: 'var(--text3)' }}>Немає транзакцій</p> : (
           <div className="tbl-wrap" style={{ border: 'none', maxHeight: '60vh', overflow: 'auto' }}>
             <table>
-              <thead><tr><th>Дата</th><th>Контрагент</th><th style={{ textAlign: 'right' }}>Сума</th><th>Напрям</th><th>Стаття</th></tr></thead>
+              <thead><tr><th>Дата</th><th>Контрагент</th><th style={{ textAlign: 'right' }}>Сума</th><th>Напрям</th><th>Стаття</th><th>Документ</th></tr></thead>
               <tbody>
                 {rows.map(t => {
                   const changed = edits[t.id] && (edits[t.id].direction !== undefined || edits[t.id].article !== undefined)
@@ -306,11 +336,12 @@ function CashFlowDrillModal({ drill, onClose, onSaved }) {
                           ))}
                         </select>
                       </td>
+                      <td><LinkedDocCell docs={t.docs} /></td>
                     </tr>
                   )
                 })}
               </tbody>
-              <tfoot><tr style={{ fontWeight: 700 }}><td colSpan={2}>Разом ({rows.length})</td><td style={{ textAlign: 'right' }}>{fmtInt(total)}</td><td colSpan={2} /></tr></tfoot>
+              <tfoot><tr style={{ fontWeight: 700 }}><td colSpan={2}>Разом ({rows.length})</td><td style={{ textAlign: 'right' }}>{fmtInt(total)}</td><td colSpan={3} /></tr></tfoot>
             </table>
           </div>
         )}
@@ -524,7 +555,7 @@ function DrillModal({ drill, year, month, onClose }) {
         {!rows ? <p style={{ color: 'var(--text3)' }}>Завантаження…</p> : rows.length === 0 ? <p style={{ color: 'var(--text3)' }}>Немає транзакцій</p> : (
           <div className="tbl-wrap" style={{ border: 'none', maxHeight: '62vh', overflow: 'auto' }}>
             <table>
-              <thead><tr><th>Дата</th><th>Контрагент</th><th>Стаття</th><th style={{ textAlign: 'right' }}>Сума</th></tr></thead>
+              <thead><tr><th>Дата</th><th>Контрагент</th><th>Стаття</th><th style={{ textAlign: 'right' }}>Сума</th><th>Документ</th></tr></thead>
               <tbody>
                 {rows.map(t => (
                   <tr key={t.id}>
@@ -532,10 +563,11 @@ function DrillModal({ drill, year, month, onClose }) {
                     <td><div className="trunc" title={t.counterparty || ''}>{t.counterparty || '—'}</div>{t.description && <div className="trunc" style={{ fontSize: 11, color: 'var(--text3)' }}>{t.description}</div>}</td>
                     <td><div className="trunc">{t.article}</div></td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: t.direction === 'Доходи' ? GREEN : RED }}>{fmtInt(Math.abs(Number(t.amount) || 0))}</td>
+                    <td><LinkedDocCell docs={t.docs} /></td>
                   </tr>
                 ))}
               </tbody>
-              <tfoot><tr style={{ fontWeight: 700 }}><td colSpan={3}>Разом ({rows.length})</td><td style={{ textAlign: 'right' }}>{fmtInt(total)}</td></tr></tfoot>
+              <tfoot><tr style={{ fontWeight: 700 }}><td colSpan={3}>Разом ({rows.length})</td><td style={{ textAlign: 'right' }}>{fmtInt(total)}</td><td /></tr></tfoot>
             </table>
           </div>
         )}

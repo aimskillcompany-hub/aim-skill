@@ -149,7 +149,20 @@ export async function plDrill(year, month, bucketKey, articleNames, opts = {}) {
     .gte('date', from).lte('date', to)
     .in('article', articleNames)
     .order('date', { ascending: true })
-  return (data || []).filter(t => t.direction !== 'Інше' && t.direction !== 'ПФД')
+  const list = (data || []).filter(t => t.direction !== 'Інше' && t.direction !== 'ПФД')
+  // прив'язані документи (transaction_documents → documents) для звірки
+  const ids = list.map(t => t.id)
+  if (ids.length) {
+    const byTx = {}
+    for (let i = 0; i < ids.length; i += 200) {
+      const { data: tds } = await supabase.from('transaction_documents')
+        .select('transaction_id, document_id, documents(id, type, doc_number, file_name, amount)')
+        .in('transaction_id', ids.slice(i, i + 200))
+      ;(tds || []).forEach(td => { (byTx[td.transaction_id] ||= []).push(td.documents || { id: td.document_id }) })
+    }
+    list.forEach(t => { t.docs = byTx[t.id] || [] })
+  }
+  return list
 }
 
 // ── Звіт рентабельності по видаткових накладних (реалізація) ──

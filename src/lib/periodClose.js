@@ -300,6 +300,60 @@ export async function computePeriodDetail(year, month) {
   }
 }
 
+// ── Рух товарів за період: куплено / продано / залишок (з цінами) ──
+// Ціни рухів складу — NET (без ПДВ), єдина база (див. архітектурне рішення №17).
+// price на IN = ціна закупівлі/од; price на OUT = ціна продажу/од; cost_price на OUT = собівартість/од.
+// Залишкова вартість = к-сть на кінець × buy_price (остання закупівля) — як у знімку/балансі.
+export async function computeGoodsReport(year, month) {
+  const { from, to } = periodRange(year, month)
+  const sm = await fetchAll('stock_movements', 'product_id, type, quantity, price, cost_price, date', q => q.lte('date', to))
+  const agg = {}
+  sm.forEach(m => {
+    const q = Number(m.quantity) || 0, price = Number(m.price) || 0, cost = Number(m.cost_price) || 0
+    const a = (agg[m.product_id] ||= { openQ: 0, inQ: 0, inSum: 0, outQ: 0, outSum: 0, outCost: 0 })
+    const inPeriod = m.date >= from && m.date <= to
+    if (m.type === 'in') {
+      if (m.date < from) a.openQ += q
+      else if (inPeriod) { a.inQ += q; a.inSum += q * price }
+    } else {
+      if (m.date < from) a.openQ -= q
+      else if (inPeriod) { a.outQ += q; a.outSum += q * price; a.outCost += q * cost }
+    }
+  })
+
+  const pids = Object.keys(agg)
+  const prodMap = {}
+  for (let i = 0; i < pids.length; i += 200) {
+    const { data } = await supabase.from('products').select('id, name, buy_price, product_type').in('id', pids.slice(i, i + 200))
+    ;(data || []).forEach(p => prodMap[p.id] = p)
+  }
+  const goods = pids.filter(id => (prodMap[id]?.product_type || 'goods') === 'goods')
+  const rows = goods.map(id => {
+    const a = agg[id], p = prodMap[id] || {}
+    const closeQ = a.openQ + a.inQ - a.outQ, unitCost = Number(p.buy_price) || 0
+    return { product_id: id, name: p.name || id, ...a, closeQ, unitCost, closeVal: closeQ * unitCost }
+  })
+
+  const purchased = rows.filter(r => r.inQ > 0.0001)
+    .map(r => ({ product_id: r.product_id, name: r.name, qty: r.inQ, price: r.inQ ? r.inSum / r.inQ : 0, sum: r.inSum }))
+    .sort((a, b) => b.sum - a.sum)
+  const sold = rows.filter(r => r.outQ > 0.0001)
+    .map(r => ({ product_id: r.product_id, name: r.name, qty: r.outQ, price: r.outQ ? r.outSum / r.outQ : 0, cost: r.outQ ? r.outCost / r.outQ : 0, revenue: r.outSum, costSum: r.outCost, margin: r.outSum - r.outCost }))
+    .sort((a, b) => b.revenue - a.revenue)
+  const remaining = rows.filter(r => Math.abs(r.closeQ) > 0.0001)
+    .map(r => ({ product_id: r.product_id, name: r.name, qty: r.closeQ, unitCost: r.unitCost, value: r.closeVal }))
+    .sort((a, b) => b.value - a.value)
+
+  const totals = {
+    purchasedSum: purchased.reduce((s, r) => s + r.sum, 0),
+    soldRevenue: sold.reduce((s, r) => s + r.revenue, 0),
+    soldCost: sold.reduce((s, r) => s + r.costSum, 0),
+    soldMargin: sold.reduce((s, r) => s + r.margin, 0),
+    remainingValue: remaining.reduce((s, r) => s + r.value, 0),
+  }
+  return { purchased, sold, remaining, totals }
+}
+
 // ── Безперервність залишків: на початок + рух = на кінець (склад + гроші) ──
 export async function computeContinuity(year, month) {
   const { from, to } = periodRange(year, month)

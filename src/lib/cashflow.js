@@ -3,7 +3,24 @@
 // бо це фактичні гроші (як у getAccountBalances), на відміну від P&L (лише validated).
 // Надходження/витрати групуються по статтях; колонки = місяці (рік) або дні (місяць).
 import { qc } from './companyScope'
+import { supabase } from './supabase'
 import { periodRange } from './pl'
+
+// Підтягнути прив'язані документи (transaction_documents → documents) до списку транзакцій.
+// Кожній транзакції додає t.docs = [{ id, type, doc_number, ... }] (або [] якщо не прив'язано).
+export async function attachLinkedDocs(list) {
+  const ids = list.map(t => t.id).filter(Boolean)
+  if (!ids.length) return list
+  const byTx = {}
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data } = await supabase.from('transaction_documents')
+      .select('transaction_id, document_id, documents(id, type, doc_number, file_name, amount)')
+      .in('transaction_id', ids.slice(i, i + 200))
+    ;(data || []).forEach(td => { (byTx[td.transaction_id] ||= []).push(td.documents || { id: td.document_id }) })
+  }
+  list.forEach(t => { t.docs = byTx[t.id] || [] })
+  return list
+}
 
 const MONTHS = ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Лип', 'Сер', 'Вер', 'Жов', 'Лис', 'Гру']
 const monthEnd = (y, m) => new Date(y, m, 0).getDate()
@@ -91,5 +108,5 @@ export async function cashFlowDrill(year, month, { bucketKey, article, sign } = 
     if (article === 'Без статті') list = list.filter(t => !(t.article || '').trim())
     else list = list.filter(t => (t.article || '').trim() === article)
   }
-  return list
+  return attachLinkedDocs(list)
 }

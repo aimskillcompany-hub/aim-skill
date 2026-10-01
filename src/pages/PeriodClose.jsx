@@ -3,7 +3,7 @@ import { useUser } from '../lib/auth'
 import { fmt, fmtInt } from '../lib/fmt'
 import { qc } from '../lib/companyScope'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
-import { listClosings, periodStatus, runChecklist, closePeriod, reopenPeriod, computeCompleteness } from '../lib/periodClose'
+import { listClosings, periodStatus, runChecklist, closePeriod, reopenPeriod, computeCompleteness, computeGoodsReport } from '../lib/periodClose'
 import { getDocType } from '../lib/docgen'
 import DocModal from '../components/DocModal'
 import { CashFlowView, PLView, BalanceView } from './Analytics'
@@ -188,6 +188,12 @@ export default function PeriodClose() {
             </ReportCard>
           ))}
 
+          {/* Рух товарів за період: куплено / продано / залишок (інформативно) */}
+          <ReportCard icon="ti-package" title="Товари — рух запасів за період"
+            hint="Що куплено, що продано і що лишилось на складі. Ціни — без ПДВ (базова облікова). Залишкова вартість = к-сть × остання ціна закупівлі.">
+            <GoodsReportView key={refreshKey} year={year} month={sel} />
+          </ReportCard>
+
           {/* Дія закриття */}
           {!isClosed && (
             <div className="card" style={{ marginBottom: 16 }}>
@@ -231,7 +237,7 @@ function ReportCard({ icon, title, hint, confirmed, onConfirm, readOnly, childre
         <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
           <i className={`ti ${icon}`} style={{ color: 'var(--blue)' }} />{title}
         </h3>
-        {readOnly
+        {!onConfirm ? null : readOnly
           ? (confirmed && <span style={{ fontSize: 13, color: 'var(--green)', fontWeight: 600, whiteSpace: 'nowrap' }}><i className="ti ti-check" /> Підтверджено при закритті</span>)
           : (
             <label style={{
@@ -246,6 +252,75 @@ function ReportCard({ icon, title, hint, confirmed, onConfirm, readOnly, childre
       </div>
       {hint && <p style={{ fontSize: 12, color: 'var(--text3)', margin: '0 0 12px' }}>{hint}</p>}
       {children}
+    </div>
+  )
+}
+
+// Три таблиці руху товарів: куплено / продано / залишок (з цінами)
+function GoodsReportView({ year, month }) {
+  const [d, setD] = useState(null)
+  useEffect(() => { setD(null); computeGoodsReport(year, month).then(setD) }, [year, month])
+  if (!d) return <p style={{ color: 'var(--text3)' }}>Завантаження…</p>
+  const t = d.totals
+  const empty = <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 16 }}>немає</td></tr>
+  const num = { textAlign: 'right', whiteSpace: 'nowrap' }
+  return (
+    <div style={{ display: 'grid', gap: 20 }}>
+      {/* Куплено */}
+      <div>
+        <div style={{ fontWeight: 700, marginBottom: 8, color: 'var(--red)' }}>Куплено ({d.purchased.length}) — на {fmtInt(t.purchasedSum)} грн</div>
+        <div className="tbl-wrap" style={{ border: 'none' }}>
+          <table>
+            <thead><tr><th style={{ textAlign: 'left' }}>Товар</th><th style={num}>К-сть</th><th style={num}>Почому купив (грн/од)</th><th style={num}>Сума</th></tr></thead>
+            <tbody>
+              {d.purchased.length === 0 ? empty : d.purchased.map(r => (
+                <tr key={r.product_id}>
+                  <td style={{ textAlign: 'left' }}>{r.name?.slice(0, 60)}</td>
+                  <td style={num}>{fmt(r.qty)}</td><td style={num}>{fmt(r.price)}</td><td style={num}>{fmtInt(r.sum)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {/* Продано */}
+      <div>
+        <div style={{ fontWeight: 700, marginBottom: 8, color: 'var(--green)' }}>Продано ({d.sold.length}) — виручка {fmtInt(t.soldRevenue)} грн · маржа {fmtInt(t.soldMargin)} грн</div>
+        <div className="tbl-wrap" style={{ border: 'none' }}>
+          <table>
+            <thead><tr><th style={{ textAlign: 'left' }}>Товар</th><th style={num}>К-сть</th><th style={num}>Почому продав (грн/од)</th><th style={num}>Собівартість (грн/од)</th><th style={num}>Виручка</th><th style={num}>Маржа</th></tr></thead>
+            <tbody>
+              {d.sold.length === 0 ? empty : d.sold.map(r => (
+                <tr key={r.product_id}>
+                  <td style={{ textAlign: 'left' }}>{r.name?.slice(0, 60)}</td>
+                  <td style={num}>{fmt(r.qty)}</td><td style={num}>{fmt(r.price)}</td>
+                  <td style={{ ...num, color: 'var(--text3)' }}>{fmt(r.cost)}</td>
+                  <td style={num}>{fmtInt(r.revenue)}</td>
+                  <td style={{ ...num, color: r.margin >= 0 ? 'var(--green)' : 'var(--red)' }}>{r.margin < 0 ? '−' : ''}{fmtInt(r.margin)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {/* Залишок */}
+      <div>
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>Залишок на кінець періоду ({d.remaining.length}) — на {fmtInt(t.remainingValue)} грн</div>
+        <div className="tbl-wrap" style={{ border: 'none' }}>
+          <table>
+            <thead><tr><th style={{ textAlign: 'left' }}>Товар</th><th style={num}>К-сть</th><th style={num}>Собівартість (грн/од)</th><th style={num}>Залишкова вартість</th></tr></thead>
+            <tbody>
+              {d.remaining.length === 0 ? empty : d.remaining.map(r => (
+                <tr key={r.product_id}>
+                  <td style={{ textAlign: 'left' }}>{r.name?.slice(0, 60)}</td>
+                  <td style={{ ...num, color: r.qty < 0 ? 'var(--red)' : undefined }}>{fmt(r.qty)}</td>
+                  <td style={num}>{fmt(r.unitCost)}</td><td style={num}>{fmtInt(r.value)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   )
 }
