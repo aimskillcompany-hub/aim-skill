@@ -128,21 +128,32 @@ export async function computeSnapshot(year, month) {
   const cashBankTotal = balances.reduce((s, b) => s + b.balance, 0)
 
   // Дебіторка/кредиторка станом на кінець періоду (неоплачені документи-борги без bank_transaction_id)
-  const debtDocs = await fetchAll('documents', 'type, direction, amount, doc_date', q =>
+  const debtDocs = await fetchAll('documents', 'id, type, direction, amount, doc_date, doc_number, contractor_id', q =>
     q.lte('doc_date', to).is('bank_transaction_id', null).not('amount', 'is', null))
   let receivable = 0, payable = 0
+  const receivableDocs = [], payableDocs = []
   debtDocs.forEach(d => {
     if (!countsAsDebt(d.type)) return
     const amt = Number(d.amount) || 0
-    if (d.direction === 'payable') payable += amt; else receivable += amt
+    const row = { id: d.id, type: d.type, doc_number: d.doc_number, doc_date: d.doc_date, amount: amt, contractor_id: d.contractor_id }
+    if (d.direction === 'payable') { payable += amt; payableDocs.push(row) } else { receivable += amt; receivableDocs.push(row) }
   })
+  // імена контрагентів для розшифровки боргу
+  const dcids = [...new Set([...receivableDocs, ...payableDocs].map(r => r.contractor_id).filter(Boolean))]
+  const dcn = {}
+  for (let i = 0; i < dcids.length; i += 100) {
+    const { data } = await supabase.from('contractors').select('id, name').in('id', dcids.slice(i, i + 100))
+    ;(data || []).forEach(c => dcn[c.id] = c.name)
+  }
+  receivableDocs.forEach(r => r.contractorName = dcn[r.contractor_id] || 'Без контрагента')
+  payableDocs.forEach(r => r.contractorName = dcn[r.contractor_id] || 'Без контрагента')
 
   return {
     pl: { totals: pl.totals?.fact || null, sections: pl.sections || [] },
     margin: profit.grand || null,
     stock: { totalValue: stockValue, count: stockItems.length, items: stockItems },
     balances, cashBankTotal,
-    receivable, payable,
+    receivable, payable, receivableDocs, payableDocs,
   }
 }
 

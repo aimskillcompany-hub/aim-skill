@@ -583,6 +583,7 @@ export function BalanceView({ fixedYear = null, fixedMonth = null } = {}) {
   const [month, setMonth] = useState(fixedMonth ?? 0)
   useEffect(() => { if (locked) { setYear(fixedYear); setMonth(fixedMonth) } }, [fixedYear, fixedMonth])
   const [s, setS] = useState(null)
+  const [drill, setDrill] = useState(null) // розшифровка рядка балансу
 
   useEffect(() => { setS(null); computeSnapshot(year, month || null).then(setS) }, [year, month])
 
@@ -601,10 +602,12 @@ export function BalanceView({ fixedYear = null, fixedMonth = null } = {}) {
   const equity = assets - pay
   const accounts = (s.balances || []).filter(b => Math.abs(b.balance) > 0.005)
 
-  const Row = ({ label, value, indent, bold, color, sub }) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '6px 0', borderBottom: sub ? 'none' : '1px solid var(--border)', paddingLeft: indent ? 18 : 0 }}>
-      <span style={{ fontWeight: bold ? 700 : 400, color: sub ? 'var(--text2)' : 'var(--text)', fontSize: sub ? 12.5 : 14 }}>{label}</span>
-      <span style={{ fontWeight: bold ? 700 : 500, color: color || 'var(--text)', fontVariantNumeric: 'tabular-nums', fontSize: bold ? 15 : 13.5 }}>{si(value)}</span>
+  const Row = ({ label, value, indent, bold, color, sub, onClick }) => (
+    <div onClick={onClick} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '6px 0', borderBottom: sub ? 'none' : '1px solid var(--border)', paddingLeft: indent ? 18 : 0, cursor: onClick ? 'pointer' : 'default' }}>
+      <span style={{ fontWeight: bold ? 700 : 400, color: sub ? 'var(--text2)' : 'var(--text)', fontSize: sub ? 12.5 : 14 }}>
+        {label}{onClick && <i className="ti ti-chevron-right" style={{ fontSize: 12, color: 'var(--text3)', marginLeft: 4 }} />}
+      </span>
+      <span style={{ fontWeight: bold ? 700 : 500, color: color || 'var(--text)', fontVariantNumeric: 'tabular-nums', fontSize: bold ? 15 : 13.5, textDecoration: onClick ? 'underline dotted' : 'none', textUnderlineOffset: 3 }}>{si(value)}</span>
     </div>
   )
 
@@ -620,8 +623,8 @@ export function BalanceView({ fixedYear = null, fixedMonth = null } = {}) {
           <div className="card-title" style={{ color: GREEN }}>Активи</div>
           <Row label="Гроші (рахунки/каса)" value={cash} bold color={signColor(cash)} />
           {accounts.map(a => <Row key={a.id} label={a.name} value={a.balance} indent sub color={signColor(a.balance)} />)}
-          <Row label="Склад (товари за собівартістю)" value={stock} bold />
-          <Row label="Дебіторка (нам винні)" value={recv} bold color={AMBER} />
+          <Row label="Склад (товари за собівартістю)" value={stock} bold onClick={stock ? () => setDrill({ type: 'stock' }) : null} />
+          <Row label="Дебіторка (нам винні)" value={recv} bold color={AMBER} onClick={recv ? () => setDrill({ type: 'recv' }) : null} />
           <div style={{ marginTop: 8, paddingTop: 8, borderTop: '2px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ fontWeight: 700, fontSize: 15 }}>Усього активів</span>
             <span style={{ fontWeight: 700, fontSize: 17, color: signColor(assets), fontVariantNumeric: 'tabular-nums' }}>{si(assets)} грн</span>
@@ -630,7 +633,7 @@ export function BalanceView({ fixedYear = null, fixedMonth = null } = {}) {
 
         <div className="card">
           <div className="card-title" style={{ color: RED }}>Пасиви та капітал</div>
-          <Row label="Кредиторка (ми винні)" value={pay} bold color={RED} />
+          <Row label="Кредиторка (ми винні)" value={pay} bold color={RED} onClick={pay ? () => setDrill({ type: 'pay' }) : null} />
           <Row label="Власний капітал (активи − зобов'язання)" value={equity} bold color={signColor(equity)} />
           <div style={{ marginTop: 8, paddingTop: 8, borderTop: '2px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ fontWeight: 700, fontSize: 15 }}>Усього пасивів</span>
@@ -640,8 +643,81 @@ export function BalanceView({ fixedYear = null, fixedMonth = null } = {}) {
       </div>
 
       <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 14 }}>
-        Управлінський баланс: <b>Активи</b> = гроші на рахунках + оцінка складу (товари × собівартість, лише goods) + дебіторка (неоплачені видаткові/акти). <b>Пасиви</b> = кредиторка (неоплачені прихідні). <b>Капітал</b> = Активи − Зобов'язання (балансуюча величина; позики/ОЗ поки не враховуються). Дебіторка/кредиторка — неоплачені документи-борги станом на кінець періоду.
+        Управлінський баланс: <b>Активи</b> = гроші на рахунках + оцінка складу (товари × собівартість, лише goods) + дебіторка (неоплачені видаткові/акти). <b>Пасиви</b> = кредиторка (неоплачені прихідні). <b>Капітал</b> = Активи − Зобов'язання (балансуюча величина; позики/ОЗ поки не враховуються). Дебіторка/кредиторка — неоплачені документи-борги станом на кінець періоду. Натисніть на цифру — побачите склад суми.
       </p>
+      {drill && <BalanceDrillModal drill={drill} snap={s} onClose={() => setDrill(null)} />}
+    </div>
+  )
+}
+
+// Розшифровка рядка балансу: склад (товари) або борг (дебіторка/кредиторка по контрагентах, з відкриттям документа)
+function BalanceDrillModal({ drill, snap, onClose }) {
+  const { user } = useUser()
+  const [openDoc, setOpenDoc] = useState(null)
+  const openById = async (id) => { if (!id) return; const { data } = await qc('documents').select('*').eq('id', id).maybeSingle(); if (data) setOpenDoc(data) }
+
+  let title, color, content
+  if (drill.type === 'stock') {
+    title = 'Склад — залишки за собівартістю'; color = 'var(--text)'
+    const items = snap.stock?.items || []
+    content = (
+      <table>
+        <thead><tr style={{ color: 'var(--text3)', textAlign: 'right' }}>
+          <th style={{ textAlign: 'left' }}>Товар</th><th>К-сть</th><th>Собів/од</th><th>Вартість</th></tr></thead>
+        <tbody>
+          {items.map(it => (
+            <tr key={it.product_id} style={{ textAlign: 'right' }}>
+              <td style={{ textAlign: 'left' }}>{it.name?.slice(0, 50)}</td>
+              <td style={{ color: it.qty < 0 ? RED : 'inherit' }}>{fmtInt(it.qty)}</td>
+              <td>{fmtInt(it.unit_cost)}</td><td>{fmtInt(it.value)}</td>
+            </tr>
+          ))}
+          {items.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text3)', padding: 20 }}>Немає залишків</td></tr>}
+        </tbody>
+      </table>
+    )
+  } else {
+    const isRecv = drill.type === 'recv'
+    title = isRecv ? 'Дебіторка — нам винні' : 'Кредиторка — ми винні'
+    color = isRecv ? AMBER : RED
+    const docs = (isRecv ? snap.receivableDocs : snap.payableDocs) || []
+    const byC = {}
+    docs.forEach(d => { const g = (byC[d.contractor_id] ||= { name: d.contractorName, rows: [], total: 0 }); g.rows.push(d); g.total += d.amount })
+    const groups = Object.values(byC).sort((a, b) => b.total - a.total)
+    content = (
+      <table>
+        <tbody>
+          {groups.map((g, gi) => (
+            <Fragment key={gi}>
+              <tr style={{ background: 'var(--surface2)', fontWeight: 700 }}>
+                <td colSpan={2}>{g.name}</td>
+                <td style={{ textAlign: 'right', color, whiteSpace: 'nowrap' }}>{fmtInt(g.total)} грн</td>
+              </tr>
+              {g.rows.sort((a, b) => (a.doc_date || '').localeCompare(b.doc_date || '')).map(r => (
+                <tr key={r.id} onClick={() => openById(r.id)} style={{ cursor: 'pointer' }} title="Відкрити документ">
+                  <td style={{ paddingLeft: 18, fontSize: 12.5, color: 'var(--blue)' }}><i className="ti ti-file-text" style={{ marginRight: 4 }} />{getDocType(r.type)?.label || r.type} №{r.doc_number || '—'}</td>
+                  <td style={{ fontSize: 12, color: 'var(--text3)', whiteSpace: 'nowrap' }}>{r.doc_date}</td>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{fmtInt(r.amount)}</td>
+                </tr>
+              ))}
+            </Fragment>
+          ))}
+          {groups.length === 0 && <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text3)', padding: 20 }}>Немає неоплачених документів</td></tr>}
+        </tbody>
+      </table>
+    )
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', zIndex: 1000, overflow: 'auto' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: 12, padding: 20, width: '100%', maxWidth: 760, boxShadow: '0 10px 40px rgba(0,0,0,.3)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, gap: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 15, color }}>{title}</div>
+          <button className="btn" onClick={onClose} style={{ flexShrink: 0 }}><i className="ti ti-x" /></button>
+        </div>
+        <div className="tbl-wrap" style={{ border: 'none', maxHeight: '64vh', overflow: 'auto' }}>{content}</div>
+      </div>
+      {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />}
     </div>
   )
 }
