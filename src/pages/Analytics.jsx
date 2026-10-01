@@ -75,7 +75,9 @@ export function CashFlowView({ fixedYear = null, fixedMonth = null } = {}) {
 
   const reload = () => { setD(null); computeCashFlow(year, month || null).then(setD) }
   useEffect(() => { reload() }, [year, month])
-  useEffect(() => { computeAging().then(setDebt) }, [])
+  // Дебіторка/кредиторка (computeAging) — поточний борг по всій історії, НЕ прив'язаний до періоду.
+  // У режимі закриття (locked) не показуємо — правильний борг станом на кінець періоду є у звіті «Баланс».
+  useEffect(() => { if (!locked) computeAging().then(setDebt) }, [locked])
 
   // Відкрити перелік транзакцій за клітинкою (стаття × період × напрям руху)
   const openDrill = (article, bucketKey, sign, name, colLabel) =>
@@ -375,7 +377,9 @@ export function PLView({ fixedYear = null, fixedMonth = null } = {}) {
         </div>
       </div>
 
-      <ForecastCard year={year} month={month || null} />
+      {/* Прогноз (факт + дебіторка + маржа відкритих замовлень) — майбутнє, не прив'язане до місяця.
+          У режимі закриття (locked) ховаємо: там потрібен лише об'єктивний факт періоду. */}
+      {!locked && <ForecastCard year={year} month={month || null} />}
 
       <div className="card">
         {mode === 'fact' ? (
