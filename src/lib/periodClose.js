@@ -127,6 +127,21 @@ export async function computeSnapshot(year, month) {
   const balances = (accs || []).map(a => ({ id: a.id, name: a.name, type: a.type, balance: (Number(a.opening_balance) || 0) + (accAgg[a.id] || 0) }))
   const cashBankTotal = balances.reduce((s, b) => s + b.balance, 0)
 
+  // Поворотна фінансова допомога (ПФД) — позики: сальдо до кінця періоду.
+  // Гроші від/до ПФД сидять у cashBankTotal, але це НЕ капітал (треба повернути). Дзеркалимо як зобов'язання,
+  // щоб отримання позики не роздувало власний капітал, а повернення — не занижувало.
+  // Сальдо > 0 — ми винні повернути; < 0 — нам мають повернути.
+  const accById2 = {}; (accs || []).forEach(a => accById2[a.id] = a)
+  const { data: loanTxs } = await qc('bank_transactions')
+    .select('id, date, amount, counterparty, description, article, account_id')
+    .eq('is_ignored', false).eq('direction', 'ПФД').lte('date', to).order('date')
+  let loansNet = 0
+  ;(loanTxs || []).forEach(t => {
+    const acc = accById2[t.account_id]
+    if (acc?.opening_balance_date && t.date && t.date < acc.opening_balance_date) return
+    loansNet += Number(t.amount) || 0
+  })
+
   // Дебіторка/кредиторка станом на кінець періоду.
   // Оплата рахується через transaction_documents (повні/часткові оплати) — як у computeAging і картці
   // контрагента, а НЕ по documents.bank_transaction_id (старий прямий лінк, не бачив transaction_documents).
@@ -164,6 +179,7 @@ export async function computeSnapshot(year, month) {
     stock: { totalValue: stockValue, count: stockItems.length, items: stockItems },
     balances, cashBankTotal,
     receivable, payable, receivableDocs, payableDocs,
+    loansNet, loanTxs: loanTxs || [],
   }
 }
 

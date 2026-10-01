@@ -598,8 +598,9 @@ export function BalanceView({ fixedYear = null, fixedMonth = null } = {}) {
   const stock = s.stock?.totalValue || 0
   const recv = s.receivable || 0
   const pay = s.payable || 0
+  const loans = s.loansNet || 0 // сальдо ПФД: >0 — ми винні повернути
   const assets = cash + stock + recv
-  const equity = assets - pay
+  const equity = assets - pay - loans
   const accounts = (s.balances || []).filter(b => Math.abs(b.balance) > 0.005)
 
   const Row = ({ label, value, indent, bold, color, sub, onClick }) => (
@@ -634,16 +635,17 @@ export function BalanceView({ fixedYear = null, fixedMonth = null } = {}) {
         <div className="card">
           <div className="card-title" style={{ color: RED }}>Пасиви та капітал</div>
           <Row label="Кредиторка (ми винні)" value={pay} bold color={RED} onClick={pay ? () => setDrill({ type: 'pay' }) : null} />
+          {loans !== 0 && <Row label={loans >= 0 ? 'Поворотна фін. допомога (до повернення)' : 'Поворотна фін. допомога (нам повернуть)'} value={loans} bold color={loans >= 0 ? RED : GREEN} onClick={() => setDrill({ type: 'loans' })} />}
           <Row label="Власний капітал (активи − зобов'язання)" value={equity} bold color={signColor(equity)} />
           <div style={{ marginTop: 8, paddingTop: 8, borderTop: '2px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ fontWeight: 700, fontSize: 15 }}>Усього пасивів</span>
-            <span style={{ fontWeight: 700, fontSize: 17, color: signColor(pay + equity), fontVariantNumeric: 'tabular-nums' }}>{si(pay + equity)} грн</span>
+            <span style={{ fontWeight: 700, fontSize: 17, color: signColor(pay + loans + equity), fontVariantNumeric: 'tabular-nums' }}>{si(pay + loans + equity)} грн</span>
           </div>
         </div>
       </div>
 
       <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 14 }}>
-        Управлінський баланс: <b>Активи</b> = гроші на рахунках + оцінка складу (товари × собівартість, лише goods) + дебіторка (неоплачені видаткові/акти). <b>Пасиви</b> = кредиторка (неоплачені прихідні). <b>Капітал</b> = Активи − Зобов'язання (балансуюча величина; позики/ОЗ поки не враховуються). Дебіторка/кредиторка — неоплачені документи-борги станом на кінець періоду. Натисніть на цифру — побачите склад суми.
+        Управлінський баланс: <b>Активи</b> = гроші на рахунках + оцінка складу (товари × собівартість, лише goods) + дебіторка (неоплачені видаткові/акти). <b>Пасиви</b> = кредиторка (неоплачені прихідні) + сальдо поворотної фін. допомоги (отримані позики до повернення). <b>Капітал</b> = Активи − Зобов'язання (балансуюча величина; ОЗ поки не враховуються). ПФД винесена окремо, щоб отримання/повернення позики не спотворювало капітал. Дебіторка/кредиторка — неоплачені документи-борги станом на кінець періоду. Натисніть на цифру — побачите склад суми.
       </p>
       {drill && <BalanceDrillModal drill={drill} snap={s} onClose={() => setDrill(null)} />}
     </div>
@@ -674,6 +676,26 @@ function BalanceDrillModal({ drill, snap, onClose }) {
           ))}
           {items.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text3)', padding: 20 }}>Немає залишків</td></tr>}
         </tbody>
+      </table>
+    )
+  } else if (drill.type === 'loans') {
+    title = 'Поворотна фінансова допомога — рухи'; color = 'var(--text)'
+    const txs = snap.loanTxs || []
+    const total = txs.reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
+    content = (
+      <table>
+        <thead><tr style={{ color: 'var(--text3)' }}><th style={{ textAlign: 'left' }}>Дата</th><th style={{ textAlign: 'left' }}>Контрагент</th><th style={{ textAlign: 'right' }}>Сума</th></tr></thead>
+        <tbody>
+          {txs.map(t => (
+            <tr key={t.id}>
+              <td style={{ whiteSpace: 'nowrap' }}>{t.date}</td>
+              <td><div className="trunc" title={t.counterparty || ''}>{t.counterparty || t.description || '—'}</div>{t.article && <div className="trunc" style={{ fontSize: 11, color: 'var(--text3)' }}>{t.article}</div>}</td>
+              <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: Number(t.amount) >= 0 ? GREEN : RED }}>{Number(t.amount) >= 0 ? '+' : '−'}{fmtInt(Math.abs(Number(t.amount) || 0))}</td>
+            </tr>
+          ))}
+          {txs.length === 0 && <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text3)', padding: 20 }}>Немає рухів ПФД</td></tr>}
+        </tbody>
+        <tfoot><tr style={{ fontWeight: 700 }}><td colSpan={2}>Сальдо (отримано − повернено)</td><td style={{ textAlign: 'right' }}>{si(total)} грн</td></tr></tfoot>
       </table>
     )
   } else {
