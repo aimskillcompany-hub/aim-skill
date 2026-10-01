@@ -306,15 +306,17 @@ export async function computePeriodDetail(year, month) {
 // Залишкова вартість = к-сть на кінець × buy_price (остання закупівля) — як у знімку/балансі.
 export async function computeGoodsReport(year, month) {
   const { from, to } = periodRange(year, month)
-  const sm = await fetchAll('stock_movements', 'product_id, type, quantity, price, cost_price, date', q => q.lte('date', to))
+  const sm = await fetchAll('stock_movements', 'product_id, type, quantity, price, cost_price, date, document_id', q => q.lte('date', to))
   const agg = {}
   sm.forEach(m => {
     const q = Number(m.quantity) || 0, price = Number(m.price) || 0, cost = Number(m.cost_price) || 0
-    const a = (agg[m.product_id] ||= { openQ: 0, inQ: 0, inSum: 0, outQ: 0, outSum: 0, outCost: 0 })
+    const a = (agg[m.product_id] ||= { openQ: 0, inQ: 0, inSum: 0, outQ: 0, outSum: 0, outCost: 0, lastIn: null })
     const inPeriod = m.date >= from && m.date <= to
     if (m.type === 'in') {
       if (m.date < from) a.openQ += q
       else if (inPeriod) { a.inQ += q; a.inSum += q * price }
+      // документ приходу — найсвіжіша прихідна з документом (джерело ціни закупівлі)
+      if (m.document_id && (!a.lastIn || m.date >= a.lastIn.date)) a.lastIn = { id: m.document_id, date: m.date }
     } else {
       if (m.date < from) a.openQ -= q
       else if (inPeriod) { a.outQ += q; a.outSum += q * price; a.outCost += q * cost }
@@ -331,17 +333,17 @@ export async function computeGoodsReport(year, month) {
   const rows = goods.map(id => {
     const a = agg[id], p = prodMap[id] || {}
     const closeQ = a.openQ + a.inQ - a.outQ, unitCost = Number(p.buy_price) || 0
-    return { product_id: id, name: p.name || id, ...a, closeQ, unitCost, closeVal: closeQ * unitCost }
+    return { product_id: id, name: p.name || id, ...a, closeQ, unitCost, closeVal: closeQ * unitCost, docId: a.lastIn?.id || null }
   })
 
   const purchased = rows.filter(r => r.inQ > 0.0001)
-    .map(r => ({ product_id: r.product_id, name: r.name, qty: r.inQ, price: r.inQ ? r.inSum / r.inQ : 0, sum: r.inSum }))
+    .map(r => ({ product_id: r.product_id, name: r.name, qty: r.inQ, price: r.inQ ? r.inSum / r.inQ : 0, sum: r.inSum, docId: r.docId }))
     .sort((a, b) => b.sum - a.sum)
   const sold = rows.filter(r => r.outQ > 0.0001)
-    .map(r => ({ product_id: r.product_id, name: r.name, qty: r.outQ, price: r.outQ ? r.outSum / r.outQ : 0, cost: r.outQ ? r.outCost / r.outQ : 0, revenue: r.outSum, costSum: r.outCost, margin: r.outSum - r.outCost }))
+    .map(r => ({ product_id: r.product_id, name: r.name, qty: r.outQ, price: r.outQ ? r.outSum / r.outQ : 0, cost: r.outQ ? r.outCost / r.outQ : 0, revenue: r.outSum, costSum: r.outCost, margin: r.outSum - r.outCost, docId: r.docId }))
     .sort((a, b) => b.revenue - a.revenue)
   const remaining = rows.filter(r => Math.abs(r.closeQ) > 0.0001)
-    .map(r => ({ product_id: r.product_id, name: r.name, qty: r.closeQ, unitCost: r.unitCost, value: r.closeVal }))
+    .map(r => ({ product_id: r.product_id, name: r.name, qty: r.closeQ, unitCost: r.unitCost, value: r.closeVal, docId: r.docId }))
     .sort((a, b) => b.value - a.value)
 
   const totals = {

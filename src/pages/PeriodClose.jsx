@@ -256,72 +256,50 @@ function ReportCard({ icon, title, hint, confirmed, onConfirm, readOnly, childre
   )
 }
 
-// Три таблиці руху товарів: куплено / продано / залишок (з цінами)
+// Три колонки руху товарів поряд: куплено / продано / залишок (клік по товару → документ приходу)
 function GoodsReportView({ year, month }) {
+  const { user } = useUser()
   const [d, setD] = useState(null)
+  const [openDoc, setOpenDoc] = useState(null)
   useEffect(() => { setD(null); computeGoodsReport(year, month).then(setD) }, [year, month])
+  const openById = async (id) => { if (!id) return; const { data } = await qc('documents').select('*').eq('id', id).maybeSingle(); if (data) setOpenDoc(data) }
   if (!d) return <p style={{ color: 'var(--text3)' }}>Завантаження…</p>
   const t = d.totals
-  const empty = <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text3)', padding: 16 }}>немає</td></tr>
-  const num = { textAlign: 'right', whiteSpace: 'nowrap' }
-  return (
-    <div style={{ display: 'grid', gap: 20 }}>
-      {/* Куплено */}
-      <div>
-        <div style={{ fontWeight: 700, marginBottom: 8, color: 'var(--red)' }}>Куплено ({d.purchased.length}) — на {fmtInt(t.purchasedSum)} грн</div>
-        <div className="tbl-wrap" style={{ border: 'none' }}>
-          <table>
-            <thead><tr><th style={{ textAlign: 'left' }}>Товар</th><th style={num}>К-сть</th><th style={num}>Почому купив (грн/од)</th><th style={num}>Сума</th></tr></thead>
-            <tbody>
-              {d.purchased.length === 0 ? empty : d.purchased.map(r => (
-                <tr key={r.product_id}>
-                  <td style={{ textAlign: 'left' }}>{r.name?.slice(0, 60)}</td>
-                  <td style={num}>{fmt(r.qty)}</td><td style={num}>{fmt(r.price)}</td><td style={num}>{fmtInt(r.sum)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+
+  const Item = ({ r, children }) => (
+    <div onClick={() => openById(r.docId)} title={r.docId ? 'Відкрити документ приходу для звірки' : 'Документ приходу не знайдено'}
+      style={{ padding: '7px 0', borderBottom: '1px solid var(--border)', cursor: r.docId ? 'pointer' : 'default' }}>
+      <div style={{ fontSize: 12.5, fontWeight: 500, display: 'flex', gap: 4, alignItems: 'baseline', color: r.docId ? 'var(--blue)' : 'var(--text)' }}>
+        {r.docId && <i className="ti ti-paperclip" style={{ fontSize: 11, flexShrink: 0 }} />}
+        <span>{r.name?.slice(0, 70)}</span>
       </div>
-      {/* Продано */}
-      <div>
-        <div style={{ fontWeight: 700, marginBottom: 8, color: 'var(--green)' }}>Продано ({d.sold.length}) — виручка {fmtInt(t.soldRevenue)} грн · маржа {fmtInt(t.soldMargin)} грн</div>
-        <div className="tbl-wrap" style={{ border: 'none' }}>
-          <table>
-            <thead><tr><th style={{ textAlign: 'left' }}>Товар</th><th style={num}>К-сть</th><th style={num}>Почому продав (грн/од)</th><th style={num}>Собівартість (грн/од)</th><th style={num}>Виручка</th><th style={num}>Маржа</th></tr></thead>
-            <tbody>
-              {d.sold.length === 0 ? empty : d.sold.map(r => (
-                <tr key={r.product_id}>
-                  <td style={{ textAlign: 'left' }}>{r.name?.slice(0, 60)}</td>
-                  <td style={num}>{fmt(r.qty)}</td><td style={num}>{fmt(r.price)}</td>
-                  <td style={{ ...num, color: 'var(--text3)' }}>{fmt(r.cost)}</td>
-                  <td style={num}>{fmtInt(r.revenue)}</td>
-                  <td style={{ ...num, color: r.margin >= 0 ? 'var(--green)' : 'var(--red)' }}>{r.margin < 0 ? '−' : ''}{fmtInt(r.margin)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      {/* Залишок */}
-      <div>
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>Залишок на кінець періоду ({d.remaining.length}) — на {fmtInt(t.remainingValue)} грн</div>
-        <div className="tbl-wrap" style={{ border: 'none' }}>
-          <table>
-            <thead><tr><th style={{ textAlign: 'left' }}>Товар</th><th style={num}>К-сть</th><th style={num}>Собівартість (грн/од)</th><th style={num}>Залишкова вартість</th></tr></thead>
-            <tbody>
-              {d.remaining.length === 0 ? empty : d.remaining.map(r => (
-                <tr key={r.product_id}>
-                  <td style={{ textAlign: 'left' }}>{r.name?.slice(0, 60)}</td>
-                  <td style={{ ...num, color: r.qty < 0 ? 'var(--red)' : undefined }}>{fmt(r.qty)}</td>
-                  <td style={num}>{fmt(r.unitCost)}</td><td style={num}>{fmtInt(r.value)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 2 }}>{children}</div>
     </div>
+  )
+  const Col = ({ title, color, sub, rows, render }) => (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, minWidth: 0 }}>
+      <div style={{ fontWeight: 700, color }}>{title}</div>
+      <div style={{ fontSize: 11.5, color: 'var(--text3)', margin: '2px 0 8px' }}>{sub}</div>
+      {rows.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 12.5, padding: '8px 0' }}>немає</div>
+        : rows.map(r => <Item key={r.product_id} r={r}>{render(r)}</Item>)}
+    </div>
+  )
+
+  return (
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14, alignItems: 'start' }}>
+        <Col title={`Куплено (${d.purchased.length})`} color="var(--red)" sub={`на ${fmtInt(t.purchasedSum)} грн`} rows={d.purchased}
+          render={r => <>{fmt(r.qty)} шт · {fmt(r.price)} грн/од · Σ <b style={{ color: 'var(--text2)' }}>{fmtInt(r.sum)}</b></>} />
+        <Col title={`Продано (${d.sold.length})`} color="var(--green)" sub={`виручка ${fmtInt(t.soldRevenue)} · маржа ${fmtInt(t.soldMargin)} грн`} rows={d.sold}
+          render={r => <>{fmt(r.qty)} шт · закуп {fmt(r.cost)} → продаж {fmt(r.price)} · маржа <b style={{ color: r.margin >= 0 ? 'var(--green)' : 'var(--red)' }}>{r.margin < 0 ? '−' : ''}{fmtInt(r.margin)}</b></>} />
+        <Col title={`Залишок на кінець (${d.remaining.length})`} color="var(--text)" sub={`на ${fmtInt(t.remainingValue)} грн`} rows={d.remaining}
+          render={r => <>{fmt(r.qty)} шт · {fmt(r.unitCost)} грн/од · Σ <b style={{ color: 'var(--text2)' }}>{fmtInt(r.value)}</b></>} />
+      </div>
+      <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 10, marginBottom: 0 }}>
+        <i className="ti ti-paperclip" /> Клік по товару відкриває документ приходу (прихідну накладну) — щоб звірити ціну закупівлі й продажу з оригіналом. Ціни без ПДВ.
+      </p>
+      {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />}
+    </>
   )
 }
 
