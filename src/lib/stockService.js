@@ -506,7 +506,16 @@ export async function mergeProducts(keepId, dupId) {
   if (!keepId || !dupId || keepId === dupId) return { error: 'Оберіть інший товар' }
   const { data: dup } = await supabase.from('products').select('name').eq('id', dupId).maybeSingle()
   if (!dup) return { error: 'Товар для об\'єднання не знайдено' }
-  await qc('stock_movements').update({ product_id: keepId }).eq('product_id', dupId)
+  // Перенести рухи складу. Може впасти, якщо хоч один рух — у ЗАКРИТОМУ періоді (тригер guard_period).
+  // Раніше помилку ковтали → частина рухів (напр. прихід) не переносилась, а товар усе одно архівувався.
+  // Тепер: якщо не вдалось — НЕ архівуємо дубль (щоб не втратити рухи) і показуємо зрозумілу причину.
+  const mvRes = await qc('stock_movements').update({ product_id: keepId }).eq('product_id', dupId).select('id')
+  if (mvRes.error) {
+    const msg = /PERIOD_CLOSED/i.test(mvRes.error.message)
+      ? 'Частина рухів цього товару — у ЗАКРИТОМУ періоді. Спершу «Переоткрийте» відповідний місяць у Закритті періоду, потім об\'єднайте знову.'
+      : `Не вдалося перенести рухи складу: ${mvRes.error.message}`
+    return { error: msg }
+  }
   for (const t of ['order_items', 'transaction_items', 'assembly_items']) await supabase.from(t).update({ product_id: keepId }).eq('product_id', dupId).then(() => {}, () => {})
   await qc('assemblies').update({ result_product_id: keepId }).eq('result_product_id', dupId).then(() => {}, () => {})
   await supabase.from('product_aliases').update({ product_id: keepId }).eq('product_id', dupId).then(() => {}, () => {})
