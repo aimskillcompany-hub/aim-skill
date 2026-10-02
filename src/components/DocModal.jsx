@@ -233,6 +233,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
     if (!on) return 0
     await qc('stock_movements').delete().eq('document_id', documentId).neq('source', 'assembly')
     const failures = []
+    const productIds = []
     let created = 0
     for (const it of (form.items || [])) {
       const qty = Number(it.quantity ?? it.qty) || 0
@@ -242,6 +243,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
         const resolved = await resolveProduct(it.name, it.unit, price, user?.id, it.sku ?? it.code ?? null)
         const productId = resolved?.productId
         if (!productId) { failures.push(`«${it.name}»: не вдалося знайти/створити товар`); continue }
+        productIds.push(productId)
         await createStockMovement({
           productId, type: stockDir, quantity: qty, price,
           total: Number(it.amount) || (price ? qty * price : null),
@@ -251,6 +253,13 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
       } catch (e) {
         failures.push(`«${it.name}»: ${e.message}`)
       }
+    }
+    // Товар із рухом складу — це фізичний товар. Якщо він був помилково «Послугою»/«Розхідним»
+    // (service/expense), переводимо в «Товар» (goods) — інакше він фільтрується зі Складу й звітів,
+    // хоча рух складу створено. Рух складу буває лише в goods.
+    if (productIds.length) {
+      await supabase.from('products').update({ product_type: 'goods' })
+        .in('id', productIds).in('product_type', ['service', 'expense'])
     }
     // Якщо жодна позиція не провелась або є збої — показуємо причину (раніше мовчки нічого не створювалось)
     if (failures.length) {
