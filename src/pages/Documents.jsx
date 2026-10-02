@@ -22,6 +22,8 @@ export default function Documents() {
   const [typeFilter, setTypeFilter] = useState('all')
   const [signedFilter, setSignedFilter] = useState('all')
   const [verFilter, setVerFilter] = useState('all')
+  const [dateFrom, setDateFrom] = useState('') // період: дата документа з
+  const [dateTo, setDateTo] = useState('')     // період: дата документа по
   const [showOcr, setShowOcr] = useState(false)
   const [showBatch, setShowBatch] = useState(false)
   const [genContractor, setGenContractor] = useState(null)
@@ -63,10 +65,16 @@ export default function Documents() {
       if (signedFilter === 'unsigned' && d.is_signed) return false
       if (verFilter === 'verified' && !d.is_verified) return false
       if (verFilter === 'unverified' && d.is_verified) return false
+      // Період за датою документа (doc_date; якщо немає — created_at)
+      if (dateFrom || dateTo) {
+        const dstr = (d.doc_date || d.created_at || '').slice(0, 10)
+        if (dateFrom && dstr < dateFrom) return false
+        if (dateTo && dstr > dateTo) return false
+      }
       if (!term) return true
       return (d.file_name || '').toLowerCase().includes(term) || (d.contractors?.name || '').toLowerCase().includes(term)
     })
-  }, [rows, q, typeFilter, signedFilter, verFilter])
+  }, [rows, q, typeFilter, signedFilter, verFilter, dateFrom, dateTo])
 
   const { sort, onSort, sorted } = useSort('date', 'desc')
   const view = sorted(filtered, {
@@ -104,6 +112,18 @@ export default function Documents() {
           <option value="unverified">Неперевірені</option>
           <option value="verified">Перевірені</option>
         </select>
+      </div>
+
+      {/* Період за датою документа */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 500 }}>Період:</span>
+        <input className="form-input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ width: 160 }} title="з" />
+        <span style={{ color: 'var(--text3)' }}>—</span>
+        <input className="form-input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{ width: 160 }} title="по" />
+        <button className="btn" onClick={() => { const n = new Date(); const y = n.getFullYear(), m = String(n.getMonth() + 1).padStart(2, '0'); const last = new Date(y, n.getMonth() + 1, 0).getDate(); setDateFrom(`${y}-${m}-01`); setDateTo(`${y}-${m}-${String(last).padStart(2, '0')}`) }}>Цей місяць</button>
+        <button className="btn" onClick={() => { const y = new Date().getFullYear(); setDateFrom(`${y}-01-01`); setDateTo(`${y}-12-31`) }}>Цей рік</button>
+        {(dateFrom || dateTo) && <button className="btn" onClick={() => { setDateFrom(''); setDateTo('') }} style={{ color: 'var(--text3)' }}><i className="ti ti-x" /> Скинути</button>}
+        <span style={{ fontSize: 12, color: 'var(--text3)', marginLeft: 'auto' }}>{filtered.length} документ(ів)</span>
       </div>
 
       <div className="card">
