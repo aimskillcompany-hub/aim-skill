@@ -254,12 +254,12 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
         failures.push(`«${it.name}»: ${e.message}`)
       }
     }
-    // Товар із рухом складу — це фізичний товар. Якщо він був помилково «Послугою»/«Розхідним»
-    // (service/expense), переводимо в «Товар» (goods) — інакше він фільтрується зі Складу й звітів,
-    // хоча рух складу створено. Рух складу буває лише в goods.
+    // Товар із рухом складу — фізичний товар. Якщо він був помилково «Розхідним» (expense) — переводимо
+    // в «Товар» (goods). «Послуги» (service, напр. ліцензії/ПЗ) НЕ чіпаємо: вони теж ведуться рухами
+    // (купівля/продаж для маржі), але це не фізичний склад — тож лишаються послугами.
     if (productIds.length) {
       await supabase.from('products').update({ product_type: 'goods' })
-        .in('id', productIds).in('product_type', ['service', 'expense'])
+        .in('id', productIds).eq('product_type', 'expense')
     }
     // Якщо жодна позиція не провелась або є збої — показуємо причину (раніше мовчки нічого не створювалось)
     if (failures.length) {
