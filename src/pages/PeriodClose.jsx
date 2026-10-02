@@ -6,6 +6,11 @@ import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import { listClosings, periodStatus, runChecklist, closePeriod, reopenPeriod, computeCompleteness, computeGoodsReport } from '../lib/periodClose'
 import { getDocType } from '../lib/docgen'
 import DocModal from '../components/DocModal'
+import GeneratedDocModal from '../components/GeneratedDocModal'
+
+// Згенерований документ без прикріпленого реального скана → GeneratedDocModal (рендер з даних),
+// інакше DocModal намагається завантажити файл зі Storage і падає «Object not found».
+const isPureGenerated = (d) => d?.source === 'generated' && d?.generated_doc_id && !(d.storage_path && !/^generated\//.test(d.storage_path))
 import { CashFlowView, PLView, BalanceView } from './Analytics'
 
 const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД', 'ОЗ']
@@ -197,10 +202,11 @@ export default function PeriodClose() {
         </>
       )}
 
-      {openDoc && (
-        <DocModal user={user} existingDoc={openDoc} autoOcr={false}
-          onClose={() => setOpenDoc(null)}
-          onSaved={() => { setOpenDoc(null); doCheck() }} />
+      {openDoc && (isPureGenerated(openDoc)
+        ? <GeneratedDocModal doc={openDoc} onClose={() => setOpenDoc(null)} onDeleted={() => { setOpenDoc(null); doCheck() }} />
+        : <DocModal user={user} existingDoc={openDoc} autoOcr={false}
+            onClose={() => setOpenDoc(null)}
+            onSaved={() => { setOpenDoc(null); doCheck() }} />
       )}
     </div>
   )
@@ -275,7 +281,9 @@ function GoodsReportView({ year, month }) {
       <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 10, marginBottom: 0 }}>
         <i className="ti ti-paperclip" /> Клік по товару відкриває документ: у «Куплено» й «Залишок» — прихідну накладну, у «Продано» — вашу видаткову. Щоб звірити ціни з оригіналом. Ціни без ПДВ.
       </p>
-      {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />}
+      {openDoc && (isPureGenerated(openDoc)
+        ? <GeneratedDocModal doc={openDoc} onClose={() => setOpenDoc(null)} onDeleted={() => setOpenDoc(null)} />
+        : <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />)}
     </>
   )
 }

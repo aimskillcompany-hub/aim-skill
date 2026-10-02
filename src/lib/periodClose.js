@@ -43,12 +43,17 @@ export async function runChecklist(year, month) {
 
   // 4. Неперевірені документи періоду (звірка скан↔поля/ПДВ/рухи). Колонка is_verified — міграція 029;
   //    якщо її ще нема, вважаємо 0 неперевірених, щоб не ламати чек-лист до застосування міграції.
+  //    Згенеровані документи БЕЗ прикріпленого скана (file у Storage нема, PDF малюється на льоту)
+  //    не підлягають звірці скан↔поля — виключаємо їх із блокера (інакше «Object not found» і період не закрити).
   let unverifiedList = []
   {
     const r = await qc('documents')
       .select('id, doc_number, type, doc_date, amount, vat_amount, contractor_id, storage_path, file_path, file_type, file_name, ocr_data, is_signed, is_verified, doc_role, direction, source, contractors(name)')
       .gte('doc_date', from).lte('doc_date', to).eq('is_verified', false).order('doc_date')
-    if (!r.error) unverifiedList = r.data || []
+    if (!r.error) unverifiedList = (r.data || []).filter(d => {
+      const hasRealScan = d.storage_path && !/^generated\//.test(d.storage_path)
+      return !(d.source === 'generated' && !hasRealScan)
+    })
   }
 
   // 5. Накладні з розпізнаними позиціями, але БЕЗ руху складу (куплено/продано, не проведено на склад).
