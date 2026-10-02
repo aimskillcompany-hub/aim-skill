@@ -92,7 +92,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
   const loadMovements = async () => {
     if (!existingDoc?.id) return
     const { data: mv } = await qc('stock_movements')
-      .select('id, type, quantity, price, cost_price, product_id, source, description')
+      .select('id, type, quantity, price, cost_price, product_id, source, description, date')
       .eq('document_id', existingDoc.id).order('date')
     const pids = [...new Set((mv || []).map(m => m.product_id).filter(Boolean))]
     let pn = {}
@@ -582,22 +582,30 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
                       <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
                         <thead><tr style={{ background: 'var(--surface2)' }}>
                           <th style={{ textAlign: 'left', padding: '5px 8px' }}>Товар</th>
+                          <th style={{ padding: '5px 6px' }}>Дата руху</th>
                           <th style={{ padding: '5px 6px' }}>Напрям</th>
                           <th style={{ padding: '5px 6px' }}>К-сть</th>
                           <th style={{ padding: '5px 6px', textAlign: 'right' }}>Ціна</th>
                         </tr></thead>
                         <tbody>
-                          {docMovements.map(m => (
+                          {docMovements.map(m => {
+                            const movDate = (m.date || '').slice(0, 10)
+                            const docDate = (form.date || '').slice(0, 10)
+                            const dateMismatch = movDate && docDate && movDate !== docDate
+                            return (
                             <tr key={m.id} style={{ borderTop: '1px solid var(--border)' }}>
                               <td style={{ padding: '5px 8px' }}>
                                 {m.productName || <span style={{ color: 'var(--red)' }}>⚠ товар не прив'язаний</span>}
                                 {m.source === 'assembly' && <span style={{ color: 'var(--text3)' }}> · збірка</span>}
                               </td>
+                              <td style={{ padding: '5px 6px', textAlign: 'center', color: dateMismatch ? 'var(--red)' : 'var(--text2)', whiteSpace: 'nowrap' }} title={dateMismatch ? `Не збігається з датою документа (${docDate})` : ''}>
+                                {movDate || '—'}{dateMismatch && ' ⚠'}
+                              </td>
                               <td style={{ padding: '5px 6px', textAlign: 'center', color: m.type === 'in' ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{m.type === 'in' ? 'Прихід' : 'Видача'}</td>
                               <td style={{ padding: '5px 6px', textAlign: 'center' }}>{Number(m.quantity) || 0}</td>
                               <td style={{ padding: '5px 6px', textAlign: 'right' }}>{fmt(Number(m.price) || 0)}</td>
                             </tr>
-                          ))}
+                          )})}
                         </tbody>
                       </table>
                     </div>
