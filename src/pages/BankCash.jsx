@@ -18,7 +18,7 @@ import { useSort, SortTh } from '../components/Sort'
 // поля документа для DocModal
 const DOC_FIELDS = 'id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)'
 
-const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД']
+const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД', 'ОЗ']
 
 export default function BankCash() {
   const [tab, setTab] = useState('transactions')

@@ -102,7 +102,7 @@ export async function computeCompleteness(year, month) {
     active.n++; active.sum += a
     if (!t.is_validated) { b.unvalidated.n++; b.unvalidated.sum += a; b.unvalidated.items.push(t); return }
     if (!String(t.article || '').trim()) { b.noArticle.n++; b.noArticle.sum += a; b.noArticle.items.push(t); return }
-    if (t.direction === 'Інше' || t.direction === 'ПФД') { b.otherFin.n++; b.otherFin.sum += a; b.otherFin.items.push(t); return }
+    if (t.direction === 'Інше' || t.direction === 'ПФД' || t.direction === 'ОЗ') { b.otherFin.n++; b.otherFin.sum += a; b.otherFin.items.push(t); return }
     b.inPL.n++; b.inPL.sum += a
   })
   // «Увага» — суми, що тихо випадають із P&L і які варто переглянути (без Інше/ПФД — вони поза P&L свідомо)
@@ -163,6 +163,19 @@ export async function computeSnapshot(year, month) {
     loansNet += Number(t.amount) || 0
   })
 
+  // Основні засоби (ОЗ) — купівля авто/обладнання: це НЕ витрата, а актив.
+  // Гроші від/до ОЗ сидять у cashBankTotal; дзеркалимо як окремий АКТИВ, щоб купівля не була збитком у P&L
+  // і не зменшувала капітал (гроші → актив). Купівля (amount<0) збільшує ОЗ; продаж (amount>0) зменшує.
+  const { data: faTxs } = await qc('bank_transactions')
+    .select('id, date, amount, counterparty, description, article, account_id')
+    .eq('is_ignored', false).eq('direction', 'ОЗ').lte('date', to).order('date')
+  let fixedAssets = 0
+  ;(faTxs || []).forEach(t => {
+    const acc = accById2[t.account_id]
+    if (acc?.opening_balance_date && t.date && t.date < acc.opening_balance_date) return
+    fixedAssets -= Number(t.amount) || 0
+  })
+
   // Дебіторка/кредиторка станом на кінець періоду.
   // Оплата рахується через transaction_documents (повні/часткові оплати) — як у computeAging і картці
   // контрагента, а НЕ по documents.bank_transaction_id (старий прямий лінк, не бачив transaction_documents).
@@ -217,6 +230,7 @@ export async function computeSnapshot(year, month) {
     balances, cashBankTotal,
     receivable, payable, receivableDocs, payableDocs,
     loansNet, loanTxs: loanTxs || [],
+    fixedAssets, fixedAssetTxs: faTxs || [],
   }
 }
 
@@ -272,14 +286,15 @@ export async function computeBalanceTrend(toY, toM, opts = {}) {
 
   const rows = months.map(mo => {
     const end = mo.end
-    // Гроші + ПФД
-    let cash = openingTotal, loans = 0
+    // Гроші + ПФД + ОЗ
+    let cash = openingTotal, loans = 0, fixedAssets = 0
     txs.forEach(t => {
       if (t.date > end) return
       const acc = accById[t.account_id]
       if (acc?.opening_balance_date && t.date && t.date < acc.opening_balance_date) return
       cash += Number(t.amount) || 0
       if (t.direction === 'ПФД') loans += Number(t.amount) || 0
+      if (t.direction === 'ОЗ') fixedAssets -= Number(t.amount) || 0
     })
     // Склад (goods) станом на кінець місяця
     const bal = {}
@@ -300,9 +315,9 @@ export async function computeBalanceTrend(toY, toM, opts = {}) {
       if (outstanding <= 0.5) return
       if (d.direction === 'payable') payable += outstanding; else receivable += outstanding
     })
-    const assets = cash + stock + receivable
+    const assets = cash + stock + receivable + fixedAssets
     const equity = assets - payable - loans
-    return { label: mo.label, y: mo.y, m: mo.m, cash, stock, receivable, payable, loans, assets, equity }
+    return { label: mo.label, y: mo.y, m: mo.m, cash, stock, receivable, payable, loans, fixedAssets, assets, equity }
   })
   // Δ капіталу місяць-до-місяця
   rows.forEach((r, i) => { r.dEquity = i === 0 ? 0 : r.equity - rows[i - 1].equity })
@@ -433,7 +448,7 @@ export async function computePeriodDetail(year, month) {
     const a = Math.abs(Number(t.amount) || 0)
     if (!t.is_validated) unvalidated++
     if (!t.article) noArticle++
-    if (t.is_validated && t.direction !== 'Інше' && t.direction !== 'ПФД') {
+    if (t.is_validated && t.direction !== 'Інше' && t.direction !== 'ПФД' && t.direction !== 'ОЗ') {
       if (t.direction === 'Доходи') income += a; else if (t.direction === 'Витрати') expense += a
     }
     // розбивка за напрямом+статтею (усі валідовані, включно з ПФД/Інше — для повноти)

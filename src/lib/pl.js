@@ -25,7 +25,7 @@ export async function computePL(year, month) {
   const meta = {}; (arts || []).forEach(a => { meta[a.name] = a })
 
   const fact = {}; (txs || []).forEach(t => {
-    if (!t.article || t.direction === 'Інше' || t.direction === 'ПФД') return
+    if (!t.article || t.direction === 'Інше' || t.direction === 'ПФД' || t.direction === 'ОЗ') return
     fact[t.article] = (fact[t.article] || 0) + Math.abs(Number(t.amount) || 0)
   })
   const plan = {}; (plans || []).forEach(p => {
@@ -79,7 +79,7 @@ export async function computePLBreakdown(year, month, opts = {}) {
 
   const factV = {}, factP = {} // article -> { bucketKey: sum }: V=підтверджені, P=непідтверджені (превʼю)
   ;(txs || []).forEach(t => {
-    if (!t.article || t.direction === 'Інше' || t.direction === 'ПФД') return
+    if (!t.article || t.direction === 'Інше' || t.direction === 'ПФД' || t.direction === 'ОЗ') return
     if (!t.is_validated && !includePending) return
     const tgt = t.is_validated ? factV : factP
     const b = bucketOf(t.date)
@@ -149,7 +149,7 @@ export async function plDrill(year, month, bucketKey, articleNames, opts = {}) {
     .gte('date', from).lte('date', to)
     .in('article', articleNames)
     .order('date', { ascending: true })
-  const list = (data || []).filter(t => t.direction !== 'Інше' && t.direction !== 'ПФД')
+  const list = (data || []).filter(t => t.direction !== 'Інше' && t.direction !== 'ПФД' && t.direction !== 'ОЗ')
   // прив'язані документи (transaction_documents → documents) для звірки
   const ids = list.map(t => t.id)
   if (ids.length) {

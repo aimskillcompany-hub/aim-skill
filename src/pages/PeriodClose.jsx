@@ -8,7 +8,7 @@ import { getDocType } from '../lib/docgen'
 import DocModal from '../components/DocModal'
 import { CashFlowView, PLView, BalanceView } from './Analytics'
 
-const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД']
+const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД', 'ОЗ']
 const MONTHS = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень', 'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень']
 
 const STATUS = {

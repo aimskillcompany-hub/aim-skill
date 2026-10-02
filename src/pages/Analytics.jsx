@@ -11,7 +11,7 @@ import { supabase } from '../lib/supabase'
 import DocModal from '../components/DocModal'
 import { useUser } from '../lib/auth'
 
-const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД']
+const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД', 'ОЗ']
 
 const NOW = new Date()
 const YEARS = [NOW.getFullYear(), NOW.getFullYear() - 1, NOW.getFullYear() - 2]
@@ -629,7 +629,8 @@ export function BalanceView({ fixedYear = null, fixedMonth = null } = {}) {
   const recv = s.receivable || 0
   const pay = s.payable || 0
   const loans = s.loansNet || 0 // сальдо ПФД: >0 — ми винні повернути
-  const assets = cash + stock + recv
+  const fa = s.fixedAssets || 0 // основні засоби (за вартістю купівлі)
+  const assets = cash + stock + recv + fa
   const equity = assets - pay - loans
   const accounts = (s.balances || []).filter(b => Math.abs(b.balance) > 0.005)
 
@@ -656,6 +657,7 @@ export function BalanceView({ fixedYear = null, fixedMonth = null } = {}) {
           <Row label="Гроші (рахунки/каса)" value={cash} bold color={signColor(cash)} />
           {accounts.map(a => <Row key={a.id} label={a.name} value={a.balance} indent sub color={signColor(a.balance)} />)}
           <Row label="Склад (товари за собівартістю)" value={stock} bold onClick={stock ? () => setDrill({ type: 'stock' }) : null} />
+          {fa !== 0 && <Row label="Основні засоби (авто/обладнання)" value={fa} bold onClick={() => setDrill({ type: 'fa' })} />}
           <Row label="Дебіторка (нам винні)" value={recv} bold color={AMBER} onClick={recv ? () => setDrill({ type: 'recv' }) : null} />
           <div style={{ marginTop: 8, paddingTop: 8, borderTop: '2px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ fontWeight: 700, fontSize: 15 }}>Усього активів</span>
@@ -676,7 +678,7 @@ export function BalanceView({ fixedYear = null, fixedMonth = null } = {}) {
       </div>
 
       <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 14 }}>
-        Управлінський баланс: <b>Активи</b> = гроші на рахунках + оцінка складу (товари × собівартість, лише goods) + дебіторка (неоплачені видаткові/акти). <b>Пасиви</b> = кредиторка (неоплачені прихідні) + сальдо поворотної фін. допомоги (отримані позики до повернення). <b>Капітал</b> = Активи − Зобов'язання (балансуюча величина; ОЗ поки не враховуються). ПФД винесена окремо, щоб отримання/повернення позики не спотворювало капітал. Дебіторка/кредиторка — неоплачені документи-борги станом на кінець періоду. Натисніть на цифру — побачите склад суми.
+        Управлінський баланс: <b>Активи</b> = гроші на рахунках + оцінка складу (товари × собівартість, лише goods) + основні засоби (авто/обладнання за вартістю купівлі) + дебіторка (неоплачені видаткові/акти). <b>Пасиви</b> = кредиторка (неоплачені прихідні) + сальдо поворотної фін. допомоги (отримані позики до повернення). <b>Капітал</b> = Активи − Зобов'язання (балансуюча величина). ПФД і ОЗ винесені окремо, щоб купівля активу чи позика не спотворювали капітал (гроші → актив = капітал не змінюється). Основні засоби — транзакції з напрямом «ОЗ» (не входять у P&L, без амортизації). Натисніть на цифру — побачите склад суми.
       </p>
       {drill && <BalanceDrillModal drill={drill} snap={s} onClose={() => setDrill(null)} />}
     </div>
@@ -702,6 +704,7 @@ function BalanceTrend({ trend }) {
   const contrib = [
     { k: 'Гроші', v: last.cash - first.cash },
     { k: 'Склад', v: last.stock - first.stock },
+    { k: 'Основні засоби', v: (last.fixedAssets || 0) - (first.fixedAssets || 0) },
     { k: 'Дебіторка (нам винні)', v: last.receivable - first.receivable },
     { k: 'Кредиторка (ми винні)', v: -(last.payable - first.payable) },
     { k: 'Поворотна фін. допомога', v: -(last.loans - first.loans) },
@@ -755,6 +758,7 @@ function BalanceTrend({ trend }) {
             <th style={{ textAlign: 'left' }}>Місяць</th>
             <th style={{ textAlign: 'right' }}>Гроші</th>
             <th style={{ textAlign: 'right' }}>Склад</th>
+            <th style={{ textAlign: 'right' }}>ОЗ</th>
             <th style={{ textAlign: 'right' }}>Дебіторка</th>
             <th style={{ textAlign: 'right' }}>Кредиторка</th>
             <th style={{ textAlign: 'right' }}>ПФД</th>
@@ -767,6 +771,7 @@ function BalanceTrend({ trend }) {
               const parts = prev ? [
                 { k: 'Гроші', v: r.cash - prev.cash },
                 { k: 'Склад', v: r.stock - prev.stock },
+                { k: 'ОЗ', v: (r.fixedAssets || 0) - (prev.fixedAssets || 0) },
                 { k: 'Дебіторка', v: r.receivable - prev.receivable },
                 { k: 'Кредиторка', v: -(r.payable - prev.payable) },
                 { k: 'ПФД', v: -(r.loans - prev.loans) },
@@ -778,6 +783,7 @@ function BalanceTrend({ trend }) {
                     <td style={{ textAlign: 'left', padding: '4px 8px', whiteSpace: 'nowrap' }}>{r.label}</td>
                     {clickCell(r.cash, 'cash', r)}
                     {clickCell(r.stock, 'stock', r)}
+                    {clickCell(r.fixedAssets, 'fa', r)}
                     {clickCell(r.receivable, 'recv', r)}
                     {clickCell(r.payable, 'pay', r)}
                     {clickCell(r.loans, 'loans', r)}
@@ -790,7 +796,7 @@ function BalanceTrend({ trend }) {
                   </tr>
                   {open && prev && (
                     <tr style={{ background: 'var(--surface2)' }}>
-                      <td colSpan={8} style={{ padding: '8px 12px', fontSize: 12.5 }}>
+                      <td colSpan={9} style={{ padding: '8px 12px', fontSize: 12.5 }}>
                         <b>Зміна капіталу {prev.label} → {r.label}: {(r.dEquity >= 0 ? '+' : '−') + fmtInt(Math.abs(r.dEquity))} грн</b>
                         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 6 }}>
                           {parts.map(p => (
@@ -849,6 +855,26 @@ function BalanceDrillModal({ drill, snap, onClose }) {
           ))}
           {items.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text3)', padding: 20 }}>Немає залишків</td></tr>}
         </tbody>
+      </table>
+    )
+  } else if (drill.type === 'fa') {
+    title = 'Основні засоби — купівлі/продажі'; color = 'var(--text)'
+    const txs = snap.fixedAssetTxs || []
+    const total = txs.reduce((acc, t) => acc - (Number(t.amount) || 0), 0) // купівля (−amount) збільшує ОЗ
+    content = (
+      <table>
+        <thead><tr style={{ color: 'var(--text3)' }}><th style={{ textAlign: 'left' }}>Дата</th><th style={{ textAlign: 'left' }}>Опис</th><th style={{ textAlign: 'right' }}>Сума</th></tr></thead>
+        <tbody>
+          {txs.map(t => (
+            <tr key={t.id}>
+              <td style={{ whiteSpace: 'nowrap' }}>{t.date}</td>
+              <td><div className="trunc" title={t.counterparty || ''}>{t.counterparty || t.description || '—'}</div>{t.article && <div className="trunc" style={{ fontSize: 11, color: 'var(--text3)' }}>{t.article}</div>}</td>
+              <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: Number(t.amount) < 0 ? GREEN : RED }}>{Number(t.amount) < 0 ? '+' : '−'}{fmtInt(Math.abs(Number(t.amount) || 0))}</td>
+            </tr>
+          ))}
+          {txs.length === 0 && <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text3)', padding: 20 }}>Немає рухів ОЗ</td></tr>}
+        </tbody>
+        <tfoot><tr style={{ fontWeight: 700 }}><td colSpan={2}>Вартість ОЗ (купівлі − продажі)</td><td style={{ textAlign: 'right' }}>{si(total)} грн</td></tr></tfoot>
       </table>
     )
   } else if (drill.type === 'loans') {
