@@ -5,7 +5,7 @@ import { PL_ORDER, PL_LABELS, fetchArticles, groupByType, TYPE_LABELS } from '..
 import * as XLSX from 'xlsx'
 import { computePL, computePLBreakdown, computeForecast, plDrill, computeAging } from '../lib/pl'
 import { computeCashFlow, cashFlowDrill } from '../lib/cashflow'
-import { computeSnapshot } from '../lib/periodClose'
+import { computeSnapshot, computeBalanceTrend } from '../lib/periodClose'
 import { getDocType } from '../lib/docgen'
 import { supabase } from '../lib/supabase'
 import DocModal from '../components/DocModal'
@@ -584,12 +584,42 @@ export function BalanceView({ fixedYear = null, fixedMonth = null } = {}) {
   useEffect(() => { if (locked) { setYear(fixedYear); setMonth(fixedMonth) } }, [fixedYear, fixedMonth])
   const [s, setS] = useState(null)
   const [drill, setDrill] = useState(null) // розшифровка рядка балансу
+  const [view, setView] = useState('snapshot') // snapshot | trend
+  const [trend, setTrend] = useState(null)
 
   useEffect(() => { setS(null); computeSnapshot(year, month || null).then(setS) }, [year, month])
+  useEffect(() => {
+    if (view !== 'trend') return
+    setTrend(null)
+    computeBalanceTrend(year, month || 12, { fromY: 2025, fromM: 1 }).then(setTrend)
+  }, [year, month, view])
+
+  const toggle = (
+    <div style={{ display: 'flex', gap: 4, marginLeft: locked ? 0 : 'auto' }}>
+      {[['snapshot', 'Поточний стан'], ['trend', 'Динаміка з початку']].map(([k, lbl]) => (
+        <button key={k} onClick={() => setView(k)} className="btn" style={{ background: view === k ? 'var(--blue)' : 'var(--surface)', color: view === k ? '#fff' : 'var(--text2)', border: '1px solid var(--border)' }}>{lbl}</button>
+      ))}
+    </div>
+  )
+
+  if (view === 'trend') {
+    return (
+      <div>
+        <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          {!locked && <PeriodPicker year={year} setYear={setYear} month={month} setMonth={setMonth} />}
+          {toggle}
+        </div>
+        {!trend ? <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження динаміки…</p></div> : <BalanceTrend trend={trend} />}
+      </div>
+    )
+  }
 
   if (!s) return (
     <div>
-      {!locked && <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}><PeriodPicker year={year} setYear={setYear} month={month} setMonth={setMonth} /></div>}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        {!locked && <PeriodPicker year={year} setYear={setYear} month={month} setMonth={setMonth} />}
+        {toggle}
+      </div>
       <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
     </div>
   )
@@ -617,6 +647,7 @@ export function BalanceView({ fixedYear = null, fixedMonth = null } = {}) {
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         {!locked && <PeriodPicker year={year} setYear={setYear} month={month} setMonth={setMonth} />}
         <span style={{ fontSize: 12, color: 'var(--text3)' }}>станом на кінець періоду</span>
+        {toggle}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
@@ -648,6 +679,83 @@ export function BalanceView({ fixedYear = null, fixedMonth = null } = {}) {
         Управлінський баланс: <b>Активи</b> = гроші на рахунках + оцінка складу (товари × собівартість, лише goods) + дебіторка (неоплачені видаткові/акти). <b>Пасиви</b> = кредиторка (неоплачені прихідні) + сальдо поворотної фін. допомоги (отримані позики до повернення). <b>Капітал</b> = Активи − Зобов'язання (балансуюча величина; ОЗ поки не враховуються). ПФД винесена окремо, щоб отримання/повернення позики не спотворювало капітал. Дебіторка/кредиторка — неоплачені документи-борги станом на кінець періоду. Натисніть на цифру — побачите склад суми.
       </p>
       {drill && <BalanceDrillModal drill={drill} snap={s} onClose={() => setDrill(null)} />}
+    </div>
+  )
+}
+
+// Динаміка балансу по місяцях: тренд капіталу + внески складових + таблиця
+function BalanceTrend({ trend }) {
+  const rows = trend.rows || []
+  if (!rows.length) return <div className="card"><p style={{ color: 'var(--text3)' }}>Немає даних за період</p></div>
+  const first = rows[0], last = rows[rows.length - 1]
+  const totalDelta = last.equity - first.equity
+  const contrib = [
+    { k: 'Гроші', v: last.cash - first.cash },
+    { k: 'Склад', v: last.stock - first.stock },
+    { k: 'Дебіторка (нам винні)', v: last.receivable - first.receivable },
+    { k: 'Кредиторка (ми винні)', v: -(last.payable - first.payable) },
+    { k: 'Поворотна фін. допомога', v: -(last.loans - first.loans) },
+  ].filter(c => Math.abs(c.v) > 0.5).sort((a, b) => a.v - b.v)
+
+  const eqs = rows.map(r => r.equity)
+  const mn = Math.min(...eqs), mx = Math.max(...eqs), rng = mx - mn || 1
+  const W = 600, H = 80
+  const pts = eqs.map((v, i) => `${(i / Math.max(1, eqs.length - 1)) * W},${(H - 4) - ((v - mn) / rng) * (H - 8) + 4}`).join(' ')
+  const td = { textAlign: 'right', whiteSpace: 'nowrap', padding: '4px 8px' }
+
+  return (
+    <div className="card">
+      <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 12 }}>
+        Власний капітал: <b>{si(first.equity)}</b> ({first.label}) → <b>{si(last.equity)}</b> ({last.label}) ·
+        <b style={{ color: totalDelta >= 0 ? GREEN : RED, marginLeft: 6 }}>{totalDelta >= 0 ? '+' : '−'}{fmtInt(Math.abs(totalDelta))} грн</b> за період
+      </div>
+
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: '100%', height: 80, marginBottom: 16, background: 'var(--surface2)', borderRadius: 8 }}>
+        <polyline points={pts} fill="none" stroke={totalDelta >= 0 ? GREEN : RED} strokeWidth="2" vectorEffect="non-scaling-stroke" />
+      </svg>
+
+      {contrib.length > 0 && (
+        <div style={{ marginBottom: 16, fontSize: 13 }}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Що змінило капітал (з {first.label} по {last.label}):</div>
+          {contrib.map(c => (
+            <div key={c.k} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', borderBottom: '1px solid var(--border)' }}>
+              <span>{c.k}</span>
+              <b style={{ color: c.v >= 0 ? GREEN : RED, fontVariantNumeric: 'tabular-nums' }}>{c.v >= 0 ? '+' : '−'}{fmtInt(Math.abs(c.v))}</b>
+            </div>
+          ))}
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>Додатнє — збільшує капітал, від'ємне — зменшує (зростання кредиторки чи ПФД зменшує капітал). Найбільше просідання — зверху.</div>
+        </div>
+      )}
+
+      <div className="tbl-wrap" style={{ border: 'none', overflowX: 'auto' }}>
+        <table>
+          <thead><tr style={{ color: 'var(--text3)' }}>
+            <th style={{ textAlign: 'left' }}>Місяць</th>
+            <th style={{ textAlign: 'right' }}>Гроші</th>
+            <th style={{ textAlign: 'right' }}>Склад</th>
+            <th style={{ textAlign: 'right' }}>Дебіторка</th>
+            <th style={{ textAlign: 'right' }}>Кредиторка</th>
+            <th style={{ textAlign: 'right' }}>ПФД</th>
+            <th style={{ textAlign: 'right' }}>Капітал</th>
+            <th style={{ textAlign: 'right' }}>Δ Капітал</th>
+          </tr></thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={r.label} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={{ textAlign: 'left', padding: '4px 8px', whiteSpace: 'nowrap' }}>{r.label}</td>
+                <td style={td}>{fmtInt(r.cash)}</td>
+                <td style={td}>{fmtInt(r.stock)}</td>
+                <td style={td}>{fmtInt(r.receivable)}</td>
+                <td style={td}>{fmtInt(r.payable)}</td>
+                <td style={td}>{fmtInt(r.loans)}</td>
+                <td style={{ ...td, fontWeight: 700, color: signColor(r.equity) }}>{si(r.equity)}</td>
+                <td style={{ ...td, color: i === 0 ? 'var(--text3)' : r.dEquity >= 0 ? GREEN : RED }}>{i === 0 ? '—' : (r.dEquity >= 0 ? '+' : '−') + fmtInt(Math.abs(r.dEquity))}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 10 }}>Кожен рядок — стан на кінець місяця. Капітал = Гроші + Склад + Дебіторка − Кредиторка − ПФД. Δ — зміна капіталу від попереднього місяця.</p>
     </div>
   )
 }

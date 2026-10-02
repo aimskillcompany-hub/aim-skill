@@ -204,6 +204,95 @@ export async function computeSnapshot(year, month) {
   }
 }
 
+// ── Динаміка балансу по місяцях: від (fromY,fromM) до (toY,toM) ──
+// Одна вибірка даних, розкочування станом на кінець кожного місяця. Пояснює, яка складова тягне капітал.
+export async function computeBalanceTrend(toY, toM, opts = {}) {
+  const fromY = opts.fromY || 2025, fromM = opts.fromM || 1
+  const months = []
+  let y = fromY, m = fromM
+  while ((y < toY || (y === toY && m <= toM)) && months.length < 60) {
+    months.push({ y, m, end: periodRange(y, m).to, label: `${String(m).padStart(2, '0')}.${y}` })
+    m++; if (m > 12) { m = 1; y++ }
+  }
+  if (!months.length) return { months: [], rows: [] }
+  const lastEnd = months[months.length - 1].end
+
+  // 1. Рахунки + транзакції (гроші + ПФД)
+  const { data: accs } = await qc('accounts').select('id, opening_balance, opening_balance_date')
+  const accById = {}; (accs || []).forEach(a => accById[a.id] = a)
+  const openingTotal = (accs || []).reduce((s, a) => s + (Number(a.opening_balance) || 0), 0)
+  const txs = await fetchAll('bank_transactions', 'account_id, amount, date, direction', q => q.eq('is_ignored', false).lte('date', lastEnd))
+
+  // 2. Склад (лише goods)
+  const sm = await fetchAll('stock_movements', 'product_id, type, quantity, date', q => q.lte('date', lastEnd))
+  const spids = [...new Set(sm.map(s => s.product_id).filter(Boolean))]
+  const prodMap = {}
+  for (let i = 0; i < spids.length; i += 200) {
+    const { data } = await supabase.from('products').select('id, buy_price, product_type').in('id', spids.slice(i, i + 200))
+    ;(data || []).forEach(p => prodMap[p.id] = p)
+  }
+
+  // 3. Борги (дебіторка/кредиторка) з оплатами по датах — щоб борг був коректний станом на кожен місяць
+  const debtDocs = await fetchAll('documents', 'id, type, direction, amount, doc_date', q => q.lte('doc_date', lastEnd).not('amount', 'is', null).not('direction', 'is', null))
+  const relevant = debtDocs.filter(d => countsAsDebt(d.type) && (d.direction === 'payable' || d.direction === 'receivable'))
+  const debtIds = relevant.map(d => d.id)
+  const paysByDoc = {}
+  if (debtIds.length) {
+    const tds = []
+    for (let i = 0; i < debtIds.length; i += 200) {
+      const { data } = await supabase.from('transaction_documents').select('document_id, amount, transaction_id').in('document_id', debtIds.slice(i, i + 200))
+      ;(data || []).forEach(t => tds.push(t))
+    }
+    const txIds = [...new Set(tds.map(t => t.transaction_id).filter(Boolean))]
+    const txDate = {}
+    for (let i = 0; i < txIds.length; i += 200) {
+      const { data } = await supabase.from('bank_transactions').select('id, date').in('id', txIds.slice(i, i + 200))
+      ;(data || []).forEach(t => txDate[t.id] = t.date)
+    }
+    tds.forEach(t => {
+      (paysByDoc[t.document_id] ||= []).push({ amount: Math.abs(Number(t.amount) || 0), date: txDate[t.transaction_id] || '0000-00-00' })
+    })
+  }
+
+  const rows = months.map(mo => {
+    const end = mo.end
+    // Гроші + ПФД
+    let cash = openingTotal, loans = 0
+    txs.forEach(t => {
+      if (t.date > end) return
+      const acc = accById[t.account_id]
+      if (acc?.opening_balance_date && t.date && t.date < acc.opening_balance_date) return
+      cash += Number(t.amount) || 0
+      if (t.direction === 'ПФД') loans += Number(t.amount) || 0
+    })
+    // Склад (goods) станом на кінець місяця
+    const bal = {}
+    sm.forEach(s => {
+      if (s.date > end) return
+      if ((prodMap[s.product_id]?.product_type || 'goods') !== 'goods') return
+      const q = Number(s.quantity) || 0
+      bal[s.product_id] = (bal[s.product_id] || 0) + (s.type === 'in' ? q : s.type === 'out' ? -q : q)
+    })
+    let stock = 0
+    Object.entries(bal).forEach(([pid, q]) => { if (Math.abs(q) > 0.0001) stock += q * (Number(prodMap[pid]?.buy_price) || 0) })
+    // Борги станом на кінець місяця
+    let receivable = 0, payable = 0
+    relevant.forEach(d => {
+      if ((d.doc_date || '') > end) return
+      const paid = (paysByDoc[d.id] || []).reduce((s, p) => s + (p.date <= end ? p.amount : 0), 0)
+      const outstanding = Math.abs(Number(d.amount) || 0) - paid
+      if (outstanding <= 0.5) return
+      if (d.direction === 'payable') payable += outstanding; else receivable += outstanding
+    })
+    const assets = cash + stock + receivable
+    const equity = assets - payable - loans
+    return { label: mo.label, y: mo.y, m: mo.m, cash, stock, receivable, payable, loans, assets, equity }
+  })
+  // Δ капіталу місяць-до-місяця
+  rows.forEach((r, i) => { r.dEquity = i === 0 ? 0 : r.equity - rows[i - 1].equity })
+  return { months, rows }
+}
+
 // Компактний підсумок знімка (для збереження як _prev при повторному закритті)
 function snapshotSummary(s, closedAt) {
   const t = s?.pl?.totals || {}
