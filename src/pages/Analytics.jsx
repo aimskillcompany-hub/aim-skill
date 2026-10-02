@@ -687,6 +687,7 @@ export function BalanceView({ fixedYear = null, fixedMonth = null } = {}) {
 function BalanceTrend({ trend }) {
   const [drill, setDrill] = useState(null)   // { snap, type, monthLabel }
   const [loadingCell, setLoadingCell] = useState(null) // `${label}:${type}`
+  const [expanded, setExpanded] = useState(null) // label рядка з розкритим розкладом Δ
   const openCell = async (r, type) => {
     const key = `${r.label}:${type}`
     setLoadingCell(key)
@@ -761,18 +762,48 @@ function BalanceTrend({ trend }) {
             <th style={{ textAlign: 'right' }}>Δ Капітал</th>
           </tr></thead>
           <tbody>
-            {rows.map((r, i) => (
-              <tr key={r.label} style={{ borderTop: '1px solid var(--border)' }}>
-                <td style={{ textAlign: 'left', padding: '4px 8px', whiteSpace: 'nowrap' }}>{r.label}</td>
-                {clickCell(r.cash, 'cash', r)}
-                {clickCell(r.stock, 'stock', r)}
-                {clickCell(r.receivable, 'recv', r)}
-                {clickCell(r.payable, 'pay', r)}
-                {clickCell(r.loans, 'loans', r)}
-                <td style={{ ...td, fontWeight: 700, color: signColor(r.equity) }}>{si(r.equity)}</td>
-                <td style={{ ...td, color: i === 0 ? 'var(--text3)' : r.dEquity >= 0 ? GREEN : RED }}>{i === 0 ? '—' : (r.dEquity >= 0 ? '+' : '−') + fmtInt(Math.abs(r.dEquity))}</td>
-              </tr>
-            ))}
+            {rows.map((r, i) => {
+              const prev = i > 0 ? rows[i - 1] : null
+              const parts = prev ? [
+                { k: 'Гроші', v: r.cash - prev.cash },
+                { k: 'Склад', v: r.stock - prev.stock },
+                { k: 'Дебіторка', v: r.receivable - prev.receivable },
+                { k: 'Кредиторка', v: -(r.payable - prev.payable) },
+                { k: 'ПФД', v: -(r.loans - prev.loans) },
+              ].filter(p => Math.abs(p.v) > 0.5).sort((a, b) => a.v - b.v) : []
+              const open = expanded === r.label
+              return (
+                <Fragment key={r.label}>
+                  <tr style={{ borderTop: '1px solid var(--border)' }}>
+                    <td style={{ textAlign: 'left', padding: '4px 8px', whiteSpace: 'nowrap' }}>{r.label}</td>
+                    {clickCell(r.cash, 'cash', r)}
+                    {clickCell(r.stock, 'stock', r)}
+                    {clickCell(r.receivable, 'recv', r)}
+                    {clickCell(r.payable, 'pay', r)}
+                    {clickCell(r.loans, 'loans', r)}
+                    <td style={{ ...td, fontWeight: 700, color: signColor(r.equity) }}>{si(r.equity)}</td>
+                    <td style={{ ...td, color: i === 0 ? 'var(--text3)' : r.dEquity >= 0 ? GREEN : RED, cursor: prev ? 'pointer' : 'default' }}
+                      onClick={() => prev && setExpanded(open ? null : r.label)}
+                      title={prev ? 'Показати, з чого склалась зміна' : ''}>
+                      {i === 0 ? '—' : <>{(r.dEquity >= 0 ? '+' : '−') + fmtInt(Math.abs(r.dEquity))} {open ? '▴' : '▾'}</>}
+                    </td>
+                  </tr>
+                  {open && prev && (
+                    <tr style={{ background: 'var(--surface2)' }}>
+                      <td colSpan={8} style={{ padding: '8px 12px', fontSize: 12.5 }}>
+                        <b>Зміна капіталу {prev.label} → {r.label}: {(r.dEquity >= 0 ? '+' : '−') + fmtInt(Math.abs(r.dEquity))} грн</b>
+                        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 6 }}>
+                          {parts.map(p => (
+                            <span key={p.k}>{p.k}: <b style={{ color: p.v >= 0 ? GREEN : RED }}>{p.v >= 0 ? '+' : '−'}{fmtInt(Math.abs(p.v))}</b></span>
+                          ))}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Натисніть на цифру в рядку вище (Гроші/Дебіторка…) — побачите конкретні операції/документи.</div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })}
           </tbody>
         </table>
       </div>
