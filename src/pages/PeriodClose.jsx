@@ -41,7 +41,6 @@ export default function PeriodClose() {
   const [err, setErr] = useState(null)
   const [grouped, setGrouped] = useState({})
   const [openDoc, setOpenDoc] = useState(null) // документ для звірки (DocModal)
-  const [confirmed, setConfirmed] = useState({ completeness: false, cashflow: false, pl: false, balance: false })
 
   const load = async () => setClosings(await listClosings())
   useEffect(() => { load(); fetchArticles().then(a => setGrouped(groupByType(a))) }, [])
@@ -60,7 +59,6 @@ export default function PeriodClose() {
   // Відкрив місяць → автоматично зчитуємо чек-лист + повноту (звіти вантажаться самі).
   const openMonth = async (m) => {
     setSel(m); setErr(null); setCheck(null); setComp(null)
-    setConfirmed({ completeness: false, cashflow: false, pl: false, balance: false })
     const r = rowFor(m)
     if (r?.status === 'closed') return
     await reloadGates(m)
@@ -71,20 +69,16 @@ export default function PeriodClose() {
   const selRow = sel ? rowFor(sel) : null
   const selStatus = sel ? periodStatus(closings, year, sel) : null
   const isClosed = selStatus === 'closed'
-  const savedConfirmed = selRow?.snapshot?.reportsConfirmed || null
 
   const blockers = check?.blockers
-  const allConfirmed = confirmed.completeness && confirmed.cashflow && confirmed.pl && confirmed.balance
-  const canClose = blockers === 0 && allConfirmed
+  const canClose = blockers === 0 // закриття лише коли немає блокерів якості (підтвердження звітів не вимагається)
 
   const doClose = async () => {
     if (!canClose) return
     if (!confirm(`Закрити ${MONTHS[sel - 1]} ${year}? Дані періоду буде заблоковано для змін.`)) return
     setBusy('close'); setErr(null)
     try {
-      await closePeriod(year, sel, user?.id, {
-        reportsConfirmed: { completeness: true, cashflow: true, pl: true, balance: true, at: new Date().toISOString(), by: user?.id || null },
-      })
+      await closePeriod(year, sel, user?.id)
       await load()
     } catch (e) { setErr(e.message) }
     setBusy('')
@@ -148,13 +142,12 @@ export default function PeriodClose() {
             {isClosed && selRow && (
               <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 8 }}>
                 🔒 Закрито {selRow.closed_at?.slice(0, 10)}{selRow.reopened_at ? ` · переоткривалось ${selRow.reopened_at.slice(0, 10)}` : ''}
-                {savedConfirmed && <span> · підтверджені звіти: Cash Flow ✓ · P&amp;L ✓ · Баланс ✓</span>}
               </div>
             )}
 
             {!isClosed && (
               <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 8 }}>
-                Переглянь три звіти нижче, звір цифри (кожну можна розкрити до операцій) і підтверди кожен. Коли всі три підтверджені й немає блокерів — період можна закрити.
+                Переглянь звіти нижче (кожну цифру можна розкрити до операцій). Коли немає блокерів якості — період можна закрити.
               </div>
             )}
 
@@ -163,25 +156,14 @@ export default function PeriodClose() {
             {!isClosed && busy === 'check' && !check && <div style={{ marginTop: 12, color: 'var(--text3)' }}>Перевірка готовності…</div>}
           </div>
 
-          {/* Повнота даних: що НЕ потрапляє у звіти і чому */}
+          {/* Повнота даних: що НЕ потрапляє у звіти і чому (для перегляду) */}
           {!isClosed && comp && (
-            <CompletenessPanel comp={comp} grouped={grouped}
-              confirmed={confirmed.completeness}
-              onConfirm={v => setConfirmed(c => ({ ...c, completeness: v }))}
-              onChanged={doCheck} />
-          )}
-          {isClosed && savedConfirmed?.completeness && (
-            <div className="card" style={{ marginBottom: 16, fontSize: 13, color: 'var(--green)' }}>
-              <i className="ti ti-check" /> Повнота даних переглянута й підтверджена при закритті.
-            </div>
+            <CompletenessPanel comp={comp} grouped={grouped} onChanged={doCheck} />
           )}
 
           {/* Три канонічні звіти */}
           {REPORTS.map(rep => (
-            <ReportCard key={rep.key} icon={rep.icon} title={rep.title} hint={rep.hint}
-              confirmed={isClosed ? !!savedConfirmed?.[rep.key] : confirmed[rep.key]}
-              readOnly={isClosed}
-              onConfirm={v => setConfirmed(c => ({ ...c, [rep.key]: v }))}>
+            <ReportCard key={rep.key} icon={rep.icon} title={rep.title} hint={rep.hint}>
               {rep.key === 'cashflow' && <CashFlowView key={refreshKey} fixedYear={year} fixedMonth={sel} />}
               {rep.key === 'pl' && <PLView key={refreshKey} fixedYear={year} fixedMonth={sel} />}
               {rep.key === 'balance' && <BalanceView key={refreshKey} fixedYear={year} fixedMonth={sel} />}
@@ -202,14 +184,9 @@ export default function PeriodClose() {
                   <i className="ti ti-alert-circle" /> Спершу усуньте блокери якості ({blockers}) у чек-листі вгорі.
                 </div>
               )}
-              {blockers === 0 && !allConfirmed && (
-                <div style={{ color: 'var(--amber, #d97706)', fontSize: 13, marginBottom: 10 }}>
-                  <i className="ti ti-info-circle" /> Підтвердіть повноту даних і всі три звіти (Cash Flow, P&amp;L, Баланс), щоб закрити період.
-                </div>
-              )}
               {canClose && (
                 <div style={{ color: 'var(--green)', fontSize: 13, marginBottom: 10 }}>
-                  <i className="ti ti-circle-check" /> Усі звіти підтверджені, блокерів немає — період готовий до закриття.
+                  <i className="ti ti-circle-check" /> Блокерів немає — період готовий до закриття.
                 </div>
               )}
               <button className="btn btn-primary" onClick={doClose} disabled={!canClose || busy === 'close'}>
@@ -407,22 +384,14 @@ function TxClassify({ tx, grouped, onDone, allowIgnore = true, unignoreOnSave = 
 }
 
 // ── Панель повноти даних: звіряльний місток + підсвічені виключені суми з діями ──
-function CompletenessPanel({ comp, grouped, confirmed, onConfirm, onChanged }) {
+function CompletenessPanel({ comp, grouped, onChanged }) {
   const clean = comp.needsReview === 0
   return (
     <div className="card" style={{ marginBottom: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
+      <div style={{ marginBottom: 6 }}>
         <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
           <i className="ti ti-list-check" style={{ color: 'var(--blue)' }} />Повнота даних за період
         </h3>
-        <label style={{
-          display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', userSelect: 'none',
-          color: confirmed ? 'var(--green)' : 'var(--text2)', padding: '5px 10px', borderRadius: 8,
-          border: `1px solid ${confirmed ? 'var(--green)' : 'var(--border)'}`, whiteSpace: 'nowrap',
-        }}>
-          <input type="checkbox" checked={confirmed} onChange={e => onConfirm(e.target.checked)} />
-          {confirmed ? 'Переглянув і підтверджено' : 'Я переглянув повноту даних'}
-        </label>
       </div>
 
       {/* Звіряльний місток */}
