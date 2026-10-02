@@ -183,7 +183,7 @@ export async function resolveProduct(name, unit, price, userId, sku = null) {
   }
 
   // 4. Створити новий продукт + alias
-  const { data: newProd } = await supabase.from('products').insert({
+  const { data: newProd, error: insErr } = await supabase.from('products').insert({
     name: name.trim(),
     sku: skuT,
     unit: unit || 'шт',
@@ -192,6 +192,7 @@ export async function resolveProduct(name, unit, price, userId, sku = null) {
     created_by: userId,
   }).select('id').single()
 
+  if (insErr) throw new Error(`Не вдалося створити товар «${name.trim()}»: ${insErr.message}`)
   if (!newProd?.id) return null
 
   await supabase.from('product_aliases').upsert({
@@ -308,9 +309,10 @@ export async function createStockMovement({
   })).select('id').single()
 
   if (error) {
-    if (error.code === '23505') return null
-    console.warn('Stock movement error:', error.message)
-    return null
+    if (error.code === '23505') return null // дублікат — не критично, пропускаємо
+    // Раніше помилку ковтали (console.warn + return null) → рух тихо не створювався.
+    // Тепер кидаємо, щоб причина (закритий період / RLS / обмеження) була видима користувачу.
+    throw new Error(error.message)
   }
 
   return movement
@@ -602,19 +604,23 @@ export async function processDocumentItems(savedItems, {
         continue // пропустити stock_movement
       }
 
-      // 4. Створити складський рух
-      await createStockMovement({
-        productId: result.productId,
-        type: movementType,
-        quantity: qty,
-        price: item.unit_price || null,
-        total: item.amount || null,
-        bankTransactionId,
-        transactionItemId: item.id || null,
-        date,
-        description: item.name,
-        userId,
-      })
+      // 4. Створити складський рух (батч — стійкий: помилка одного не валить увесь імпорт)
+      try {
+        await createStockMovement({
+          productId: result.productId,
+          type: movementType,
+          quantity: qty,
+          price: item.unit_price || null,
+          total: item.amount || null,
+          bankTransactionId,
+          transactionItemId: item.id || null,
+          date,
+          description: item.name,
+          userId,
+        })
+      } catch (e) {
+        console.warn('Stock movement (batch) error:', e.message)
+      }
 
       processed++
       if (result.isNew) created++

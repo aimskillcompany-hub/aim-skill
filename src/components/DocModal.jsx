@@ -233,18 +233,29 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
   const syncDocStock = async (documentId) => {
     if (!stockOn) return
     await qc('stock_movements').delete().eq('document_id', documentId).neq('source', 'assembly')
+    const failures = []
+    let created = 0
     for (const it of (form.items || [])) {
       const qty = Number(it.quantity ?? it.qty) || 0
-      if (!qty || !it.name) continue
+      if (!qty || !it.name) { if (it.name) failures.push(`«${it.name}»: немає кількості`); continue }
       const price = Number(it.unit_price ?? it.unitPrice ?? it.price) || null
-      const resolved = await resolveProduct(it.name, it.unit, price, user?.id, it.sku ?? it.code ?? null)
-      const productId = resolved?.productId
-      if (!productId) continue
-      await createStockMovement({
-        productId, type: stockDir, quantity: qty, price,
-        total: Number(it.amount) || (price ? qty * price : null),
-        documentId, date: form.date, description: `${getDocType(form.type)?.label}: ${it.name}`.slice(0, 200), userId: user?.id,
-      })
+      try {
+        const resolved = await resolveProduct(it.name, it.unit, price, user?.id, it.sku ?? it.code ?? null)
+        const productId = resolved?.productId
+        if (!productId) { failures.push(`«${it.name}»: не вдалося знайти/створити товар`); continue }
+        await createStockMovement({
+          productId, type: stockDir, quantity: qty, price,
+          total: Number(it.amount) || (price ? qty * price : null),
+          documentId, date: form.date, description: `${getDocType(form.type)?.label}: ${it.name}`.slice(0, 200), userId: user?.id,
+        })
+        created++
+      } catch (e) {
+        failures.push(`«${it.name}»: ${e.message}`)
+      }
+    }
+    // Якщо жодна позиція не провелась або є збої — показуємо причину (раніше мовчки нічого не створювалось)
+    if (failures.length) {
+      throw new Error(`Не проведено на склад ${failures.length} з ${(form.items || []).length} позицій:\n${failures.join('\n')}`)
     }
   }
 

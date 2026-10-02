@@ -307,8 +307,10 @@ function Checklist({ check, grouped, onClassified, onOpenDoc }) {
   const ok = check.blockers === 0
   const [openTx, setOpenTx] = useState(false)
   const [openDocs, setOpenDocs] = useState(false)
+  const [openUnposted, setOpenUnposted] = useState(false)
   const nTx = check.unclassifiedTx
   const nUnver = check.unverifiedDocs || 0
+  const unposted = check.unpostedStock || []
   return (
     <div style={{ marginTop: 14, border: `1px solid ${ok ? 'var(--green)' : 'var(--red)'}`, borderRadius: 10, padding: 14 }}>
       <div style={{ fontWeight: 700, marginBottom: 10, color: ok ? 'var(--green)' : 'var(--red)' }}>
@@ -334,6 +336,21 @@ function Checklist({ check, grouped, onClassified, onOpenDoc }) {
           title="Відкрити для звірки скану й полів">
           <span><i className="ti ti-file-search" style={{ marginRight: 4, color: 'var(--blue)' }} />{getDocType(d.type)?.label || d.type} №{d.doc_number || '—'} · {d.contractors?.name || '—'}</span>
           <span style={{ color: 'var(--text3)', whiteSpace: 'nowrap' }}>{d.amount ? fmt(d.amount) : 'без суми'} · {d.doc_date}</span>
+        </div>
+      ))}
+
+      {/* Накладні з позиціями, але не проведені на склад — попередження (не блокує) */}
+      <div onClick={() => unposted.length && setOpenUnposted(o => !o)}
+        style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13, cursor: unposted.length ? 'pointer' : 'default' }}>
+        <span><i className={`ti ${unposted.length ? 'ti-alert-triangle' : 'ti-check'}`} style={{ color: unposted.length ? 'var(--amber, #d97706)' : 'var(--green)', marginRight: 6 }} />Накладні не проведені на склад <span style={{ color: 'var(--text3)', fontSize: 11 }}>(позиції є, руху складу немає)</span></span>
+        <b style={{ color: unposted.length ? 'var(--amber, #d97706)' : undefined }}>{unposted.length ? `${unposted.length} шт ${openUnposted ? '▴' : '▾'}` : 'усі проведені'}</b>
+      </div>
+      {openUnposted && unposted.map(d => (
+        <div key={d.id} onClick={() => onOpenDoc(d)}
+          style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12.5, padding: '5px 0 5px 24px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+          title="Відкрити документ → увімкни «Рух на складі» і збережи, щоб оприбуткувати">
+          <span><i className="ti ti-package-import" style={{ marginRight: 4, color: 'var(--amber, #d97706)' }} />{getDocType(d.type)?.label || d.type} №{d.doc_number || '—'} · {d.contractors?.name || '—'}</span>
+          <span style={{ color: 'var(--text3)', whiteSpace: 'nowrap' }}>{(d.ocr_data?.items?.length || 0)} поз. · {d.doc_date}</span>
         </div>
       ))}
 

@@ -51,13 +51,34 @@ export async function runChecklist(year, month) {
     if (!r.error) unverifiedList = r.data || []
   }
 
+  // 5. Накладні з розпізнаними позиціями, але БЕЗ руху складу (куплено/продано, не проведено на склад).
+  //    stockEffect: incomingWaybill=прихід, waybill=видаток (див. docgen/registry).
+  let unpostedStock = []
+  {
+    const r = await qc('documents')
+      .select('id, doc_number, type, doc_date, amount, vat_amount, contractor_id, storage_path, file_path, file_type, file_name, ocr_data, is_signed, is_verified, doc_role, direction, source, contractors(name)')
+      .in('type', ['incomingWaybill', 'waybill']).gte('doc_date', from).lte('doc_date', to)
+    const withItems = (r.data || []).filter(d => Array.isArray(d.ocr_data?.items) && d.ocr_data.items.length > 0)
+    if (withItems.length) {
+      const ids = withItems.map(d => d.id)
+      const moved = new Set()
+      for (let i = 0; i < ids.length; i += 200) {
+        const { data: mv } = await qc('stock_movements').select('document_id').in('document_id', ids.slice(i, i + 200)).neq('source', 'assembly')
+        ;(mv || []).forEach(m => moved.add(m.document_id))
+      }
+      unpostedStock = withItems.filter(d => !moved.has(d.id))
+    }
+  }
+
   // Ворота: закриття лише коли перевірені ВСІ документи і валідовані ВСІ транзакції періоду.
+  // Непроведені на склад накладні — попередження (не блокер): видно й клікабельно, але рішення за користувачем.
   const unclassifiedTx = (unclassifiedList || []).length
   const blockers = negativeStock.length + (docsNoAmount?.length || 0) + unverifiedList.length + unclassifiedTx
   return {
     negativeStock, docsNoAmount: docsNoAmount || [],
     unclassifiedTx, unclassifiedList: unclassifiedList || [],
     unverifiedDocs: unverifiedList.length, unverifiedList,
+    unpostedStock,
     blockers,
   }
 }
