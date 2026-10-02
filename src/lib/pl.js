@@ -20,7 +20,7 @@ export async function computePL(year, month) {
   const [{ data: txs }, { data: arts }, { data: plans }] = await Promise.all([
     qc('bank_transactions').select('amount, article, direction').eq('is_validated', true).eq('is_ignored', false).gte('date', from).lte('date', to),
     supabase.from('articles').select('name, type, pl_level, sort_order'),
-    supabase.from('plans').select('article, amount, year_month'),
+    qc('plans').select('article, amount, year_month'),
   ])
   const meta = {}; (arts || []).forEach(a => { meta[a.name] = a })
 

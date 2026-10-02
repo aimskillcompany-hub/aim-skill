@@ -588,11 +588,13 @@ export async function computeContinuity(year, month) {
   return { stock: { items: stockItems, ...stockTot }, cash, cashTot }
 }
 
-// helper: посторінкова вибірка
+// helper: посторінкова вибірка. ВАЖЛИВО: через qc() — щоб скоуплених таблиць (bank_transactions,
+// stock_movements, documents, accounts…) стосувався фільтр активної компанії. Інакше у звіти
+// (Баланс/Товари/Динаміка) витікали б дані ВСІХ компаній (напр. дебіторка іншої юрособи).
 async function fetchAll(table, cols, mod) {
   let from = 0, all = []
   while (true) {
-    let q = supabase.from(table).select(cols).range(from, from + 999)
+    let q = qc(table).select(cols).range(from, from + 999)
     if (mod) q = mod(q)
     const { data } = await q
     if (!data?.length) break
