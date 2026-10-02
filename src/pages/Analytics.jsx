@@ -683,8 +683,17 @@ export function BalanceView({ fixedYear = null, fixedMonth = null } = {}) {
   )
 }
 
-// Динаміка балансу по місяцях: тренд капіталу + внески складових + таблиця
+// Динаміка балансу по місяцях: тренд капіталу + внески складових + таблиця (клітинки клікабельні)
 function BalanceTrend({ trend }) {
+  const [drill, setDrill] = useState(null)   // { snap, type, monthLabel }
+  const [loadingCell, setLoadingCell] = useState(null) // `${label}:${type}`
+  const openCell = async (r, type) => {
+    const key = `${r.label}:${type}`
+    setLoadingCell(key)
+    const snap = await computeSnapshot(r.y, r.m)
+    setLoadingCell(null)
+    setDrill({ snap, type, monthLabel: r.label })
+  }
   const rows = trend.rows || []
   if (!rows.length) return <div className="card"><p style={{ color: 'var(--text3)' }}>Немає даних за період</p></div>
   const first = rows[0], last = rows[rows.length - 1]
@@ -702,6 +711,18 @@ function BalanceTrend({ trend }) {
   const W = 600, H = 80
   const pts = eqs.map((v, i) => `${(i / Math.max(1, eqs.length - 1)) * W},${(H - 4) - ((v - mn) / rng) * (H - 8) + 4}`).join(' ')
   const td = { textAlign: 'right', whiteSpace: 'nowrap', padding: '4px 8px' }
+  const clickCell = (value, type, r) => {
+    const busy = loadingCell === `${r.label}:${type}`
+    return (
+      <td style={td}>
+        {value ? (
+          <span onClick={() => !busy && openCell(r, type)} style={{ cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: 3, opacity: busy ? 0.5 : 1 }}>
+            {fmtInt(value)}{busy ? '…' : ''}
+          </span>
+        ) : fmtInt(value)}
+      </td>
+    )
+  }
 
   return (
     <div className="card">
@@ -743,11 +764,11 @@ function BalanceTrend({ trend }) {
             {rows.map((r, i) => (
               <tr key={r.label} style={{ borderTop: '1px solid var(--border)' }}>
                 <td style={{ textAlign: 'left', padding: '4px 8px', whiteSpace: 'nowrap' }}>{r.label}</td>
-                <td style={td}>{fmtInt(r.cash)}</td>
-                <td style={td}>{fmtInt(r.stock)}</td>
-                <td style={td}>{fmtInt(r.receivable)}</td>
-                <td style={td}>{fmtInt(r.payable)}</td>
-                <td style={td}>{fmtInt(r.loans)}</td>
+                {clickCell(r.cash, 'cash', r)}
+                {clickCell(r.stock, 'stock', r)}
+                {clickCell(r.receivable, 'recv', r)}
+                {clickCell(r.payable, 'pay', r)}
+                {clickCell(r.loans, 'loans', r)}
                 <td style={{ ...td, fontWeight: 700, color: signColor(r.equity) }}>{si(r.equity)}</td>
                 <td style={{ ...td, color: i === 0 ? 'var(--text3)' : r.dEquity >= 0 ? GREEN : RED }}>{i === 0 ? '—' : (r.dEquity >= 0 ? '+' : '−') + fmtInt(Math.abs(r.dEquity))}</td>
               </tr>
@@ -755,7 +776,8 @@ function BalanceTrend({ trend }) {
           </tbody>
         </table>
       </div>
-      <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 10 }}>Кожен рядок — стан на кінець місяця. Капітал = Гроші + Склад + Дебіторка − Кредиторка − ПФД. Δ — зміна капіталу від попереднього місяця.</p>
+      <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 10 }}>Кожен рядок — стан на кінець місяця. Капітал = Гроші + Склад + Дебіторка − Кредиторка − ПФД. Δ — зміна капіталу від попереднього місяця. <b>Натисніть на цифру</b> — побачите, з чого вона складається.</p>
+      {drill && <BalanceDrillModal drill={{ type: drill.type, monthLabel: drill.monthLabel }} snap={drill.snap} onClose={() => setDrill(null)} />}
     </div>
   )
 }
@@ -767,7 +789,19 @@ function BalanceDrillModal({ drill, snap, onClose }) {
   const openById = async (id) => { if (!id) return; const { data } = await qc('documents').select('*').eq('id', id).maybeSingle(); if (data) setOpenDoc(data) }
 
   let title, color, content
-  if (drill.type === 'stock') {
+  if (drill.type === 'cash') {
+    title = 'Гроші — рахунки'; color = 'var(--text)'
+    const bals = (snap.balances || []).filter(b => Math.abs(b.balance) > 0.005)
+    content = (
+      <table>
+        <thead><tr style={{ color: 'var(--text3)' }}><th style={{ textAlign: 'left' }}>Рахунок</th><th style={{ textAlign: 'right' }}>Залишок</th></tr></thead>
+        <tbody>
+          {bals.map(b => <tr key={b.id}><td>{b.name}</td><td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: signColor(b.balance) }}>{si(b.balance)}</td></tr>)}
+          {bals.length === 0 && <tr><td colSpan={2} style={{ textAlign: 'center', color: 'var(--text3)', padding: 20 }}>Немає рухів</td></tr>}
+        </tbody>
+      </table>
+    )
+  } else if (drill.type === 'stock') {
     title = 'Склад — залишки за собівартістю'; color = 'var(--text)'
     const items = snap.stock?.items || []
     content = (
@@ -842,7 +876,7 @@ function BalanceDrillModal({ drill, snap, onClose }) {
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', zIndex: 1000, overflow: 'auto' }}>
       <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: 12, padding: 20, width: '100%', maxWidth: 760, boxShadow: '0 10px 40px rgba(0,0,0,.3)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, gap: 12 }}>
-          <div style={{ fontWeight: 700, fontSize: 15, color }}>{title}</div>
+          <div style={{ fontWeight: 700, fontSize: 15, color }}>{title}{drill.monthLabel ? ` · ${drill.monthLabel}` : ''}</div>
           <button className="btn" onClick={onClose} style={{ flexShrink: 0 }}><i className="ti ti-x" /></button>
         </div>
         <div className="tbl-wrap" style={{ border: 'none', maxHeight: '64vh', overflow: 'auto' }}>{content}</div>

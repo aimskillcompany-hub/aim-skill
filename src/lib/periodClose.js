@@ -170,10 +170,26 @@ export async function computeSnapshot(year, month) {
     q.lte('doc_date', to).not('amount', 'is', null).not('direction', 'is', null))
   const relevant = debtDocs.filter(d => countsAsDebt(d.type) && (d.direction === 'payable' || d.direction === 'receivable'))
   const debtIds = relevant.map(d => d.id)
+  // Оплати з датами (transaction_documents → bank_transactions.date): враховуємо лише ті, що <= кінця періоду,
+  // щоб борг був коректний станом на цю дату (а не «як зараз») — узгоджено з computeBalanceTrend.
   const paidByDoc = {}
-  for (let i = 0; i < debtIds.length; i += 200) {
-    const { data } = await supabase.from('transaction_documents').select('document_id, amount').in('document_id', debtIds.slice(i, i + 200))
-    ;(data || []).forEach(t => { paidByDoc[t.document_id] = (paidByDoc[t.document_id] || 0) + Math.abs(Number(t.amount) || 0) })
+  if (debtIds.length) {
+    const tds = []
+    for (let i = 0; i < debtIds.length; i += 200) {
+      const { data } = await supabase.from('transaction_documents').select('document_id, amount, transaction_id').in('document_id', debtIds.slice(i, i + 200))
+      ;(data || []).forEach(t => tds.push(t))
+    }
+    const ptxIds = [...new Set(tds.map(t => t.transaction_id).filter(Boolean))]
+    const ptxDate = {}
+    for (let i = 0; i < ptxIds.length; i += 200) {
+      const { data } = await supabase.from('bank_transactions').select('id, date').in('id', ptxIds.slice(i, i + 200))
+      ;(data || []).forEach(t => ptxDate[t.id] = t.date)
+    }
+    tds.forEach(t => {
+      const pd = ptxDate[t.transaction_id]
+      if (pd && pd > to) return // оплата сталась після кінця періоду — ще не оплачено на цю дату
+      paidByDoc[t.document_id] = (paidByDoc[t.document_id] || 0) + Math.abs(Number(t.amount) || 0)
+    })
   }
   let receivable = 0, payable = 0
   const receivableDocs = [], payableDocs = []
