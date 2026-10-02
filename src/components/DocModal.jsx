@@ -84,27 +84,25 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
   const [verified, setVerified] = useState(!!existingDoc?.is_verified) // документ перевірено (звірка скан↔поля)
   const [signedSaved, setSignedSaved] = useState(false) // індикатор авто-збереження «Підписаний»
   const [docMovements, setDocMovements] = useState(null) // фактично створені складські рухи цього документа
+  const [stockMsg, setStockMsg] = useState(null) // результат ручного «Оприбуткувати на склад зараз»
 
   useEffect(() => { if (existingDoc) recognizeExisting(autoOcr) }, [])
 
   // Завантажити фактичні складські рухи документа (цифровий аналог: що потрапило на склад)
-  useEffect(() => {
+  const loadMovements = async () => {
     if (!existingDoc?.id) return
-    let cancelled = false
-    ;(async () => {
-      const { data: mv } = await qc('stock_movements')
-        .select('id, type, quantity, price, cost_price, product_id, source, description')
-        .eq('document_id', existingDoc.id).order('date')
-      const pids = [...new Set((mv || []).map(m => m.product_id).filter(Boolean))]
-      let pn = {}
-      if (pids.length) {
-        const { data: prods } = await supabase.from('products').select('id, name').in('id', pids)
-        ;(prods || []).forEach(p => pn[p.id] = p.name)
-      }
-      if (!cancelled) setDocMovements((mv || []).map(m => ({ ...m, productName: pn[m.product_id] || null })))
-    })()
-    return () => { cancelled = true }
-  }, [existingDoc?.id])
+    const { data: mv } = await qc('stock_movements')
+      .select('id, type, quantity, price, cost_price, product_id, source, description')
+      .eq('document_id', existingDoc.id).order('date')
+    const pids = [...new Set((mv || []).map(m => m.product_id).filter(Boolean))]
+    let pn = {}
+    if (pids.length) {
+      const { data: prods } = await supabase.from('products').select('id, name').in('id', pids)
+      ;(prods || []).forEach(p => pn[p.id] = p.name)
+    }
+    setDocMovements((mv || []).map(m => ({ ...m, productName: pn[m.product_id] || null })))
+  }
+  useEffect(() => { loadMovements() }, [existingDoc?.id])
 
   // Позначити «Перевірено» / зняти позначку (звірено скан↔розпізнані поля/ПДВ/рухи)
   const toggleVerified = async () => {
@@ -230,8 +228,9 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
   // крім збірок, і створити заново) — щоб перерозпізнавання не задвоювало склад.
   // ВАЖЛИВО: якщо «Рух на складі» вимкнено — НЕ чіпаємо наявні рухи. Раніше видаляли завжди,
   // тож просте збереження документа з порожніми позиціями стирало вже створений прихід/видаток.
-  const syncDocStock = async (documentId) => {
-    if (!stockOn) return
+  const syncDocStock = async (documentId, forceOn) => {
+    const on = forceOn ?? stockOn
+    if (!on) return 0
     await qc('stock_movements').delete().eq('document_id', documentId).neq('source', 'assembly')
     const failures = []
     let created = 0
@@ -257,6 +256,22 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
     if (failures.length) {
       throw new Error(`Не проведено на склад ${failures.length} з ${(form.items || []).length} позицій:\n${failures.join('\n')}`)
     }
+    return created
+  }
+
+  // Явне проведення на склад прямо зараз (незалежно від галочки й головного «Зберегти») — з видимим результатом
+  const postStockNow = async () => {
+    if (!existingDoc?.id) { setStockMsg({ err: 'Спершу збережіть документ, потім оприбуткуйте.' }); return }
+    if (!(form.items || []).length) { setStockMsg({ err: 'Немає розпізнаних позицій.' }); return }
+    setBusy(true); setStockMsg(null)
+    try {
+      const n = await syncDocStock(existingDoc.id, true)
+      await loadMovements()
+      setStockMsg({ ok: `Оприбутковано ${n} позицій на склад.` })
+    } catch (e) {
+      setStockMsg({ err: e.message })
+    }
+    setBusy(false)
   }
 
   const save = async () => {
@@ -541,14 +556,26 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
               {/* Цифровий аналог: фактично створені складські рухи */}
               {existingDoc && (
                 <div style={{ marginTop: 14 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 6 }}>
-                    Складські рухи {docMovements ? `(${docMovements.length})` : ''}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>
+                      Складські рухи {docMovements ? `(${docMovements.length})` : ''}
+                    </div>
+                    {(form.items || []).length > 0 && getDocType(form.type)?.stockEffect && (
+                      <button type="button" className="btn" onClick={postStockNow} disabled={busy} style={{ fontSize: 12, padding: '4px 10px' }}>
+                        <i className="ti ti-package-import" /> {stockDir === 'out' ? 'Списати зі складу зараз' : 'Оприбуткувати на склад зараз'}
+                      </button>
+                    )}
                   </div>
+                  {stockMsg && (
+                    <div style={{ fontSize: 12.5, borderRadius: 8, padding: '8px 12px', marginBottom: 8, whiteSpace: 'pre-wrap', background: 'var(--surface2)', color: stockMsg.err ? 'var(--red)' : 'var(--green)' }}>
+                      <i className={`ti ${stockMsg.err ? 'ti-alert-circle' : 'ti-check'}`} style={{ marginRight: 4 }} />{stockMsg.err || stockMsg.ok}
+                    </div>
+                  )}
                   {docMovements === null ? (
                     <div style={{ fontSize: 12, color: 'var(--text3)' }}>Завантаження…</div>
                   ) : docMovements.length === 0 ? (
                     <div style={{ fontSize: 12.5, color: 'var(--amber, #b45309)', background: 'var(--surface2)', borderRadius: 8, padding: '8px 12px' }}>
-                      <i className="ti ti-alert-circle" /> Рухів на складі з цього документа немає{(form.items || []).length > 0 ? ' — хоча позиції розпізнані. Увімкни «Рух на складі» і збережи.' : '.'}
+                      <i className="ti ti-alert-circle" /> Рухів на складі з цього документа немає{(form.items || []).length > 0 ? ' — натисни «Оприбуткувати на склад зараз» (кнопка вище).' : '.'}
                     </div>
                   ) : (
                     <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
