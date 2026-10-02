@@ -71,7 +71,7 @@ function TransactionsTab({ accounts, onChange }) {
   const [rows, setRows] = useState([])
   const [articles, setArticles] = useState([])
   const [loading, setLoading] = useState(true)
-  const [status, setStatus] = useState('unconfirmed') // unconfirmed | all
+  const [status, setStatus] = useState('all') // all | unconfirmed | ignored — за замовчуванням показуємо всі
   const [acc, setAcc] = useState('all')
   const [art, setArt] = useState('all')               // фільтр за статтею
   const [limit, setLimit] = useState(500)             // пагінація «показати ще»
