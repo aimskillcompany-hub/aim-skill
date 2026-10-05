@@ -10,9 +10,22 @@ import { supabase } from './supabase'
 import { qc } from './companyScope'
 
 export async function getAccountBalances() {
-  const [{ data: accs }, { data: txs }] = await Promise.all([
+  // ВАЖЛИВО: Supabase віддає максимум 1000 рядків за запит. Транзакцій набагато більше,
+  // тож вибираємо посторінково — інакше залишок рахувався б лише по перших 1000 (завищено/занижено).
+  const fetchAllTx = async () => {
+    let from = 0, all = []
+    while (true) {
+      const { data } = await qc('bank_transactions').select('account_id, amount, date').eq('is_ignored', false).range(from, from + 999)
+      if (!data?.length) break
+      all.push(...data)
+      if (data.length < 1000) break
+      from += 1000
+    }
+    return all
+  }
+  const [{ data: accs }, txs] = await Promise.all([
     qc('accounts').select('id, name, type, bank_name, is_active, opening_balance, opening_balance_date, sort_order').order('sort_order'),
-    qc('bank_transactions').select('account_id, amount, date').eq('is_ignored', false),
+    fetchAllTx(),
   ])
   const agg = {}
   ;(accs || []).forEach(a => { agg[a.id] = { inflow: 0, outflow: 0 } })
