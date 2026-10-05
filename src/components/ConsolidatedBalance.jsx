@@ -1,23 +1,44 @@
 import { useEffect, useState } from 'react'
 import { useCompany } from '../lib/company'
-import { fmtInt } from '../lib/fmt'
 import { computeConsolidated } from '../lib/consolidated'
 import { forecastNetByDate } from '../lib/forecast'
 
-const lastDayStr = (y, m) => `${y}-${String(m).padStart(2, '0')}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`
-// Число зі ЗНАКОМ: fmtInt показує модуль (Math.abs), тож від'ємні значення (напр. від'ємний
-// залишок каси або від'ємний склад через оверсел) виглядали б додатними і сума «не билась».
-const si = (n) => (Number(n) < 0 ? '−' : '') + fmtInt(n)
-
-// Зведений баланс по всіх юрособах — повна картина бізнесу для інвестора.
+// Зведений баланс групи — один звіт: рівняння Активи=Зобов'язання+Капітал, три картки, об'єднана
+// таблиця «факт + прогноз» по юрособах. Дані/розрахунки — ті самі (computeConsolidated + forecast).
 
 const MONTHS = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень', 'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень']
 const now = new Date()
+const lastDayStr = (y, m) => `${y}-${String(m).padStart(2, '0')}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`
+
+// ── Форматування (єдине для всієї сторінки) ──
+const _int = new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 })
+const r0 = (n) => Math.round(Number(n) || 0)
+const absInt = (n) => _int.format(Math.abs(r0(n)))
+const numText = (n) => (r0(n) < 0 ? '−' : '') + absInt(n)              // число зі знаком
+// Колір лише за знаком: <0 червоний, =0 світло-сірий, >0 звичайний (або фіолетовий для капіталу)
+const numColor = (n, purple) => { const v = r0(n); if (v < 0) return '#C62828'; if (v === 0) return '#A39FB0'; return purple ? '#5B2FD6' : '#17151F' }
+const pct1 = (frac) => (Math.abs(frac * 100)).toFixed(1).replace('.', ',') + '%'
+const changeText = (delta, base) => { const v = r0(delta); if (v === 0 || !base) return 'без змін'; const p = (delta / base * 100); return (p >= 0 ? '+' : '−') + Math.abs(p).toFixed(1).replace('.', ',') + '%' }
+const barW = (v, total) => { if (!total) return 0; const w = Math.abs(v) / Math.abs(total) * 100; return Math.max(0, Math.min(100, w)) }
+
+const MONO = { fontFamily: "ui-monospace, 'SF Mono', Menlo, monospace", fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }
+const CARD = { background: '#FFFFFF', border: '1px solid #ECEAF2', borderRadius: 20, padding: 24, display: 'flex', flexDirection: 'column', gap: 18 }
+
+const TBL_CSS = `
+.zb-bt{width:100%;min-width:1080px;border-collapse:collapse;font-size:14px}
+.zb-bt td,.zb-bt th{padding:12px 16px;text-align:right;border-bottom:1px solid #ECEAF2}
+.zb-bt td:first-child,.zb-bt th:first-child{text-align:left}
+.zb-bt .fc{background:#F1F4FF}
+.zb-bt .fcl{border-left:1px dashed #9AA8E8}
+.zb-bt .tot td{background:#FAF9FC;font-weight:700;border-bottom:1px solid #D9D5E5}
+.zb-bt .tot .fc{background:#E6EBFF}
+.zb-bt .sec td{padding-top:22px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#5E5A6B;font-weight:700;border-bottom:none}
+`
 
 export default function ConsolidatedBalance() {
   const { companies } = useCompany()
   const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1) // 1..12
+  const [month, setMonth] = useState(now.getMonth() + 1)
   const [data, setData] = useState(null)
   const [forecast, setForecast] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -29,7 +50,7 @@ export default function ConsolidatedBalance() {
     setLoading(true); setErr(null)
     Promise.all([
       computeConsolidated(year, month, companies),
-      forecastNetByDate(lastDayStr(year, month)).catch(() => null), // прогноз необов'язковий (до міграції 061)
+      forecastNetByDate(lastDayStr(year, month)).catch(() => null),
     ])
       .then(([r, f]) => { if (!cancelled) { setData(r); setForecast(f) } })
       .catch(e => { if (!cancelled) setErr(e.message) })
@@ -39,131 +60,258 @@ export default function ConsolidatedBalance() {
 
   const years = [2025, 2026, 2027].filter(y => y <= now.getFullYear() + 1)
 
+  // Похідні
+  const t = data?.total
+  const rows = data?.rows || []
+  const liabTotal = t ? r0(t.pay) + r0(t.loans) : 0
+  const income = forecast?.income || 0, expense = forecast?.expense || 0, net = forecast?.net || 0
+  const fCash = t ? t.cash + net : 0
+  const fAssets = t ? t.assets + net : 0
+  const fEquity = t ? t.equity + net : 0
+  const otherNet = t ? t.equity - t.fa - t.cash : 0 // інші чисті активи
+
   return (
-    <div>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, color: 'var(--text3)' }}>Станом на кінець періоду:</span>
-        <select className="form-input" value={month} onChange={e => setMonth(Number(e.target.value))} style={{ width: 140 }}>
-          {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-        </select>
-        <select className="form-input" value={year} onChange={e => setYear(Number(e.target.value))} style={{ width: 100 }}>
-          {years.map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
-        {loading && <span style={{ fontSize: 13, color: 'var(--text3)' }}><i className="ti ti-loader" /> Рахуємо по {companies?.length || 0} компаніях…</span>}
+    <div style={{ fontFamily: 'Manrope, system-ui, sans-serif', color: '#17151F', display: 'flex', flexDirection: 'column', gap: 28 }}>
+      <style>{TBL_CSS}</style>
+
+      {/* Шапка */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end', gap: 20 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <h1 style={{ margin: 0, fontSize: 34, lineHeight: 1.1, fontWeight: 800, letterSpacing: '-0.02em' }}>Зведений баланс групи</h1>
+          <div style={{ fontSize: 15, color: '#5E5A6B' }}>
+            Станом на {new Date(year, month, 0).getDate()} {MONTHS[month - 1].toLowerCase()} {year} · {companies?.length || 0} юрособи · факт і прогноз в одному звіті
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 12, color: '#5E5A6B', fontWeight: 600 }}>Місяць</label>
+            <select value={month} onChange={e => setMonth(Number(e.target.value))} style={selStyle}>
+              {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+            </select>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 12, color: '#5E5A6B', fontWeight: 600 }}>Рік</label>
+            <select value={year} onChange={e => setYear(Number(e.target.value))} style={{ ...selStyle, minWidth: 100 }}>
+              {years.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          <button onClick={() => window.print()} style={{ height: 44, padding: '0 18px', border: 'none', borderRadius: 10, background: '#17151F', color: '#fff', fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+            <i className="ti ti-file-download" style={{ marginRight: 6 }} />Експорт PDF
+          </button>
+        </div>
       </div>
 
-      {err && <div className="card" style={{ color: 'var(--red)' }}>Помилка: {err}</div>}
+      {loading && <div style={{ fontSize: 13, color: '#5E5A6B' }}><i className="ti ti-loader" /> Рахуємо по {companies?.length || 0} компаніях…</div>}
+      {err && <div style={{ ...CARD, color: '#C62828' }}>Помилка: {err}</div>}
 
-      {data && (
+      {data && t && (
         <>
-          {/* Підсумкові KPI */}
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-            <Kpi label="Активи (разом)" value={data.total.assets} color="var(--text)" big />
-            <Kpi label="Зобов'язання (разом)" value={data.total.pay + Math.max(0, data.total.loans)} color="#DC2626" />
-            <Kpi label="Власний капітал (разом)" value={data.total.equity} color="#7C3AED" big />
+          {/* Смуга рівняння */}
+          <div style={{ background: '#17151F', color: '#fff', borderRadius: 20, padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '14px 22px' }}>
+              <EqPart label="Активи" value={t.assets} />
+              <span style={{ fontSize: 24, color: '#8A849C' }}>=</span>
+              <EqPart label="Зобов'язання" value={liabTotal} />
+              <span style={{ fontSize: 24, color: '#8A849C' }}>+</span>
+              <EqPart label="Власний капітал" value={t.equity} accent="#B9A2FF" />
+            </div>
+            <div style={{ display: 'flex', height: 12, borderRadius: 6, overflow: 'hidden', gap: 3 }}>
+              <div style={{ width: barW(liabTotal, t.assets) + '%', background: '#FF7A6B' }} />
+              <div style={{ width: barW(t.equity, t.assets) + '%', background: '#8B63FF' }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#B9B4C9' }}>
+              <span>Зобов'язання · {pct1(liabTotal / (t.assets || 1))} активів</span>
+              <span>Капітал · {pct1(t.equity / (t.assets || 1))} активів</span>
+            </div>
           </div>
 
-          <div className="card" style={{ overflowX: 'auto' }}>
-            <div className="card-title" style={{ marginBottom: 10 }}>Баланс по юрособах</div>
-            <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse', minWidth: 820 }}>
-              <thead>
-                <tr style={{ color: 'var(--text3)', fontSize: 11, textAlign: 'right' }}>
-                  <th style={{ textAlign: 'left', padding: '6px 8px' }}>Компанія</th>
-                  <th style={{ padding: '6px 8px' }}>Гроші</th>
-                  <th style={{ padding: '6px 8px' }}>Склад</th>
-                  <th style={{ padding: '6px 8px' }}>Дебіторка</th>
-                  <th style={{ padding: '6px 8px' }}>ОЗ</th>
-                  <th style={{ padding: '6px 8px', borderLeft: '1px solid var(--border)' }}>Активи</th>
-                  <th style={{ padding: '6px 8px', borderLeft: '1px solid var(--border)' }}>Кредиторка</th>
-                  <th style={{ padding: '6px 8px' }}>ПФД</th>
-                  <th style={{ padding: '6px 8px', borderLeft: '1px solid var(--border)' }}>Капітал</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.rows.map(r => (
-                  <tr key={r.id} style={{ borderTop: '1px solid var(--border)', textAlign: 'right' }}>
-                    <td style={{ textAlign: 'left', padding: '8px', fontWeight: 500 }}>
-                      {r.name}{r.error && <span title={r.error} style={{ color: 'var(--red)', marginLeft: 6 }}><i className="ti ti-alert-triangle" /></span>}
-                    </td>
-                    <td style={{ padding: '8px', color: r.cash < 0 ? 'var(--red)' : undefined }}>{si(r.cash)}</td>
-                    <td style={{ padding: '8px', color: r.stock < 0 ? 'var(--red)' : undefined }}>{si(r.stock)}</td>
-                    <td style={{ padding: '8px', color: r.recv < 0 ? 'var(--red)' : undefined }}>{si(r.recv)}</td>
-                    <td style={{ padding: '8px', color: r.fa < 0 ? 'var(--red)' : undefined }}>{si(r.fa)}</td>
-                    <td style={{ padding: '8px', borderLeft: '1px solid var(--border)', fontWeight: 600, color: r.assets < 0 ? 'var(--red)' : undefined }}>{si(r.assets)}</td>
-                    <td style={{ padding: '8px', borderLeft: '1px solid var(--border)' }}>{si(r.pay)}</td>
-                    <td style={{ padding: '8px', color: r.loans < 0 ? '#16A34A' : 'var(--text)' }}>{si(r.loans)}</td>
-                    <td style={{ padding: '8px', borderLeft: '1px solid var(--border)', fontWeight: 700, color: r.equity < 0 ? 'var(--red)' : '#7C3AED' }}>{si(r.equity)}</td>
-                  </tr>
-                ))}
-                <tr style={{ borderTop: '2px solid var(--text)', textAlign: 'right', fontWeight: 700 }}>
-                  <td style={{ textAlign: 'left', padding: '8px' }}>РАЗОМ</td>
-                  <td style={{ padding: '8px', color: data.total.cash < 0 ? 'var(--red)' : undefined }}>{si(data.total.cash)}</td>
-                  <td style={{ padding: '8px', color: data.total.stock < 0 ? 'var(--red)' : undefined }}>{si(data.total.stock)}</td>
-                  <td style={{ padding: '8px', color: data.total.recv < 0 ? 'var(--red)' : undefined }}>{si(data.total.recv)}</td>
-                  <td style={{ padding: '8px', color: data.total.fa < 0 ? 'var(--red)' : undefined }}>{si(data.total.fa)}</td>
-                  <td style={{ padding: '8px', borderLeft: '1px solid var(--border)' }}>{si(data.total.assets)}</td>
-                  <td style={{ padding: '8px', borderLeft: '1px solid var(--border)' }}>{si(data.total.pay)}</td>
-                  <td style={{ padding: '8px', color: data.total.loans < 0 ? '#16A34A' : 'var(--text)' }}>{si(data.total.loans)}</td>
-                  <td style={{ padding: '8px', borderLeft: '1px solid var(--border)', color: '#7C3AED' }}>{si(data.total.equity)}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 12 }}>
-            Активи = Гроші + Склад + Дебіторка + ОЗ. Капітал = Активи − Кредиторка − ПФД (чиста). ПФД від'ємна (зелена) — нам мають повернути (актив).
-            Внутрішньогрупова ПФД між вашими компаніями самознищується в сумі; внутрішньогрупові дебіторка/кредиторка показані «грос» (на Капітал не впливають).
-          </p>
-
-          {/* Прогноз — ручні очікувані потоки станом на кінець періоду (стиль таблиці балансу) */}
-          {forecast && (forecast.income > 0.5 || forecast.expense > 0.5) && (
-            <div className="card" style={{ marginTop: 16, overflowX: 'auto', borderColor: '#2563EB', borderStyle: 'dashed' }}>
-              <div className="card-title" style={{ marginBottom: 10, color: '#2563EB' }}>
-                <i className="ti ti-trending-up" /> Прогноз станом на {MONTHS[month - 1]} {year}
+          {/* Три картки */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20 }}>
+            {/* Активи */}
+            <div style={CARD}>
+              <CardHead title="Активи (разом)" bg="#F1EEFB" color="#17151F" icon="ti-briefcase" />
+              <div style={{ ...MONO, fontSize: 34, fontWeight: 600, letterSpacing: '-0.02em', color: numColor(t.assets) }}>{numText(t.assets)} ₴</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <BarRow label="Гроші" value={t.cash} total={t.assets} track="#F1EEFB" />
+                <BarRow label="Склад" value={t.stock} total={t.assets} track="#F1EEFB" />
+                <BarRow label="Дебіторка" value={t.recv} total={t.assets} track="#F1EEFB" />
+                <BarRow label="Основні засоби" value={t.fa} total={t.assets} track="#F1EEFB" />
               </div>
-              <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse', minWidth: 820 }}>
+              <ForecastFooter value={fAssets} delta={net} base={t.assets} />
+            </div>
+
+            {/* Зобов'язання */}
+            <div style={CARD}>
+              <CardHead title="Зобов'язання (разом)" bg="#FDEEEC" color="#B4291F" icon="ti-arrow-down" />
+              <div style={{ ...MONO, fontSize: 34, fontWeight: 600, letterSpacing: '-0.02em', color: numColor(liabTotal) }}>{numText(liabTotal)} ₴</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <BarRow label="Кредиторка" value={t.pay} total={liabTotal} track="#FDEEEC" fill="#B4291F" />
+                <BarRow label="Поворотна фін. допомога" value={t.loans} total={liabTotal} track="#FDEEEC" fill="#B4291F" />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10, borderTop: '1px dashed #E3DFEC', fontSize: 13, color: '#5E5A6B' }}>
+                  {rows.filter(r => r0(r.loans) !== 0).map(r => (
+                    <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                      <span>{r0(r.loans) > 0 ? `ПФД отримана · ${r.name}` : `ПФД видана · ${r.name} (нам повернуть)`}</span>
+                      <span style={{ ...MONO, color: numColor(r.loans), fontWeight: r0(r.loans) < 0 ? 600 : 400 }}>{numText(r.loans)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <ForecastFooter value={liabTotal} delta={0} base={liabTotal} />
+            </div>
+
+            {/* Капітал */}
+            <div style={CARD}>
+              <CardHead title="Власний капітал (разом)" bg="#F1EEFB" color="#5B2FD6" icon="ti-diamond" />
+              <div style={{ ...MONO, fontSize: 34, fontWeight: 600, letterSpacing: '-0.02em', color: numColor(t.equity, true) }}>{numText(t.equity)} ₴</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#5E5A6B', marginBottom: -6 }}>Чим забезпечений капітал</div>
+              <div style={{ display: 'flex', height: 10, borderRadius: 5, overflow: 'hidden', gap: 2 }}>
+                <div style={{ width: barW(t.fa, t.equity) + '%', background: '#5B2FD6' }} />
+                <div style={{ width: barW(t.cash, t.equity) + '%', background: '#A98CFF' }} />
+                <div style={{ width: barW(otherNet, t.equity) + '%', background: '#DCD1FF' }} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14 }}>
+                <LegendRow dot="#5B2FD6" label="Основні засоби" value={t.fa} frac={t.fa / (t.equity || 1)} />
+                <LegendRow dot="#A98CFF" label="Гроші" value={t.cash} frac={t.cash / (t.equity || 1)} />
+                <LegendRow dot="#DCD1FF" label="Інші чисті активи" value={otherNet} frac={otherNet / (t.equity || 1)} />
+              </div>
+              <ForecastFooter value={fEquity} delta={net} base={t.equity} />
+            </div>
+          </div>
+
+          {/* Об'єднана таблиця */}
+          <div style={{ background: '#FFFFFF', border: '1px solid #ECEAF2', borderRadius: 20, padding: '24px 0 8px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '0 24px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>Баланс по юрособах і прогноз</h2>
+                <span style={{ fontSize: 13, color: '#5E5A6B' }}>Факт на кінець періоду, зліва направо — до прогнозу на {lastDayStr(year, month).split('-').reverse().join('.')}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 16, fontSize: 13, color: '#5E5A6B' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 12, height: 12, borderRadius: 3, background: '#FAF9FC', border: '1px solid #D9D5E5' }} />Факт</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 12, height: 12, borderRadius: 3, background: '#E6EBFF', border: '1px dashed #9AA8E8' }} />Прогноз</span>
+              </div>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="zb-bt">
                 <thead>
-                  <tr style={{ color: 'var(--text3)', fontSize: 11, textAlign: 'right' }}>
-                    <th style={{ textAlign: 'left', padding: '6px 8px' }}>Показник</th>
-                    <th style={{ padding: '6px 8px' }}>Гроші (факт)</th>
-                    <th style={{ padding: '6px 8px', color: '#16A34A' }}>+ Надходження</th>
-                    <th style={{ padding: '6px 8px', color: '#DC2626' }}>− Витрати</th>
-                    <th style={{ padding: '6px 8px', borderLeft: '1px solid var(--border)' }}>= Прогноз грошей</th>
+                  <tr style={{ fontSize: 12, color: '#5E5A6B' }}>
+                    <th style={{ fontWeight: 600, width: '22%' }}>Стаття</th>
+                    {rows.map(r => <th key={r.id} style={{ fontWeight: 600 }}>{r.name}</th>)}
+                    <th style={{ fontWeight: 800, color: '#17151F' }}>Разом · факт</th>
+                    <th className="fc fcl" style={{ fontWeight: 600, color: '#2848C7' }}>Рух за прогнозом</th>
+                    <th className="fc" style={{ fontWeight: 800, color: '#2848C7' }}>Прогноз {lastDayStr(year, month).slice(8)}.{lastDayStr(year, month).slice(5, 7)}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr style={{ borderTop: '1px solid var(--border)', textAlign: 'right' }}>
-                    <td style={{ textAlign: 'left', padding: '8px', fontWeight: 500 }}>Гроші</td>
-                    <td style={{ padding: '8px', color: data.total.cash < 0 ? 'var(--red)' : undefined }}>{si(data.total.cash)}</td>
-                    <td style={{ padding: '8px', color: '#16A34A' }}>{fmtInt(forecast.income)}</td>
-                    <td style={{ padding: '8px', color: '#DC2626' }}>{fmtInt(forecast.expense)}</td>
-                    <td style={{ padding: '8px', borderLeft: '1px solid var(--border)', fontWeight: 700, color: '#2563EB' }}>{si(data.total.cash + forecast.net)}</td>
-                  </tr>
-                  <tr style={{ borderTop: '2px solid var(--text)', textAlign: 'right', fontWeight: 700 }}>
-                    <td style={{ textAlign: 'left', padding: '8px' }}>Власний капітал</td>
-                    <td style={{ padding: '8px', color: '#7C3AED' }}>{si(data.total.equity)}</td>
-                    <td style={{ padding: '8px', color: '#16A34A' }}>{fmtInt(forecast.income)}</td>
-                    <td style={{ padding: '8px', color: '#DC2626' }}>{fmtInt(forecast.expense)}</td>
-                    <td style={{ padding: '8px', borderLeft: '1px solid var(--border)', color: '#7C3AED' }}>{si(data.total.equity + forecast.net)}</td>
+                  <SecRow span={rows.length + 2} label="Активи" />
+                  <StatRow rows={rows} field="cash" total={t.cash} label="Гроші"
+                    move={<div><div style={{ color: '#1F7A4D' }}>+{absInt(income)}</div><div style={{ color: '#C62828', fontSize: 12 }}>−{absInt(expense)}</div></div>} fcVal={fCash} />
+                  <StatRow rows={rows} field="stock" total={t.stock} label="Склад" move="—" fcVal={t.stock} />
+                  <StatRow rows={rows} field="recv" total={t.recv} label="Дебіторка" move="—" fcVal={t.recv} />
+                  <StatRow rows={rows} field="fa" total={t.fa} label="Основні засоби" move="—" fcVal={t.fa} />
+                  <StatRow rows={rows} field="assets" total={t.assets} label="Активи разом" isTot moveNum={net} fcVal={fAssets} />
+
+                  <SecRow span={rows.length + 2} label="Зобов'язання" />
+                  <StatRow rows={rows} field="pay" total={t.pay} label="Кредиторка" move="—" fcVal={t.pay} />
+                  <StatRow rows={rows} field="loans" total={t.loans} label="Поворотна фін. допомога" move="—" fcVal={t.loans} />
+                  <StatRow rows={rows} fn={r => r0(r.pay) + r0(r.loans)} total={liabTotal} label="Зобов'язання разом" isTot move="—" fcVal={liabTotal} />
+
+                  <SecRow span={rows.length + 2} label="Власний капітал" />
+                  <StatRow rows={rows} field="equity" total={t.equity} label="Власний капітал" isTot big purple moveNum={net} fcVal={fEquity} />
+                  <tr>
+                    <td style={{ color: '#5E5A6B', fontSize: 13 }}>Частка у капіталі групи</td>
+                    {rows.map(r => <td key={r.id} style={{ ...MONO, color: '#5E5A6B', fontSize: 13 }}>{pct1(r.equity / (t.equity || 1))}</td>)}
+                    <td style={{ ...MONO, color: '#5E5A6B', fontSize: 13 }}>100%</td>
+                    <td className="fc fcl" /><td className="fc" />
                   </tr>
                 </tbody>
               </table>
-              <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>
-                Враховані прогнозні рядки з очікуваною датою ≤ кінця періоду (вносяться у розділі «Прогноз»). Зміни місяць/рік угорі, щоб побачити баланс на іншу дату.
-              </p>
             </div>
-          )}
+          </div>
+
+          <p style={{ fontSize: 12, color: '#5E5A6B', lineHeight: 1.55, margin: 0 }}>
+            Активи = Гроші + Склад + Дебіторка + ОЗ. Капітал = Активи − Кредиторка − ПФД (чиста). Від'ємні значення — червоні зі знаком «−».
+            Внутрішньогрупові дебіторка/кредиторка показані «грос» (на капітал не впливають). Прогноз — ручні рядки з очікуваною датою ≤ кінця періоду (розділ «Прогноз»).
+          </p>
         </>
       )}
     </div>
   )
 }
 
-function Kpi({ label, value, color, big }) {
+const selStyle = { height: 44, minWidth: 150, padding: '0 14px', border: '1px solid #DDD9E8', borderRadius: 10, background: '#fff', fontFamily: 'inherit', fontSize: 15, color: '#17151F' }
+
+function EqPart({ label, value, accent }) {
   return (
-    <div className="card" style={{ flex: big ? '1 1 200px' : '1 1 150px', minWidth: 140, padding: '12px 14px' }}>
-      <div style={{ fontSize: 12, color: 'var(--text3)' }}>{label}</div>
-      <div style={{ fontSize: big ? 24 : 20, fontWeight: 700, color }}>{value < 0 ? '−' : ''}{fmtInt(value)} ₴</div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span style={{ fontSize: 12, color: '#B9B4C9', letterSpacing: '0.08em', textTransform: 'uppercase' }}>{label}</span>
+      <span style={{ ...MONO, fontSize: 26, fontWeight: 600, color: r0(value) < 0 ? '#FF7A6B' : (accent || '#fff') }}>{numText(value)} ₴</span>
     </div>
+  )
+}
+
+function CardHead({ title, bg, color, icon }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#5E5A6B' }}>{title}</span>
+      <span style={{ width: 36, height: 36, borderRadius: 10, background: bg, color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><i className={`ti ${icon}`} style={{ fontSize: 18 }} /></span>
+    </div>
+  )
+}
+
+function BarRow({ label, value, total, track, fill }) {
+  const neg = r0(value) < 0
+  const color = neg ? '#C62828' : (fill || '#17151F')
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+        <span>{label}</span>
+        <span style={{ ...MONO, color: numColor(value), fontWeight: neg ? 600 : 400 }}>{numText(value)}</span>
+      </div>
+      <div style={{ height: 6, background: track, borderRadius: 3 }}>
+        <div style={{ width: barW(value, total) + '%', height: 6, background: color, borderRadius: 3 }} />
+      </div>
+    </div>
+  )
+}
+
+function LegendRow({ dot, label, value, frac }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: dot }} />{label}</span>
+      <span><span style={{ ...MONO, color: numColor(value) }}>{numText(value)}</span> <span style={{ color: '#5E5A6B', fontSize: 12 }}>{pct1(frac)}</span></span>
+    </div>
+  )
+}
+
+function ForecastFooter({ value, delta, base }) {
+  return (
+    <div style={{ marginTop: 'auto', background: '#F1F4FF', borderRadius: 12, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, color: '#2848C7' }}>
+      <span style={{ fontWeight: 600 }}>Прогноз на кінець місяця</span>
+      <span style={{ ...MONO, fontWeight: 600 }}>{numText(value)} ₴ · {changeText(delta, base)}</span>
+    </div>
+  )
+}
+
+function SecRow({ span, label }) {
+  return <tr className="sec"><td colSpan={span}>{label}</td></tr>
+}
+
+// Рядок статті: per-company (field або fn) + Разом + рух прогнозу + прогноз
+function StatRow({ rows, field, fn, total, label, isTot, big, purple, move, moveNum, fcVal }) {
+  const val = (r) => fn ? fn(r) : r0(r[field])
+  const fs = big ? 16 : undefined
+  const cellColor = (v) => numColor(v, purple)
+  return (
+    <tr className={isTot ? 'tot' : undefined}>
+      <td style={{ fontSize: fs }}>{label}</td>
+      {rows.map(r => <td key={r.id} className="num" style={{ ...MONO, color: cellColor(val(r)), fontWeight: r0(val(r)) < 0 ? 600 : (isTot ? 700 : 400), fontSize: fs }}>{numText(val(r))}</td>)}
+      <td className="num" style={{ ...MONO, color: cellColor(total), fontWeight: isTot ? 700 : 600, fontSize: fs }}>{numText(total)}</td>
+      <td className="num fc fcl" style={{ ...MONO, fontSize: fs }}>
+        {moveNum !== undefined
+          ? <span style={{ color: r0(moveNum) < 0 ? '#C62828' : (r0(moveNum) > 0 ? '#1F7A4D' : '#A39FB0') }}>{r0(moveNum) > 0 ? '+' : ''}{numText(moveNum)}</span>
+          : (move === '—' ? <span style={{ color: '#A39FB0' }}>—</span> : move)}
+      </td>
+      <td className="num fc" style={{ ...MONO, color: cellColor(fcVal), fontWeight: isTot ? 700 : 600, fontSize: fs }}>{numText(fcVal)}</td>
+    </tr>
   )
 }
