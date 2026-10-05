@@ -18,6 +18,7 @@ const NAV = [
   { to: '/analytics',   label: 'Аналітика',    icon: 'ti-chart-dots-3',   section: 'Аналіз' },
   { to: '/investor',    label: 'Інвестору',    icon: 'ti-diamond',        accent: '#7C3AED' },
   { to: '/finance',     label: 'Фінрезультат проекту', icon: 'ti-chart-pie' },
+  { to: '/loans',       label: 'Поворотна фін. допомога', icon: 'ti-cash-banknote' },
   { to: '/period-close', label: 'Закриття періоду', icon: 'ti-lock-square', section: 'Система' },
   { to: '/settings',    label: 'Налаштування', icon: 'ti-settings' },
 ]
