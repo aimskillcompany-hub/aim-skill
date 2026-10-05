@@ -461,7 +461,9 @@ function TxModal({ tx, grouped, onClose, onSaved, onLink, onOpenDoc }) {
     const article = arts.find(a => a.name === f.article)
     await qc('bank_transactions').update({
       direction: f.direction || null, article: f.article || null, article_id: article?.id || null,
-      contractor_id: f.contractor_id || null, ...(validate ? { is_validated: true } : {}),
+      contractor_id: f.contractor_id || null,
+      counterparty: f.cname || tx.counterparty || null, // оновлюємо й відображувану назву контрагента
+      ...(validate ? { is_validated: true } : {}),
     }).eq('id', tx.id)
     setBusy(false); onSaved()
   }
