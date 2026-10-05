@@ -1104,9 +1104,13 @@ function DocumentsTab({ o }) {
       supabase.from('order_items').select('*').eq('order_id', o.id).order('created_at'),
     ])
     const items = (oi || []).map(it => {
-      // Неплатник ПДВ (ФОП): ПДВ ігнорується — ціна як є, ставка 0 (узгоджено з вкладкою «Товари»).
-      const v = vatOn ? (Number(it.vat_rate) || 0) : 0
-      const net = (vatOn && it.price_includes_vat) ? (v > 0 ? Number(it.unit_price) / (1 + v / 100) : Number(it.unit_price)) : Number(it.unit_price)
+      const storedV = Number(it.vat_rate) || 0
+      // Продавець — платник ПДВ, але позиція без ставки (напр. замовлення перенесене від неплатника ФОП):
+      // ставимо 20% і трактуємо ціну як З ПДВ («всередині») — сума для клієнта не змінюється.
+      const movedFromNonVat = vatOn && storedV === 0
+      const v = vatOn ? (storedV || 20) : 0
+      const inclVat = movedFromNonVat || !!it.price_includes_vat
+      const net = (vatOn && inclVat && v > 0) ? Number(it.unit_price) / (1 + v / 100) : Number(it.unit_price)
       return { name: it.name, quantity: Number(it.qty) || 0, unit: it.unit || 'шт', unitPrice: Math.round((net || 0) * 100) / 100, vatRate: v, amount: '', productId: it.product_id || null }
     })
     setGen({ contractor: c || { id: o.client_id, name: o.contractors?.name }, editDoc: { doc_type: docType, items } })
