@@ -1,15 +1,13 @@
 import { useState } from 'react'
 import OwnerReport from '../components/OwnerReport'
 import ConsolidatedBalance from '../components/ConsolidatedBalance'
-import ForecastBalance from '../components/ForecastBalance'
 
 // Розділ «Інвестору»: (1) по-замовленнєвий прибуток/агентські по всіх компаніях;
-// (2) зведений баланс — консолідація балансів усіх юросіб (повна картина бізнесу);
-// (3) прогноз — майбутній баланс/гроші по угодах у роботі.
+// (2) зведений баланс — консолідація балансів усіх юросіб (повна картина бізнесу).
+// Ведення прогнозу — в окремому розділі «Прогноз»; тут лише проєкція на балансі.
 const TABS = [
   { id: 'report', label: 'Прибуток / агентські', icon: 'ti-report-money' },
   { id: 'balance', label: 'Зведений баланс', icon: 'ti-scale' },
-  { id: 'forecast', label: 'Прогноз (майбутній баланс)', icon: 'ti-trending-up' },
 ]
 
 export default function Investor() {
@@ -45,16 +43,9 @@ export default function Investor() {
         <>
           <p style={{ fontSize: 13, color: 'var(--text2)', margin: '0 0 16px' }}>
             Консолідований баланс усіх юросіб системи — повна картина бізнесу: активи, зобов'язання і власний капітал разом.
+            Унизу — проєкція «Прогноз» (вноситься в окремому розділі «Прогноз»).
           </p>
           <ConsolidatedBalance />
-        </>
-      )}
-      {tab === 'forecast' && (
-        <>
-          <p style={{ fontSize: 13, color: 'var(--text2)', margin: '0 0 16px' }}>
-            Майбутній баланс: скільки буде грошей, коли завершаться угоди в роботі (отримаємо від клієнтів, сплатимо постачальникам).
-          </p>
-          <ForecastBalance />
         </>
       )}
     </div>
