@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { useCompany } from '../lib/company'
 import { fmtInt } from '../lib/fmt'
 import { computeConsolidated } from '../lib/consolidated'
+import { forecastNetByDate } from '../lib/forecast'
+
+const lastDayStr = (y, m) => `${y}-${String(m).padStart(2, '0')}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`
 
 // Зведений баланс по всіх юрособах — повна картина бізнесу для інвестора.
 
@@ -13,6 +16,7 @@ export default function ConsolidatedBalance() {
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1) // 1..12
   const [data, setData] = useState(null)
+  const [forecast, setForecast] = useState(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState(null)
 
@@ -20,8 +24,11 @@ export default function ConsolidatedBalance() {
     if (!companies?.length) return
     let cancelled = false
     setLoading(true); setErr(null)
-    computeConsolidated(year, month, companies)
-      .then(r => { if (!cancelled) setData(r) })
+    Promise.all([
+      computeConsolidated(year, month, companies),
+      forecastNetByDate(lastDayStr(year, month)).catch(() => null), // прогноз необов'язковий (до міграції 061)
+    ])
+      .then(([r, f]) => { if (!cancelled) { setData(r); setForecast(f) } })
       .catch(e => { if (!cancelled) setErr(e.message) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
@@ -104,6 +111,32 @@ export default function ConsolidatedBalance() {
             Активи = Гроші + Склад + Дебіторка + ОЗ. Капітал = Активи − Кредиторка − ПФД (чиста). ПФД від'ємна (зелена) — нам мають повернути (актив).
             Внутрішньогрупова ПФД між вашими компаніями самознищується в сумі; внутрішньогрупові дебіторка/кредиторка показані «грос» (на Капітал не впливають).
           </p>
+
+          {/* Прогноз — ручні очікувані потоки станом на кінець періоду */}
+          {forecast && (forecast.income > 0.5 || forecast.expense > 0.5) && (
+            <div className="card" style={{ marginTop: 16, borderColor: '#2563EB', borderStyle: 'dashed' }}>
+              <div className="card-title" style={{ marginBottom: 10, color: '#2563EB' }}>
+                <i className="ti ti-trending-up" /> Прогноз станом на {MONTHS[month - 1]} {year}
+              </div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'stretch' }}>
+                <Kpi label="Гроші (факт)" value={data.total.cash} color="var(--text)" />
+                <Op>+</Op>
+                <Kpi label="Прогн. надходження" value={forecast.income} color="#16A34A" />
+                <Op>−</Op>
+                <Kpi label="Прогн. витрати" value={forecast.expense} color="#DC2626" />
+                <Op>=</Op>
+                <Kpi label="Прогноз грошей" value={data.total.cash + forecast.net} color="#2563EB" big />
+              </div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
+                <Kpi label="Капітал (факт)" value={data.total.equity} color="#7C3AED" />
+                <Op>→</Op>
+                <Kpi label="Прогнозний капітал" value={data.total.equity + forecast.net} color="#7C3AED" big />
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>
+                Враховані прогнозні рядки з очікуваною датою ≤ кінця періоду (вносяться у вкладці «Прогноз»). Зміни місяць/рік угорі, щоб побачити баланс на іншу дату.
+              </p>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -112,9 +145,12 @@ export default function ConsolidatedBalance() {
 
 function Kpi({ label, value, color, big }) {
   return (
-    <div className="card" style={{ flex: '1 1 200px', minWidth: 180, padding: '12px 14px' }}>
+    <div className="card" style={{ flex: big ? '1 1 200px' : '1 1 150px', minWidth: 140, padding: '12px 14px' }}>
       <div style={{ fontSize: 12, color: 'var(--text3)' }}>{label}</div>
-      <div style={{ fontSize: big ? 24 : 20, fontWeight: 700, color }}>{fmtInt(value)} ₴</div>
+      <div style={{ fontSize: big ? 24 : 20, fontWeight: 700, color }}>{value < 0 ? '−' : ''}{fmtInt(value)} ₴</div>
     </div>
   )
+}
+function Op({ children }) {
+  return <div style={{ display: 'flex', alignItems: 'center', fontSize: 22, color: 'var(--text3)', fontWeight: 700 }}>{children}</div>
 }

@@ -99,6 +99,17 @@ export default function Orders() {
     }
   }
 
+  // Відмітка «додати в прогноз» (Інвестору → Прогноз)
+  const toggleForecast = async (o) => {
+    const val = !o.in_forecast
+    setOrders(prev => prev.map(x => x.id === o.id ? { ...x, in_forecast: val } : x))
+    const { error } = await qc('orders').update({ in_forecast: val }).eq('id', o.id)
+    if (error) {
+      setOrders(prev => prev.map(x => x.id === o.id ? { ...x, in_forecast: !val } : x))
+      alert('Не вдалося зберегти: ' + (/in_forecast/.test(error.message || '') ? 'запустіть міграцію 061' : error.message))
+    }
+  }
+
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase()
     return orders.filter(o => {
@@ -127,6 +138,7 @@ export default function Orders() {
     order_number: o => o.order_number || '',
     created: o => o.created_at || '',
     investor: o => o.in_investor ? 1 : 0,
+    forecast: o => o.in_forecast ? 1 : 0,
     commission: o => o.commission_paid ? 1 : 0,
     client: o => o.clientName || '',
     manager: o => o.managerName || '',
@@ -210,6 +222,7 @@ export default function Orders() {
                 <SortTh label="Статус" k="status" sort={sort} onSort={onSort} />
                 <SortTh label="Сума з ПДВ" k="total" sort={sort} onSort={onSort} align="right" />
                 <SortTh label="Інвестор" k="investor" sort={sort} onSort={onSort} align="center" />
+                <SortTh label="Прогноз" k="forecast" sort={sort} onSort={onSort} align="center" />
                 <SortTh label="Комісія" k="commission" sort={sort} onSort={onSort} align="center" />
               </tr></thead>
               <tbody>
@@ -244,11 +257,17 @@ export default function Orders() {
                       </button>
                     </td>
                     <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                      <button onClick={() => toggleForecast(o)} title={o.in_forecast ? 'У прогнозі (Інвестору → Прогноз)' : 'Додати в прогноз'}
+                        style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, lineHeight: 0 }}>
+                        <i className="ti ti-trending-up" style={{ fontSize: 18, color: o.in_forecast ? '#2563EB' : 'var(--border)' }} />
+                      </button>
+                    </td>
+                    <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                       <input type="checkbox" checked={!!o.commission_paid} onChange={() => toggleCommission(o)} style={{ width: 16, height: 16, cursor: 'pointer' }} title="Комісійні сплачені" />
                     </td>
                   </tr>
                 ))}
-                {sortedOrders.length === 0 && <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text3)', padding: 28 }}>Замовлень немає</td></tr>}
+                {sortedOrders.length === 0 && <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--text3)', padding: 28 }}>Замовлень немає</td></tr>}
               </tbody>
             </table>
           </div>
