@@ -468,6 +468,14 @@ function TxModal({ tx, grouped, onClose, onSaved, onLink, onOpenDoc }) {
     setBusy(false); onSaved()
   }
   const ignore = async () => { setBusy(true); await qc('bank_transactions').update({ is_ignored: true }).eq('id', tx.id); setBusy(false); onSaved() }
+  const detachDoc = async (doc) => {
+    if (!confirm(`Відв'язати документ «${getDocLabel(doc)}» від цієї транзакції? Сам документ не видаляється.`)) return
+    setBusy(true)
+    const { error } = await supabase.from('transaction_documents').delete().eq('transaction_id', tx.id).eq('document_id', doc.id)
+    setBusy(false)
+    if (error) { alert('Не вдалося відв\'язати: ' + error.message); return }
+    onSaved()
+  }
 
   return (
     <div className="modal-bg" onClick={onClose}>
@@ -483,9 +491,10 @@ function TxModal({ tx, grouped, onClose, onSaved, onLink, onOpenDoc }) {
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 6 }}>Документи</div>
           {tx._docs?.length ? tx._docs.map(d => (
-            <div key={d.id} onClick={() => onOpenDoc(d)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 13 }}>
-              <span style={{ color: 'var(--blue)' }}><i className="ti ti-file-check" /> {getDocLabel(d)}</span>
-              <span style={{ color: 'var(--text2)', whiteSpace: 'nowrap' }}>{d.amount ? fmt(d.amount) + ' грн' : ''} <i className="ti ti-external-link" style={{ fontSize: 12 }} /></span>
+            <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+              <span onClick={() => onOpenDoc(d)} style={{ color: 'var(--blue)', cursor: 'pointer', flex: 1 }}><i className="ti ti-file-check" /> {getDocLabel(d)}</span>
+              <span onClick={() => onOpenDoc(d)} style={{ color: 'var(--text2)', whiteSpace: 'nowrap', cursor: 'pointer' }}>{d.amount ? fmt(d.amount) + ' грн' : ''} <i className="ti ti-external-link" style={{ fontSize: 12 }} /></span>
+              <button className="btn" onClick={() => detachDoc(d)} disabled={busy} title="Відв'язати документ" style={{ padding: '2px 8px' }}><i className="ti ti-unlink" /></button>
             </div>
           )) : <div style={{ fontSize: 13, color: 'var(--text3)' }}>Документ не прив'язано. <a onClick={onLink} style={{ color: 'var(--blue)', cursor: 'pointer' }}>Прив'язати</a></div>}
         </div>
