@@ -237,7 +237,7 @@ function ArticlesTab() {
                 <tr>
                   <td><input className="form-input" autoFocus placeholder="Нова стаття" value={adding.name} onChange={e => setAdding(a => ({ ...a, name: e.target.value }))} /></td>
                   <td><select className="form-input" value={adding.direction} onChange={e => setAdding(a => ({ ...a, direction: e.target.value }))}>{DIRECTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></td>
-                  <td><select className="form-input" value={adding.pl_level} onChange={e => setAdding(a => ({ ...a, pl_level: e.target.value }))}>{PL_LEVELS.map(l => <option key={l} value={l}>{PL_LABELS[l]}</option>)}</select></td>
+                  <td><select className="form-input" value={adding.pl_level} onChange={e => setAdding(a => ({ ...a, pl_level: e.target.value }))}><option value="">—</option>{PL_LEVELS.map(l => <option key={l} value={l}>{PL_LABELS[l]}</option>)}</select></td>
                   <td colSpan={2}><button className="btn btn-primary" onClick={create}>OK</button> <button className="btn" onClick={() => setAdding(null)}>×</button></td>
                 </tr>
               )}
