@@ -21,17 +21,21 @@ function cpKey(t) {
   return 'n:' + (n || '—')
 }
 
-// Класифікація транзакції ПФД за статтею → { ledger, kind }.
+// Класифікація транзакції ПФД за статтею + знаком суми → { ledger, kind }.
 // ledger: 'borrower' | 'lender' | null (null = стаття не розпізнана → кошик «без статті»).
 // kind:   'principal' (тіло боргу) | 'settlement' (погашення).
-export function classifyPfd(article) {
+// ВАЖЛИВО: «поверн…» перевіряємо ПЕРШИМ (бо назва може містити і «надані/отримані»),
+// а роль погашення визначаємо за ЗНАКОМ: гроші до нас (+) → нам повернули (lender);
+// гроші від нас (−) → ми повернули (borrower). Це надійніше, ніж нам/нами у назві.
+export function classifyPfd(article, amount = 0) {
   const a = (article || '').toLowerCase()
-  if (/надан/.test(a)) return { ledger: 'lender', kind: 'principal' }        // ПФД надана нами
-  if (/отриман/.test(a)) return { ledger: 'borrower', kind: 'principal' }    // ПФД отримано
   if (/поверн/.test(a)) {
-    if (/нами/.test(a)) return { ledger: 'borrower', kind: 'settlement' }    // повернено нами (ми віддали)
-    return { ledger: 'lender', kind: 'settlement' }                          // повернено нам (нам віддали)
+    return Number(amount) > 0
+      ? { ledger: 'lender', kind: 'settlement' }      // повернено НАМ (нам віддали надане)
+      : { ledger: 'borrower', kind: 'settlement' }    // повернено НАМИ (ми віддали отримане)
   }
+  if (/надан|видан/.test(a)) return { ledger: 'lender', kind: 'principal' }   // ПФД надана нами
+  if (/отриман|залучен/.test(a)) return { ledger: 'borrower', kind: 'principal' } // ПФД отримано
   return { ledger: null, kind: null }
 }
 
@@ -72,7 +76,7 @@ export async function loadPfd() {
   ;(txs || []).forEach(t => {
     const amt = Number(t.amount) || 0
     if (amt === 0) return
-    const { ledger, kind } = classifyPfd(t.article)
+    const { ledger, kind } = classifyPfd(t.article, amt)
     const g = ensure(t, ledger)
     const abs = r2(Math.abs(amt))
     if (!ledger) { g.movements.push({ ...t, amount: amt, abs }); return }
