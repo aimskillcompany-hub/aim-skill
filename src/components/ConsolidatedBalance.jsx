@@ -5,6 +5,9 @@ import { computeConsolidated } from '../lib/consolidated'
 import { forecastNetByDate } from '../lib/forecast'
 
 const lastDayStr = (y, m) => `${y}-${String(m).padStart(2, '0')}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`
+// Число зі ЗНАКОМ: fmtInt показує модуль (Math.abs), тож від'ємні значення (напр. від'ємний
+// залишок каси або від'ємний склад через оверсел) виглядали б додатними і сума «не билась».
+const si = (n) => (Number(n) < 0 ? '−' : '') + fmtInt(n)
 
 // Зведений баланс по всіх юрособах — повна картина бізнесу для інвестора.
 
@@ -82,26 +85,26 @@ export default function ConsolidatedBalance() {
                     <td style={{ textAlign: 'left', padding: '8px', fontWeight: 500 }}>
                       {r.name}{r.error && <span title={r.error} style={{ color: 'var(--red)', marginLeft: 6 }}><i className="ti ti-alert-triangle" /></span>}
                     </td>
-                    <td style={{ padding: '8px' }}>{fmtInt(r.cash)}</td>
-                    <td style={{ padding: '8px' }}>{fmtInt(r.stock)}</td>
-                    <td style={{ padding: '8px' }}>{fmtInt(r.recv)}</td>
-                    <td style={{ padding: '8px' }}>{fmtInt(r.fa)}</td>
-                    <td style={{ padding: '8px', borderLeft: '1px solid var(--border)', fontWeight: 600 }}>{fmtInt(r.assets)}</td>
-                    <td style={{ padding: '8px', borderLeft: '1px solid var(--border)' }}>{fmtInt(r.pay)}</td>
-                    <td style={{ padding: '8px', color: r.loans < 0 ? '#16A34A' : 'var(--text)' }}>{r.loans < 0 ? '−' : ''}{fmtInt(r.loans)}</td>
-                    <td style={{ padding: '8px', borderLeft: '1px solid var(--border)', fontWeight: 700, color: r.equity < 0 ? 'var(--red)' : '#7C3AED' }}>{r.equity < 0 ? '−' : ''}{fmtInt(r.equity)}</td>
+                    <td style={{ padding: '8px', color: r.cash < 0 ? 'var(--red)' : undefined }}>{si(r.cash)}</td>
+                    <td style={{ padding: '8px', color: r.stock < 0 ? 'var(--red)' : undefined }}>{si(r.stock)}</td>
+                    <td style={{ padding: '8px', color: r.recv < 0 ? 'var(--red)' : undefined }}>{si(r.recv)}</td>
+                    <td style={{ padding: '8px', color: r.fa < 0 ? 'var(--red)' : undefined }}>{si(r.fa)}</td>
+                    <td style={{ padding: '8px', borderLeft: '1px solid var(--border)', fontWeight: 600, color: r.assets < 0 ? 'var(--red)' : undefined }}>{si(r.assets)}</td>
+                    <td style={{ padding: '8px', borderLeft: '1px solid var(--border)' }}>{si(r.pay)}</td>
+                    <td style={{ padding: '8px', color: r.loans < 0 ? '#16A34A' : 'var(--text)' }}>{si(r.loans)}</td>
+                    <td style={{ padding: '8px', borderLeft: '1px solid var(--border)', fontWeight: 700, color: r.equity < 0 ? 'var(--red)' : '#7C3AED' }}>{si(r.equity)}</td>
                   </tr>
                 ))}
                 <tr style={{ borderTop: '2px solid var(--text)', textAlign: 'right', fontWeight: 700 }}>
                   <td style={{ textAlign: 'left', padding: '8px' }}>РАЗОМ</td>
-                  <td style={{ padding: '8px' }}>{fmtInt(data.total.cash)}</td>
-                  <td style={{ padding: '8px' }}>{fmtInt(data.total.stock)}</td>
-                  <td style={{ padding: '8px' }}>{fmtInt(data.total.recv)}</td>
-                  <td style={{ padding: '8px' }}>{fmtInt(data.total.fa)}</td>
-                  <td style={{ padding: '8px', borderLeft: '1px solid var(--border)' }}>{fmtInt(data.total.assets)}</td>
-                  <td style={{ padding: '8px', borderLeft: '1px solid var(--border)' }}>{fmtInt(data.total.pay)}</td>
-                  <td style={{ padding: '8px', color: data.total.loans < 0 ? '#16A34A' : 'var(--text)' }}>{data.total.loans < 0 ? '−' : ''}{fmtInt(data.total.loans)}</td>
-                  <td style={{ padding: '8px', borderLeft: '1px solid var(--border)', color: '#7C3AED' }}>{data.total.equity < 0 ? '−' : ''}{fmtInt(data.total.equity)}</td>
+                  <td style={{ padding: '8px', color: data.total.cash < 0 ? 'var(--red)' : undefined }}>{si(data.total.cash)}</td>
+                  <td style={{ padding: '8px', color: data.total.stock < 0 ? 'var(--red)' : undefined }}>{si(data.total.stock)}</td>
+                  <td style={{ padding: '8px', color: data.total.recv < 0 ? 'var(--red)' : undefined }}>{si(data.total.recv)}</td>
+                  <td style={{ padding: '8px', color: data.total.fa < 0 ? 'var(--red)' : undefined }}>{si(data.total.fa)}</td>
+                  <td style={{ padding: '8px', borderLeft: '1px solid var(--border)' }}>{si(data.total.assets)}</td>
+                  <td style={{ padding: '8px', borderLeft: '1px solid var(--border)' }}>{si(data.total.pay)}</td>
+                  <td style={{ padding: '8px', color: data.total.loans < 0 ? '#16A34A' : 'var(--text)' }}>{si(data.total.loans)}</td>
+                  <td style={{ padding: '8px', borderLeft: '1px solid var(--border)', color: '#7C3AED' }}>{si(data.total.equity)}</td>
                 </tr>
               </tbody>
             </table>
@@ -131,17 +134,17 @@ export default function ConsolidatedBalance() {
                 <tbody>
                   <tr style={{ borderTop: '1px solid var(--border)', textAlign: 'right' }}>
                     <td style={{ textAlign: 'left', padding: '8px', fontWeight: 500 }}>Гроші</td>
-                    <td style={{ padding: '8px' }}>{fmtInt(data.total.cash)}</td>
+                    <td style={{ padding: '8px', color: data.total.cash < 0 ? 'var(--red)' : undefined }}>{si(data.total.cash)}</td>
                     <td style={{ padding: '8px', color: '#16A34A' }}>{fmtInt(forecast.income)}</td>
                     <td style={{ padding: '8px', color: '#DC2626' }}>{fmtInt(forecast.expense)}</td>
-                    <td style={{ padding: '8px', borderLeft: '1px solid var(--border)', fontWeight: 700, color: '#2563EB' }}>{fmtInt(data.total.cash + forecast.net)}</td>
+                    <td style={{ padding: '8px', borderLeft: '1px solid var(--border)', fontWeight: 700, color: '#2563EB' }}>{si(data.total.cash + forecast.net)}</td>
                   </tr>
                   <tr style={{ borderTop: '2px solid var(--text)', textAlign: 'right', fontWeight: 700 }}>
                     <td style={{ textAlign: 'left', padding: '8px' }}>Власний капітал</td>
-                    <td style={{ padding: '8px', color: '#7C3AED' }}>{fmtInt(data.total.equity)}</td>
+                    <td style={{ padding: '8px', color: '#7C3AED' }}>{si(data.total.equity)}</td>
                     <td style={{ padding: '8px', color: '#16A34A' }}>{fmtInt(forecast.income)}</td>
                     <td style={{ padding: '8px', color: '#DC2626' }}>{fmtInt(forecast.expense)}</td>
-                    <td style={{ padding: '8px', borderLeft: '1px solid var(--border)', color: '#7C3AED' }}>{fmtInt(data.total.equity + forecast.net)}</td>
+                    <td style={{ padding: '8px', borderLeft: '1px solid var(--border)', color: '#7C3AED' }}>{si(data.total.equity + forecast.net)}</td>
                   </tr>
                 </tbody>
               </table>
