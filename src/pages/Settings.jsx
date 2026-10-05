@@ -218,7 +218,7 @@ function ArticlesTab() {
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
           <div className="card-title" style={{ marginBottom: 0 }}>{label}</div>
-          <button className="btn" onClick={() => setAdding({ type, name: '', direction: 'general', pl_level: type === 'income' ? 'revenue' : 'opex' })}><i className="ti ti-plus" /> Додати</button>
+          <button className="btn" onClick={() => setAdding({ type, name: '', direction: 'general', pl_level: type === 'income' ? 'revenue' : type === 'expense' ? 'opex' : '' })}><i className="ti ti-plus" /> Додати</button>
         </div>
         <div className="tbl-wrap" style={{ border: 'none' }}>
           <table>
@@ -256,6 +256,8 @@ function ArticlesTab() {
       </div>
       <Section type="income" label="Доходи" />
       <Section type="expense" label="Витрати" />
+      <Section type="transfer" label="Перекази / ПФД" />
+      <Section type="other" label="Інше" />
     </div>
   )
 }
