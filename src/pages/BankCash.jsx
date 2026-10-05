@@ -359,7 +359,7 @@ function TransactionsTab({ accounts, onChange }) {
       </div>
 
       {showAdd && <AddTxModal accounts={accounts} grouped={grouped} onClose={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); load(); onChange() }} />}
-      {editTx && <TxModal tx={editTx} grouped={grouped} onClose={() => setEditTx(null)} onSaved={() => { setEditTx(null); load(); onChange() }} onLink={() => { setLinkTx(editTx); setEditTx(null) }} onOpenDoc={(d) => { setOpenDoc(d); setEditTx(null) }} />}
+      {editTx && <TxModal tx={editTx} grouped={grouped} accounts={accounts} onClose={() => setEditTx(null)} onSaved={() => { setEditTx(null); load(); onChange() }} onLink={() => { setLinkTx(editTx); setEditTx(null) }} onOpenDoc={(d) => { setOpenDoc(d); setEditTx(null) }} />}
       {linkTx && <TxLinkModal tx={linkTx} onClose={() => setLinkTx(null)} onSaved={() => { setLinkTx(null); load() }} />}
       {openDoc && <DocModal existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => { setOpenDoc(null); load() }} />}
     </div>
@@ -450,8 +450,8 @@ function AddTxModal({ accounts, grouped, onClose, onSaved }) {
 }
 
 // ───────── Модалка транзакції: класифікація / підтвердження / ігнор / прив'язка ─────────
-function TxModal({ tx, grouped, onClose, onSaved, onLink, onOpenDoc }) {
-  const [f, setF] = useState({ contractor_id: tx.contractor_id || null, cname: tx._cname || tx.counterparty || '', direction: tx.direction || '', article: tx.article || '', date: tx.date || '' })
+function TxModal({ tx, grouped, accounts = [], onClose, onSaved, onLink, onOpenDoc }) {
+  const [f, setF] = useState({ contractor_id: tx.contractor_id || null, cname: tx._cname || tx.counterparty || '', direction: tx.direction || '', article: tx.article || '', date: tx.date || '', account_id: tx.account_id || '' })
   const [busy, setBusy] = useState(false)
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
 
@@ -464,6 +464,7 @@ function TxModal({ tx, grouped, onClose, onSaved, onLink, onOpenDoc }) {
       contractor_id: f.contractor_id || null,
       counterparty: f.cname || tx.counterparty || null, // оновлюємо й відображувану назву контрагента
       date: f.date || tx.date, // дозволяємо змінити дату транзакції
+      account_id: f.account_id || tx.account_id, // дозволяємо перенести на інший рахунок (банк/каса)
       ...(validate ? { is_validated: true } : {}),
     }).eq('id', tx.id)
     setBusy(false)
@@ -510,6 +511,11 @@ function TxModal({ tx, grouped, onClose, onSaved, onLink, onOpenDoc }) {
           </div>
           <div className="form-group"><label>Дата</label>
             <input className="form-input" type="date" value={f.date || ''} onChange={e => set('date', e.target.value)} />
+          </div>
+          <div className="form-group"><label>Рахунок</label>
+            <select className="form-input" value={f.account_id || ''} onChange={e => set('account_id', e.target.value)}>
+              {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
           </div>
           <div className="form-group"><label>Напрям</label>
             <select className="form-input" value={f.direction} onChange={e => set('direction', e.target.value)}>
