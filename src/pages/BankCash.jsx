@@ -451,7 +451,7 @@ function AddTxModal({ accounts, grouped, onClose, onSaved }) {
 
 // ───────── Модалка транзакції: класифікація / підтвердження / ігнор / прив'язка ─────────
 function TxModal({ tx, grouped, onClose, onSaved, onLink, onOpenDoc }) {
-  const [f, setF] = useState({ contractor_id: tx.contractor_id || null, cname: tx._cname || tx.counterparty || '', direction: tx.direction || '', article: tx.article || '' })
+  const [f, setF] = useState({ contractor_id: tx.contractor_id || null, cname: tx._cname || tx.counterparty || '', direction: tx.direction || '', article: tx.article || '', date: tx.date || '' })
   const [busy, setBusy] = useState(false)
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
 
@@ -459,13 +459,16 @@ function TxModal({ tx, grouped, onClose, onSaved, onLink, onOpenDoc }) {
     setBusy(true)
     const arts = Object.values(grouped).flat()
     const article = arts.find(a => a.name === f.article)
-    await qc('bank_transactions').update({
+    const { error } = await qc('bank_transactions').update({
       direction: f.direction || null, article: f.article || null, article_id: article?.id || null,
       contractor_id: f.contractor_id || null,
       counterparty: f.cname || tx.counterparty || null, // оновлюємо й відображувану назву контрагента
+      date: f.date || tx.date, // дозволяємо змінити дату транзакції
       ...(validate ? { is_validated: true } : {}),
     }).eq('id', tx.id)
-    setBusy(false); onSaved()
+    setBusy(false)
+    if (error) { alert(/PERIOD_CLOSED/.test(error.message) ? 'Період закрито — зміна дати/даних заблокована. Спершу відкрийте період.' : 'Не вдалося зберегти: ' + error.message); return }
+    onSaved()
   }
   const ignore = async () => { setBusy(true); await qc('bank_transactions').update({ is_ignored: true }).eq('id', tx.id); setBusy(false); onSaved() }
   const detachDoc = async (doc) => {
@@ -504,6 +507,9 @@ function TxModal({ tx, grouped, onClose, onSaved, onLink, onOpenDoc }) {
             <ContractorSelect value={f.cname} placeholder="Контрагент"
               onChange={(v) => set('cname', v)}
               onContractorSelect={(c) => setF(s => ({ ...s, contractor_id: c.id, cname: c.name }))} />
+          </div>
+          <div className="form-group"><label>Дата</label>
+            <input className="form-input" type="date" value={f.date || ''} onChange={e => set('date', e.target.value)} />
           </div>
           <div className="form-group"><label>Напрям</label>
             <select className="form-input" value={f.direction} onChange={e => set('direction', e.target.value)}>
