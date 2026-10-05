@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useCompany } from '../lib/company'
 import { computeConsolidated } from '../lib/consolidated'
 import { forecastNetByDate } from '../lib/forecast'
+import { exportConsolidatedPdf } from '../lib/consolidatedPdf'
 
 // Зведений баланс групи — один звіт: рівняння Активи=Зобов'язання+Капітал, три картки, об'єднана
 // таблиця «факт + прогноз» по юрособах. Дані/розрахунки — ті самі (computeConsolidated + forecast).
@@ -95,7 +96,8 @@ export default function ConsolidatedBalance() {
               {years.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
-          <button onClick={() => window.print()} style={{ height: 44, padding: '0 18px', border: 'none', borderRadius: 10, background: '#17151F', color: '#fff', fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+          <button onClick={() => data && exportConsolidatedPdf({ rows: data.rows, total: data.total, forecast, year, month })}
+            disabled={!data} style={{ height: 44, padding: '0 18px', border: 'none', borderRadius: 10, background: data ? '#17151F' : '#B9B4C9', color: '#fff', fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: data ? 'pointer' : 'default' }}>
             <i className="ti ti-file-download" style={{ marginRight: 6 }} />Експорт PDF
           </button>
         </div>
