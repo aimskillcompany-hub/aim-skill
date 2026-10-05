@@ -112,28 +112,41 @@ export default function ConsolidatedBalance() {
             Внутрішньогрупова ПФД між вашими компаніями самознищується в сумі; внутрішньогрупові дебіторка/кредиторка показані «грос» (на Капітал не впливають).
           </p>
 
-          {/* Прогноз — ручні очікувані потоки станом на кінець періоду */}
+          {/* Прогноз — ручні очікувані потоки станом на кінець періоду (стиль таблиці балансу) */}
           {forecast && (forecast.income > 0.5 || forecast.expense > 0.5) && (
-            <div className="card" style={{ marginTop: 16, borderColor: '#2563EB', borderStyle: 'dashed' }}>
+            <div className="card" style={{ marginTop: 16, overflowX: 'auto', borderColor: '#2563EB', borderStyle: 'dashed' }}>
               <div className="card-title" style={{ marginBottom: 10, color: '#2563EB' }}>
                 <i className="ti ti-trending-up" /> Прогноз станом на {MONTHS[month - 1]} {year}
               </div>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'stretch' }}>
-                <Kpi label="Гроші (факт)" value={data.total.cash} color="var(--text)" />
-                <Op>+</Op>
-                <Kpi label="Прогн. надходження" value={forecast.income} color="#16A34A" />
-                <Op>−</Op>
-                <Kpi label="Прогн. витрати" value={forecast.expense} color="#DC2626" />
-                <Op>=</Op>
-                <Kpi label="Прогноз грошей" value={data.total.cash + forecast.net} color="#2563EB" big />
-              </div>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
-                <Kpi label="Капітал (факт)" value={data.total.equity} color="#7C3AED" />
-                <Op>→</Op>
-                <Kpi label="Прогнозний капітал" value={data.total.equity + forecast.net} color="#7C3AED" big />
-              </div>
+              <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse', minWidth: 820 }}>
+                <thead>
+                  <tr style={{ color: 'var(--text3)', fontSize: 11, textAlign: 'right' }}>
+                    <th style={{ textAlign: 'left', padding: '6px 8px' }}>Показник</th>
+                    <th style={{ padding: '6px 8px' }}>Гроші (факт)</th>
+                    <th style={{ padding: '6px 8px', color: '#16A34A' }}>+ Надходження</th>
+                    <th style={{ padding: '6px 8px', color: '#DC2626' }}>− Витрати</th>
+                    <th style={{ padding: '6px 8px', borderLeft: '1px solid var(--border)' }}>= Прогноз грошей</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style={{ borderTop: '1px solid var(--border)', textAlign: 'right' }}>
+                    <td style={{ textAlign: 'left', padding: '8px', fontWeight: 500 }}>Гроші</td>
+                    <td style={{ padding: '8px' }}>{fmtInt(data.total.cash)}</td>
+                    <td style={{ padding: '8px', color: '#16A34A' }}>{fmtInt(forecast.income)}</td>
+                    <td style={{ padding: '8px', color: '#DC2626' }}>{fmtInt(forecast.expense)}</td>
+                    <td style={{ padding: '8px', borderLeft: '1px solid var(--border)', fontWeight: 700, color: '#2563EB' }}>{fmtInt(data.total.cash + forecast.net)}</td>
+                  </tr>
+                  <tr style={{ borderTop: '2px solid var(--text)', textAlign: 'right', fontWeight: 700 }}>
+                    <td style={{ textAlign: 'left', padding: '8px' }}>Власний капітал</td>
+                    <td style={{ padding: '8px', color: '#7C3AED' }}>{fmtInt(data.total.equity)}</td>
+                    <td style={{ padding: '8px', color: '#16A34A' }}>{fmtInt(forecast.income)}</td>
+                    <td style={{ padding: '8px', color: '#DC2626' }}>{fmtInt(forecast.expense)}</td>
+                    <td style={{ padding: '8px', borderLeft: '1px solid var(--border)', color: '#7C3AED' }}>{fmtInt(data.total.equity + forecast.net)}</td>
+                  </tr>
+                </tbody>
+              </table>
               <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>
-                Враховані прогнозні рядки з очікуваною датою ≤ кінця періоду (вносяться у вкладці «Прогноз»). Зміни місяць/рік угорі, щоб побачити баланс на іншу дату.
+                Враховані прогнозні рядки з очікуваною датою ≤ кінця періоду (вносяться у розділі «Прогноз»). Зміни місяць/рік угорі, щоб побачити баланс на іншу дату.
               </p>
             </div>
           )}
@@ -150,7 +163,4 @@ function Kpi({ label, value, color, big }) {
       <div style={{ fontSize: big ? 24 : 20, fontWeight: 700, color }}>{value < 0 ? '−' : ''}{fmtInt(value)} ₴</div>
     </div>
   )
-}
-function Op({ children }) {
-  return <div style={{ display: 'flex', alignItems: 'center', fontSize: 22, color: 'var(--text3)', fontWeight: 700 }}>{children}</div>
 }
