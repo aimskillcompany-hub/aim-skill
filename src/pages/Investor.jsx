@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import OwnerReport from '../components/OwnerReport'
 import ConsolidatedBalance from '../components/ConsolidatedBalance'
+import MeetingMinutes from '../components/MeetingMinutes'
 
 // Розділ «Інвестору»: (1) по-замовленнєвий прибуток/агентські по всіх компаніях;
-// (2) зведений баланс — консолідація балансів усіх юросіб (повна картина бізнесу).
-// Ведення прогнозу — в окремому розділі «Прогноз»; тут лише проєкція на балансі.
+// (2) зведений баланс — консолідація балансів усіх юросіб; (3) протоколи нарад.
 const TABS = [
   { id: 'report', label: 'Прибуток / агентські', icon: 'ti-report-money' },
   { id: 'balance', label: 'Зведений баланс', icon: 'ti-scale' },
+  { id: 'minutes', label: 'Протокол наради', icon: 'ti-clipboard-text' },
 ]
 
 export default function Investor() {
@@ -48,6 +49,7 @@ export default function Investor() {
           <ConsolidatedBalance />
         </>
       )}
+      {tab === 'minutes' && <MeetingMinutes />}
     </div>
   )
 }
