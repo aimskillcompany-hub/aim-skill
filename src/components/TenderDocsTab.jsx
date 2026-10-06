@@ -24,6 +24,12 @@ export default function TenderDocsTab({ o }) {
   const [zipping, setZipping] = useState(false)
   const [recognizing, setRecognizing] = useState(false)
   const fileRef = useRef(null)
+  // масове завантаження
+  const [bulkFiles, setBulkFiles] = useState([])
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkDone, setBulkDone] = useState(0)
+  const [autoOcr, setAutoOcr] = useState(true)
+  const bulkRef = useRef(null)
 
   // Обрати файл → авто-розпізнати найменування/вих.номер/дату (не затираємо вручну введене)
   const onFile = async (f) => {
@@ -74,6 +80,37 @@ export default function TenderDocsTab({ o }) {
     } catch (e) {
       setMsg('Помилка: ' + (/tender_documents/.test(e.message || '') ? 'запустіть міграцію 049' : e.message))
     } finally { setBusy(false) }
+  }
+
+  // Масове завантаження: всі обрані файли → tender_documents з авто-нумерацією (+ опц. OCR)
+  const bulkUpload = async () => {
+    if (!bulkFiles.length) { setMsg('Оберіть файли'); return }
+    setBulkBusy(true); setMsg(null); setBulkDone(0)
+    let seq = nextSeq()
+    const errors = []
+    for (const f of bulkFiles) {
+      try {
+        let meta = { name: '', outNumber: '', date: '' }
+        if (autoOcr) { try { meta = await extractTenderDoc(f) } catch { /* fallback до імені файлу */ } }
+        const name = (meta.name || f.name.replace(/\.[^.]+$/, '')).trim() || f.name
+        const docNumber = base ? `${base}/${seq}` : String(seq)
+        const ext = (f.name.split('.').pop() || 'pdf').toLowerCase()
+        const path = `tender/${o.id}/${Date.now()}_${seq}.${ext}`
+        const { error: upErr } = await supabase.storage.from('documents').upload(path, f, { contentType: f.type, upsert: false })
+        if (upErr) throw upErr
+        const { error } = await supabase.from('tender_documents').insert({
+          order_id: o.id, procurement_id: o.procurement_id || null, seq, doc_number: docNumber,
+          name, out_number: meta.outNumber || null,
+          doc_date: /^\d{4}-\d{2}-\d{2}$/.test(meta.date || '') ? meta.date : null,
+          file_name: f.name, storage_path: path, file_type: f.type || null, created_by: user?.id || null,
+        })
+        if (error) throw error
+        seq++; setBulkDone(n => n + 1)
+      } catch (e) { errors.push(`${f.name}: ${/tender_documents/.test(e.message || '') ? 'міграція 049' : e.message}`) }
+    }
+    setBulkBusy(false); setBulkFiles([]); if (bulkRef.current) bulkRef.current.value = ''
+    if (errors.length) setMsg('Не завантажено: ' + errors.slice(0, 3).join('; ') + (errors.length > 3 ? ` … +${errors.length - 3}` : ''))
+    load()
   }
 
   const open = async (r) => {
@@ -136,7 +173,28 @@ export default function TenderDocsTab({ o }) {
       </div>
       <p style={{ fontSize: 12, color: 'var(--text3)', margin: '0 0 14px' }}>Документи зберігаються лише в цьому замовленні й не потрапляють у загальні «Документи».</p>
 
-      {/* Форма додавання */}
+      {/* Масове завантаження */}
+      <div style={{ background: 'var(--surface2)', borderRadius: 12, padding: 14, marginBottom: 12, border: '1px dashed var(--border)' }}>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}><i className="ti ti-stack-2" /> Масове завантаження</div>
+        <input ref={bulkRef} className="form-input" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+          onChange={e => setBulkFiles(Array.from(e.target.files || []))} disabled={bulkBusy} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+            <input type="checkbox" checked={autoOcr} onChange={e => setAutoOcr(e.target.checked)} disabled={bulkBusy} />
+            Авто-розпізнавання найменування/дати (повільніше)
+          </label>
+          <button className="btn btn-primary" onClick={bulkUpload} disabled={bulkBusy || !bulkFiles.length} style={{ marginLeft: 'auto' }}>
+            {bulkBusy
+              ? <><i className="ti ti-loader-2" style={{ animation: 'spin 1s linear infinite' }} /> Завантаження {bulkDone}/{bulkFiles.length}…</>
+              : <><i className="ti ti-upload" /> Завантажити {bulkFiles.length ? `(${bulkFiles.length})` : 'усі'}</>}
+          </button>
+        </div>
+        <p style={{ fontSize: 11, color: 'var(--text3)', margin: '8px 0 0' }}>
+          Оберіть одразу кілька файлів — кожен отримає свій номер {base ? `(${base}/N)` : '(N)'} у порядку вибору. Найменування — з розпізнавання або з імені файлу.
+        </p>
+      </div>
+
+      {/* Форма додавання одного (з ручними полями) */}
       <div style={{ background: 'var(--surface2)', borderRadius: 12, padding: 14, marginBottom: 16 }}>
         <div className="form-grid">
           <div className="form-group full"><label>Найменування документа</label>
