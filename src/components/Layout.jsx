@@ -20,6 +20,7 @@ const NAV = [
   { to: '/finance',     label: 'Фінрезультат проекту', icon: 'ti-chart-pie' },
   { to: '/loans',       label: 'Поворотна фін. допомога', icon: 'ti-cash-banknote' },
   { to: '/forecast',    label: 'Прогноз', icon: 'ti-trending-up' },
+  { to: '/receivables', label: 'Дебіторка', icon: 'ti-receipt' },
   { to: '/period-close', label: 'Закриття періоду', icon: 'ti-lock-square', section: 'Система' },
   { to: '/settings',    label: 'Налаштування', icon: 'ti-settings' },
 ]
