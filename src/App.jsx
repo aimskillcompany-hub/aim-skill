@@ -39,6 +39,7 @@ const FinanceProjects = lazyPage(() => import('./pages/FinanceProjects'))
 const Loans = lazyPage(() => import('./pages/Loans'))
 const Forecast = lazyPage(() => import('./pages/Forecast'))
 const Receivables = lazyPage(() => import('./pages/Receivables'))
+const Cashflow = lazyPage(() => import('./pages/Cashflow'))
 const Settings = lazyPage(() => import('./pages/Settings'))
 const PeriodClose = lazyPage(() => import('./pages/PeriodClose'))
 const Tasks = lazyPage(() => import('./pages/Tasks'))
@@ -83,6 +84,7 @@ export default function App() {
               <Route path="/loans" element={<Gate section="loans"><Loans /></Gate>} />
               <Route path="/forecast" element={<Gate section="forecast"><Forecast /></Gate>} />
               <Route path="/receivables" element={<Gate section="receivables"><Receivables /></Gate>} />
+              <Route path="/cashflow" element={<Gate section="cashflow"><Cashflow /></Gate>} />
               <Route path="/period-close" element={<Gate section="period-close"><PeriodClose /></Gate>} />
               <Route path="/tasks" element={<Gate section="tasks"><Tasks /></Gate>} />
               <Route path="/settings" element={<Gate section="settings"><Settings /></Gate>} />

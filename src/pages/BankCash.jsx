@@ -19,6 +19,8 @@ import { useSort, SortTh } from '../components/Sort'
 const DOC_FIELDS = 'id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)'
 
 const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД', 'ОЗ']
+// Статті, яким можна призначати проект (для CashFlow-звіту в розрізі проектів)
+const PROJECT_ARTICLES = ['Виручка: товари / ПЗ', 'Закупівля товарів']
 
 export default function BankCash() {
   const [tab, setTab] = useState('transactions')
@@ -91,7 +93,7 @@ function TransactionsTab({ accounts, onChange }) {
   const load = async () => {
     setLoading(true)
     let qb = qc('bank_transactions')
-      .select('id, date, amount, counterparty, description, edrpou, direction, article, article_id, contractor_id, account_id, is_validated')
+      .select('id, date, amount, counterparty, description, edrpou, direction, article, article_id, contractor_id, account_id, is_validated, project_id')
       .eq('is_ignored', status === 'ignored').order('date', { ascending: false }).limit(limit)
     if (status === 'unconfirmed') qb = qb.eq('is_validated', false)
     if (acc !== 'all') qb = qb.eq('account_id', acc)
@@ -451,9 +453,14 @@ function AddTxModal({ accounts, grouped, onClose, onSaved }) {
 
 // ───────── Модалка транзакції: класифікація / підтвердження / ігнор / прив'язка ─────────
 function TxModal({ tx, grouped, accounts = [], onClose, onSaved, onLink, onOpenDoc }) {
-  const [f, setF] = useState({ contractor_id: tx.contractor_id || null, cname: tx._cname || tx.counterparty || '', direction: tx.direction || '', article: tx.article || '', date: tx.date || '', account_id: tx.account_id || '' })
+  const [f, setF] = useState({ contractor_id: tx.contractor_id || null, cname: tx._cname || tx.counterparty || '', direction: tx.direction || '', article: tx.article || '', date: tx.date || '', account_id: tx.account_id || '', project_id: tx.project_id || '' })
   const [busy, setBusy] = useState(false)
+  const [projects, setProjects] = useState([])
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
+  const projectArticle = PROJECT_ARTICLES.includes(f.article)
+  useEffect(() => {
+    if (projectArticle && !projects.length) qc('finance_projects').select('id, name').is('archived_at', null).order('name').then(({ data }) => setProjects(data || []))
+  }, [projectArticle])
 
   const persist = async (validate) => {
     setBusy(true)
@@ -465,6 +472,7 @@ function TxModal({ tx, grouped, accounts = [], onClose, onSaved, onLink, onOpenD
       counterparty: f.cname || tx.counterparty || null, // оновлюємо й відображувану назву контрагента
       date: f.date || tx.date, // дозволяємо змінити дату транзакції
       account_id: f.account_id || tx.account_id, // дозволяємо перенести на інший рахунок (банк/каса)
+      ...(PROJECT_ARTICLES.includes(f.article) ? { project_id: f.project_id || null } : (tx.project_id ? { project_id: null } : {})), // проект лише для проектних статей; ґрейсфул до міграції 062
       ...(validate ? { is_validated: true } : {}),
     }).eq('id', tx.id)
     setBusy(false)
@@ -532,6 +540,15 @@ function TxModal({ tx, grouped, accounts = [], onClose, onSaved, onLink, onOpenD
               ))}
             </select>
           </div>
+          {projectArticle && (
+            <div className="form-group full"><label>Проект <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(для CashFlow-звіту)</span></label>
+              <select className="form-input" value={f.project_id || ''} onChange={e => set('project_id', e.target.value)}>
+                <option value="">— без проекту —</option>
+                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              {!projects.length && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>Проектів немає. Створіть у розділі «Фінрезультат проекту».</div>}
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 18, flexWrap: 'wrap' }}>
