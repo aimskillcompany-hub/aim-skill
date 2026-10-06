@@ -9,6 +9,8 @@ const r0 = (n) => Math.round(Number(n) || 0)
 const numText = (n) => (r0(n) < 0 ? '−' : '') + _int.format(Math.abs(r0(n)))
 const money = (n) => numText(n) + ' грн'
 const col = (n, purple) => { const v = r0(n); if (v < 0) return '#C62828'; if (v === 0) return '#A39FB0'; return purple ? '#5B2FD6' : '#17151F' }
+// Зобов'язання (внесок у капітал): ми винні (<0) червоний, нам винні (>0) зелений, 0 сірий
+const colL = (n) => { const v = r0(n); if (v < 0) return '#C62828'; if (v === 0) return '#A39FB0'; return '#1F7A4D' }
 const pct1 = (frac) => (Math.abs(frac * 100)).toFixed(1).replace('.', ',') + '%'
 const changeText = (delta, base) => { const v = r0(delta); if (v === 0 || !base) return 'без змін'; const p = (delta / base * 100); return (p >= 0 ? '+' : '−') + Math.abs(p).toFixed(1).replace('.', ',') + '%' }
 const DARK = '#17151F', GREEN = '#1F7A4D', RED = '#C62828', BLUE = '#2848C7', PURPLE = '#5B2FD6'
@@ -40,13 +42,16 @@ function bar(value, total, { w = BAR_W, h = 4, track = '#F1EEFB', fill = '#17151
 
 // Рядок статті в картці: назва + сума, під ним шкала
 function cardRow(label, value, total, opt = {}) {
+  const liab = opt.liab
+  const txtColor = liab ? colL(value) : col(value)
+  const barOpt = { ...opt, ...(liab && r0(value) > 0 ? { fill: '#1F7A4D' } : {}) }
   return {
     stack: [
       { columns: [
         { text: label, fontSize: 9 },
-        { text: numText(value), alignment: 'right', fontSize: 9, color: col(value), bold: r0(value) < 0 },
+        { text: numText(value), alignment: 'right', fontSize: 9, color: txtColor, bold: r0(value) < 0 },
       ] },
-      bar(value, total, opt),
+      bar(value, total, barOpt),
     ],
     margin: [0, 0, 0, 7],
   }
@@ -89,8 +94,8 @@ export function exportConsolidatedPdf({ rows, total, forecast, year, month }) {
   const genAt = new Date().toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 
   // ── числова комірка таблиці ──
-  const nc = (v, { bold, purple, size, fill } = {}) => ({
-    text: numText(v), alignment: 'right', color: col(v, purple),
+  const nc = (v, { bold, purple, size, fill, liab } = {}) => ({
+    text: numText(v), alignment: 'right', color: liab ? colL(v) : col(v, purple),
     bold: bold || r0(v) < 0, fontSize: size || 8.5, ...(fill ? { fillColor: fill } : {}),
   })
   const sec = (label) => {
@@ -99,13 +104,13 @@ export function exportConsolidatedPdf({ rows, total, forecast, year, month }) {
     return r
   }
   const val = (row, field, fn) => fn ? fn(row) : r0(row[field])
-  const statRow = (label, { field, fn, totalVal, isTot, big, purple, move, moveNum, fcVal }) => {
+  const statRow = (label, { field, fn, totalVal, isTot, big, purple, liab, move, moveNum, fcVal }) => {
     const size = big ? 10 : 8.5
     const baseFill = isTot ? '#FAF9FC' : undefined
     const fcFill = isTot ? '#E6EBFF' : '#F1F4FF'
     const cells = [{ text: label, fontSize: size, bold: isTot, color: '#17151F', ...(baseFill ? { fillColor: baseFill } : {}) }]
-    rows.forEach(row => cells.push(nc(val(row, field, fn), { bold: isTot, purple, size, fill: baseFill })))
-    cells.push(nc(totalVal, { bold: true, purple, size, fill: baseFill }))
+    rows.forEach(row => cells.push(nc(val(row, field, fn), { bold: isTot, purple, size, fill: baseFill, liab })))
+    cells.push(nc(totalVal, { bold: true, purple, size, fill: baseFill, liab }))
     // Рух прогнозу
     if (moveNum !== undefined) {
       const v = r0(moveNum)
@@ -115,7 +120,7 @@ export function exportConsolidatedPdf({ rows, total, forecast, year, month }) {
     } else {
       cells.push({ text: '—', alignment: 'right', fontSize: size, fillColor: fcFill, color: '#A39FB0' })
     }
-    cells.push(nc(fcVal, { bold: true, purple, size, fill: fcFill }))
+    cells.push(nc(fcVal, { bold: true, purple, size, fill: fcFill, liab }))
     return cells
   }
 
@@ -141,9 +146,9 @@ export function exportConsolidatedPdf({ rows, total, forecast, year, month }) {
     statRow('Основні засоби', { field: 'fa', totalVal: t.fa, move: null, fcVal: t.fa }),
     statRow('Активи разом', { field: 'assets', totalVal: t.assets, isTot: true, moveNum: net, fcVal: t.assets + net }),
     sec("ЗОБОВ'ЯЗАННЯ"),
-    statRow('Кредиторка', { field: 'pay', totalVal: t.pay, move: null, fcVal: t.pay }),
-    statRow('Поворотна фін. допомога', { field: 'loans', totalVal: t.loans, move: null, fcVal: t.loans }),
-    statRow("Зобов'язання разом", { fn: r => r0(r.pay) + r0(r.loans), totalVal: liab, isTot: true, move: null, fcVal: liab }),
+    statRow('Кредиторка', { liab: true, fn: r => -r0(r.pay), totalVal: -t.pay, move: null, fcVal: -t.pay }),
+    statRow('Поворотна фін. допомога', { liab: true, fn: r => -r0(r.loans), totalVal: -t.loans, move: null, fcVal: -t.loans }),
+    statRow("Зобов'язання разом", { liab: true, fn: r => -(r0(r.pay) + r0(r.loans)), totalVal: -liab, isTot: true, move: null, fcVal: -liab }),
     sec('ВЛАСНИЙ КАПІТАЛ'),
     statRow('Власний капітал', { field: 'equity', totalVal: t.equity, isTot: true, big: true, purple: true, moveNum: net, fcVal: t.equity + net }),
   ]
@@ -176,9 +181,9 @@ export function exportConsolidatedPdf({ rows, total, forecast, year, month }) {
       stack: [
         { columns: [
           eqCell('АКТИВИ', t.assets, '#FFFFFF'),
+          { width: 14, text: '−', color: '#8A849C', fontSize: 16, alignment: 'center', margin: [0, 10, 0, 0] },
+          eqCell("ЗОБОВ'ЯЗАННЯ", liab, '#FF7A6B'),
           { width: 14, text: '=', color: '#8A849C', fontSize: 16, alignment: 'center', margin: [0, 10, 0, 0] },
-          eqCell("ЗОБОВ'ЯЗАННЯ", liab, '#FFFFFF'),
-          { width: 14, text: '+', color: '#8A849C', fontSize: 16, alignment: 'center', margin: [0, 10, 0, 0] },
           eqCell('ВЛАСНИЙ КАПІТАЛ', t.equity, '#B9A2FF'),
         ], columnGap: 10 },
         stripBar,
@@ -220,10 +225,10 @@ export function exportConsolidatedPdf({ rows, total, forecast, year, month }) {
       ]),
       card([
         { text: "ЗОБОВ'ЯЗАННЯ (РАЗОМ)", fontSize: 7, color: '#5E5A6B', bold: true, characterSpacing: 0.5 },
-        { text: money(liab), fontSize: 16, bold: true, color: col(liab), margin: [0, 4, 0, 10] },
-        cardRow('Кредиторка', t.pay, liab, { track: '#FDEEEC', fill: '#B4291F' }),
-        cardRow('Поворотна фін. допомога', t.loans, liab, { track: '#FDEEEC', fill: '#B4291F' }),
-        forecastPlate(liab, 0, liab),
+        { text: money(-liab), fontSize: 16, bold: true, color: colL(-liab), margin: [0, 4, 0, 10] },
+        cardRow('Кредиторка', -t.pay, liab, { track: '#FDEEEC', fill: '#B4291F', liab: true }),
+        cardRow('Поворотна фін. допомога', -t.loans, liab, { track: '#FDEEEC', fill: '#B4291F', liab: true }),
+        forecastPlate(-liab, 0, liab),
       ]),
       card([
         { text: 'ВЛАСНИЙ КАПІТАЛ (РАЗОМ)', fontSize: 7, color: '#5E5A6B', bold: true, characterSpacing: 0.5 },

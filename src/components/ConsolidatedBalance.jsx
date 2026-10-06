@@ -17,7 +17,10 @@ const r0 = (n) => Math.round(Number(n) || 0)
 const absInt = (n) => _int.format(Math.abs(r0(n)))
 const numText = (n) => (r0(n) < 0 ? '−' : '') + absInt(n)              // число зі знаком
 // Колір лише за знаком: <0 червоний, =0 світло-сірий, >0 звичайний (або фіолетовий для капіталу)
+const GREEN = '#1F7A4D'
 const numColor = (n, purple) => { const v = r0(n); if (v < 0) return '#C62828'; if (v === 0) return '#A39FB0'; return purple ? '#5B2FD6' : '#17151F' }
+// Колір для ЗОБОВ'ЯЗАНЬ (внесок у капітал): ми винні (<0) червоний, нам винні (>0) зелений, 0 сірий
+const colLiab = (n) => { const v = r0(n); if (v < 0) return '#C62828'; if (v === 0) return '#A39FB0'; return GREEN }
 const pct1 = (frac) => (Math.abs(frac * 100)).toFixed(1).replace('.', ',') + '%'
 const changeText = (delta, base) => { const v = r0(delta); if (v === 0 || !base) return 'без змін'; const p = (delta / base * 100); return (p >= 0 ? '+' : '−') + Math.abs(p).toFixed(1).replace('.', ',') + '%' }
 const barW = (v, total) => { if (!total) return 0; const w = Math.abs(v) / Math.abs(total) * 100; return Math.max(0, Math.min(100, w)) }
@@ -112,9 +115,9 @@ export default function ConsolidatedBalance() {
           <div style={{ background: '#17151F', color: '#fff', borderRadius: 20, padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 18 }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '14px 22px' }}>
               <EqPart label="Активи" value={t.assets} />
+              <span style={{ fontSize: 24, color: '#8A849C' }}>−</span>
+              <EqPart label="Зобов'язання" value={liabTotal} accent="#FF7A6B" />
               <span style={{ fontSize: 24, color: '#8A849C' }}>=</span>
-              <EqPart label="Зобов'язання" value={liabTotal} />
-              <span style={{ fontSize: 24, color: '#8A849C' }}>+</span>
               <EqPart label="Власний капітал" value={t.equity} accent="#B9A2FF" />
             </div>
             <div style={{ display: 'flex', height: 12, borderRadius: 6, overflow: 'hidden', gap: 3 }}>
@@ -142,23 +145,23 @@ export default function ConsolidatedBalance() {
               <ForecastFooter value={fAssets} delta={net} base={t.assets} />
             </div>
 
-            {/* Зобов'язання */}
+            {/* Зобов'язання (внесок у капітал: ми винні −, нам винні +) */}
             <div style={CARD}>
               <CardHead title="Зобов'язання (разом)" bg="#FDEEEC" color="#B4291F" icon="ti-arrow-down" />
-              <div style={{ ...MONO, fontSize: 34, fontWeight: 600, letterSpacing: '-0.02em', color: numColor(liabTotal) }}>{numText(liabTotal)} ₴</div>
+              <div style={{ ...MONO, fontSize: 34, fontWeight: 600, letterSpacing: '-0.02em', color: colLiab(-liabTotal) }}>{numText(-liabTotal)} ₴</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <BarRow label="Кредиторка" value={t.pay} total={liabTotal} track="#FDEEEC" fill="#B4291F" />
-                <BarRow label="Поворотна фін. допомога" value={t.loans} total={liabTotal} track="#FDEEEC" fill="#B4291F" />
+                <BarRow label="Кредиторка" value={-t.pay} total={liabTotal} track="#FDEEEC" liab />
+                <BarRow label="Поворотна фін. допомога" value={-t.loans} total={liabTotal} track="#FDEEEC" liab />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10, borderTop: '1px dashed #E3DFEC', fontSize: 13, color: '#5E5A6B' }}>
                   {rows.filter(r => r0(r.loans) !== 0).map(r => (
                     <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                      <span>{r0(r.loans) > 0 ? `ПФД отримана · ${r.name}` : `ПФД видана · ${r.name} (нам повернуть)`}</span>
-                      <span style={{ ...MONO, color: numColor(r.loans), fontWeight: r0(r.loans) < 0 ? 600 : 400 }}>{numText(r.loans)}</span>
+                      <span>{r0(r.loans) > 0 ? `ПФД отримана · ${r.name} (ми винні)` : `ПФД видана · ${r.name} (нам винні)`}</span>
+                      <span style={{ ...MONO, color: colLiab(-r.loans), fontWeight: 600 }}>{numText(-r.loans)}</span>
                     </div>
                   ))}
                 </div>
               </div>
-              <ForecastFooter value={liabTotal} delta={0} base={liabTotal} />
+              <ForecastFooter value={-liabTotal} delta={0} base={liabTotal} />
             </div>
 
             {/* Капітал */}
@@ -213,9 +216,9 @@ export default function ConsolidatedBalance() {
                   <StatRow rows={rows} field="assets" total={t.assets} label="Активи разом" isTot moveNum={net} fcVal={fAssets} />
 
                   <SecRow span={rows.length + 2} label="Зобов'язання" />
-                  <StatRow rows={rows} field="pay" total={t.pay} label="Кредиторка" move="—" fcVal={t.pay} />
-                  <StatRow rows={rows} field="loans" total={t.loans} label="Поворотна фін. допомога" move="—" fcVal={t.loans} />
-                  <StatRow rows={rows} fn={r => r0(r.pay) + r0(r.loans)} total={liabTotal} label="Зобов'язання разом" isTot move="—" fcVal={liabTotal} />
+                  <StatRow rows={rows} liab fn={r => -r0(r.pay)} total={-t.pay} label="Кредиторка" move="—" fcVal={-t.pay} />
+                  <StatRow rows={rows} liab fn={r => -r0(r.loans)} total={-t.loans} label="Поворотна фін. допомога" move="—" fcVal={-t.loans} />
+                  <StatRow rows={rows} liab fn={r => -(r0(r.pay) + r0(r.loans))} total={-liabTotal} label="Зобов'язання разом" isTot move="—" fcVal={-liabTotal} />
 
                   <SecRow span={rows.length + 2} label="Власний капітал" />
                   <StatRow rows={rows} field="equity" total={t.equity} label="Власний капітал" isTot big purple moveNum={net} fcVal={fEquity} />
@@ -256,17 +259,18 @@ function CardHead({ title, bg, color, icon }) {
   )
 }
 
-function BarRow({ label, value, total, track, fill }) {
+function BarRow({ label, value, total, track, fill, liab }) {
   const neg = r0(value) < 0
-  const color = neg ? '#C62828' : (fill || '#17151F')
+  const txtColor = liab ? colLiab(value) : numColor(value)
+  const barColor = neg ? '#C62828' : (liab ? GREEN : (fill || '#17151F'))
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
         <span>{label}</span>
-        <span style={{ ...MONO, color: numColor(value), fontWeight: neg ? 600 : 400 }}>{numText(value)}</span>
+        <span style={{ ...MONO, color: txtColor, fontWeight: neg ? 600 : 400 }}>{numText(value)}</span>
       </div>
       <div style={{ height: 6, background: track, borderRadius: 3 }}>
-        <div style={{ width: barW(value, total) + '%', height: 6, background: color, borderRadius: 3 }} />
+        <div style={{ width: barW(value, total) + '%', height: 6, background: barColor, borderRadius: 3 }} />
       </div>
     </div>
   )
@@ -295,10 +299,10 @@ function SecRow({ span, label }) {
 }
 
 // Рядок статті: per-company (field або fn) + Разом + рух прогнозу + прогноз
-function StatRow({ rows, field, fn, total, label, isTot, big, purple, move, moveNum, fcVal }) {
+function StatRow({ rows, field, fn, total, label, isTot, big, purple, liab, move, moveNum, fcVal }) {
   const val = (r) => fn ? fn(r) : r0(r[field])
   const fs = big ? 16 : undefined
-  const cellColor = (v) => numColor(v, purple)
+  const cellColor = (v) => liab ? colLiab(v) : numColor(v, purple)
   return (
     <tr className={isTot ? 'tot' : undefined}>
       <td style={{ fontSize: fs }}>{label}</td>
