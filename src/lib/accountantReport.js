@@ -155,8 +155,24 @@ export async function traceOutgoing(docId) {
   doc.contractorEdrpou = contr?.edrpou || ''
 
   const { data: ourOut } = await qc('stock_movements')
-    .select('id, product_id, quantity').eq('document_id', docId).eq('type', 'out')
-  const productIds = [...new Set((ourOut || []).map(m => m.product_id).filter(Boolean))]
+    .select('id, product_id, quantity, created_at').eq('document_id', docId).eq('type', 'out')
+    .order('created_at').order('id') // порядок створення = порядок позицій у видатковій
+  let productIds = [...new Set((ourOut || []).map(m => m.product_id).filter(Boolean))]
+
+  // Якщо у документі є ocr_data.items — впорядковуємо товари точно як у видатковій
+  const { data: docFull } = await qc('documents').select('ocr_data').eq('id', docId).maybeSingle()
+  const ocrItems = Array.isArray(docFull?.ocr_data?.items) ? docFull.ocr_data.items : []
+  if (ocrItems.length) {
+    const norm = (s) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim()
+    const { data: prods } = await supabase.from('products').select('id, name').in('id', productIds)
+    const nameById = {}; (prods || []).forEach(p => nameById[p.id] = norm(p.name))
+    const idxOf = (pid) => {
+      const nm = nameById[pid] || ''
+      const i = ocrItems.findIndex(it => { const n = norm(it.name); return n && (n === nm || n.includes(nm) || nm.includes(n)) })
+      return i < 0 ? 9999 : i
+    }
+    productIds = [...productIds].sort((a, b) => idxOf(a) - idxOf(b))
+  }
   const outIdsByProduct = {}
   ;(ourOut || []).forEach(m => { (outIdsByProduct[m.product_id] ||= new Set()).add(m.id) })
 
