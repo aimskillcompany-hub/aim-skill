@@ -23,6 +23,7 @@ const NAV = [
   { to: '/receivables', label: 'Дебіторка', icon: 'ti-receipt' },
   { to: '/cashflow',    label: 'CashFlow', icon: 'ti-arrows-exchange' },
   { to: '/accountant',  label: 'Звіт для бухгалтера', icon: 'ti-report-analytics' },
+  { to: '/profitability', label: 'Прибутковість реалізації', icon: 'ti-chart-arrows-vertical' },
   { to: '/period-close', label: 'Закриття періоду', icon: 'ti-lock-square', section: 'Система' },
   { to: '/settings',    label: 'Налаштування', icon: 'ti-settings' },
 ]

@@ -20,11 +20,11 @@ export const ROLE_HINTS = {
 }
 
 // Ключ розділу = сегмент маршруту без «/» (напр. '/period-close' → 'period-close')
-const ALL = ['orders', 'tasks', 'contractors', 'bank', 'inventory', 'prices', 'documents', 'mail', 'analytics', 'investor', 'finance', 'loans', 'forecast', 'receivables', 'cashflow', 'accountant', 'period-close', 'settings']
+const ALL = ['orders', 'tasks', 'contractors', 'bank', 'inventory', 'prices', 'documents', 'mail', 'analytics', 'investor', 'finance', 'loans', 'forecast', 'receivables', 'cashflow', 'accountant', 'profitability', 'period-close', 'settings']
 
 export const ROLE_SECTIONS = {
   admin: ALL,
-  accountant: ['orders', 'tasks', 'contractors', 'bank', 'inventory', 'prices', 'documents', 'mail', 'analytics', 'investor', 'finance', 'loans', 'forecast', 'receivables', 'cashflow', 'accountant', 'period-close'],
+  accountant: ['orders', 'tasks', 'contractors', 'bank', 'inventory', 'prices', 'documents', 'mail', 'analytics', 'investor', 'finance', 'loans', 'forecast', 'receivables', 'cashflow', 'accountant', 'profitability', 'period-close'],
   manager: ['orders', 'tasks', 'contractors', 'inventory', 'prices', 'documents', 'mail'],
   viewer: ['orders', 'contractors', 'analytics'],
 }
