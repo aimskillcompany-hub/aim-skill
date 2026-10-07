@@ -61,7 +61,7 @@ export async function computeProfitability(companyId, companyIsVat, from, to) {
       const prodIds = [...new Set(moves.map(m => m.product_id).filter(Boolean))]
       const pInfo = {}
       for (let i = 0; i < prodIds.length; i += 100) {
-        const { data } = await supabase.from('products').select('id, name, unit').in('id', prodIds.slice(i, i + 100))
+        const { data } = await supabase.from('products').select('id, name, unit, buy_price').in('id', prodIds.slice(i, i + 100))
         ;(data || []).forEach(p => pInfo[p.id] = p)
       }
       // чи є вхідний ПДВ по товару (куплено в платника ПДВ) — для «ПДВ до сплати»
@@ -74,7 +74,8 @@ export async function computeProfitability(companyId, companyIsVat, from, to) {
         const items = (movesByDoc[d.id] || []).map(m => {
           const qty = Number(m.quantity) || 0
           const sellUnit = r2(Number(m.price) || 0)
-          const buyUnit = r2(Number(m.cost_price) || 0)
+          // FIFO-собівартість руху; якщо не записана — фолбек на ціну закупки з картки товару (нетто)
+          const buyUnit = r2(Number(m.cost_price) > 0 ? Number(m.cost_price) : (Number(pInfo[m.product_id]?.buy_price) || 0))
           const sellSum = r2(qty * sellUnit)
           const buySum = r2(qty * buyUnit)
           const profit = r2(sellSum - buySum)
