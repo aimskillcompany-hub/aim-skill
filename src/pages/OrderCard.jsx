@@ -349,11 +349,17 @@ function DetailsTab({ o, onSaved }) {
       in_investor: !!form.in_investor,
       ...(form.created_at ? { created_at: new Date(form.created_at).toISOString() } : {}),
     }
-    let { error } = await qc('orders').update(upd).eq('id', o.id)
-    // Колонки можуть ще не існувати (міграції 033/037/040/046/047) — тоді зберігаємо без них
-    if (error && /(procurement_id|procurement_url|procurement_subject|manager_id|contract_id|agent_commission_pct|in_investor)/.test(error.message || '')) {
-      const { procurement_id, procurement_url, procurement_subject, manager_id, contract_id, agent_commission_pct, in_investor, ...rest } = upd
-      ;({ error } = await qc('orders').update(rest).eq('id', o.id))
+    // Деякі колонки можуть ще не існувати (міграції 033/037/040/046/047/058/059).
+    // Прибираємо З ОНОВЛЕННЯ ЛИШЕ ту колонку, якої бракує (з тексту помилки), і повторюємо —
+    // щоб відсутність напр. procurement_url НЕ блокувала збереження procurement_id.
+    let payload = { ...upd }
+    let error = null
+    for (let i = 0; i < 8; i++) {
+      ;({ error } = await qc('orders').update(payload).eq('id', o.id))
+      if (!error) break
+      const m = /column "?([a-z_]+)"? .*does not exist/i.exec(error.message || '')
+      if (m && m[1] in payload) { delete payload[m[1]]; continue }
+      break
     }
     if (error) { alert('Помилка збереження: ' + error.message); return }
     // Зміна компанії — перенос + слідування (перемкнути активну компанію, щоб замовлення лишилось видимим)
