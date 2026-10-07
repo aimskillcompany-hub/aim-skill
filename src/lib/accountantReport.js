@@ -24,7 +24,7 @@ export async function listOutgoingWaybills() {
 // FIFO-розподіл OUT-рухів товару по IN-рухах → алокації [{ in, qty }] лише для ourOutIds
 async function allocate(productId, ourOutIds) {
   const [{ data: ins }, { data: outs }] = await Promise.all([
-    qc('stock_movements').select('id, document_id, quantity, price, date, source, assembly_id, created_at').eq('product_id', productId).eq('type', 'in').order('date').order('created_at'),
+    qc('stock_movements').select('id, product_id, document_id, quantity, price, date, source, assembly_id, description, created_at').eq('product_id', productId).eq('type', 'in').order('date').order('created_at'),
     qc('stock_movements').select('id, quantity, date, created_at').eq('product_id', productId).eq('type', 'out').order('date').order('created_at'),
   ])
   const inState = (ins || []).map(m => ({ ...m, remaining: Number(m.quantity) || 0 }))
@@ -46,57 +46,100 @@ async function allocate(productId, ourOutIds) {
   return out
 }
 
+// IN-рух є збіркою? (source або опис «Збірка…») — враховує старі дані без assembly_id
+const isAssemblyIn = (inM) => inM.source === 'assembly' || /^\s*Збірк/i.test(inM.description || '')
+
+// Знайти id запису збірки для IN-руху (assembly_id або за готовим товаром, найближча за датою)
+async function resolveAssemblyId(inM) {
+  if (inM.assembly_id) return inM.assembly_id
+  const { data } = await qc('assemblies').select('id, assembled_at').eq('result_product_id', inM.product_id).order('assembled_at')
+  if (!data?.length) return null
+  if (!inM.date) return data[0].id
+  let best = data[0], bestDiff = Infinity
+  for (const a of data) { const diff = Math.abs(new Date(a.assembled_at || 0) - new Date(inM.date)); if (diff < bestDiff) { bestDiff = diff; best = a } }
+  return best.id
+}
+
+// Best-effort: розподілити qty товару по його IN-рухах з документом (найраніші першими)
+async function allocateQty(productId, need) {
+  const { data: ins } = await qc('stock_movements')
+    .select('id, product_id, document_id, quantity, price, date, source, assembly_id, description, created_at')
+    .eq('product_id', productId).eq('type', 'in').order('date').order('created_at')
+  const out = []
+  let left = Number(need) || 0
+  for (const inM of (ins || [])) {
+    if (left <= EPS) break
+    const q = Number(inM.quantity) || 0
+    if (q <= 0) continue
+    const take = Math.min(q, left)
+    out.push({ in: inM, qty: r2(take) }); left = r2(left - take)
+  }
+  return out
+}
+
 // Групування алокацій у джерела (doc / assembly / nodoc). depth — захист від нескінченної рекурсії.
 async function buildSources(allocs, inDocIds, depth) {
   const byKey = {}
   for (const { in: inM, qty } of allocs) {
-    const key = inM.document_id || (inM.source === 'assembly' ? 'asm:' + (inM.assembly_id || '?') : 'nodoc')
-    const s = (byKey[key] ||= { key, docId: inM.document_id || null, source: inM.source, assemblyId: inM.assembly_id || null, qty: 0, cost: 0, date: inM.date })
+    const asm = isAssemblyIn(inM)
+    const key = inM.document_id || (asm ? 'asm:' + (inM.assembly_id || inM.id) : 'nodoc')
+    const s = (byKey[key] ||= { key, docId: inM.document_id || null, isAsm: asm, inM, qty: 0, cost: 0, date: inM.date })
     s.qty = r2(s.qty + qty); s.cost = r2(s.cost + qty * (Number(inM.price) || 0))
     if (inM.document_id) inDocIds.add(inM.document_id)
   }
   const sources = []
   for (const s of Object.values(byKey)) {
     if (s.docId) { s.type = 'doc'; sources.push(s); continue }
-    if (s.source === 'assembly' && s.assemblyId && depth > 0) {
-      // Розкриваємо збірку: компоненти → їх прихідні
-      s.type = 'assembly'
-      s.components = await expandAssembly(s.assemblyId, s.qty, inDocIds, depth - 1)
-      const { data: asm } = await qc('assemblies').select('name').eq('id', s.assemblyId).maybeSingle()
-      s.assemblyName = asm?.name || 'Збірка'
-      sources.push(s); continue
+    if (s.isAsm && depth > 0) {
+      const aid = await resolveAssemblyId(s.inM)
+      if (aid) {
+        s.type = 'assembly'
+        const { data: asm } = await qc('assemblies').select('name').eq('id', aid).maybeSingle()
+        s.assemblyName = asm?.name || (s.inM.description || 'Збірка').replace(/^\s*Збірка:\s*/i, '').split('(')[0].trim() || 'Збірка'
+        s.components = await expandAssembly(aid, s.qty, inDocIds, depth - 1)
+        sources.push(s); continue
+      }
     }
-    s.type = s.source === 'assembly' ? 'assembly-leaf' : 'nodoc'
+    s.type = s.isAsm ? 'assembly-leaf' : 'nodoc'
     sources.push(s)
   }
   return sources.sort((a, b) => (a.date || '').localeCompare(b.date || ''))
 }
 
-// Компоненти збірки + їх джерела (прихідні). qtyTaken — скільки виробу взято (для масштабування).
+// Компоненти збірки (з assembly_items — завжди наявні) + їх джерела (прихідні).
 async function expandAssembly(assemblyId, qtyTaken, inDocIds, depth) {
   const { data: asm } = await qc('assemblies').select('quantity').eq('id', assemblyId).maybeSingle()
   const batchQty = Number(asm?.quantity) || 1
   const factor = batchQty ? Math.min(1, (qtyTaken || batchQty) / batchQty) : 1
-  // OUT-рухи компонентів цієї збірки
-  const { data: compOuts } = await qc('stock_movements')
-    .select('id, product_id, quantity').eq('assembly_id', assemblyId).eq('type', 'out')
-  const byProduct = {}
-  ;(compOuts || []).forEach(m => { (byProduct[m.product_id] ||= new Set()).add(m.id) })
-  const pids = Object.keys(byProduct)
+  const { data: compItems } = await supabase.from('assembly_items').select('product_id, quantity, cost_price').eq('assembly_id', assemblyId)
+  // точні OUT-рухи компонентів (якщо є assembly_id)
+  const { data: compOuts } = await qc('stock_movements').select('id, product_id, quantity').eq('assembly_id', assemblyId).eq('type', 'out')
+  const outByProduct = {}
+  ;(compOuts || []).forEach(m => { (outByProduct[m.product_id] ||= new Set()).add(m.id) })
+
+  const pids = [...new Set((compItems || []).map(c => c.product_id))]
   const pInfo = {}
   for (let i = 0; i < pids.length; i += 100) {
     const { data } = await supabase.from('products').select('id, name, unit').in('id', pids.slice(i, i + 100))
     ;(data || []).forEach(p => pInfo[p.id] = p)
   }
+
   const components = []
-  for (const pid of pids) {
-    const allocs = await allocate(pid, byProduct[pid])
-    // масштабуємо під qtyTaken
-    const scaled = allocs.map(a => ({ in: a.in, qty: r2(a.qty * factor) }))
-    const totalQty = r2(scaled.reduce((s, a) => s + a.qty, 0))
+  for (const item of (compItems || [])) {
+    const pid = item.product_id
+    const needScaled = r2((Number(item.quantity) || 0) * factor)
+    let scaled
+    if (outByProduct[pid]) {
+      const allocs = await allocate(pid, outByProduct[pid])
+      scaled = allocs.map(a => ({ in: a.in, qty: r2(a.qty * factor) }))
+    } else {
+      // старі збірки без assembly_id на рухах → best-effort по IN-рухах
+      scaled = await allocateQty(pid, needScaled)
+    }
     components.push({
       productId: pid, name: pInfo[pid]?.name || '—', unit: pInfo[pid]?.unit || 'шт',
-      qty: totalQty, sources: await buildSources(scaled, inDocIds, depth),
+      qty: needScaled || r2(scaled.reduce((s, a) => s + a.qty, 0)),
+      sources: await buildSources(scaled, inDocIds, depth),
     })
   }
   return components
