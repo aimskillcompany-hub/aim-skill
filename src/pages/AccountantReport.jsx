@@ -3,6 +3,7 @@ import { useCompany } from '../lib/company'
 import { supabase } from '../lib/supabase'
 import { fmt } from '../lib/fmt'
 import { listOutgoingWaybills, traceOutgoing } from '../lib/accountantReport'
+import { exportOutgoingReportPdf } from '../lib/outgoingReportPdf'
 
 // Звіт для бухгалтера: по видатковій — простежити кожен товар до прихідної накладної (де/коли куплено).
 const d = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('.') : '—'
@@ -78,6 +79,7 @@ export default function AccountantReport() {
           </select>
         </div>
         <button className="btn btn-primary" onClick={build} disabled={!sel || busy}>{busy ? 'Формую…' : <><i className="ti ti-player-play" /> Сформувати</>}</button>
+        {report && <button className="btn" onClick={() => exportOutgoingReportPdf(report)}><i className="ti ti-file-download" /> Звіт PDF</button>}
         {report && <button className="btn" onClick={downloadArchive} disabled={zipping}><i className="ti ti-file-zip" /> {zipping ? 'Архівую…' : 'Архів звіту (.zip)'}</button>}
       </div>
 
