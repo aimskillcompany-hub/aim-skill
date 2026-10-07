@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useCompany } from '../lib/company'
 import { supabase } from '../lib/supabase'
 import { fmt } from '../lib/fmt'
@@ -7,6 +7,43 @@ import { exportOutgoingReportPdf } from '../lib/outgoingReportPdf'
 
 // Звіт для бухгалтера: по видатковій — простежити кожен товар до прихідної накладної (де/коли куплено).
 const d = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('.') : '—'
+
+// Рекурсивний рядок джерела: прихідна накладна АБО розкрита збірка (компоненти → їх прихідні)
+function SourceRows({ s, unit, openFile, indent }) {
+  const pad = 6 + indent * 18
+  if (s.type === 'assembly') {
+    return (
+      <>
+        <tr style={{ borderTop: '1px solid var(--border)', background: '#F4F2FA' }}>
+          <td style={{ padding: '5px 6px', paddingLeft: pad, fontWeight: 600, color: '#5B2FD6' }} colSpan={3}><i className="ti ti-tool" /> {s.docNumber || 'Збірка'}</td>
+          <td style={{ padding: '5px 6px', textAlign: 'right' }}>{fmt(s.qty)} {unit}</td>
+          <td style={{ padding: '5px 6px', textAlign: 'right' }}>{fmt(s.cost)} грн</td>
+          <td />
+        </tr>
+        {(s.components || []).map((c, ci) => (
+          <Fragment key={'c' + ci}>
+            <tr style={{ background: '#FAFAFE' }}>
+              <td style={{ padding: '4px 6px', paddingLeft: pad + 18, fontStyle: 'italic', color: 'var(--text2)' }} colSpan={3}>↳ {c.name} <span style={{ color: 'var(--text3)' }}>· {fmt(c.qty)} {c.unit}</span></td>
+              <td /><td /><td />
+            </tr>
+            {c.sources.map((cs, csi) => <SourceRows key={'cs' + csi} s={cs} unit={c.unit} openFile={openFile} indent={indent + 2} />)}
+            {c.sources.length === 0 && <tr><td colSpan={6} style={{ padding: '4px 6px', paddingLeft: pad + 36, color: 'var(--text3)', fontSize: 12 }}>джерело не знайдено</td></tr>}
+          </Fragment>
+        ))}
+      </>
+    )
+  }
+  return (
+    <tr style={{ borderTop: '1px solid var(--border)' }}>
+      <td style={{ padding: '5px 6px', paddingLeft: pad, color: s.type === 'doc' ? 'var(--text)' : 'var(--text3)' }}>{s.docNumber}</td>
+      <td style={{ padding: '5px 6px' }}>{s.docDate ? d(s.docDate) : '—'}</td>
+      <td style={{ padding: '5px 6px' }}>{s.supplierName || '—'}</td>
+      <td style={{ padding: '5px 6px', textAlign: 'right' }}>{fmt(s.qty)} {unit}</td>
+      <td style={{ padding: '5px 6px', textAlign: 'right' }}>{fmt(s.cost)} грн</td>
+      <td style={{ padding: '5px 6px', textAlign: 'right' }}>{s.storage_path && <a onClick={() => openFile(s.storage_path)} style={{ color: 'var(--blue)', cursor: 'pointer' }}><i className="ti ti-file" /></a>}</td>
+    </tr>
+  )
+}
 
 export default function AccountantReport() {
   const { activeId } = useCompany()
@@ -118,16 +155,7 @@ export default function AccountantReport() {
                     <th style={{ padding: '3px 6px' }}></th>
                   </tr></thead>
                   <tbody>
-                    {it.sources.map((s, i) => (
-                      <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
-                        <td style={{ padding: '5px 6px' }}>{s.docNumber}</td>
-                        <td style={{ padding: '5px 6px' }}>{s.docDate ? d(s.docDate) : '—'}</td>
-                        <td style={{ padding: '5px 6px' }}>{s.supplierName || '—'}</td>
-                        <td style={{ padding: '5px 6px', textAlign: 'right' }}>{fmt(s.qty)} {it.unit}</td>
-                        <td style={{ padding: '5px 6px', textAlign: 'right' }}>{fmt(s.cost)} грн</td>
-                        <td style={{ padding: '5px 6px', textAlign: 'right' }}>{s.storage_path && <a onClick={() => openFile(s.storage_path)} style={{ color: 'var(--blue)', cursor: 'pointer' }}><i className="ti ti-file" /></a>}</td>
-                      </tr>
-                    ))}
+                    {it.sources.map((s, i) => <SourceRows key={i} s={s} unit={it.unit} openFile={openFile} indent={0} />)}
                     {it.sources.length === 0 && <tr><td colSpan={6} style={{ padding: '5px 6px', color: 'var(--text3)' }}>Джерело не знайдено (немає прихідних рухів).</td></tr>}
                   </tbody>
                 </table>

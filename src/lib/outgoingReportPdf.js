@@ -9,6 +9,31 @@ const _q = new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 3 })
 const qn = (n) => _q.format(Number(n) || 0)
 const d = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('.') : '—'
 const GREY = '#5E5A6B', DARK = '#17151F'
+const pad = (n) => ' '.repeat(n * 3)
+
+// Рекурсивно додає рядок джерела (прихідна або розкрита збірка) у body таблиці
+function pushSource(body, s, unit, depth) {
+  if (s.type === 'assembly') {
+    body.push([
+      { text: pad(depth) + (s.docNumber || 'Збірка'), colSpan: 3, fontSize: 8.5, bold: true, color: '#5B2FD6', fillColor: '#F4F2FA' }, {}, {},
+      { text: `${qn(s.qty)} ${unit}`, fontSize: 8.5, alignment: 'right', fillColor: '#F4F2FA' },
+      { text: money(s.cost), fontSize: 8.5, alignment: 'right', fillColor: '#F4F2FA' },
+    ])
+    ;(s.components || []).forEach(c => {
+      body.push([{ text: pad(depth + 1) + '↳ ' + c.name + '  ·  ' + qn(c.qty) + ' ' + c.unit, colSpan: 5, fontSize: 8, italics: true, color: GREY }, {}, {}, {}, {}])
+      if (!c.sources.length) body.push([{ text: pad(depth + 2) + 'джерело не знайдено', colSpan: 5, fontSize: 8, color: '#C62828' }, {}, {}, {}, {}])
+      c.sources.forEach(cs => pushSource(body, cs, c.unit, depth + 2))
+    })
+    return
+  }
+  body.push([
+    { text: pad(depth) + (s.docNumber || '—'), fontSize: 8.5, color: s.type === 'doc' ? DARK : GREY },
+    { text: s.docDate ? d(s.docDate) : '—', fontSize: 8.5 },
+    { text: s.supplierName || '—', fontSize: 8.5 },
+    { text: `${qn(s.qty)} ${unit}`, fontSize: 8.5, alignment: 'right' },
+    { text: money(s.cost), fontSize: 8.5, alignment: 'right' },
+  ])
+}
 
 export async function exportOutgoingReportPdf(report) {
   const company = await getCompany().catch(() => null)
@@ -32,15 +57,7 @@ export async function exportOutgoingReportPdf(report) {
     if (!it.sources.length) {
       body.push([{ text: 'Джерело не знайдено (немає прихідних рухів)', colSpan: 5, fontSize: 8.5, color: '#C62828' }, {}, {}, {}, {}])
     }
-    it.sources.forEach(s => {
-      body.push([
-        { text: s.docNumber || '—', fontSize: 8.5 },
-        { text: s.docDate ? d(s.docDate) : '—', fontSize: 8.5 },
-        { text: s.supplierName || '—', fontSize: 8.5 },
-        { text: `${qn(s.qty)} ${it.unit}`, fontSize: 8.5, alignment: 'right' },
-        { text: money(s.cost), fontSize: 8.5, alignment: 'right' },
-      ])
-    })
+    it.sources.forEach(s => pushSource(body, s, it.unit, 0))
   })
   const totalCost = items.reduce((s, it) => s + it.sources.reduce((x, src) => x + (Number(src.cost) || 0), 0), 0)
   body.push([
