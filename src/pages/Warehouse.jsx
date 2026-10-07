@@ -4,6 +4,7 @@ import { qc, withCompany } from '../lib/companyScope'
 import { useUser } from '../lib/auth'
 import { fmt, fmtInt } from '../lib/fmt'
 import { assembleProduct, getAssembly, deleteAssembly, editAssembly, mergeProducts } from '../lib/stockService'
+import { exportAssemblyAct } from '../lib/assemblyAct'
 import { getDocType } from '../lib/docgen'
 import DocModal from '../components/DocModal'
 import GeneratedDocModal from '../components/GeneratedDocModal'
@@ -900,9 +901,12 @@ function AssemblyDetailModal({ id, user, onClose, onChanged }) {
                   </table>
                 </div>
                 {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 10 }}>{err}</div>}
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
                   <button className="btn" onClick={del} disabled={busy} style={{ color: 'var(--red)' }}><i className="ti ti-trash" /> Видалити</button>
-                  <button className="btn btn-primary" onClick={() => setEdit(true)}><i className="ti ti-edit" /> Редагувати</button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn" onClick={() => exportAssemblyAct(a)}><i className="ti ti-file-download" /> Акт для бухгалтера (PDF)</button>
+                    <button className="btn btn-primary" onClick={() => setEdit(true)}><i className="ti ti-edit" /> Редагувати</button>
+                  </div>
                 </div>
               </>
             ) : (
