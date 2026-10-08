@@ -219,8 +219,9 @@ function PlannedProfit({ o, userId }) {
   const cost = (rows || []).reduce((s, r) => s + (Number(r.qty) || 0) * netUnit(r.cost_price, r.vat_rate, r.price_includes_vat), 0)
   const gross = revenue - cost
   const otherSum = exp.reduce((s, e) => s + (Number(e.amount) || 0), 0)
+  const tax = gross > 0 ? gross * 0.18 : 0 // податок на прибуток 18% від валового (лише з прибутку)
   const agent = gross > 0 ? gross * (Number(o.agent_commission_pct) || 0) : 0
-  const net = gross - agent - otherSum
+  const net = gross - tax - agent - otherSum
   const marginPct = revenue > 0 ? (net / revenue * 100) : 0
 
   if (rows == null) return null
@@ -236,6 +237,7 @@ function PlannedProfit({ o, userId }) {
         <Kpi label="Виручка" value={revenue} />
         <Kpi label="Собівартість" value={cost} color="var(--text2)" />
         <Kpi label="Валовий прибуток" value={gross} color={gross >= 0 ? 'var(--green)' : 'var(--red)'} />
+        <Kpi label="Податок 18%" value={-tax} color="var(--red)" />
         {agent > 0 && <Kpi label="Агентські" value={-agent} color="var(--red)" />}
         <Kpi label="Інші витрати" value={-otherSum} color="var(--red)" />
         <Kpi label="Чистий прибуток" value={net} color={net >= 0 ? 'var(--green)' : 'var(--red)'} />
@@ -262,7 +264,7 @@ function PlannedProfit({ o, userId }) {
         )}
       </div>
       <p style={{ fontSize: 12, color: 'var(--text3)', margin: '10px 0 0' }}>
-        Рахується автоматично з позицій замовлення: Виручка − Собівартість = Валовий прибуток. Чистий = валовий − агентські − інші витрати (додавайте сюди доставку, монтаж, комісії, податки тощо).
+        Рахується автоматично з позицій замовлення: Виручка − Собівартість = Валовий прибуток. Чистий = валовий − податок 18% − агентські − інші витрати (додавайте сюди доставку, монтаж, комісії тощо).
       </p>
     </div>
   )
