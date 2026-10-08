@@ -161,6 +161,8 @@ export default function OrderFinanceTab({ o, onOrderChange }) {
 
       {!o.paid_transaction_id && paymentBlock}
 
+      <PlannedProfit o={o} userId={user?.id} />
+
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="kpi-grid">
           <Kpi label="Надходження (факт)" value={income} color="var(--green)" />
@@ -179,6 +181,89 @@ export default function OrderFinanceTab({ o, onOrderChange }) {
       </>}
 
       {picker && <TxPicker kind={picker} orderId={o.id} clientId={o.client_id} userId={user?.id} onClose={() => setPicker(null)} onAdded={() => { setPicker(null); loadItems() }} />}
+    </div>
+  )
+}
+
+// ── Планова прибутковість: з позицій замовлення (закупка/продаж/ПДВ) + «Інші витрати» ──
+const netUnit = (price, vatRate, inclVat) => {
+  const p = Number(price) || 0, v = Number(vatRate) || 0
+  return inclVat && v > 0 ? p / (1 + v / 100) : p
+}
+function PlannedProfit({ o, userId }) {
+  const [rows, setRows] = useState(null)       // позиції замовлення
+  const [exp, setExp] = useState([])           // інші витрати
+  const [missing, setMissing] = useState(false)
+  const [add, setAdd] = useState({ name: '', amount: '' })
+
+  const loadExp = async () => {
+    const { data, error } = await supabase.from('order_expenses').select('*').eq('order_id', o.id).order('created_at')
+    if (error) { setMissing(/order_expenses/.test(error.message || '')); setExp([]); return }
+    setMissing(false); setExp(data || [])
+  }
+  useEffect(() => {
+    supabase.from('order_items').select('qty, unit_price, cost_price, vat_rate, price_includes_vat').eq('order_id', o.id)
+      .then(({ data }) => setRows(data || []))
+    loadExp()
+  }, [o.id])
+
+  const addExp = async () => {
+    if (!(Number(add.amount) > 0)) return
+    const { error } = await supabase.from('order_expenses').insert({ order_id: o.id, name: add.name.trim() || 'Інша витрата', amount: Number(add.amount), created_by: userId || null })
+    if (error) { alert(/order_expenses/.test(error.message || '') ? 'Запустіть міграцію 065' : error.message); return }
+    setAdd({ name: '', amount: '' }); loadExp()
+  }
+  const rmExp = async (id) => { await supabase.from('order_expenses').delete().eq('id', id); loadExp() }
+
+  const revenue = (rows || []).reduce((s, r) => s + (Number(r.qty) || 0) * netUnit(r.unit_price, r.vat_rate, r.price_includes_vat), 0)
+  const cost = (rows || []).reduce((s, r) => s + (Number(r.qty) || 0) * netUnit(r.cost_price, r.vat_rate, r.price_includes_vat), 0)
+  const gross = revenue - cost
+  const otherSum = exp.reduce((s, e) => s + (Number(e.amount) || 0), 0)
+  const agent = gross > 0 ? gross * (Number(o.agent_commission_pct) || 0) : 0
+  const net = gross - agent - otherSum
+  const marginPct = revenue > 0 ? (net / revenue * 100) : 0
+
+  if (rows == null) return null
+
+  return (
+    <div className="card" style={{ marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <i className="ti ti-calculator" style={{ color: 'var(--blue)' }} />
+        <h3 style={{ margin: 0, fontSize: 15 }}>Планова прибутковість</h3>
+        <span style={{ fontSize: 12, color: 'var(--text3)' }}>з позицій замовлення (без ПДВ)</span>
+      </div>
+      <div className="kpi-grid">
+        <Kpi label="Виручка" value={revenue} />
+        <Kpi label="Собівартість" value={cost} color="var(--text2)" />
+        <Kpi label="Валовий прибуток" value={gross} color={gross >= 0 ? 'var(--green)' : 'var(--red)'} />
+        {agent > 0 && <Kpi label="Агентські" value={-agent} color="var(--red)" />}
+        <Kpi label="Інші витрати" value={-otherSum} color="var(--red)" />
+        <Kpi label="Чистий прибуток" value={net} color={net >= 0 ? 'var(--green)' : 'var(--red)'} />
+        <Kpi label="Маржа" text={revenue > 0 ? `${marginPct.toFixed(1)}%` : '—'} color={net >= 0 ? 'var(--green)' : 'var(--red)'} />
+      </div>
+
+      {/* Інші витрати */}
+      <div style={{ marginTop: 14 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 8 }}>Інші витрати</div>
+        {missing && <p style={{ fontSize: 13, color: 'var(--amber,#b45309)' }}>Запустіть міграцію 065, щоб додавати інші витрати.</p>}
+        {exp.map(e => (
+          <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 14 }}>
+            <span style={{ flex: 1 }}>{e.name}</span>
+            <span style={{ fontFamily: 'monospace' }}>{fmt(e.amount)} грн</span>
+            <button className="btn" onClick={() => rmExp(e.id)} style={{ padding: '2px 8px' }}><i className="ti ti-x" /></button>
+          </div>
+        ))}
+        {!missing && (
+          <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+            <input className="form-input" placeholder="Назва (доставка, монтаж, комісія, податок…)" value={add.name} onChange={e => setAdd(a => ({ ...a, name: e.target.value }))} style={{ flex: '1 1 240px' }} />
+            <input className="form-input" type="number" placeholder="Сума, грн" value={add.amount} onChange={e => setAdd(a => ({ ...a, amount: e.target.value }))} style={{ width: 140 }} onKeyDown={e => e.key === 'Enter' && addExp()} />
+            <button className="btn btn-primary" onClick={addExp}><i className="ti ti-plus" /> Додати</button>
+          </div>
+        )}
+      </div>
+      <p style={{ fontSize: 12, color: 'var(--text3)', margin: '10px 0 0' }}>
+        Рахується автоматично з позицій замовлення: Виручка − Собівартість = Валовий прибуток. Чистий = валовий − агентські − інші витрати (додавайте сюди доставку, монтаж, комісії, податки тощо).
+      </p>
     </div>
   )
 }
