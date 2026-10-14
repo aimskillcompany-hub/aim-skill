@@ -7,21 +7,26 @@ import { supabase } from './supabase'
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100
 const EPS = 0.0001
 
-// Список наших видаткових (для вибору)
-export async function listOutgoingWaybills() {
+// Акт — двонапрямний тип: наш (вихідний) = doc_role outgoing або direction receivable
+const isOutgoingAct = (d) => d.type === 'serviceAct' && (d.doc_role === 'outgoing' || (!d.doc_role && d.direction === 'receivable'))
+
+// Список наших документів реалізації (видаткові + вихідні акти) для вибору
+export async function listOutgoingDocs() {
   const { data } = await qc('documents')
-    .select('id, doc_number, doc_date, amount, contractor_id, created_at')
-    .eq('type', 'waybill').order('doc_date', { ascending: false }).order('created_at', { ascending: false }).limit(500)
-  const ids = [...new Set((data || []).map(d => d.contractor_id).filter(Boolean))]
+    .select('id, type, doc_role, direction, doc_number, doc_date, amount, contractor_id, created_at')
+    .in('type', ['waybill', 'serviceAct']).order('doc_date', { ascending: false }).order('created_at', { ascending: false }).limit(3000)
+  const docs = (data || []).filter(d => d.type === 'waybill' || isOutgoingAct(d))
+  const ids = [...new Set(docs.map(d => d.contractor_id).filter(Boolean))]
   const cn = {}
   for (let i = 0; i < ids.length; i += 100) {
     const { data: cs } = await supabase.from('contractors').select('id, name').in('id', ids.slice(i, i + 100))
     ;(cs || []).forEach(c => cn[c.id] = c.name)
   }
-  return (data || []).map(d => ({ ...d, contractorName: cn[d.contractor_id] || 'Без контрагента' }))
+  return docs.map(d => ({ ...d, contractorName: cn[d.contractor_id] || 'Без контрагента' }))
 }
 
-// FIFO-розподіл OUT-рухів товару по IN-рухах → алокації [{ in, qty }] лише для ourOutIds
+// FIFO-розподіл OUT-рухів товару по IN-рухах → { allocs: [{ in, qty }], short } лише для ourOutIds.
+// short — кількість наших OUT, на яку не вистачило прихідних (мінусовий залишок / не оприбутковано).
 async function allocate(productId, ourOutIds) {
   const [{ data: ins }, { data: outs }] = await Promise.all([
     qc('stock_movements').select('id, product_id, document_id, quantity, price, date, source, assembly_id, description, created_at').eq('product_id', productId).eq('type', 'in').order('date').order('created_at'),
@@ -29,7 +34,7 @@ async function allocate(productId, ourOutIds) {
   ])
   const inState = (ins || []).map(m => ({ ...m, remaining: Number(m.quantity) || 0 }))
   const out = []
-  let ptr = 0
+  let ptr = 0, short = 0
   for (const o of (outs || [])) {
     let need = Number(o.quantity) || 0
     const take = []
@@ -41,9 +46,9 @@ async function allocate(productId, ourOutIds) {
       inM.remaining = r2(inM.remaining - t); need = r2(need - t)
       if (inM.remaining <= EPS) ptr++
     }
-    if (ourOutIds.has(o.id)) out.push(...take)
+    if (ourOutIds.has(o.id)) { out.push(...take); if (need > EPS) short = r2(short + need) }
   }
-  return out
+  return { allocs: out, short }
 }
 
 // IN-рух є збіркою? (source або опис «Збірка…») — враховує старі дані без assembly_id
@@ -128,17 +133,20 @@ async function expandAssembly(assemblyId, qtyTaken, inDocIds, depth) {
   for (const item of (compItems || [])) {
     const pid = item.product_id
     const needScaled = r2((Number(item.quantity) || 0) * factor)
-    let scaled
+    let scaled, shortQty
     if (outByProduct[pid]) {
-      const allocs = await allocate(pid, outByProduct[pid])
+      const { allocs, short } = await allocate(pid, outByProduct[pid])
       scaled = allocs.map(a => ({ in: a.in, qty: r2(a.qty * factor) }))
+      shortQty = r2(short * factor)
     } else {
       // старі збірки без assembly_id на рухах → best-effort по IN-рухах
       scaled = await allocateQty(pid, needScaled)
+      shortQty = Math.max(0, r2(needScaled - scaled.reduce((s, a) => s + a.qty, 0)))
     }
     components.push({
       productId: pid, name: pInfo[pid]?.name || '—', unit: pInfo[pid]?.unit || 'шт',
       qty: needScaled || r2(scaled.reduce((s, a) => s + a.qty, 0)),
+      shortQty,
       sources: await buildSources(scaled, inDocIds, depth),
     })
   }
@@ -147,9 +155,10 @@ async function expandAssembly(assemblyId, qtyTaken, inDocIds, depth) {
 
 export async function traceOutgoing(docId) {
   const { data: doc } = await qc('documents')
-    .select('id, doc_number, doc_date, amount, vat_amount, contractor_id, storage_path, file_name')
+    .select('id, type, doc_number, doc_date, amount, vat_amount, contractor_id, order_id, storage_path, file_name')
     .eq('id', docId).maybeSingle()
-  if (!doc) throw new Error('Видаткову не знайдено')
+  if (!doc) throw new Error('Документ не знайдено')
+  doc.isAct = doc.type === 'serviceAct'
   const { data: contr } = doc.contractor_id ? await supabase.from('contractors').select('name, edrpou').eq('id', doc.contractor_id).maybeSingle() : { data: null }
   doc.contractorName = contr?.name || 'Без контрагента'
   doc.contractorEdrpou = contr?.edrpou || ''
@@ -162,17 +171,26 @@ export async function traceOutgoing(docId) {
   // Якщо у документі є ocr_data.items — впорядковуємо товари точно як у видатковій
   const { data: docFull } = await qc('documents').select('ocr_data').eq('id', docId).maybeSingle()
   const ocrItems = Array.isArray(docFull?.ocr_data?.items) ? docFull.ocr_data.items : []
+  const matchedIdx = new Set()
   if (ocrItems.length) {
     const norm = (s) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim()
-    const { data: prods } = await supabase.from('products').select('id, name').in('id', productIds)
+    const { data: prods } = productIds.length ? await supabase.from('products').select('id, name').in('id', productIds) : { data: [] }
     const nameById = {}; (prods || []).forEach(p => nameById[p.id] = norm(p.name))
     const idxOf = (pid) => {
       const nm = nameById[pid] || ''
-      const i = ocrItems.findIndex(it => { const n = norm(it.name); return n && (n === nm || n.includes(nm) || nm.includes(n)) })
+      const i = ocrItems.findIndex(it => { const n = norm(it.name); return n && nm && (n === nm || n.includes(nm) || nm.includes(n)) })
+      if (i >= 0) matchedIdx.add(i)
       return i < 0 ? 9999 : i
     }
-    productIds = [...productIds].sort((a, b) => idxOf(a) - idxOf(b))
+    const order = {}; productIds.forEach(pid => order[pid] = idxOf(pid))
+    productIds = [...productIds].sort((a, b) => order[a] - order[b])
   }
+  // Послуги акту: позиції без складського руху. Лише для актів — у видаткових назви товарів
+  // часто не збігаються з OCR (аліаси), і це дало б хибні «позиції без руху».
+  const services = !doc.isAct ? [] : ocrItems
+    .map((it, i) => ({ it, i }))
+    .filter(({ i }) => !matchedIdx.has(i))
+    .map(({ it }) => ({ name: it.name || '—', qty: Number(it.quantity) || null, unit: it.unit || '', amount: Number(it.amount) || 0 }))
   const outIdsByProduct = {}
   ;(ourOut || []).forEach(m => { (outIdsByProduct[m.product_id] ||= new Set()).add(m.id) })
 
@@ -185,13 +203,28 @@ export async function traceOutgoing(docId) {
   const inDocIds = new Set()
   const items = []
   for (const pid of productIds) {
-    const allocs = await allocate(pid, outIdsByProduct[pid])
+    const { allocs, short } = await allocate(pid, outIdsByProduct[pid])
     const soldQty = r2((ourOut || []).filter(m => m.product_id === pid).reduce((s, m) => s + (Number(m.quantity) || 0), 0))
     items.push({
       productId: pid, name: pName[pid]?.name || '—', unit: pName[pid]?.unit || 'шт',
-      soldQty, sources: await buildSources(allocs, inDocIds, 2), // до 2 рівнів вкладених збірок
+      soldQty, shortQty: short, sources: await buildSources(allocs, inDocIds, 2), // до 2 рівнів вкладених збірок
     })
   }
+
+  // нестача: товари (і компоненти збірок), на які не вистачило прихідних
+  const shortages = []
+  const collectShort = (name, unit, qty, via) => { if (qty > EPS) shortages.push({ name, unit, qty, via }) }
+  const walkSrc = (s, parent) => {
+    if (s.type !== 'assembly') return
+    ;(s.components || []).forEach(c => {
+      collectShort(c.name, c.unit, c.shortQty, parent)
+      c.sources.forEach(cs => walkSrc(cs, c.name))
+    })
+  }
+  items.forEach(it => {
+    collectShort(it.name, it.unit, it.shortQty, null)
+    it.sources.forEach(s => walkSrc(s, it.name))
+  })
 
   // прихідні документи-джерела (для шапки/архіву)
   const inDocs = {}
@@ -225,5 +258,20 @@ export async function traceOutgoing(docId) {
   }
   items.forEach(it => it.sources.forEach(fillDoc))
 
-  return { doc, items, purchaseDocs: Object.values(inDocs) }
+  // Для акту: вхідні документи витрат по тому ж замовленню (акти субпідрядників, прихідні) — джерело собівартості послуг
+  let orderCostDocs = []
+  if (doc.isAct && doc.order_id) {
+    const { data: od } = await qc('documents')
+      .select('id, type, doc_role, direction, doc_number, doc_date, amount, contractor_id, storage_path, file_name')
+      .eq('order_id', doc.order_id).in('type', ['serviceAct', 'incomingWaybill', 'other']).neq('id', doc.id)
+    orderCostDocs = (od || []).filter(x => x.type === 'incomingWaybill' || x.doc_role === 'incoming' || (!x.doc_role && x.direction === 'payable'))
+      .filter(x => !inDocs[x.id])
+    const cids = [...new Set(orderCostDocs.map(x => x.contractor_id).filter(Boolean))]
+    const cm = {}
+    if (cids.length) { const { data: cs } = await supabase.from('contractors').select('id, name').in('id', cids); (cs || []).forEach(c => cm[c.id] = c.name) }
+    orderCostDocs.forEach(x => x.supplierName = cm[x.contractor_id] || 'Без постачальника')
+    orderCostDocs.sort((a, b) => (a.doc_date || '').localeCompare(b.doc_date || ''))
+  }
+
+  return { doc, items, services, shortages, orderCostDocs, purchaseDocs: Object.values(inDocs) }
 }
