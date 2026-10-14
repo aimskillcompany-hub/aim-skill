@@ -8,7 +8,6 @@ import { exportOutgoingReportPdf } from '../lib/outgoingReportPdf'
 // Звіт для бухгалтера: по видатковій — простежити кожен товар до прихідної накладної (де/коли куплено).
 const d = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('.') : '—'
 
-const LBL = { fontSize: 12, color: 'var(--text3)', fontWeight: 600 }
 const TH = { textAlign: 'left', padding: '6px 8px' }
 const TD = { padding: '6px 8px' }
 const COST_LABEL = { serviceAct: 'Вхідний акт', incomingWaybill: 'Прихідна', other: 'Документ' }
@@ -161,46 +160,45 @@ export default function AccountantReport() {
         <h1 style={{ margin: 0 }}>Звіт для бухгалтера</h1>
       </div>
       <p style={{ fontSize: 13, color: 'var(--text2)', margin: '0 0 16px' }}>
-        Оберіть нашу видаткову накладну або акт наданих послуг — система покаже позиції й простежить кожен товар до прихідної накладної (де й коли куплено). Для акту — також вхідні документи витрат по замовленню.
+        Оберіть видаткову накладну або акт — система простежить кожен товар до прихідної накладної (де й коли куплено).
       </p>
 
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 8 }}>
-          <div style={{ flex: '0 1 170px' }}>
-            <label style={LBL}>Тип документа</label>
+      <div className="card compact" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12, alignItems: 'end' }}>
+          <div className="form-group">
+            <label>Тип документа</label>
             <select className="form-input" value={fType} onChange={e => setFType(e.target.value)}>
               <option value="all">Усі</option>
               <option value="waybill">Видаткові накладні</option>
               <option value="serviceAct">Акти наданих послуг</option>
             </select>
           </div>
-          <div style={{ flex: '0 1 150px' }}>
-            <label style={LBL}>Дата з</label>
+          <div className="form-group">
+            <label>Дата з</label>
             <input type="date" className="form-input" value={fFrom} onChange={e => setFFrom(e.target.value)} />
           </div>
-          <div style={{ flex: '0 1 150px' }}>
-            <label style={LBL}>Дата по</label>
+          <div className="form-group">
+            <label>Дата по</label>
             <input type="date" className="form-input" value={fTo} onChange={e => setFTo(e.target.value)} />
           </div>
-          <div style={{ flex: '1 1 220px' }}>
-            <label style={LBL}>Покупець</label>
+          <div className="form-group" style={{ gridColumn: 'span 2' }}>
+            <label>Покупець</label>
             <select className="form-input" value={fContr} onChange={e => setFContr(e.target.value)}>
               <option value="">Усі контрагенти</option>
               {contractors.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
-          <div style={{ flex: '1 1 200px' }}>
-            <label style={LBL}>Пошук</label>
+          <div className="form-group" style={{ gridColumn: 'span 2' }}>
+            <label>Пошук</label>
             <input className="form-input" placeholder="№ документа, контрагент або сума" value={fQ} onChange={e => setFQ(e.target.value)} />
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10, fontSize: 12 }}>
-          <span style={{ color: 'var(--text3)' }}>Період:</span>
-          <button className="btn btn-sm" onClick={() => setPeriod('month')}>Цей місяць</button>
-          <button className="btn btn-sm" onClick={() => setPeriod('prev')}>Минулий місяць</button>
-          <button className="btn btn-sm" onClick={() => setPeriod('quarter')}>Квартал</button>
-          <button className="btn btn-sm" onClick={() => setPeriod('year')}>Рік</button>
-          {hasFilters && <button className="btn btn-sm" onClick={resetFilters}><i className="ti ti-x" /> Скинути фільтри</button>}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', margin: '12px 0 10px', fontSize: 12 }}>
+          <span style={{ color: 'var(--text3)', marginRight: 2 }}>Період:</span>
+          {[['month', 'Цей місяць'], ['prev', 'Минулий місяць'], ['quarter', 'Квартал'], ['year', 'Рік']].map(([k, l]) => (
+            <button key={k} className="btn btn-sm" style={{ minHeight: 28, padding: '4px 10px', fontSize: 12 }} onClick={() => setPeriod(k)}>{l}</button>
+          ))}
+          {hasFilters && <button className="btn btn-sm" style={{ minHeight: 28, padding: '4px 10px', fontSize: 12 }} onClick={resetFilters}><i className="ti ti-x" /> Скинути</button>}
           <span style={{ marginLeft: 'auto', color: 'var(--text3)' }}>{list ? `Знайдено: ${filtered.length}` : 'Завантаження…'}</span>
         </div>
 
@@ -225,21 +223,23 @@ export default function AccountantReport() {
         </div>
         {!showAll && filtered.length > LIMIT && <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={() => setShowAll(true)}>Показати всі {filtered.length}</button>}
 
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
-          {busy && <span style={{ fontSize: 13, color: 'var(--text2)' }}><i className="ti ti-loader-2" /> Формую звіт…</span>}
-          {report && !busy && <button className="btn" onClick={() => exportOutgoingReportPdf(report)}><i className="ti ti-file-download" /> Звіт PDF</button>}
-          {report && !busy && <button className="btn" onClick={downloadArchive} disabled={zipping}><i className="ti ti-file-zip" /> {zipping ? 'Архівую…' : 'Архів звіту (.zip)'}</button>}
-        </div>
       </div>
 
+      {busy && <div className="card" style={{ marginBottom: 14, fontSize: 13, color: 'var(--text2)' }}><i className="ti ti-loader-2" /> Формую звіт…</div>}
       {err && <div className="card" style={{ color: 'var(--red)' }}>Помилка: {err}</div>}
 
       {report && (
         <>
           {/* Шапка видаткової */}
           <div className="card" style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>
-              {report.doc.isAct ? 'Акт наданих послуг' : 'Видаткова накладна'} № {report.doc.doc_number} <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: 13 }}>від {d(report.doc.doc_date)}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>
+                {report.doc.isAct ? 'Акт наданих послуг' : 'Видаткова накладна'} № {report.doc.doc_number} <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: 13 }}>від {d(report.doc.doc_date)}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button className="btn btn-sm" onClick={() => exportOutgoingReportPdf(report)}><i className="ti ti-file-download" /> Звіт PDF</button>
+                <button className="btn btn-sm" onClick={downloadArchive} disabled={zipping}><i className="ti ti-file-zip" /> {zipping ? 'Архівую…' : 'Архів (.zip)'}</button>
+              </div>
             </div>
             <div style={{ fontSize: 13, color: 'var(--text2)' }}>
               Покупець: <b>{report.doc.contractorName}</b>{report.doc.contractorEdrpou ? ` · ЄДРПОУ ${report.doc.contractorEdrpou}` : ''} · Сума: <b>{fmt(report.doc.amount)} грн</b>{report.doc.vat_amount ? ` (у т.ч. ПДВ ${fmt(report.doc.vat_amount)})` : ''}
