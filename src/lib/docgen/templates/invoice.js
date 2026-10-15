@@ -133,10 +133,7 @@ export function pdf(company, contractor, items, options) {
           headerRows: 1,
           widths: [18, '*', 34, 34, 80, 80],
           body: [
-            (vatPayer
-              ? ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна без ПДВ', 'Сума без ПДВ']
-              : ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна', 'Сума']
-            ).map(t => ({
+            ['№', 'Найменування', 'Од.', 'К-сть', 'Ціна без ПДВ', 'Сума без ПДВ'].map(t => ({
               text: t, fontSize: 7, bold: true, color: '#FFF', fillColor: DARK,
               alignment: 'center', margin: [0, 3, 0, 3],
             })),
@@ -175,7 +172,7 @@ export function pdf(company, contractor, items, options) {
                     [{ text: `ПДВ ${rate}%:`, alignment: 'right', fontSize: 8.5, color: G2 }, { text: `${formatMoney(amt)} грн`, alignment: 'right', fontSize: 8.5 }]
                   ),
                 ] : []),
-                [{ text: 'Всього:', alignment: 'right', fontSize: 10, bold: true, color: BLACK }, { text: `${formatMoney(total)} грн`, alignment: 'right', fontSize: 10, bold: true, color: BLACK }],
+                [{ text: vatPayer ? 'Всього:' : 'Всього без ПДВ:', alignment: 'right', fontSize: 10, bold: true, color: BLACK }, { text: `${formatMoney(total)} грн`, alignment: 'right', fontSize: 10, bold: true, color: BLACK }],
               ],
             },
             layout: 'noBorders',
@@ -188,7 +185,7 @@ export function pdf(company, contractor, items, options) {
       { text: '', margin: [0, 6] },
       { text: [
         { text: 'Всього до сплати: ' },
-        { text: amountInWords(total).charAt(0).toLowerCase() + amountInWords(total).slice(1) },
+        { text: amountInWords(total).charAt(0).toLowerCase() + amountInWords(total).slice(1) + (vatPayer ? '' : ', без ПДВ') },
       ], fontSize: 9, color: G1, margin: [0, 0, 0, 1] },
       (vatPayer && vatAmount > 0) ? { text: [
         { text: 'у тому числі ' },
