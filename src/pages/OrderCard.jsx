@@ -1295,6 +1295,29 @@ function SuppliersTab({ o }) {
     await supabase.from('supplier_order_items').update({ ordered: val }).eq('id', it.id)
     setItems(prev => ({ ...prev, [soId]: (prev[soId] || []).map(x => x.id === it.id ? { ...x, ordered: val } : x) }))
   }
+  // Галочка «У замовленні»: excluded=true → позиція не йде в PDF і суму (міграція 066).
+  // До застосування 066 — фолбек: зняття галочки видаляє позицію із субзамовлення.
+  const recalcTotal = async (soId, list) => {
+    const total = list.filter(x => !x.excluded).reduce((t, x) => t + (Number(x.qty) || 0) * (Number(x.cost_price) || 0), 0)
+    await qc('supplier_orders').update({ total }).eq('id', soId)
+    setRows(prev => prev.map(r => r.id === soId ? { ...r, total } : r))
+  }
+  const setIncluded = async (soId, ids, include) => {
+    const { error } = await supabase.from('supplier_order_items').update({ excluded: !include }).in('id', ids)
+    let next
+    if (error) {
+      if (!/excluded/i.test(error.message || '')) { setMsg('Помилка: ' + error.message); return }
+      if (include) { setMsg('Щоб повертати позиції, запустіть міграцію 066 у Supabase.'); return }
+      await supabase.from('supplier_order_items').delete().in('id', ids)
+      next = (items[soId] || []).filter(x => !ids.includes(x.id))
+      setMsg('Позицію видалено із субзамовлення (міграція 066 ще не застосована — повернути можна через «Сформувати з товарів»).')
+    } else {
+      next = (items[soId] || []).map(x => ids.includes(x.id) ? { ...x, excluded: !include } : x)
+    }
+    setItems(prev => ({ ...prev, [soId]: next }))
+    await recalcTotal(soId, next)
+  }
+
   const toggleAllOrdered = async (s, val) => {
     const list = items[s.id] || []
     const ids = list.map(x => x.id)
@@ -1305,8 +1328,8 @@ function SuppliersTab({ o }) {
 
   // PDF «Замовлення постачальнику» для конкретного субзамовлення
   const genPdf = async (s, download) => {
-    const list = (items[s.id] || []).map(it => ({ name: it.name, sku: it.sku, quantity: Number(it.qty) || 0, unit: it.unit || 'шт', price: Number(it.cost_price) || 0 }))
-    if (!list.length) { setMsg('У субзамовленні немає позицій.'); return }
+    const list = (items[s.id] || []).filter(it => !it.excluded).map(it => ({ name: it.name, sku: it.sku, quantity: Number(it.qty) || 0, unit: it.unit || 'шт', price: Number(it.cost_price) || 0 }))
+    if (!list.length) { setMsg('У субзамовленні немає позицій для замовлення (усі виключені).'); return }
     let supplier = { name: s.contractors?.name || 'Постачальник' }
     if (s.supplier_id) { const { data } = await supabase.from('contractors').select('*').eq('id', s.supplier_id).single(); if (data) supplier = data }
     let client = { name: o.contractors?.name }
@@ -1331,17 +1354,33 @@ function SuppliersTab({ o }) {
       ;(groups[key] ||= []).push(it)
     }
     if (!Object.keys(groups).length) { setBusy(false); setMsg('Немає товарів для формування (додайте позиції у вкладці «Товари»).'); return }
+    // Запам'ятовуємо виключені/замовлені позиції попередніх авто-субзамовлень, щоб не скидати їх
+    const prevMarks = {}
+    const markKey = (sup, it) => `${sup || '__none__'}|${it.product_id || (it.name || '').trim().toLowerCase()}`
+    const { data: prevSo } = await qc('supplier_orders').select('id, supplier_id').eq('order_id', o.id).eq('source', 'auto')
+    if (prevSo?.length) {
+      const { data: prevIt } = await supabase.from('supplier_order_items').select('*').in('supplier_order_id', prevSo.map(x => x.id))
+      const supOf = {}; prevSo.forEach(x => supOf[x.id] = x.supplier_id)
+      ;(prevIt || []).forEach(it => { prevMarks[markKey(supOf[it.supplier_order_id], it)] = { excluded: !!it.excluded, ordered: !!it.ordered } })
+    }
     // Заміщуємо лише авто-сформовані, ручні лишаємо
     await qc('supplier_orders').delete().eq('order_id', o.id).eq('source', 'auto')
     for (const key of Object.keys(groups)) {
       const list = groups[key]
-      const total = list.reduce((s, it) => s + (Number(it.cost_price) || 0) * (Number(it.qty) || 0), 0)
+      const sup = key === '__none__' ? null : key
+      const mark = (it) => prevMarks[markKey(sup, it)] || {}
+      const total = list.filter(it => !mark(it).excluded).reduce((s, it) => s + (Number(it.cost_price) || 0) * (Number(it.qty) || 0), 0)
       const { data: so } = await qc('supplier_orders').insert(withCompany({
         order_id: o.id, supplier_id: key === '__none__' ? null : key, total, status: 'new', source: 'auto',
       })).select('id').single()
-      if (so?.id) await supabase.from('supplier_order_items').insert(list.map(it => ({
+      const row = (it) => ({
         supplier_order_id: so.id, product_id: it.product_id || null, name: it.name, sku: it.sku || null, unit: it.unit, qty: Number(it.qty) || 0, cost_price: Number(it.cost_price) || 0,
-      })))
+      })
+      if (so?.id) {
+        // спершу з позначками; якщо колонки excluded ще нема (066) — без неї
+        const { error } = await supabase.from('supplier_order_items').insert(list.map(it => ({ ...row(it), excluded: !!mark(it).excluded, ordered: !!mark(it).ordered })))
+        if (error) await supabase.from('supplier_order_items').insert(list.map(it => ({ ...row(it), ordered: !!mark(it).ordered })))
+      }
     }
     setBusy(false); load()
   }
@@ -1395,37 +1434,51 @@ function SuppliersTab({ o }) {
 
             {(items[s.id] || []).length > 0 && (() => {
               const list = items[s.id]
-              const allOrdered = list.length > 0 && list.every(x => x.ordered)
-              const orderedCnt = list.filter(x => x.ordered).length
+              const incl = list.filter(x => !x.excluded)
+              const allIncluded = list.every(x => !x.excluded)
+              const allOrdered = incl.length > 0 && incl.every(x => x.ordered)
+              const orderedCnt = incl.filter(x => x.ordered).length
               return (
               <div className="tbl-wrap" style={{ border: 'none', marginTop: 10 }}>
                 <table>
                   <thead><tr>
-                    <th style={{ width: 32, textAlign: 'center' }} title="Замовлено">
-                      <input type="checkbox" checked={allOrdered} onChange={e => toggleAllOrdered(s, e.target.checked)} />
+                    <th style={{ width: 32, textAlign: 'center' }} title="У замовленні (зняти — прибрати з PDF і суми)">
+                      <input type="checkbox" checked={allIncluded} onChange={e => setIncluded(s.id, list.map(x => x.id), e.target.checked)} />
                     </th>
                     <th style={{ width: 110 }}>Код</th>
                     <th>Найменування</th>
                     <th style={{ textAlign: 'right' }}>К-сть</th>
                     <th style={{ textAlign: 'right' }}>Закупівля</th>
                     <th style={{ textAlign: 'right' }}>Сума</th>
+                    <th style={{ width: 84, textAlign: 'center', fontSize: 11 }}>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }} title="Позначити всі як замовлені">
+                        <input type="checkbox" checked={allOrdered} onChange={e => toggleAllOrdered(s, e.target.checked)} /> Замовлено
+                      </label>
+                    </th>
                   </tr></thead>
                   <tbody>
                     {list.map(it => (
-                      <tr key={it.id} style={it.ordered ? { background: 'var(--surface2)' } : undefined}>
+                      <tr key={it.id} style={it.excluded ? { opacity: 0.45 } : it.ordered ? { background: 'var(--surface2)' } : undefined}>
                         <td style={{ textAlign: 'center' }}>
-                          <input type="checkbox" checked={!!it.ordered} onChange={e => toggleOrdered(s.id, it, e.target.checked)} title="Замовлено" />
+                          <input type="checkbox" checked={!it.excluded} onChange={e => setIncluded(s.id, [it.id], e.target.checked)} title={it.excluded ? 'Повернути в замовлення' : 'Прибрати із замовлення'} />
                         </td>
                         <td style={{ fontSize: 12, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{it.sku || '—'}</td>
-                        <td style={{ textDecoration: it.ordered ? 'line-through' : 'none', color: it.ordered ? 'var(--text3)' : undefined }}><div className="trunc" title={it.name}>{it.name}</div></td>
+                        <td style={{ textDecoration: it.ordered && !it.excluded ? 'line-through' : 'none', color: it.ordered ? 'var(--text3)' : undefined }}>
+                          <div className="trunc" title={it.name}>{it.name}{it.excluded && <span style={{ fontSize: 11, color: 'var(--text3)' }}> · не в замовленні</span>}</div>
+                        </td>
                         <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{it.qty} {it.unit || 'шт'}</td>
                         <td style={{ textAlign: 'right' }}>{fmt(it.cost_price)}</td>
-                        <td style={{ textAlign: 'right' }}>{fmt((Number(it.qty) || 0) * (Number(it.cost_price) || 0))}</td>
+                        <td style={{ textAlign: 'right' }}>{it.excluded ? '—' : fmt((Number(it.qty) || 0) * (Number(it.cost_price) || 0))}</td>
+                        <td style={{ textAlign: 'center' }}>
+                          {!it.excluded && <input type="checkbox" checked={!!it.ordered} onChange={e => toggleOrdered(s.id, it, e.target.checked)} title="Замовлено" />}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 4 }}>Замовлено {orderedCnt} з {list.length}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 4 }}>
+                  У замовленні {incl.length} з {list.length}{incl.length < list.length ? ` (${list.length - incl.length} прибрано — не потрапить у PDF)` : ''} · Замовлено {orderedCnt} з {incl.length}
+                </div>
               </div>
               )
             })()}
