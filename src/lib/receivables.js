@@ -3,7 +3,7 @@
 // документи клієнту (видаткова/акт, countsAsDebt), direction='receivable'.
 import { qc, getActiveCompanyId, setActiveCompanyId } from './companyScope'
 import { clearCompanyCache } from './companyConfig'
-import { countsAsDebt } from './debts'
+import { countsAsDebt, debtDate } from './debts'
 import { supabase } from './supabase'
 
 export const BUCKETS = [
@@ -40,7 +40,7 @@ export async function loadReceivables(companies, year, month) {
         const { data: docs } = await qc('documents')
           .select('id, doc_number, type, doc_date, amount, vat_amount, is_signed, is_verified, contractor_id, storage_path, order_id, created_at, direction')
           .eq('direction', 'receivable').not('amount', 'is', null)
-        const relevant = (docs || []).filter(d => countsAsDebt(d.type) && ((d.doc_date || d.created_at || '').slice(0, 10) <= asOf))
+        const relevant = (docs || []).filter(d => countsAsDebt(d.type) && debtDate(d) <= asOf)
         const ids = relevant.map(d => d.id)
         if (!ids.length) continue
 
@@ -68,7 +68,7 @@ export async function loadReceivables(companies, year, month) {
           const paid = r2(paidByDoc[d.id] || 0)
           const outstanding = r2(amount - paid)
           if (outstanding <= 0.5) return
-          const dd = (d.doc_date || d.created_at || '').slice(0, 10)
+          const dd = debtDate(d)
           const ageDays = dd ? Math.max(0, Math.floor((asOfMs - new Date(dd).getTime()) / 864e5)) : 0
           docsOut.push({
             companyId: comp.id, companyName: comp.short_name || comp.name,

@@ -2,7 +2,7 @@
 import { supabase } from './supabase'
 import { qc } from './companyScope'
 import { computePL, salesProfitReport, periodRange } from './pl'
-import { countsAsDebt } from './debts'
+import { countsAsDebt, debtDate } from './debts'
 
 // Список закриттів
 export async function listClosings() {
@@ -184,9 +184,10 @@ export async function computeSnapshot(year, month) {
   // Дебіторка/кредиторка станом на кінець періоду.
   // Оплата рахується через transaction_documents (повні/часткові оплати) — як у computeAging і картці
   // контрагента, а НЕ по documents.bank_transaction_id (старий прямий лінк, не бачив transaction_documents).
-  const debtDocs = await fetchAll('documents', 'id, type, direction, amount, doc_date, doc_number, contractor_id', q =>
-    q.lte('doc_date', to).not('amount', 'is', null).not('direction', 'is', null))
-  const relevant = debtDocs.filter(d => countsAsDebt(d.type) && (d.direction === 'payable' || d.direction === 'receivable'))
+  // Без фільтра по doc_date у запиті: документи «без дати» (doc_date=null) датуються created_at — див. debtDate()
+  const debtDocs = await fetchAll('documents', 'id, type, direction, amount, doc_date, created_at, doc_number, contractor_id', q =>
+    q.not('amount', 'is', null).not('direction', 'is', null))
+  const relevant = debtDocs.filter(d => countsAsDebt(d.type) && (d.direction === 'payable' || d.direction === 'receivable') && debtDate(d) && debtDate(d) <= to)
   const debtIds = relevant.map(d => d.id)
   // Оплати з датами (transaction_documents → bank_transactions.date): враховуємо лише ті, що <= кінця періоду,
   // щоб борг був коректний станом на цю дату (а не «як зараз») — узгоджено з computeBalanceTrend.
@@ -215,7 +216,7 @@ export async function computeSnapshot(year, month) {
     const amt = Math.abs(Number(d.amount) || 0)
     const outstanding = amt - (paidByDoc[d.id] || 0)
     if (outstanding <= 0.5) return // повністю оплачено — не борг
-    const row = { id: d.id, type: d.type, doc_number: d.doc_number, doc_date: d.doc_date, amount: outstanding, contractor_id: d.contractor_id }
+    const row = { id: d.id, type: d.type, doc_number: d.doc_number, doc_date: debtDate(d), amount: outstanding, contractor_id: d.contractor_id }
     if (d.direction === 'payable') { payable += outstanding; payableDocs.push(row) } else { receivable += outstanding; receivableDocs.push(row) }
   })
   // імена контрагентів для розшифровки боргу
@@ -268,8 +269,8 @@ export async function computeBalanceTrend(toY, toM, opts = {}) {
   }
 
   // 3. Борги (дебіторка/кредиторка) з оплатами по датах — щоб борг був коректний станом на кожен місяць
-  const debtDocs = await fetchAll('documents', 'id, type, direction, amount, doc_date', q => q.lte('doc_date', lastEnd).not('amount', 'is', null).not('direction', 'is', null))
-  const relevant = debtDocs.filter(d => countsAsDebt(d.type) && (d.direction === 'payable' || d.direction === 'receivable'))
+  const debtDocs = await fetchAll('documents', 'id, type, direction, amount, doc_date, created_at', q => q.not('amount', 'is', null).not('direction', 'is', null))
+  const relevant = debtDocs.filter(d => countsAsDebt(d.type) && (d.direction === 'payable' || d.direction === 'receivable') && debtDate(d) && debtDate(d) <= lastEnd)
   const debtIds = relevant.map(d => d.id)
   const paysByDoc = {}
   if (debtIds.length) {
@@ -314,7 +315,7 @@ export async function computeBalanceTrend(toY, toM, opts = {}) {
     // Борги станом на кінець місяця
     let receivable = 0, payable = 0
     relevant.forEach(d => {
-      if ((d.doc_date || '') > end) return
+      if (debtDate(d) > end) return
       const paid = (paysByDoc[d.id] || []).reduce((s, p) => s + (p.date <= end ? p.amount : 0), 0)
       const outstanding = Math.abs(Number(d.amount) || 0) - paid
       if (outstanding <= 0.5) return

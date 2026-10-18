@@ -13,6 +13,11 @@ const sum = (arr, f) => (arr || []).reduce((s, x) => s + (Number(f(x)) || 0), 0)
 export const NON_DEBT_TYPES = new Set(['invoice', 'salesOrder', 'purchaseOrder', 'loanAgreement', 'supplyAgreement', 'commercialProposal', 'other'])
 export const countsAsDebt = (type) => !NON_DEBT_TYPES.has(type)
 
+// Дата виникнення боргу. Згенерований документ можна зберегти «без дати» (дата вписується від руки) →
+// doc_date = null; тоді беремо дату створення. ЄДИНЕ правило для Балансу, динаміки й звіту «Дебіторка»
+// (раніше Баланс фільтрував .lte('doc_date') і такі видаткові «ВН-…» випадали з дебіторки).
+export const debtDate = (d) => String(d.doc_date || d.created_at || '').slice(0, 10)
+
 // Детальний баланс одного контрагента (для картки)
 export async function getContractorBalance(contractorId) {
   const since = new Date(); since.setFullYear(since.getFullYear() - 1)
