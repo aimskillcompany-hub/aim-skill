@@ -4,6 +4,9 @@ import { qc } from '../lib/companyScope'
 import { useUser } from '../lib/auth'
 import { fmt, fmtInt } from '../lib/fmt'
 import { paymentCandidates, clientPayments } from '../lib/orderPayments'
+import { useCompany } from '../lib/company'
+import { computeOrderPlan } from '../lib/orderPlan'
+import OrderPaymentPlan from './OrderPaymentPlan'
 
 // Вкладка «Прибутковість» картки замовлення: касовий, РЕАЛЬНИЙ прибуток за
 // фактичними банківськими транзакціями. Оплата клієнта прив'язується тут (замість
@@ -163,6 +166,8 @@ export default function OrderFinanceTab({ o, onOrderChange }) {
 
       <PlannedProfit o={o} userId={user?.id} />
 
+      <OrderPaymentPlan o={o} />
+
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="kpi-grid">
           <Kpi label="Надходження (факт)" value={income} color="var(--green)" />
@@ -186,11 +191,10 @@ export default function OrderFinanceTab({ o, onOrderChange }) {
 }
 
 // ── Планова прибутковість: з позицій замовлення (закупка/продаж/ПДВ) + «Інші витрати» ──
-const netUnit = (price, vatRate, inclVat) => {
-  const p = Number(price) || 0, v = Number(vatRate) || 0
-  return inclVat && v > 0 ? p / (1 + v / 100) : p
-}
+// Розрахунок — єдиний computeOrderPlan (lib/orderPlan.js), той самий, що й у «Прогнозі».
 function PlannedProfit({ o, userId }) {
+  const { active } = useCompany()
+  const vatOn = active?.is_vat_payer !== false
   const [rows, setRows] = useState(null)       // позиції замовлення
   const [exp, setExp] = useState([])           // інші витрати
   const [missing, setMissing] = useState(false)
@@ -202,8 +206,11 @@ function PlannedProfit({ o, userId }) {
     setMissing(false); setExp(data || [])
   }
   useEffect(() => {
-    supabase.from('order_items').select('qty, unit_price, cost_price, vat_rate, price_includes_vat').eq('order_id', o.id)
-      .then(({ data }) => setRows(data || []))
+    supabase.from('order_items').select('qty, unit_price, cost_price, vat_rate, cost_vat_rate, price_includes_vat, supplier_id').eq('order_id', o.id)
+      .then(async ({ data, error }) => {
+        if (error) ({ data } = await supabase.from('order_items').select('qty, unit_price, cost_price, vat_rate, price_includes_vat, supplier_id').eq('order_id', o.id)) // ґрейсфул до 067
+        setRows(data || [])
+      })
     loadExp()
   }, [o.id])
 
@@ -215,13 +222,9 @@ function PlannedProfit({ o, userId }) {
   }
   const rmExp = async (id) => { await supabase.from('order_expenses').delete().eq('id', id); loadExp() }
 
-  const revenue = (rows || []).reduce((s, r) => s + (Number(r.qty) || 0) * netUnit(r.unit_price, r.vat_rate, r.price_includes_vat), 0)
-  const cost = (rows || []).reduce((s, r) => s + (Number(r.qty) || 0) * netUnit(r.cost_price, r.vat_rate, r.price_includes_vat), 0)
-  const gross = revenue - cost
   const otherSum = exp.reduce((s, e) => s + (Number(e.amount) || 0), 0)
-  const tax = gross > 0 ? gross * 0.18 : 0 // податок на прибуток 18% від валового (лише з прибутку)
-  const agent = gross > 0 ? gross * (Number(o.agent_commission_pct) || 0) : 0
-  const net = gross - tax - agent - otherSum
+  const plan = computeOrderPlan(rows || [], { vatOn, agentPct: o.agent_commission_pct, otherExpenses: otherSum })
+  const { revenueNet: revenue, costNet: cost, gross, tax, agent, net } = plan
   const marginPct = revenue > 0 ? (net / revenue * 100) : 0
 
   if (rows == null) return null

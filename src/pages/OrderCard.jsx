@@ -665,8 +665,10 @@ function ItemsTab({ o, onChange, onDirty }) {
   const rowNet = (r) => netUnit(r) * (Number(r.qty) || 0)               // без ПДВ
   // Маржа — net-to-net. «Тип ціни = ціна з ПДВ» стосується І продажу, І закупівлі:
   // тоді ПДВ віднімається з обох (собівартість теж введена з ПДВ). Інакше обидві вже net.
-  const netCost = (r) => { const c = Number(r.cost_price) || 0; const v = rate(r); return incl(r) ? (v > 0 ? c / (1 + v / 100) : c) : c }
-  const grossCost = (r) => { const c = Number(r.cost_price) || 0; const v = rate(r); return incl(r) ? c : c * (1 + v / 100) }
+  // ПДВ закупівлі — окрема ставка позиції (cost_vat_rate, міграція 067; порожня → як ставка продажу).
+  const costRateOf = (r) => vatOn ? (r.cost_vat_rate !== null && r.cost_vat_rate !== undefined && r.cost_vat_rate !== '' ? Number(r.cost_vat_rate) || 0 : rate(r)) : 0
+  const netCost = (r) => { const c = Number(r.cost_price) || 0; const v = costRateOf(r); return incl(r) ? (v > 0 ? c / (1 + v / 100) : c) : c }
+  const grossCost = (r) => { const c = Number(r.cost_price) || 0; const v = costRateOf(r); return incl(r) ? c : c * (1 + v / 100) }
   const rowMargin = (r) => (netUnit(r) - netCost(r)) * (Number(r.qty) || 0)
   const marginPct = (r) => { const n = netUnit(r); return n > 0 ? ((n - netCost(r)) / n) * 100 : 0 }
   // Націнка (markup) = (ціна − закупівля) / закупівля. Рахуємо на введених значеннях —
@@ -718,14 +720,20 @@ function ItemsTab({ o, onChange, onDirty }) {
         order_id: o.id, product_id, name: r.name.trim(), characteristics: r.characteristics || null, sku: r.sku || null, unit: r.unit || 'шт',
         qty: Number(r.qty) || 0, cost_price: Number(r.cost_price) || 0,
         unit_price: Number(r.unit_price) || 0, vat_rate: Number(r.vat_rate) || 0, price_includes_vat: !!r.price_includes_vat, total: rowTotal(r), supplier_id: r.supplier_id || null,
+        cost_vat_rate: r.cost_vat_rate === null || r.cost_vat_rate === undefined || r.cost_vat_rate === '' ? null : Number(r.cost_vat_rate),
       })
     }
     // Замінюємо повний набір позицій замовлення
     await supabase.from('order_items').delete().eq('order_id', o.id)
     if (resolved.length) {
-      let { error } = await supabase.from('order_items').insert(resolved)
+      let rowsToSave = resolved
+      let { error } = await supabase.from('order_items').insert(rowsToSave)
+      if (error && /cost_vat_rate/.test(error.message || '')) { // ґрейсфул до 067
+        rowsToSave = rowsToSave.map(({ cost_vat_rate, ...x }) => x)
+        ;({ error } = await supabase.from('order_items').insert(rowsToSave))
+      }
       if (error && /characteristics/.test(error.message || '')) // ґрейсфул до 050
-        await supabase.from('order_items').insert(resolved.map(({ characteristics, ...x }) => x))
+        await supabase.from('order_items').insert(rowsToSave.map(({ characteristics, ...x }) => x))
     }
     // Сума замовлення = сума цін продажу товарів (синхронізуємо автоматично)
     if (resolved.length) await qc('orders').update({ total: sum }).eq('id', o.id)
@@ -845,6 +853,10 @@ function ItemsTab({ o, onChange, onDirty }) {
                         <input className="form-input" value={r.unit || ''} onChange={e => setRow(i, { unit: e.target.value })} style={{ width: 60, height: 30, padding: '4px 8px', fontSize: 12 }} /></label>
                       {vatOn && <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>ПДВ
                         <select className="form-input" value={Number(r.vat_rate) || 0} onChange={e => setRow(i, { vat_rate: Number(e.target.value) })} style={{ width: 66, height: 30, padding: '4px 6px', fontSize: 12 }}>{VAT_RATES.map(v => <option key={v} value={v}>{v}%</option>)}</select></label>}
+                      {vatOn && <label style={{ display: 'flex', alignItems: 'center', gap: 5 }} title="Ставка ПДВ у ціні закупівлі. 0% — постачальник-неплатник (ФОП). «як продаж» — та сама ставка, що й у продажу.">ПДВ закуп.
+                        <select className="form-input" value={r.cost_vat_rate === null || r.cost_vat_rate === undefined || r.cost_vat_rate === '' ? '' : String(Number(r.cost_vat_rate))} onChange={e => setRow(i, { cost_vat_rate: e.target.value === '' ? null : Number(e.target.value) })} style={{ width: 104, height: 30, padding: '4px 6px', fontSize: 12 }}>
+                          <option value="">як продаж</option>{VAT_RATES.map(v => <option key={v} value={String(v)}>{v}%</option>)}
+                        </select></label>}
                       {vatOn && <span>Без ПДВ <b style={{ color: 'var(--text)' }}>{fmt(rowNet(r))}</b></span>}
                       <button onClick={() => removeRow(i)} style={{ marginLeft: 'auto', border: 'none', background: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: 12 }}><i className="ti ti-trash" /> прибрати</button>
                     </div>

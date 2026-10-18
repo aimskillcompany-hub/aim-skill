@@ -69,9 +69,15 @@ export default function ConsolidatedBalance() {
   const rows = data?.rows || []
   const liabTotal = t ? r0(t.pay) + r0(t.loans) : 0
   const income = forecast?.income || 0, expense = forecast?.expense || 0, net = forecast?.net || 0
+  // Оплата вже виставленої дебіторки / отриманих накладних постачальника змінює лише гроші (борг уже в балансі),
+  // тому дебіторка/кредиторка зменшуються, а капітал рухається лише на «нову» частину потоку.
+  const rc = forecast?.receivableCollect || 0, pp = forecast?.payablePay || 0
   const fCash = t ? t.cash + net : 0
-  const fAssets = t ? t.assets + net : 0
-  const fEquity = t ? t.equity + net : 0
+  const fRecv = t ? t.recv - rc : 0
+  const fPay = t ? t.pay - pp : 0
+  const fLiab = t ? liabTotal - pp : 0
+  const fAssets = t ? t.assets + net - rc : 0
+  const fEquity = t ? t.equity + net - rc + pp : 0
   const otherNet = t ? t.equity - t.fa - t.cash : 0 // інші чисті активи
 
   return (
@@ -142,7 +148,7 @@ export default function ConsolidatedBalance() {
                 <BarRow label="Дебіторка" value={t.recv} total={t.assets} track="#F1EEFB" />
                 <BarRow label="Основні засоби" value={t.fa} total={t.assets} track="#F1EEFB" />
               </div>
-              <ForecastFooter value={fAssets} delta={net} base={t.assets} />
+              <ForecastFooter value={fAssets} delta={net - rc} base={t.assets} />
             </div>
 
             {/* Зобов'язання (внесок у капітал: ми винні −, нам винні +) */}
@@ -161,7 +167,7 @@ export default function ConsolidatedBalance() {
                   ))}
                 </div>
               </div>
-              <ForecastFooter value={-liabTotal} delta={0} base={liabTotal} />
+              <ForecastFooter value={-fLiab} delta={pp} base={liabTotal} />
             </div>
 
             {/* Капітал */}
@@ -179,7 +185,7 @@ export default function ConsolidatedBalance() {
                 <LegendRow dot="#A98CFF" label="Гроші" value={t.cash} frac={t.cash / (t.equity || 1)} />
                 <LegendRow dot="#DCD1FF" label="Інші чисті активи" value={otherNet} frac={otherNet / (t.equity || 1)} />
               </div>
-              <ForecastFooter value={fEquity} delta={net} base={t.equity} />
+              <ForecastFooter value={fEquity} delta={net - rc + pp} base={t.equity} />
             </div>
           </div>
 
@@ -211,17 +217,17 @@ export default function ConsolidatedBalance() {
                   <StatRow rows={rows} field="cash" total={t.cash} label="Гроші"
                     move={<div><div style={{ color: '#1F7A4D' }}>+{absInt(income)}</div><div style={{ color: '#C62828', fontSize: 12 }}>−{absInt(expense)}</div></div>} fcVal={fCash} />
                   <StatRow rows={rows} field="stock" total={t.stock} label="Склад" move="—" fcVal={t.stock} />
-                  <StatRow rows={rows} field="recv" total={t.recv} label="Дебіторка" move="—" fcVal={t.recv} />
+                  <StatRow rows={rows} field="recv" total={t.recv} label="Дебіторка" {...(rc ? { moveNum: -rc } : { move: '—' })} fcVal={fRecv} />
                   <StatRow rows={rows} field="fa" total={t.fa} label="Основні засоби" move="—" fcVal={t.fa} />
-                  <StatRow rows={rows} field="assets" total={t.assets} label="Активи разом" isTot moveNum={net} fcVal={fAssets} />
+                  <StatRow rows={rows} field="assets" total={t.assets} label="Активи разом" isTot moveNum={net - rc} fcVal={fAssets} />
 
                   <SecRow span={rows.length + 2} label="Зобов'язання" />
-                  <StatRow rows={rows} liab fn={r => -r0(r.pay)} total={-t.pay} label="Кредиторка" move="—" fcVal={-t.pay} />
+                  <StatRow rows={rows} liab fn={r => -r0(r.pay)} total={-t.pay} label="Кредиторка" {...(pp ? { moveNum: pp } : { move: '—' })} fcVal={-fPay} />
                   <StatRow rows={rows} liab fn={r => -r0(r.loans)} total={-t.loans} label="Поворотна фін. допомога" move="—" fcVal={-t.loans} />
-                  <StatRow rows={rows} liab fn={r => -(r0(r.pay) + r0(r.loans))} total={-liabTotal} label="Зобов'язання разом" isTot move="—" fcVal={-liabTotal} />
+                  <StatRow rows={rows} liab fn={r => -(r0(r.pay) + r0(r.loans))} total={-liabTotal} label="Зобов'язання разом" isTot {...(pp ? { moveNum: pp } : { move: '—' })} fcVal={-fLiab} />
 
                   <SecRow span={rows.length + 2} label="Власний капітал" />
-                  <StatRow rows={rows} field="equity" total={t.equity} label="Власний капітал" isTot big purple moveNum={net} fcVal={fEquity} />
+                  <StatRow rows={rows} field="equity" total={t.equity} label="Власний капітал" isTot big purple moveNum={net - rc + pp} fcVal={fEquity} />
                   <tr>
                     <td style={{ color: '#5E5A6B', fontSize: 13 }}>Частка у капіталі групи</td>
                     {rows.map(r => <td key={r.id} style={{ ...MONO, color: '#5E5A6B', fontSize: 13 }}>{pct1(r.equity / (t.equity || 1))}</td>)}

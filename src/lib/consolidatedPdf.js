@@ -86,6 +86,8 @@ export function exportConsolidatedPdf({ rows, total, forecast, year, month }) {
   const t = total
   const liab = r0(t.pay) + r0(t.loans)
   const income = forecast?.income || 0, expense = forecast?.expense || 0, net = forecast?.net || 0
+  // як у ConsolidatedBalance: оплата наявної дебіторки/кредиторки не змінює капітал
+  const rc = forecast?.receivableCollect || 0, pp = forecast?.payablePay || 0
   const otherNet = t.equity - t.fa - t.cash
   const nCols = 1 + rows.length + 3
   const moveColIdx = 1 + rows.length + 1 // межа перед «Рух прогнозу»
@@ -142,15 +144,15 @@ export function exportConsolidatedPdf({ rows, total, forecast, year, month }) {
     sec('АКТИВИ'),
     statRow('Гроші', { field: 'cash', totalVal: t.cash, move: moveCash, fcVal: t.cash + net }),
     statRow('Склад', { field: 'stock', totalVal: t.stock, move: null, fcVal: t.stock }),
-    statRow('Дебіторка', { field: 'recv', totalVal: t.recv, move: null, fcVal: t.recv }),
+    statRow('Дебіторка', { field: 'recv', totalVal: t.recv, ...(rc ? { moveNum: -rc } : { move: null }), fcVal: t.recv - rc }),
     statRow('Основні засоби', { field: 'fa', totalVal: t.fa, move: null, fcVal: t.fa }),
-    statRow('Активи разом', { field: 'assets', totalVal: t.assets, isTot: true, moveNum: net, fcVal: t.assets + net }),
+    statRow('Активи разом', { field: 'assets', totalVal: t.assets, isTot: true, moveNum: net - rc, fcVal: t.assets + net - rc }),
     sec("ЗОБОВ'ЯЗАННЯ"),
-    statRow('Кредиторка', { liab: true, fn: r => -r0(r.pay), totalVal: -t.pay, move: null, fcVal: -t.pay }),
+    statRow('Кредиторка', { liab: true, fn: r => -r0(r.pay), totalVal: -t.pay, ...(pp ? { moveNum: pp } : { move: null }), fcVal: -(t.pay - pp) }),
     statRow('Поворотна фін. допомога', { liab: true, fn: r => -r0(r.loans), totalVal: -t.loans, move: null, fcVal: -t.loans }),
-    statRow("Зобов'язання разом", { liab: true, fn: r => -(r0(r.pay) + r0(r.loans)), totalVal: -liab, isTot: true, move: null, fcVal: -liab }),
+    statRow("Зобов'язання разом", { liab: true, fn: r => -(r0(r.pay) + r0(r.loans)), totalVal: -liab, isTot: true, ...(pp ? { moveNum: pp } : { move: null }), fcVal: -(liab - pp) }),
     sec('ВЛАСНИЙ КАПІТАЛ'),
-    statRow('Власний капітал', { field: 'equity', totalVal: t.equity, isTot: true, big: true, purple: true, moveNum: net, fcVal: t.equity + net }),
+    statRow('Власний капітал', { field: 'equity', totalVal: t.equity, isTot: true, big: true, purple: true, moveNum: net - rc + pp, fcVal: t.equity + net - rc + pp }),
   ]
   // частки капіталу
   const shareRow = [{ text: 'Частка у капіталі групи', fontSize: 7.5, color: '#5E5A6B' }]
@@ -221,14 +223,14 @@ export function exportConsolidatedPdf({ rows, total, forecast, year, month }) {
         cardRow('Склад', t.stock, t.assets),
         cardRow('Дебіторка', t.recv, t.assets),
         cardRow('Основні засоби', t.fa, t.assets),
-        forecastPlate(t.assets + net, net, t.assets),
+        forecastPlate(t.assets + net - rc, net - rc, t.assets),
       ]),
       card([
         { text: "ЗОБОВ'ЯЗАННЯ (РАЗОМ)", fontSize: 7, color: '#5E5A6B', bold: true, characterSpacing: 0.5 },
         { text: money(-liab), fontSize: 16, bold: true, color: colL(-liab), margin: [0, 4, 0, 10] },
         cardRow('Кредиторка', -t.pay, liab, { track: '#FDEEEC', fill: '#B4291F', liab: true }),
         cardRow('Поворотна фін. допомога', -t.loans, liab, { track: '#FDEEEC', fill: '#B4291F', liab: true }),
-        forecastPlate(-liab, 0, liab),
+        forecastPlate(-(liab - pp), pp, liab),
       ]),
       card([
         { text: 'ВЛАСНИЙ КАПІТАЛ (РАЗОМ)', fontSize: 7, color: '#5E5A6B', bold: true, characterSpacing: 0.5 },
@@ -238,7 +240,7 @@ export function exportConsolidatedPdf({ rows, total, forecast, year, month }) {
         legendRow('#5B2FD6', 'Основні засоби', t.fa, t.fa / (t.equity || 1)),
         legendRow('#A98CFF', 'Гроші', t.cash, t.cash / (t.equity || 1)),
         legendRow('#DCD1FF', 'Інші чисті активи', otherNet, otherNet / (t.equity || 1)),
-        forecastPlate(t.equity + net, net, t.equity),
+        forecastPlate(t.equity + net - rc + pp, net - rc + pp, t.equity),
       ]),
     ],
     columnGap: CARD_GAP,
