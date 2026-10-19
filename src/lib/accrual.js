@@ -17,6 +17,7 @@ import { countsAsDebt, debtDate, loadDocPayments } from './debts'
 import { computeOrderPlan, itemCost, itemSale } from './orderPlan'
 import { getCompany } from './companyConfig'
 import { addDaysIso, daysBetween } from './dates'
+import { loadBatches } from './batches'
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100
 const isVatArticle = (name) => /ПДВ/i.test(name || '')
@@ -32,7 +33,16 @@ export async function accrualSalesDocs(from, to) {
   if (!docs.length) return []
   const ids = docs.map(d => d.id)
 
-  const movs = await fetchAllIn(() => qc('stock_movements').select('id, document_id, product_id, quantity, cost_price, price, description').eq('type', 'out'), 'document_id', ids)
+  // з міграцією 071 собівартість відвантаження зафіксована в русі (FIFO-партії) + к-сть без собівартості
+  let hasFifo = true
+  let movs
+  try {
+    movs = await fetchAllIn(() => qc('stock_movements').select('id, document_id, product_id, quantity, cost_price, price, description, cost_missing_qty, cost_stale').eq('type', 'out'), 'document_id', ids)
+  } catch (e) {
+    if (!/cost_missing_qty|cost_stale/.test(e.message || '')) throw e
+    hasFifo = false
+    movs = await fetchAllIn(() => qc('stock_movements').select('id, document_id, product_id, quantity, cost_price, price, description').eq('type', 'out'), 'document_id', ids)
+  }
   const movsByDoc = {}; movs.forEach(m => { (movsByDoc[m.document_id] ||= []).push(m) })
 
   // позиції замовлень цих документів — джерело закупівельної ціни (2-й пріоритет) і частки для документів без руху
@@ -75,6 +85,14 @@ export async function accrualSalesDocs(from, to) {
         const qty = Number(m.quantity) || 0
         if ((p.product_type || 'goods') !== 'goods') return // послуги/витратні — без собівартості
         const name = p.name || (m.description || '').replace(/^.*?:\s*/, '') || '—'
+        if (hasFifo) {
+          // FIFO-партії: збережена собівартість; на що не вистачило партій — у блок (ціну з довідника не підставляємо)
+          out.cost += qty * (Number(m.cost_price) || 0)
+          const miss = Number(m.cost_missing_qty) || 0
+          if (miss > 0.00001) out.missing.push({ name, qty: miss, reason: 'не вистачило партій (приходів) на дату відвантаження' })
+          if (m.cost_stale) out.missing.push({ name, qty, reason: 'партію, з якої списано, видалено — «Перерахувати собівартість за період»' })
+          return
+        }
         const saleNet = Number(m.price) || 0
         // 1) рух складу → 2) закупівельна позиції замовлення → 3) середня закупівельна з приходів → 4) 0 + у блок
         let unit = Number(m.cost_price) || 0
@@ -174,6 +192,14 @@ async function debtsAsOf(date) {
   return { receivable, payable }
 }
 async function inventoryAsOf(date) {
+  // запаси = сума залишків партій (071); до міграції — середня ціна приходів
+  const batches = await loadBatches(date)
+  if (batches) {
+    const at = batches.at(date)
+    const ids = Object.keys(at)
+    const prods = ids.length ? await fetchAllIn(() => supabase.from('products').select('id, product_type'), 'id', ids) : []
+    return prods.reduce((s, p) => s + ((p.product_type || 'goods') === 'goods' ? at[p.id].value : 0), 0)
+  }
   // оцінка — за середньою ціною приходів (без ПДВ), а не за buy_price довідника (там могла бути ціна продажу)
   const sm = await fetchAll(() => qc('stock_movements').select('id, product_id, type, quantity, price, cost_price').lte('date', date))
   const bal = {}, agg = {}

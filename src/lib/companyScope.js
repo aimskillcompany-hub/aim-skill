@@ -17,6 +17,7 @@ export const SCOPED_TABLES = new Set([
   'assemblies',
   'product_stock', // в'юха з company_id (міграція 042)
   'period_closings',
+  'stock_allocations', // списання з партій (company_id, міграція 071)
   'tasks',
   'emails',
   'plans',

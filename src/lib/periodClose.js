@@ -4,6 +4,7 @@ import { qc, withCompany, getActiveCompanyId } from './companyScope'
 import { computePL, salesProfitReport, periodRange } from './pl'
 import { countsAsDebt, debtDate, loadDocPayments } from './debts'
 import { fetchAll as fetchAllShared } from './fetchAll'
+import { loadBatches } from './batches'
 
 // Список закриттів — лише активної юрософи (закриття окреме для кожної, міграція 070)
 export async function listClosings() {
@@ -134,9 +135,14 @@ export async function computeSnapshot(year, month) {
     ;(data || []).forEach(p => prodMap[p.id] = p)
   }
   // Оцінка складу — лише товари (goods). Послуги/роботи/розхідники не є залишком.
+  // Запаси = сума залишків ПАРТІЙ (ціна приходу, без ПДВ), міграція 071. До неї — залишок × ціна довідника.
+  const batches = await loadBatches(to)
+  const bAt = batches ? batches.at(to) : null
   const stockItems = pids.map(id => {
-    const p = prodMap[id] || {}, qty = bal[id], unit = Number(p.buy_price) || 0
-    return { product_id: id, name: p.name || id, product_type: p.product_type, qty, unit_cost: unit, value: qty * unit }
+    const p = prodMap[id] || {}, qty = bal[id]
+    const value = bAt ? (bAt[id]?.value || 0) : qty * (Number(p.buy_price) || 0)
+    const unit = bAt ? (bAt[id]?.qty ? bAt[id].value / bAt[id].qty : 0) : (Number(p.buy_price) || 0)
+    return { product_id: id, name: p.name || id, product_type: p.product_type, qty, unit_cost: unit, value }
   }).filter(x => Math.abs(x.qty) > 0.0001 && (x.product_type || 'goods') === 'goods').sort((a, b) => b.value - a.value)
   const stockValue = stockItems.reduce((s, x) => s + x.value, 0)
 
@@ -248,7 +254,8 @@ export async function computeBalanceTrend(toY, toM, opts = {}) {
   const accById = {}; (accs || []).forEach(a => accById[a.id] = a)
   const txs = await fetchAll('bank_transactions', 'account_id, amount, date, direction', q => q.eq('is_ignored', false).lte('date', lastEnd))
 
-  // 2. Склад (лише goods)
+  // 2. Склад (лише goods) — партії (071) або залишок × ціна довідника
+  const batchesTrend = await loadBatches(lastEnd)
   const sm = await fetchAll('stock_movements', 'product_id, type, quantity, date', q => q.lte('date', lastEnd))
   const spids = [...new Set(sm.map(s => s.product_id).filter(Boolean))]
   const prodMap = {}
@@ -290,7 +297,12 @@ export async function computeBalanceTrend(toY, toM, opts = {}) {
       bal[s.product_id] = (bal[s.product_id] || 0) + (s.type === 'in' ? q : s.type === 'out' ? -q : q)
     })
     let stock = 0
-    Object.entries(bal).forEach(([pid, q]) => { if (Math.abs(q) > 0.0001) stock += q * (Number(prodMap[pid]?.buy_price) || 0) })
+    if (batchesTrend) {
+      const at = batchesTrend.at(end)
+      Object.entries(at).forEach(([pid, x]) => { if ((prodMap[pid]?.product_type || 'goods') === 'goods') stock += x.value })
+    } else {
+      Object.entries(bal).forEach(([pid, q]) => { if (Math.abs(q) > 0.0001) stock += q * (Number(prodMap[pid]?.buy_price) || 0) })
+    }
     // Борги станом на кінець місяця
     let receivable = 0, payable = 0
     relevant.forEach(d => {

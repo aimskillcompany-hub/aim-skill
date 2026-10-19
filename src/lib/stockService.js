@@ -477,6 +477,15 @@ export async function assembleProduct({ name, resultProductId, quantity, compone
   }
 
   // 6. Оприбуткувати готовий виріб (IN)
+  // З міграцією 071 собівартість компонентів фіксує тригер (FIFO-партії) — виріб оприбутковуємо
+  // за ФАКТИЧНОЮ собівартістю списаних компонентів (а не попередньою оцінкою)
+  {
+    const { data: outs, error: rErr } = await qc('stock_movements').select('quantity, cost_price, cost_missing_qty').eq('assembly_id', assembly.id).eq('type', 'out')
+    if (!rErr && outs?.length) {
+      totalCost = Math.round(outs.reduce((t, m) => t + (Number(m.quantity) || 0) * (Number(m.cost_price) || 0), 0) * 100) / 100
+      await qc('assemblies').update({ total_cost: totalCost }).eq('id', assembly.id)
+    }
+  }
   const unitCost = quantity > 0 ? totalCost / quantity : totalCost
   const { error: inErr } = await qc('stock_movements').insert(withCompany({
     product_id: productId, type: 'in',
