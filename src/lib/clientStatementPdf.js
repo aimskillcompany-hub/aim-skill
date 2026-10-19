@@ -1,18 +1,16 @@
 // PDF «Нагадування про заборгованість / Виписка по розрахунках» для клієнта (pdfmake, Roboto з кирилицею).
 // A4 книжкова, «Стор. X з N», шапка таблиці повторюється на кожній сторінці.
-// Спрощено (ТЗ 2026-10-19): шапка постачальника + «Кому» + таблиця документів із товарами + «Разом до сплати».
+// Спрощено (ТЗ 2026-10-19): лише «Кому» (+ станом на) + таблиця документів із товарами + «Разом до сплати».
 // Без KPI-карток, реквізитів для оплати й підпису. Кожна накладна — жирний рядок на сірому фоні, товари з відступом.
 import { downloadPdf, getPdfBlob } from './docgen/pdfBuilder'
-import { LOGO_BASE64 } from './docgen/logo'
 import { money, dmy, docTitle, fileBase } from './clientStatement'
 
-const DARK = '#17151F', GREY = '#5E5A6B', LIGHT = '#9AA0AE', LINE = '#E6E2F0', DOC_BG = '#F2F2F2'
+const DARK = '#17151F', GREY = '#5E5A6B', LIGHT = '#9AA0AE', DOC_BG = '#F2F2F2'
 const _q = new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 3 })
 const qn = (v) => _q.format(Number(v) || 0).replace(/ /g, ' ')
 
 export function clientStatementDoc(st) {
   const c = st.company
-  const logo = c.logoBase64 || (c.isAim ? LOGO_BASE64 : null)
   const contractLine = st.contracts.length
     ? st.contracts.map(x => `№ ${x.num}${x.date ? ' від ' + dmy(x.date) : ''}`).join('; ')
     : null
@@ -63,26 +61,11 @@ export function clientStatementDoc(st) {
       { text: `Стор. ${cur} з ${cnt}`, fontSize: 7, color: LIGHT, alignment: 'right' },
     ] }),
     content: [
-      // Шапка постачальника
-      { columns: [
-        { width: '*', stack: [
-          logo ? { image: logo, width: 70, margin: [0, 0, 0, 6] } : {},
-          { text: c.name || c.shortName, bold: true, fontSize: 10 },
-          { text: [c.edrpou ? `ЄДРПОУ ${c.edrpou}` : '', c.ipn ? `  ·  ІПН ${c.ipn}` : ''].join(''), fontSize: 8, color: GREY },
-          c.address ? { text: c.address, fontSize: 8, color: GREY } : {},
-          { text: [c.phone, c.email].filter(Boolean).join('  ·  '), fontSize: 8, color: GREY },
-        ] },
-        { width: 250, stack: [
-          { text: st.title, fontSize: 15, bold: true, alignment: 'right' },
-          { text: `станом на ${dmy(st.asOf)}`, fontSize: 9.5, alignment: 'right', margin: [0, 2, 0, 0] },
-          { text: `сформовано ${dmy(st.generatedAt.slice(0, 10))}`, fontSize: 7.5, color: LIGHT, alignment: 'right' },
-        ] },
-      ] },
-      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 0.6, lineColor: LINE }], margin: [0, 10, 0, 8] },
       // Кому
       { text: 'КОМУ', fontSize: 7, bold: true, color: GREY, letterSpacing: 1 },
       { text: st.contractor.name, bold: true, fontSize: 10.5, margin: [0, 1, 0, 0] },
-      { text: [st.contractor.edrpou ? `ЄДРПОУ ${st.contractor.edrpou}` : '', contractLine ? `${st.contractor.edrpou ? '  ·  ' : ''}Договір ${contractLine}` : ''].join(''), fontSize: 8.5, color: GREY, margin: [0, 0, 0, 14] },
+      { text: [st.contractor.edrpou ? `ЄДРПОУ ${st.contractor.edrpou}` : '', contractLine ? `${st.contractor.edrpou ? '  ·  ' : ''}Договір ${contractLine}` : ''].join(''), fontSize: 8.5, color: GREY },
+      { text: `станом на ${dmy(st.asOf)}`, fontSize: 8, color: LIGHT, margin: [0, 2, 0, 14] },
 
       // Документи
       { table: { headerRows: 1, dontBreakRows: true, widths: ['*', 58, 70, 74, 50], body },

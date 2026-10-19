@@ -173,30 +173,16 @@ export default function ClientStatementModal({ group, defaultAsOf, onClose, onLo
 
 // Попередній перегляд — той самий зміст, що й у PDF
 function Preview({ st, dim }) {
-  const c = st.company
   const td = { padding: '5px 8px', fontSize: 12.5 }
   const num = { ...td, textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 20, background: '#fff', color: '#17151F', opacity: dim ? 0.55 : 1 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 12, color: '#5E5A6B' }}>
-          {c.logoBase64 && <img src={c.logoBase64} alt="" style={{ height: 34, marginBottom: 6, display: 'block' }} />}
-          <div style={{ fontWeight: 700, fontSize: 13.5, color: '#17151F' }}>{c.name || c.shortName}</div>
-          <div>{c.edrpou && `ЄДРПОУ ${c.edrpou}`}{c.ipn && ` · ІПН ${c.ipn}`}</div>
-          {c.address && <div>{c.address}</div>}
-          <div>{[c.phone, c.email].filter(Boolean).join(' · ')}</div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 19, fontWeight: 800 }}>{st.title}</div>
-          <div style={{ fontSize: 13 }}>станом на {dmy(st.asOf)}</div>
-        </div>
-      </div>
-      <div style={{ borderTop: '1px solid #E6E2F0', margin: '12px 0 10px' }} />
       <div style={{ fontSize: 11, color: '#5E5A6B', fontWeight: 700, letterSpacing: 1 }}>КОМУ</div>
       <div style={{ fontWeight: 700 }}>{st.contractor.name}</div>
-      <div style={{ fontSize: 12, color: '#5E5A6B', marginBottom: 14 }}>
+      <div style={{ fontSize: 12, color: '#5E5A6B' }}>
         {st.contractor.edrpou && `ЄДРПОУ ${st.contractor.edrpou}`}{st.contracts.length > 0 && ` · Договір ${st.contracts.map(x => `№ ${x.num}${x.date ? ' від ' + dmy(x.date) : ''}`).join('; ')}`}
       </div>
+      <div style={{ fontSize: 11.5, color: '#9AA0AE', margin: '2px 0 14px' }}>станом на {dmy(st.asOf)}</div>
 
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', minWidth: 600, borderCollapse: 'collapse' }}>
