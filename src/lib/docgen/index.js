@@ -214,6 +214,8 @@ function isMissingRefsColumn(msg = '') {
   return /invoice_ref|delivery_basis|delivery_address/.test(msg)
 }
 
+const cleanErr = (m) => /PERIOD_CLOSED/.test(m || '') ? String(m).replace(/^.*PERIOD_CLOSED:\s*/, '') : m
+
 // ── Зберегти документ в БД ──
 export async function saveDoc({ docType, docNumber, docDate, contractorId, contractorName, items, subtotal, vatAmount, total, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress, parentDocId, contractId, orderId, userId }) {
   const base = {
@@ -257,7 +259,7 @@ export async function saveDoc({ docType, docNumber, docDate, contractorId, contr
     dup = contractorId ? dup.eq('contractor_id', contractorId) : dup.is('contractor_id', null)
     const { count: existing } = await dup
     if (existing) return data // вже є такий документ — дзеркало не створюємо
-    await qc('documents').insert(withCompany({
+    const { error: mErr } = await qc('documents').insert(withCompany({
       type: docType, doc_number: docNumber, doc_date: docDate || null,
       contractor_id: contractorId || null, order_id: orderId || null,
       amount: total ?? null, vat_amount: vatAmount ?? null,
@@ -266,12 +268,22 @@ export async function saveDoc({ docType, docNumber, docDate, contractorId, contr
       file_name: `${dt.label}_${docNumber}.pdf`, file_path: `generated/${data.id}.pdf`,
       source: 'generated', generated_doc_id: data.id,
     }))
+    if (mErr) {
+      // без дзеркала документ не потрапив би в борги/Документи — відкочуємо, щоб не лишати «напівзбережене»
+      await qc('generated_docs').delete().eq('id', data.id)
+      throw new Error('Документ не збережено: ' + cleanErr(mErr.message))
+    }
   }
 
   // Автоматичні складські рухи тільки для прихідних (IN)
   // Для видаткових (OUT) — потрібне підтвердження користувача
   if (dt?.stockEffect === 'in' && data?.id) {
-    await createStockFromDoc(data.id, docType, cleanItems(items), docDate, userId)
+    try {
+      await createStockFromDoc(data.id, docType, cleanItems(items), docDate, userId)
+    } catch (e) {
+      await deleteGeneratedDoc(data.id).catch(() => {}) // прихідна без оприбуткування — відкат цілком
+      throw new Error('Документ не збережено: ' + e.message)
+    }
   }
 
   return data
@@ -288,9 +300,12 @@ export async function createStockFromDoc(docId, docType, items, date, userId) {
   // знаходимо дзеркальний рядок у documents (за generated_doc_id).
   let mirrorId = null
   if (docId) {
-    const { data: mirror } = await qc('documents').select('id').eq('generated_doc_id', docId).maybeSingle()
+    const { data: mirror, error: mErr } = await qc('documents').select('id').eq('generated_doc_id', docId).maybeSingle()
+    if (mErr) throw new Error(mErr.message)
     mirrorId = mirror?.id || null
   }
+  const created = [] // id створених рухів — щоб відкотити, якщо наступний не вдасться
+  const rollback = async () => { if (created.length) await qc('stock_movements').delete().in('id', created) }
 
   for (const item of items) {
     if (!item.name?.trim()) continue
@@ -319,7 +334,7 @@ export async function createStockFromDoc(docId, docType, items, date, userId) {
       costPrice = unitPrice // для IN cost = ціна закупки
     }
 
-    await qc('stock_movements').insert(withCompany({
+    const { data: mv, error: sErr } = await qc('stock_movements').insert(withCompany({
       product_id: resolved.productId,
       type: dt.stockEffect,
       quantity: qty,
@@ -331,8 +346,14 @@ export async function createStockFromDoc(docId, docType, items, date, userId) {
       description: `${dt.label}: ${item.name}`,
       source: 'document',
       created_by: userId,
-    }))
+    })).select('id').single()
+    if (sErr) {
+      await rollback()
+      throw new Error('рух складу не створено (' + (item.name || '') + '): ' + cleanErr(sErr.message))
+    }
+    created.push(mv.id)
   }
+  return created
 }
 
 // ── Оновити документ ──
@@ -354,13 +375,39 @@ export async function updateDoc(id, { docNumber, docDate, items, subtotal, vatAm
     delivery_basis: deliveryBasis || null,
     delivery_address: deliveryAddress || null,
   }
+  // Спершу дзеркало в documents (на ньому тригер закритого періоду), потім сам документ —
+  // щоб не вийшло «документ змінено, а борг ні».
+  const { data: prevMirror } = await qc('documents').select('id, doc_number, doc_date, amount, vat_amount').eq('generated_doc_id', id)
+  const { error: mErr } = await qc('documents').update({ doc_number: docNumber, doc_date: docDate || null, amount: total ?? null, vat_amount: vatAmount ?? null }).eq('generated_doc_id', id)
+  if (mErr) throw new Error('Не збережено: ' + cleanErr(mErr.message))
   let { error } = await qc('generated_docs').update({ ...base, ...refs }).eq('id', id)
   if (error && isMissingRefsColumn(error.message)) {
     ;({ error } = await qc('generated_docs').update(base).eq('id', id))
   }
-  if (error) throw new Error(error.message)
-  // Синхронізувати дзеркальний рядок у documents (сума/номер/дата)
-  await qc('documents').update({ doc_number: docNumber, doc_date: docDate || null, amount: total ?? null, vat_amount: vatAmount ?? null }).eq('generated_doc_id', id)
+  if (error) {
+    for (const m of prevMirror || []) await qc('documents').update({ doc_number: m.doc_number, doc_date: m.doc_date, amount: m.amount, vat_amount: m.vat_amount }).eq('id', m.id)
+    throw new Error(error.message)
+  }
+}
+
+// ── Видалити згенерований документ разом із дзеркалом у documents і його рухами складу ──
+// Одна транзакція (RPC delete_generated_doc, міграція 070): якщо щось заборонено (закритий період) —
+// не видаляється нічого. До 070 — покроково з перевіркою помилок (рухи → дзеркало → документ).
+export async function deleteGeneratedDoc(id) {
+  const { error } = await supabase.rpc('delete_generated_doc', { p_id: id })
+  if (!error) return
+  if (!(error.code === 'PGRST202' || /delete_generated_doc/.test(error.message || ''))) throw new Error(cleanErr(error.message))
+  const { data: mirrors, error: mErr } = await qc('documents').select('id').eq('generated_doc_id', id)
+  if (mErr) throw new Error(mErr.message)
+  const ids = (mirrors || []).map(m => m.id)
+  if (ids.length) {
+    const { error: sErr } = await qc('stock_movements').delete().in('document_id', ids).neq('source', 'assembly')
+    if (sErr) throw new Error(cleanErr(sErr.message))
+    const { error: dErr } = await qc('documents').delete().in('id', ids)
+    if (dErr) throw new Error(cleanErr(dErr.message))
+  }
+  const { error: gErr } = await qc('generated_docs').delete().eq('id', id)
+  if (gErr) throw new Error(cleanErr(gErr.message))
 }
 
 // ── Оновити статус ──

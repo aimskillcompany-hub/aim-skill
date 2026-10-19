@@ -428,28 +428,38 @@ export async function assembleProduct({ name, resultProductId, quantity, compone
 
   if (aErr || !assembly) return { error: aErr?.message || 'Помилка збереження збірки' }
 
+  // Відкат, якщо будь-який наступний крок не вдався: рухи (за assembly_id), компоненти, сама збірка
+  const undo = async (msg) => {
+    await qc('stock_movements').delete().eq('assembly_id', assembly.id)
+    await supabase.from('assembly_items').delete().eq('assembly_id', assembly.id)
+    await qc('assemblies').delete().eq('id', assembly.id)
+    return { error: /PERIOD_CLOSED/.test(msg || '') ? String(msg).replace(/^.*PERIOD_CLOSED:\s*/, '') : msg }
+  }
+
   // 4. Зберегти assembly_items
-  await supabase.from('assembly_items').insert(
+  const { error: iErr } = await supabase.from('assembly_items').insert(
     enrichedComponents.map(c => ({
       assembly_id: assembly.id, product_id: c.productId,
       quantity: (c.qty || c.quantity) * quantity, cost_price: c.costPrice, total: c.total,
     }))
   )
+  if (iErr) return undo('Компоненти збірки не збережено: ' + iErr.message)
 
   // 5. Списати компоненти (OUT)
   for (const c of enrichedComponents) {
-    await qc('stock_movements').insert(withCompany({
+    const { error: oErr } = await qc('stock_movements').insert(withCompany({
       product_id: c.productId, type: 'out',
       quantity: (c.qty || c.quantity) * quantity, price: c.costPrice, cost_price: c.costPrice, total: c.total,
       date: date || new Date().toISOString().split('T')[0],
       description: `Збірка: ${name}`, created_by: userId,
       assembly_id: assembly.id, source: 'assembly',
     }))
+    if (oErr) return undo('Не вдалося списати компонент: ' + oErr.message)
   }
 
   // 6. Оприбуткувати готовий виріб (IN)
   const unitCost = quantity > 0 ? totalCost / quantity : totalCost
-  await qc('stock_movements').insert(withCompany({
+  const { error: inErr } = await qc('stock_movements').insert(withCompany({
     product_id: productId, type: 'in',
     quantity, price: unitCost, cost_price: unitCost, total: totalCost,
     date: date || new Date().toISOString().split('T')[0],
@@ -457,6 +467,7 @@ export async function assembleProduct({ name, resultProductId, quantity, compone
     created_by: userId,
     assembly_id: assembly.id, source: 'assembly',
   }))
+  if (inErr) return undo('Не вдалося оприбуткувати виріб: ' + inErr.message)
 
   // Оновити buy_price готового виробу
   await supabase.from('products').update({ buy_price: unitCost }).eq('id', productId)
@@ -481,22 +492,25 @@ async function reverseAssemblyMovements(id) {
     qc('assemblies').select('quantity, result_product_id, total_cost, name').eq('id', id).maybeSingle(),
     supabase.from('assembly_items').select('product_id, quantity, cost_price, total').eq('assembly_id', id),
   ])
-  const { data: deleted } = await qc('stock_movements').delete().eq('assembly_id', id).select('id')
+  const { data: deleted, error: dErr } = await qc('stock_movements').delete().eq('assembly_id', id).select('id')
+  if (dErr) throw new Error(dErr.message) // напр. закритий період — НЕ переходимо до компенсуючих рухів
   if (deleted && deleted.length) return // рухи були прив'язані — видалили, цього досить
 
   const today = new Date().toISOString().slice(0, 10)
   for (const it of (items || [])) {
-    await qc('stock_movements').insert(withCompany({
+    const { error } = await qc('stock_movements').insert(withCompany({
       product_id: it.product_id, type: 'in', quantity: it.quantity, price: it.cost_price, cost_price: it.cost_price, total: it.total,
       date: today, source: 'assembly', description: `Скасування збірки: ${a?.name || ''} — повернення компонента`.slice(0, 200),
     }))
+    if (error) throw new Error(error.message)
   }
   if (a?.result_product_id) {
     const unit = a.quantity ? a.total_cost / a.quantity : a.total_cost
-    await qc('stock_movements').insert(withCompany({
+    const { error } = await qc('stock_movements').insert(withCompany({
       product_id: a.result_product_id, type: 'out', quantity: a.quantity, price: unit, cost_price: unit, total: a.total_cost,
       date: today, source: 'assembly', description: `Скасування збірки: ${a?.name || ''} — зняття виробу`.slice(0, 200),
     }))
+    if (error) throw new Error(error.message)
   }
 }
 
@@ -525,11 +539,18 @@ export async function mergeProducts(keepId, dupId) {
 }
 
 // ── Видалити збірку (реверс рухів: компоненти повертаються, виріб знімається) ──
+// Одна транзакція (RPC delete_assembly): при помилці не змінюється нічого → повторне видалення безпечне.
+// До міграції 070 — покроково з перевіркою помилок.
 export async function deleteAssembly(id) {
-  await reverseAssemblyMovements(id)
-  await supabase.from('assembly_items').delete().eq('assembly_id', id)
-  const { error } = await qc('assemblies').delete().eq('id', id)
-  return { error: error?.message || null }
+  const clean = (m) => /PERIOD_CLOSED/.test(m || '') ? String(m).replace(/^.*PERIOD_CLOSED:\s*/, '') : m
+  const { error } = await supabase.rpc('delete_assembly', { p_id: id })
+  if (!error) return { error: null }
+  if (!(error.code === 'PGRST202' || /delete_assembly/.test(error.message || ''))) return { error: clean(error.message) }
+  try { await reverseAssemblyMovements(id) } catch (e) { return { error: clean(e.message) } }
+  const { error: iErr } = await supabase.from('assembly_items').delete().eq('assembly_id', id)
+  if (iErr) return { error: iErr.message }
+  const { error: aErr } = await qc('assemblies').delete().eq('id', id)
+  return { error: aErr?.message || null }
 }
 
 // ── Редагувати збірку = реверс + перезбірка (з перевіркою залишків) ──
@@ -547,14 +568,13 @@ export async function editAssembly(id, { name, quantity, components, date, notes
     if (avail < need) return { error: `Недостатньо "${comp.productName || comp.productId}": потрібно ${need}, буде доступно ${avail}` }
   }
 
-  // Реверс (видалення прив'язаних рухів або компенсуючі рухи для старих збірок)
-  await reverseAssemblyMovements(id)
-  await supabase.from('assembly_items').delete().eq('assembly_id', id)
-  await qc('assemblies').delete().eq('id', id)
+  // Реверс + видалення старої збірки (атомарно); якщо не вдалось — стара збірка лишається як була
+  const del = await deleteAssembly(id)
+  if (del.error) return { error: 'Не вдалося змінити збірку: ' + del.error }
 
   // Перезбірка на той самий виріб
   const res = await assembleProduct({ resultProductId: old.result_product_id, name, quantity, components, date, notes, userId })
-  if (res?.error) return { error: 'Перезбірка не вдалася: ' + res.error }
+  if (res?.error) return { error: 'Стару збірку скасовано (компоненти повернуто на склад), але нову не створено: ' + res.error + '. Створіть збірку заново.' }
   return { ok: true, assemblyId: res.assemblyId }
 }
 

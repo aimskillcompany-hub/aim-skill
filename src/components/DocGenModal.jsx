@@ -34,7 +34,8 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
   const [invoicesList, setInvoicesList] = useState([]) // наявні рахунки контрагента (для вибору «Рахунок №»)
 
   const INCOTERMS = ['EXW', 'FCA', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP', 'FAS', 'FOB', 'CFR', 'CIF']
-  const [editId] = useState(editDoc?.id || null)
+  // після першого збереження editId = id нового документа: повторне «Зберегти + PDF» оновлює, а не дублює (і не списує склад двічі)
+  const [editId, setEditId] = useState(editDoc?.id || null)
   const [items, setItems] = useState(() => {
     if (editDoc?.items) {
       const parsed = typeof editDoc.items === 'string' ? JSON.parse(editDoc.items) : editDoc.items
@@ -177,12 +178,18 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
           invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress,
           parentDocId, contractId: contractIdForSave, orderId: orderId || null, userId,
         })
-        // Списання зі складу для видаткових (OUT) — saveDoc авто-створює лише для IN
+        // Списання зі складу для видаткових (OUT) — saveDoc авто-створює лише для IN.
+        // Якщо списання не вдалось — документ відкочується цілком (не буде продажу без списання).
         const dtSave = DOCUMENT_TYPES.find(t => t.key === docType)
         if (dtSave?.stockEffect === 'out' && writeOffStock && savedDoc?.id) {
-          const { createStockFromDoc } = await import('../lib/docgen')
-          await createStockFromDoc(savedDoc.id, docType, items, docDate, userId)
+          const { createStockFromDoc, deleteGeneratedDoc } = await import('../lib/docgen')
+          try { await createStockFromDoc(savedDoc.id, docType, items, docDate, userId) }
+          catch (e) {
+            await deleteGeneratedDoc(savedDoc.id).catch(() => {})
+            throw new Error('Документ не збережено: ' + e.message)
+          }
         }
+        if (savedDoc?.id) setEditId(savedDoc.id)
         // Для прихідних документів — зберегти завантажені файли
         const isIncoming = DOCUMENT_TYPES.find(t => t.key === docType)?.direction === 'incoming'
         if (isIncoming && uploadedFiles.length > 0 && savedDoc?.id) {

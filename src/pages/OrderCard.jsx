@@ -707,38 +707,33 @@ function ItemsTab({ o, onChange, onDirty }) {
 
   const save = async () => {
     setSaving(true)
-    // Створити/знайти товари для рядків з вільною назвою без прив'язки
-    const resolved = []
-    for (const r of rows) {
-      if (!r.name?.trim()) continue
-      let product_id = r.product_id
-      if (!product_id) {
-        const res = await resolveProduct(r.name, r.unit, Number(r.unit_price) || null, user?.id, r.sku || null)
-        product_id = res?.productId || null
+    try {
+      // Створити/знайти товари для рядків з вільною назвою без прив'язки
+      const resolved = []
+      for (const r of rows) {
+        if (!r.name?.trim()) continue
+        let product_id = r.product_id
+        if (!product_id) {
+          const res = await resolveProduct(r.name, r.unit, Number(r.unit_price) || null, user?.id, r.sku || null)
+          product_id = res?.productId || null
+        }
+        resolved.push({
+          order_id: o.id, product_id, name: r.name.trim(), characteristics: r.characteristics || null, sku: r.sku || null, unit: r.unit || 'шт',
+          qty: Number(r.qty) || 0, cost_price: Number(r.cost_price) || 0,
+          unit_price: Number(r.unit_price) || 0, vat_rate: Number(r.vat_rate) || 0, price_includes_vat: !!r.price_includes_vat, total: rowTotal(r), supplier_id: r.supplier_id || null,
+          cost_vat_rate: r.cost_vat_rate === null || r.cost_vat_rate === undefined || r.cost_vat_rate === '' ? null : Number(r.cost_vat_rate),
+        })
       }
-      resolved.push({
-        order_id: o.id, product_id, name: r.name.trim(), characteristics: r.characteristics || null, sku: r.sku || null, unit: r.unit || 'шт',
-        qty: Number(r.qty) || 0, cost_price: Number(r.cost_price) || 0,
-        unit_price: Number(r.unit_price) || 0, vat_rate: Number(r.vat_rate) || 0, price_includes_vat: !!r.price_includes_vat, total: rowTotal(r), supplier_id: r.supplier_id || null,
-        cost_vat_rate: r.cost_vat_rate === null || r.cost_vat_rate === undefined || r.cost_vat_rate === '' ? null : Number(r.cost_vat_rate),
-      })
+      // Сума замовлення = сума збережених позицій (рядки без назви не зберігаються — у суму теж не йдуть)
+      const total = Math.round(resolved.reduce((t, x) => t + (Number(x.total) || 0), 0) * 100) / 100
+      await replaceOrderItems(o.id, resolved, total)
+      setSaved(true); setTimeout(() => setSaved(false), 2000)
+      load(); onChange()
+    } catch (e) {
+      setAiMsg('⚠ Позиції НЕ збережено: ' + (e.message || e) + '. Дані в таблиці не втрачені — спробуйте ще раз.')
+    } finally {
+      setSaving(false)
     }
-    // Замінюємо повний набір позицій замовлення
-    await supabase.from('order_items').delete().eq('order_id', o.id)
-    if (resolved.length) {
-      let rowsToSave = resolved
-      let { error } = await supabase.from('order_items').insert(rowsToSave)
-      if (error && /cost_vat_rate/.test(error.message || '')) { // ґрейсфул до 067
-        rowsToSave = rowsToSave.map(({ cost_vat_rate, ...x }) => x)
-        ;({ error } = await supabase.from('order_items').insert(rowsToSave))
-      }
-      if (error && /characteristics/.test(error.message || '')) // ґрейсфул до 050
-        await supabase.from('order_items').insert(rowsToSave.map(({ characteristics, ...x }) => x))
-    }
-    // Сума замовлення = сума цін продажу товарів (синхронізуємо автоматично)
-    if (resolved.length) await qc('orders').update({ total: sum }).eq('id', o.id)
-    setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000)
-    load(); onChange()
   }
 
   if (rows == null) return <Loading />
@@ -1097,11 +1092,12 @@ function DocumentsTab({ o }) {
   }
   const unlink = async (d) => { await qc('documents').update({ order_id: null }).eq('id', d.id); load() }
   const delGen = async (d) => {
-    // Спершу прибрати складські рухи дзеркального документа (FK = SET NULL, тож каскад їх не видалить),
-    // потім сам згенерований — каскад (міграція 017) прибере дзеркало в documents.
-    const { data: mirror } = await qc('documents').select('id').eq('generated_doc_id', d.id).maybeSingle()
-    if (mirror?.id) await qc('stock_movements').delete().eq('document_id', mirror.id).neq('source', 'assembly')
-    await qc('generated_docs').delete().eq('id', d.id)
+    const label = getDocType(d.doc_type)?.label || 'документ'
+    if (!confirm(`Видалити «${label}${d.doc_number ? ' №' + d.doc_number : ''}»?\nРазом із ним буде видалено запис у Документах, прив'язки оплат і складські рухи цього документа.`)) return
+    try {
+      const { deleteGeneratedDoc } = await import('../lib/docgen')
+      await deleteGeneratedDoc(d.id)
+    } catch (e) { alert('Не вдалося видалити: ' + e.message) }
     loadGen()
   }
 
@@ -1266,6 +1262,36 @@ function AttachDocsModal({ o, onClose, onAttached }) {
       </div>
     </div>
   )
+}
+
+// Заміна всіх позицій замовлення ОДНІЄЮ транзакцією (RPC replace_order_items, міграція 070):
+// або збережено все, або нічого не змінилось. До застосування 070 — старий шлях (видалити → вставити)
+// з відновленням попередніх позицій, якщо вставка не вдалась. Кидає помилку, якщо не збережено.
+async function replaceOrderItems(orderId, items, total) {
+  const { error } = await supabase.rpc('replace_order_items', { p_order_id: orderId, p_items: items, p_total: total })
+  if (!error) return
+  const missingRpc = error.code === 'PGRST202' || /replace_order_items/.test(error.message || '')
+  if (!missingRpc) throw new Error(error.message)
+
+  const { data: prev, error: rErr } = await supabase.from('order_items').select('*').eq('order_id', orderId).order('created_at')
+  if (rErr) throw new Error(rErr.message)
+  const insertAll = async (list) => {
+    if (!list.length) return null
+    let rowsToSave = list
+    let { error: e } = await supabase.from('order_items').insert(rowsToSave)
+    if (e && /cost_vat_rate/.test(e.message || '')) { rowsToSave = rowsToSave.map(({ cost_vat_rate, ...x }) => x); ({ error: e } = await supabase.from('order_items').insert(rowsToSave)) }
+    if (e && /characteristics/.test(e.message || '')) { rowsToSave = rowsToSave.map(({ characteristics, ...x }) => x); ({ error: e } = await supabase.from('order_items').insert(rowsToSave)) }
+    return e
+  }
+  const { error: dErr } = await supabase.from('order_items').delete().eq('order_id', orderId)
+  if (dErr) throw new Error(dErr.message)
+  const insErr = await insertAll(items)
+  if (insErr) {
+    await insertAll((prev || []).map(({ id, created_at, ...x }) => x)) // повертаємо як було
+    throw new Error(insErr.message)
+  }
+  const { error: tErr } = await qc('orders').update({ total }).eq('id', orderId)
+  if (tErr) throw new Error(tErr.message)
 }
 
 // ───────── Субзамовлення ─────────

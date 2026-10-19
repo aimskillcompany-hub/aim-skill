@@ -3,6 +3,7 @@ import { useUser } from '../lib/auth'
 import { fmt, fmtInt } from '../lib/fmt'
 import { qc } from '../lib/companyScope'
 import { fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
+import { useCompany } from '../lib/company'
 import { listClosings, periodStatus, runChecklist, closePeriod, reopenPeriod, computeCompleteness, computeGoodsReport } from '../lib/periodClose'
 import { getDocType } from '../lib/docgen'
 import DocModal from '../components/DocModal'
@@ -48,7 +49,10 @@ export default function PeriodClose() {
   const [openDoc, setOpenDoc] = useState(null) // документ для звірки (DocModal)
 
   const load = async () => setClosings(await listClosings())
-  useEffect(() => { load(); fetchArticles().then(a => setGrouped(groupByType(a))) }, [])
+  const { activeId } = useCompany()
+  useEffect(() => { fetchArticles().then(a => setGrouped(groupByType(a))) }, [])
+  // закриття окремі для кожної юрособи — перечитуємо при перемиканні
+  useEffect(() => { load(); setSel(null); setCheck(null); setComp(null) }, [activeId])
 
   const rowFor = (m) => closings.find(c => c.period_year === year && c.period_month === m)
 

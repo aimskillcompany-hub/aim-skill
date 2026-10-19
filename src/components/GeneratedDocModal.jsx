@@ -62,12 +62,8 @@ export default function GeneratedDocModal({ doc, onClose, onDeleted, onScanUploa
     if (!confirm(`Видалити «${label}${gd?.doc_number ? ' №' + gd.doc_number : ''}»?\nЦе прибере і згенерований документ, і його запис у Документах, і пов'язані складські рухи.`)) return
     setBusy(true); setErr(null)
     try {
-      const gid = doc.generated_doc_id
-      if (doc.id) await qc('stock_movements').delete().eq('document_id', doc.id)
-      const { error: dErr } = await qc('documents').delete().eq('generated_doc_id', gid)
-      if (dErr) throw dErr
-      const { error: gErr } = await qc('generated_docs').delete().eq('id', gid)
-      if (gErr) throw gErr
+      const { deleteGeneratedDoc } = await import('../lib/docgen')
+      await deleteGeneratedDoc(doc.generated_doc_id) // одна транзакція: рухи + дзеркало + документ
       ;(onDeleted || onClose)()
     } catch (e) {
       const msg = /PERIOD_CLOSED/.test(e.message) ? e.message.replace(/^.*PERIOD_CLOSED:\s*/, '') : e.message

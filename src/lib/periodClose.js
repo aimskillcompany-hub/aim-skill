@@ -1,12 +1,12 @@
 // ── Закриття періоду: чек-лист якості, знімок, закрити/переоткрити ──
 import { supabase } from './supabase'
-import { qc } from './companyScope'
+import { qc, withCompany, getActiveCompanyId } from './companyScope'
 import { computePL, salesProfitReport, periodRange } from './pl'
 import { countsAsDebt, debtDate } from './debts'
 
-// Список закриттів
+// Список закриттів — лише активної юрософи (закриття окреме для кожної, міграція 070)
 export async function listClosings() {
-  const { data } = await supabase.from('period_closings').select('*')
+  const { data } = await qc('period_closings').select('*')
     .order('period_year', { ascending: false }).order('period_month', { ascending: false })
   return data || []
 }
@@ -370,7 +370,7 @@ export function snapshotDiff(snap) {
 
 // ── Закрити період ──
 export async function closePeriod(year, month, userId, { notes, reportsConfirmed } = {}) {
-  const { data: existing } = await supabase.from('period_closings')
+  const { data: existing } = await qc('period_closings')
     .select('snapshot, closed_at').eq('period_year', year).eq('period_month', month).maybeSingle()
   const snapshot = await computeSnapshot(year, month)
   // Підтверджені звіти (Cash Flow / P&L / Баланс), на основі яких закрито період
@@ -382,7 +382,11 @@ export async function closePeriod(year, month, userId, { notes, reportsConfirmed
     snapshot, notes: notes || null, closed_by: userId || null,
     closed_at: new Date().toISOString(), reopened_at: null, reopened_by: null,
   }
-  const { error } = await supabase.from('period_closings').upsert(payload, { onConflict: 'period_year,period_month' })
+  let { error } = await supabase.from('period_closings').upsert(withCompany(payload), { onConflict: 'company_id,period_year,period_month' })
+  // До міграції 070 унікальність ще (рік, місяць) — тоді працюємо по-старому
+  if (error && /unique or exclusion constraint|42P10/.test((error.message || '') + (error.code || ''))) {
+    ;({ error } = await supabase.from('period_closings').upsert(withCompany(payload), { onConflict: 'period_year,period_month' }))
+  }
   if (error) throw new Error(error.message)
   return snapshot
 }
@@ -391,7 +395,7 @@ export async function closePeriod(year, month, userId, { notes, reportsConfirmed
 export async function reopenPeriod(year, month, userId) {
   const { error } = await supabase.from('period_closings')
     .update({ status: 'reopened', reopened_at: new Date().toISOString(), reopened_by: userId || null })
-    .eq('period_year', year).eq('period_month', month)
+    .eq('company_id', getActiveCompanyId()).eq('period_year', year).eq('period_month', month)
   if (error) throw new Error(error.message)
 }
 
@@ -399,7 +403,7 @@ export async function reopenPeriod(year, month, userId) {
 export async function isDateInClosedPeriod(dateStr) {
   if (!dateStr) return false
   const d = new Date(dateStr)
-  const { data } = await supabase.from('period_closings').select('id')
+  const { data } = await qc('period_closings').select('id')
     .eq('status', 'closed').eq('period_year', d.getFullYear()).eq('period_month', d.getMonth() + 1).maybeSingle()
   return !!data
 }
