@@ -1,31 +1,35 @@
-// Партії складу (міграція 071): партія = прихідний рух; залишок партії на дату = к-сть − списане
-// з неї відвантаженнями (stock_allocations) з датою відвантаження ≤ дати. Запаси = Σ залишок × ціна партії (без ПДВ).
-// Повертає null, якщо міграцію 071 ще не застосовано (тоді звіти оцінюють склад по-старому).
+// Оцінка складу на дату — FIFO-шари з РУХІВ (не залежить від stock_allocations, тобто від того,
+// чи застосовано перебудову FIFO): залишок товару = Σ приходів − Σ видач з датою ≤ дати; за FIFO на складі
+// лишаються НАЙПІЗНІШІ партії, тож вартість = залишок, покритий останніми приходами × їхня ціна (без ПДВ).
+// Від'ємний залишок (видано більше, ніж оприбутковано) — не актив: 0 і позначка negative.
+// (До 2026-10-19 тут бралися партії мінус stock_allocations — до перебудови старі відвантаження не мали
+// списань, і запаси дорівнювали всім закупівлям за весь час.)
 import { qc } from './companyScope'
 import { fetchAll } from './fetchAll'
 
 export async function loadBatches(toDate) {
-  let allocs
-  try {
-    allocs = await fetchAll(() => qc('stock_allocations').select('id, in_movement_id, qty, out_date').lte('out_date', toDate))
-  } catch (e) {
-    if (/stock_allocations/.test(e.message || '')) return null
-    throw e
-  }
-  const ins = await fetchAll(() => qc('stock_movements').select('id, product_id, quantity, price, cost_price, date').eq('type', 'in').lte('date', toDate))
-  const allocByIn = {}
-  allocs.forEach(a => { (allocByIn[a.in_movement_id] ||= []).push(a) })
-  // залишки й вартість партій станом на дату: { [productId]: { qty, value } }
+  const mv = await fetchAll(() => qc('stock_movements').select('id, product_id, type, quantity, price, cost_price, date, created_at').lte('date', toDate))
+  const ins = mv.filter(m => m.type === 'in')
+    .sort((a, b) => (b.date || '').localeCompare(a.date || '') || String(b.created_at || '').localeCompare(String(a.created_at || '')))
+  // залишки й вартість станом на дату: { [productId]: { qty, value, negative } }
   const at = (date) => {
+    const bal = {}
+    mv.forEach(m => {
+      if (!m.product_id || (m.date || '') > date) return
+      const q = Number(m.quantity) || 0
+      bal[m.product_id] = (bal[m.product_id] || 0) + (m.type === 'in' ? q : -q)
+    })
     const out = {}
-    ins.forEach(m => {
-      if (m.date > date) return
-      const used = (allocByIn[m.id] || []).reduce((s, a) => s + (a.out_date && a.out_date <= date ? Number(a.qty) || 0 : 0), 0)
-      const rest = (Number(m.quantity) || 0) - used
-      if (rest <= 0.00001) return
-      const unit = Number(m.cost_price) || Number(m.price) || 0
-      const x = (out[m.product_id] ||= { qty: 0, value: 0 })
-      x.qty += rest; x.value += rest * unit
+    const need = {}
+    Object.entries(bal).forEach(([pid, q]) => {
+      if (q > 0.00001) { need[pid] = q; out[pid] = { qty: q, value: 0 } }
+      else if (q < -0.00001) out[pid] = { qty: 0, value: 0, negative: q }
+    })
+    ins.forEach(m => {   // від найпізніших
+      if ((m.date || '') > date || !(need[m.product_id] > 0.00001)) return
+      const take = Math.min(need[m.product_id], Number(m.quantity) || 0)
+      out[m.product_id].value += take * (Number(m.cost_price) || Number(m.price) || 0)
+      need[m.product_id] -= take
     })
     return out
   }

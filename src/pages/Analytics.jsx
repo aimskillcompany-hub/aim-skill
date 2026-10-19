@@ -586,6 +586,39 @@ function EstimateWriteoffCard({ estimated, writeoffs }) {
   )
 }
 
+// Топ-10 товарів, що формують запаси на початок і кінець періоду (перевірка одиниць/цін)
+function InventoryTop({ top, openingDate }) {
+  const [open, setOpen] = useState(false)
+  const dmy = (d) => (d || '').split('-').reverse().join('.')
+  const table = (title, items) => (
+    <div style={{ flex: '1 1 420px', minWidth: 0 }}>
+      <div style={{ fontWeight: 600, fontSize: 12.5, margin: '6px 0' }}>{title}</div>
+      <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+        <thead><tr style={{ color: 'var(--text3)' }}><th style={{ textAlign: 'left' }}>Товар</th><th style={{ textAlign: 'right' }}>К-сть</th><th>Од.</th><th style={{ textAlign: 'right' }}>Ціна</th><th style={{ textAlign: 'right' }}>Сума</th></tr></thead>
+        <tbody>{items.map(x => (
+          <tr key={x.id} style={{ borderTop: '1px solid var(--border)' }}>
+            <td style={{ padding: '3px 4px' }}>{x.name}</td>
+            <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{Math.round(x.qty * 1000) / 1000}</td>
+            <td style={{ padding: '0 4px', color: 'var(--text3)' }}>{x.unit}</td>
+            <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{fmtInt(x.price)}</td>
+            <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 600 }}>{fmtInt(x.value)}</td>
+          </tr>
+        ))}</tbody>
+      </table>
+    </div>
+  )
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button className="btn btn-sm" onClick={() => setOpen(o => !o)}><i className={`ti ti-chevron-${open ? 'up' : 'down'}`} /> Що формує запаси (топ-10)</button>
+      {open && <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 6 }}>
+        {table(`На ${dmy(openingDate)}`, top.opening)}
+        {table(`На ${dmy(top.to)} — ${fmtInt(top.closingValue)}`, top.closing)}
+      </div>}
+      {open && <p style={{ fontSize: 11.5, color: 'var(--text3)', margin: '6px 0 0' }}>Залишок = приходи − видачі за рухами складу; оцінка — за цінами останніх приходів (FIFO: на складі лишаються найпізніші партії), без ПДВ. Не залежить від перебудови FIFO.</p>}
+    </div>
+  )
+}
+
 // Звірка нарахування з грошима: прибуток − Δдебіторки + Δкредиторки − Δзапасів ≈ чистий грошовий потік
 function ReconCard({ recon }) {
   if (!recon) return <div className="card" style={{ marginTop: 14 }}><p style={{ color: 'var(--text3)', margin: 0 }}>Звірка з грошовим потоком…</p></div>
@@ -628,6 +661,7 @@ function ReconCard({ recon }) {
           На початок ({r.opening.date.split('-').reverse().join('.')}): дебіторка <b>{fmtInt(r.opening.receivable)}</b>, кредиторка <b>{fmtInt(r.opening.payable)}</b>, запаси <b>{fmtInt(r.opening.inventory)}</b> — з документів і рухів складу всіх попередніх періодів.
         </p>
       )}
+      {r.inventoryTop && <InventoryTop top={r.inventoryTop} openingDate={r.opening?.date} />}
       {(di.noDateInPeriod > 0 || di.noAmount > 0 || di.noDirection > 0) && (
         <div style={{ fontSize: 12, color: '#7A4B00', background: '#FFF8E6', borderRadius: 8, padding: '8px 10px', marginTop: 8 }}>
           <i className="ti ti-alert-triangle" /> Дані, що спотворюють борги й виручку:

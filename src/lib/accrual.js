@@ -245,25 +245,15 @@ async function debtsAsOf(date) {
   return { receivable, payable }
 }
 async function inventoryAsOf(date) {
-  // запаси = сума залишків партій (071); до міграції — середня ціна приходів
-  const batches = await loadBatches(date)
-  if (batches) {
-    const at = batches.at(date)
-    const ids = Object.keys(at)
-    const prods = ids.length ? await fetchAllIn(() => supabase.from('products').select('id, product_type'), 'id', ids) : []
-    return prods.reduce((s, p) => s + ((p.product_type || 'goods') === 'goods' ? at[p.id].value : 0), 0)
-  }
-  // оцінка — за середньою ціною приходів (без ПДВ), а не за buy_price довідника (там могла бути ціна продажу)
-  const sm = await fetchAll(() => qc('stock_movements').select('id, product_id, type, quantity, price, cost_price').lte('date', date))
-  const bal = {}, agg = {}
-  sm.forEach(m => {
-    const q = Number(m.quantity) || 0
-    bal[m.product_id] = (bal[m.product_id] || 0) + (m.type === 'in' ? q : -q)
-    if (m.type === 'in') { const u = Number(m.cost_price) || Number(m.price) || 0; if (u > 0 && q > 0) { const x = (agg[m.product_id] ||= { q: 0, v: 0 }); x.q += q; x.v += q * u } }
-  })
-  const ids = Object.keys(bal).filter(id => Math.abs(bal[id]) > 0.0001)
-  const prods = ids.length ? await fetchAllIn(() => supabase.from('products').select('id, product_type'), 'id', ids) : []
-  return prods.reduce((s, p) => s + ((p.product_type || 'goods') === 'goods' && agg[p.id] ? bal[p.id] * (agg[p.id].v / agg[p.id].q) : 0), 0)
+  // запаси = FIFO-шари з рухів складу (lib/batches.js) — не залежить від перебудови FIFO
+  const at = (await loadBatches(date)).at(date)
+  const ids = Object.keys(at)
+  const prods = ids.length ? await fetchAllIn(() => supabase.from('products').select('id, name, unit, product_type'), 'id', ids) : []
+  const items = prods.filter(p => (p.product_type || 'goods') === 'goods').map(p => ({
+    id: p.id, name: p.name, unit: p.unit || '', qty: at[p.id].qty, value: at[p.id].value,
+    price: at[p.id].qty ? at[p.id].value / at[p.id].qty : 0, negative: at[p.id].negative || 0,
+  }))
+  return { value: items.reduce((s, x) => s + x.value, 0), items: items.filter(x => x.value > 0).sort((a, b) => b.value - a.value).slice(0, 10) }
 }
 
 // ── Звірка: прибуток за нарахуванням − Δдебіторки + Δкредиторки − Δзапасів ≈ чистий грошовий потік ──
@@ -289,7 +279,7 @@ export async function accrualReconciliation(year, month, netProfit) {
   const vatInDocs = r2(vatOf('receivable') - vatOf('payable'))
   const dAR = d1.receivable - d0.receivable
   const dAP = d1.payable - d0.payable
-  const dInv = i1 - i0
+  const dInv = i1.value - i0.value
   const estimated = netProfit - dAR + dAP - dInv
   const cashFlow = txs.reduce((s, t) => s + (Number(t.amount) || 0), 0)
   // відомі причини різниці: те, що є в грошах, але не в прибутку
@@ -303,7 +293,8 @@ export async function accrualReconciliation(year, month, netProfit) {
   return {
     netProfit: r2(netProfit), dAR: r2(dAR), dAP: r2(dAP), dInv: r2(dInv),
     estimated: r2(estimated), cashFlow: r2(cashFlow), diff: r2(cashFlow - estimated), explained, dataIssues,
-    opening: { receivable: r2(d0.receivable), payable: r2(d0.payable), inventory: r2(i0), date: before },
+    opening: { receivable: r2(d0.receivable), payable: r2(d0.payable), inventory: r2(i0.value), date: before },
+    inventoryTop: { opening: i0.items, closing: i1.items, closingValue: r2(i1.value), to },
   }
 }
 
