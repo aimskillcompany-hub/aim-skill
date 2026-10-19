@@ -44,6 +44,14 @@ export async function accrualSalesDocs(from, to) {
     movs = await fetchAllIn(() => qc('stock_movements').select('id, document_id, product_id, quantity, cost_price, price, description').eq('type', 'out'), 'document_id', ids)
   }
   const movsByDoc = {}; movs.forEach(m => { (movsByDoc[m.document_id] ||= []).push(m) })
+  // FIFO-собівартість (071) — лише для відвантажень, реально розподілених по партіях; старі (до перебудови) —
+  // колишнім ланцюгом, щоб звіт не показував 0 там, де партій ще не призначено
+  const allocated = new Set()
+  if (hasFifo && movs.length) {
+    try {
+      ;(await fetchAllIn(() => qc('stock_allocations').select('id, out_movement_id'), 'out_movement_id', movs.map(m => m.id))).forEach(a => allocated.add(a.out_movement_id))
+    } catch { /* таблиці ще немає */ }
+  }
 
   // позиції замовлень цих документів — джерело закупівельної ціни (2-й пріоритет) і частки для документів без руху
   const orderIds = [...new Set(docs.map(d => d.order_id).filter(Boolean))]
@@ -85,7 +93,7 @@ export async function accrualSalesDocs(from, to) {
         const qty = Number(m.quantity) || 0
         if ((p.product_type || 'goods') !== 'goods') return // послуги/витратні — без собівартості
         const name = p.name || (m.description || '').replace(/^.*?:\s*/, '') || '—'
-        if (hasFifo) {
+        if (hasFifo && (allocated.has(m.id) || Number(m.cost_missing_qty) > 0 || m.cost_stale)) {
           // FIFO-партії: збережена собівартість; на що не вистачило партій — у блок (ціну з довідника не підставляємо)
           out.cost += qty * (Number(m.cost_price) || 0)
           const miss = Number(m.cost_missing_qty) || 0

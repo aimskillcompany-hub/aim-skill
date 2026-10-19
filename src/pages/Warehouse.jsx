@@ -9,6 +9,7 @@ import { exportAssemblyAct } from '../lib/assemblyAct'
 import { getDocType } from '../lib/docgen'
 import DocModal from '../components/DocModal'
 import RecalcCostModal from '../components/RecalcCostModal'
+import CostDiagnosticsModal from '../components/CostDiagnosticsModal'
 import GeneratedDocModal from '../components/GeneratedDocModal'
 import { useSort, SortTh } from '../components/Sort'
 import { todayKyiv } from '../lib/dates'
@@ -21,13 +22,18 @@ const srcLabel = (s) => SRC_LABEL[s] || s || '—'
 export default function Warehouse() {
   const [tab, setTab] = useState('goods')
   const [recalc, setRecalc] = useState(false)
+  const [diag, setDiag] = useState(false)
   return (
     <div>
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <h1>Склад</h1>
-        <button className="btn" onClick={() => setRecalc(true)} title="Заново розподілити відвантаження періоду по партіях (FIFO) і перезаписати собівартість"><i className="ti ti-calculator" /> Перерахувати собівартість за період</button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn" onClick={() => setDiag(true)} title="Звіт зараз vs FIFO, база ПДВ партій, позиції без партій — нічого не змінює"><i className="ti ti-stethoscope" /> Діагностика собівартості</button>
+          <button className="btn" onClick={() => setRecalc(true)} title="Заново розподілити відвантаження періоду по партіях (FIFO) і перезаписати собівартість"><i className="ti ti-calculator" /> Перерахувати собівартість за період</button>
+        </div>
       </div>
       {recalc && <RecalcCostModal onClose={() => setRecalc(false)} />}
+      {diag && <CostDiagnosticsModal onClose={() => setDiag(false)} />}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 18, overflowX: 'auto' }}>
         {[['goods', 'Товари', 'ti-package'], ['services', 'Послуги', 'ti-briefcase'], ['consumables', 'Розхідні матеріали', 'ti-paper-bag'], ['movements', 'Рухи', 'ti-arrows-up-down'], ['assemblies', 'Збірки', 'ti-tool']].map(([id, lbl, icon]) => (
           <button key={id} onClick={() => setTab(id)} style={tabStyle(tab === id)}><i className={`ti ${icon}`} style={{ fontSize: 15 }} />{lbl}</button>
