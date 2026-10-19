@@ -1,6 +1,6 @@
 // Діагностика собівартості перед перебудовою FIFO (нічого не змінює):
 //   1) по замовленнях: собівартість, яку ЗАРАЗ показує звіт (P&L/Маржа, з усіма фолбеками) → за FIFO-партіями
-//      (сухий прогін fifo_rebuild) + як отримано ціну партій (база ПДВ);
+//      (сухий прогін fifo_compute — лише тимчасові таблиці) + як отримано ціну партій (база ПДВ);
 //   2) позиції, яким не вистачило партій, і можливі джерела: прихід є, але датований пізніше відвантаження;
 //      прихідні документи, НЕ проведені на склад, що містять цей товар (за назвою/артикулом) або від
 //      постачальника цієї позиції замовлення в розумні дати.
@@ -27,10 +27,10 @@ export async function runCostDiagnostics(from, to) {
   const company = getUserCompanyId()
   // 1. «зараз» — як у звіті
   const sales = await accrualSalesDocs(from, to)
-  // 2. FIFO — сухий прогін (рахує й відкочує)
+  // 2. FIFO — сухий прогін (у тимчасових таблицях; постійні лише читає)
   // одним значенням (jsonb) — API обрізає набори рядків до 1000
   const { data: fifoAll, error } = await supabase.rpc('fifo_dry_run_json', { p_cost_from: from })
-  if (error) throw new Error(/fifo_dry_run_json|fifo_rebuild/.test(error.message || '') ? 'Спершу застосуйте міграцію 072 (ціна партії з ПДВ / без ПДВ).' : error.message)
+  if (error) throw new Error(/fifo_dry_run_json|fifo_rebuild|fifo_compute|WHERE clause/.test(error.message || '') ? 'Спершу застосуйте міграцію 073 (безпечний сухий прогін FIFO).' : error.message)
   const fifo = (fifoAll || []).filter(r => (!company || r.company_id === company) && r.out_date <= to)
 
   const docIds = [...new Set(fifo.map(r => r.document_id).filter(Boolean))]

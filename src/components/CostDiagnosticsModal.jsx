@@ -42,7 +42,7 @@ export default function CostDiagnosticsModal({ onClose }) {
         <div className="modal-header">
           <div>
             <h2 style={{ margin: 0 }}>Діагностика собівартості</h2>
-            <div style={{ fontSize: 12.5, color: 'var(--text3)', marginTop: 2 }}>Нічого не змінює: сухий прогін FIFO рахується і відкочується.</div>
+            <div style={{ fontSize: 12.5, color: 'var(--text3)', marginTop: 2 }}>Нічого не змінює: FIFO рахується в тимчасових таблицях, постійні дані лише читаються.</div>
           </div>
           <button className="btn" onClick={onClose} disabled={busy}><i className="ti ti-x" /></button>
         </div>
