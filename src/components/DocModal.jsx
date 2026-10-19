@@ -285,6 +285,21 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
     setBusy(false)
   }
 
+  // Дата рухів складу = дата документа (без перестворення рухів: товари, ціни й списання з партій лишаються)
+  const syncMovementDates = async (date) => {
+    if (!existingDoc?.id || !date) return 0
+    const { data, error } = await qc('stock_movements').update({ date })
+      .eq('document_id', existingDoc.id).neq('source', 'assembly').neq('date', date).select('id')
+    if (error) throw new Error(/PERIOD_CLOSED/.test(error.message || '') ? 'Місяць закрито — дату рухів змінити не можна: ' + String(error.message).replace(/^.*PERIOD_CLOSED:\s*/, '') : error.message)
+    return data?.length || 0
+  }
+  const fixMovementDates = async () => {
+    if (!window.confirm(`Встановити всім складським рухам цього документа дату документа ${(form.date || '').split('-').reverse().join('.')}?\n\nТовари, кількості й ціни не змінюються. Для приходу це дата, з якої партія доступна для відвантажень (FIFO).`)) return
+    setBusy(true); setStockMsg(null)
+    try { const n = await syncMovementDates(form.date); await loadMovements(); setStockMsg({ ok: `Дату змінено в ${n} рухах.` }) } catch (e) { setStockMsg({ err: e.message }) }
+    setBusy(false)
+  }
+
   const save = async () => {
     setBusy(true); setError(null)
     try {
@@ -314,7 +329,9 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
         if (error && /posted/.test(error.message || '')) { const { posted, ...rest } = upd; ({ data, error } = await qc('documents').update(rest).eq('id', existingDoc.id).select('id')) }
         if (error) throw error
         if (!data?.length) throw new Error('Документ не оновлено (немає прав UPDATE). Запусти migrations/004 у Supabase.')
-        await syncDocStock(existingDoc.id)
+        // рухи перестворюються лише з галочкою «Рух на складі»; інакше — тільки переносимо їхню дату за документом
+        if (stockOn) await syncDocStock(existingDoc.id)
+        else if (form.date && form.date !== (existingDoc.doc_date || null)) await syncMovementDates(form.date)
         onSaved(); return
       }
       // Guard від дублів (лише для нового документа): той самий тип + № + контрагент
@@ -571,6 +588,12 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
                     <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>
                       Складські рухи {docMovements ? `(${docMovements.length})` : ''}
                     </div>
+                    {docMovements?.some(m => m.source !== 'assembly' && form.date && (m.date || '').slice(0, 10) !== form.date) && (
+                      <button type="button" className="btn" onClick={fixMovementDates} disabled={busy} style={{ fontSize: 12, padding: '4px 10px', color: 'var(--red)' }}
+                        title="Дата рухів не збігається з датою документа">
+                        <i className="ti ti-calendar" /> Дата рухів = {(form.date || '').split('-').reverse().join('.')}
+                      </button>
+                    )}
                     {(form.items || []).length > 0 && getDocType(form.type)?.stockEffect && (
                       <button type="button" className="btn" onClick={postStockNow} disabled={busy} style={{ fontSize: 12, padding: '4px 10px' }}>
                         <i className="ti ti-package-import" /> {stockDir === 'out' ? 'Списати зі складу зараз' : 'Оприбуткувати на склад зараз'}
