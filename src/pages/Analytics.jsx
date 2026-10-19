@@ -508,6 +508,7 @@ export function PLView({ fixedYear = null, fixedMonth = null } = {}) {
         </p>
       </div>
       {accrual && acc?.missing?.length > 0 && <MissingCostCard missing={acc.missing} />}
+      {accrual && (acc?.estimated?.length > 0 || acc?.writeoffs?.length > 0) && <EstimateWriteoffCard estimated={acc.estimated || []} writeoffs={acc.writeoffs || []} />}
       {accrual && <ReconCard recon={recon} />}
       {drill && <DrillModal drill={drill} year={year} month={month || null} onClose={() => setDrill(null)} />}
     </div>
@@ -537,6 +538,47 @@ function MissingCostCard({ missing }) {
                 <td style={{ padding: '4px 6px', color: '#B7791F', fontSize: 12 }}>{it.reason}</td>
               </tr>
             )))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
+// ⚠ собівартість, оцінена без партії (поточна, а не з приходу) + списання товарів, що пішли рядком витрат
+function EstimateWriteoffCard({ estimated, writeoffs }) {
+  const [open, setOpen] = useState(false)
+  const est = estimated.flatMap(m => m.items.map(it => ({ ...it, doc: m.doc, date: m.date })))
+  const estSum = est.reduce((t, x) => t + x.qty * x.unit, 0)
+  const woSum = writeoffs.reduce((t, w) => t + w.cost, 0)
+  const dmy = (d) => (d || '').split('-').reverse().join('.')
+  return (
+    <div className="card" style={{ marginTop: 14, borderLeft: '4px solid var(--border)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flexWrap: 'wrap' }} onClick={() => setOpen(o => !o)}>
+        <i className="ti ti-info-circle" style={{ color: 'var(--text3)' }} />
+        {est.length > 0 && <b>⚠ Оцінена собівартість (без партії): {est.length} поз. на {fmtInt(estSum)}</b>}
+        {writeoffs.length > 0 && <b>Списання товарів: {writeoffs.length} на {fmtInt(woSum)}</b>}
+        <i className={`ti ti-chevron-${open ? 'up' : 'down'}`} style={{ marginLeft: 'auto', color: 'var(--text3)' }} />
+      </div>
+      {open && (
+        <table style={{ width: '100%', fontSize: 13, marginTop: 10, borderCollapse: 'collapse' }}>
+          <tbody>
+            {est.map((x, i) => (
+              <tr key={'e' + i} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>⚠ {getDocType(x.doc.type)?.label || x.doc.type} {x.doc.doc_number || ''}</td>
+                <td style={{ padding: '4px 6px', color: 'var(--text3)' }}>{dmy(x.date)}</td>
+                <td style={{ padding: '4px 6px' }}>{x.name} · {x.qty} × {fmtInt(x.unit)}</td>
+                <td style={{ padding: '4px 6px', fontSize: 12, color: 'var(--text3)' }}>партії немає — поточна собівартість</td>
+              </tr>
+            ))}
+            {writeoffs.map(w => (
+              <tr key={w.id} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>Списання</td>
+                <td style={{ padding: '4px 6px', color: 'var(--text3)' }}>{dmy(w.date)}</td>
+                <td style={{ padding: '4px 6px' }}>{w.name} · {w.qty} × {fmtInt(w.unit)} = {fmtInt(w.cost)}</td>
+                <td style={{ padding: '4px 6px', fontSize: 12, color: w.missing ? AMBER : 'var(--text3)' }}>{w.missing ? 'немає собівартості' : w.description || ''}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       )}

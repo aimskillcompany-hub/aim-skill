@@ -24,6 +24,38 @@ const isVatArticle = (name) => /ПДВ/i.test(name || '')
 const DOC_LABEL = { waybill: 'Видаткові накладні (товари)', serviceAct: 'Акти (послуги)' }
 
 // ── Документи реалізації періоду з собівартістю ──
+// OUT-рухи з полями FIFO (071) і оцінки (074), з відступом для старіших схем
+async function loadOutMovs(run, extra = '') {
+  const base = 'id, document_id, product_id, quantity, cost_price, price, description, date, source' + extra
+  for (const [cols, fifo] of [[', cost_missing_qty, cost_stale, cost_estimated_qty, cost_estimate_unit', true], [', cost_missing_qty, cost_stale', true], ['', false]]) {
+    try {
+      return { movs: await run(() => qc('stock_movements').select(base + cols).eq('type', 'out')), hasFifo: fifo }
+    } catch (e) {
+      if (!/cost_missing_qty|cost_stale|cost_estimated_qty|cost_estimate_unit/.test(e.message || '')) throw e
+    }
+  }
+  return { movs: [], hasFifo: false }
+}
+
+// ── Списання товарів: OUT без документа (ручне списання/коригування), крім збірок (вони нейтральні —
+// собівартість компонентів переходить у виріб). Собівартість — збережена в русі (FIFO), інакше середня приходів.
+export async function accrualWriteoffs(from, to) {
+  const { movs } = await loadOutMovs((make) => fetchAll(() => make().is('document_id', null).gte('date', from).lte('date', to)))
+  const list = movs.filter(m => m.source !== 'assembly')
+  if (!list.length) return []
+  const prodIds = [...new Set(list.map(m => m.product_id).filter(Boolean))]
+  const prods = prodIds.length ? await fetchAllIn(() => supabase.from('products').select('id, name, product_type'), 'id', prodIds) : []
+  const prodById = {}; prods.forEach(p => { prodById[p.id] = p })
+  const ins = prodIds.length ? await fetchAllIn(() => qc('stock_movements').select('id, product_id, quantity, price, cost_price').eq('type', 'in'), 'product_id', prodIds) : []
+  const agg = {}; ins.forEach(m => { const u = Number(m.cost_price) || Number(m.price) || 0, q = Number(m.quantity) || 0; if (u > 0 && q > 0) { const x = (agg[m.product_id] ||= { q: 0, v: 0 }); x.q += q; x.v += q * u } })
+  return list.filter(m => (prodById[m.product_id]?.product_type || 'goods') === 'goods').map(m => {
+    const qty = Number(m.quantity) || 0
+    const a = agg[m.product_id]
+    const unit = Number(m.cost_price) > 0 ? Number(m.cost_price) : a?.q ? a.v / a.q : 0
+    return { id: m.id, date: m.date, name: prodById[m.product_id]?.name || m.description || '—', qty, unit, cost: r2(qty * unit), description: m.description, missing: !(unit > 0) }
+  })
+}
+
 // → [{ doc, net, vat, gross, date, cost, costSource: 'stock'|'order'|'none'|'service', missing: [{ name, qty, reason }] }]
 export async function accrualSalesDocs(from, to) {
   const docsAll = await fetchAll(() => qc('documents')
@@ -34,15 +66,8 @@ export async function accrualSalesDocs(from, to) {
   const ids = docs.map(d => d.id)
 
   // з міграцією 071 собівартість відвантаження зафіксована в русі (FIFO-партії) + к-сть без собівартості
-  let hasFifo = true
-  let movs
-  try {
-    movs = await fetchAllIn(() => qc('stock_movements').select('id, document_id, product_id, quantity, cost_price, price, description, cost_missing_qty, cost_stale').eq('type', 'out'), 'document_id', ids)
-  } catch (e) {
-    if (!/cost_missing_qty|cost_stale/.test(e.message || '')) throw e
-    hasFifo = false
-    movs = await fetchAllIn(() => qc('stock_movements').select('id, document_id, product_id, quantity, cost_price, price, description').eq('type', 'out'), 'document_id', ids)
-  }
+  // 074: + к-сть, оцінена поточною собівартістю (партії немає) — позначка ⚠
+  const { movs, hasFifo } = await loadOutMovs((make) => fetchAllIn(make, 'document_id', ids))
   const movsByDoc = {}; movs.forEach(m => { (movsByDoc[m.document_id] ||= []).push(m) })
   // FIFO-собівартість (071) — лише для відвантажень, реально розподілених по партіях; старі (до перебудови) —
   // колишнім ланцюгом, щоб звіт не показував 0 там, де партій ще не призначено
@@ -80,11 +105,25 @@ export async function accrualSalesDocs(from, to) {
     return unitCost > 0 && !isSalePrice(unitCost, unitSale) ? unitCost : 0
   }
 
+  // колишній ланцюг (те, що звіт показує без партій): 1) рух складу → 2) закупівельна позиції замовлення →
+  // 3) середня закупівельна з приходів → 0. skipStored — для руху з FIFO (збережена = вже партійна)
+  const legacyUnit = (m, name, skipStored) => {
+    const saleNet = Number(m.price) || 0
+    const d = docById[m.document_id]
+    let unit = skipStored ? 0 : Number(m.cost_price) || 0
+    if (unit > 0 && isSalePrice(unit, saleNet)) unit = 0
+    if (!unit && d?.order_id) unit = orderItemCost(d.order_id, m.product_id, name)
+    if (!unit) unit = avgIn[m.product_id] && !isSalePrice(avgIn[m.product_id], saleNet) ? avgIn[m.product_id] : 0
+    return unit > 0 ? unit : 0
+  }
+  const docById = {}; docs.forEach(d => { docById[d.id] = d })
+
   return docs.map(d => {
     const gross = Math.abs(Number(d.amount) || 0)
     const vat = Math.abs(Number(d.vat_amount) || 0)
     const net = r2(gross - vat)
-    const out = { doc: d, date: debtDate(d), net, vat, gross, cost: 0, costSource: 'none', missing: [] }
+    // movUnits — поточна собівартість одиниці по кожному руху (оцінка для FIFO-нестачі); estimated — оцінені без партії (⚠)
+    const out = { doc: d, date: debtDate(d), net, vat, gross, cost: 0, costSource: 'none', missing: [], estimated: [], movUnits: [] }
     const ms = movsByDoc[d.id] || []
     if (ms.length) {
       out.costSource = 'stock'
@@ -96,18 +135,18 @@ export async function accrualSalesDocs(from, to) {
         if (hasFifo && (allocated.has(m.id) || Number(m.cost_missing_qty) > 0 || m.cost_stale)) {
           // FIFO-партії: збережена собівартість; на що не вистачило партій — у блок (ціну з довідника не підставляємо)
           out.cost += qty * (Number(m.cost_price) || 0)
+          out.movUnits.push({ id: m.id, unit: legacyUnit(m, name, true) })
+          const est = Number(m.cost_estimated_qty) || 0
+          if (est > 0.00001) out.estimated.push({ name, qty: est, unit: Number(m.cost_estimate_unit) || 0 })
           const miss = Number(m.cost_missing_qty) || 0
           if (miss > 0.00001) out.missing.push({ name, qty: miss, reason: 'не вистачило партій (приходів) на дату відвантаження' })
           if (m.cost_stale) out.missing.push({ name, qty, reason: 'партію, з якої списано, видалено — «Перерахувати собівартість за період»' })
           return
         }
         const saleNet = Number(m.price) || 0
-        // 1) рух складу → 2) закупівельна позиції замовлення → 3) середня закупівельна з приходів → 4) 0 + у блок
-        let unit = Number(m.cost_price) || 0
-        let polluted = false
-        if (unit > 0 && isSalePrice(unit, saleNet)) { unit = 0; polluted = true }
-        if (!unit && d.order_id) unit = orderItemCost(d.order_id, m.product_id, name)
-        if (!unit) unit = avgIn[m.product_id] && !isSalePrice(avgIn[m.product_id], saleNet) ? avgIn[m.product_id] : 0
+        const polluted = Number(m.cost_price) > 0 && isSalePrice(Number(m.cost_price), saleNet)
+        const unit = legacyUnit(m, name, false)
+        out.movUnits.push({ id: m.id, unit })
         if (!(unit > 0)) out.missing.push({ name, qty, reason: polluted ? 'у русі складу стояла ціна продажу — закупівельної ціни немає' : 'немає собівартості' })
         out.cost += qty * unit
       })
@@ -139,7 +178,7 @@ export async function accrualSalesDocs(from, to) {
 // ── P&L за нарахуванням у форматі computePLBreakdown (той самий рендер таблиці) ──
 export async function computeAccrualPL(year, month) {
   const { from, to } = periodRange(year, month)
-  const [cash, sales] = await Promise.all([computePLBreakdown(year, month), accrualSalesDocs(from, to)])
+  const [cash, sales, writeoffs] = await Promise.all([computePLBreakdown(year, month), accrualSalesDocs(from, to), accrualWriteoffs(from, to).catch(() => [])])
   const cols = cash.cols
   const bucketOf = (d) => month ? String(Number(d.slice(8, 10))) : String(Number(d.slice(5, 7)))
   const zero = () => Object.fromEntries(cols.map(c => [c.key, 0]))
@@ -160,6 +199,11 @@ export async function computeAccrualPL(year, month) {
   const keep = { opex: [], other_income: [], below_line: [] }
   cash.rows.filter(r => r.type === 'row' && keep[r.level] && !isVatArticle(r.label)).forEach(r => keep[r.level].push(r))
   const levelCells = (lvl) => { const c = zero(); keep[lvl].forEach(r => cols.forEach(col => { c[col.key] += r.cells[col.key] || 0 })); return c }
+  // списання товарів зі складу — окремий рядок операційних витрат
+  if (writeoffs.length) {
+    const cells = zero(); writeoffs.forEach(w => { cells[bucketOf(w.date)] += w.cost })
+    keep.opex.push({ type: 'row', label: 'Списання товарів зі складу (без документа)', level: 'opex', cells, total: sumCells(cells), writeoffs })
+  }
   const opex = levelCells('opex'), oth = levelCells('other_income'), below = levelCells('below_line')
   const sub = (fn) => { const c = zero(); cols.forEach(col => { c[col.key] = fn(col.key) }); return c }
   const gp = sub(k => revCells[k] - cogsCells[k])
@@ -181,8 +225,9 @@ export async function computeAccrualPL(year, month) {
   subtotal('Чистий прибуток (Net)', net)
 
   const missing = sales.filter(s => s.missing.length).map(s => ({ doc: s.doc, date: s.date, items: s.missing, costSource: s.costSource }))
+  const estimated = sales.filter(s => s.estimated.length).map(s => ({ doc: s.doc, date: s.date, items: s.estimated }))
   const excludedVat = cash.rows.filter(r => r.type === 'row' && isVatArticle(r.label)).map(r => ({ label: r.label, total: r.total }))
-  return { cols, rows, netTotal: sumCells(net), sales, missing, excludedVat, from, to }
+  return { cols, rows, netTotal: sumCells(net), sales, missing, estimated, writeoffs, excludedVat, from, to }
 }
 
 // ── Борги і запаси станом на дату (для звірки) ──
@@ -306,7 +351,7 @@ export async function computeOrderMargins(from, to) {
       revenue, cost, margin: r2(revenue - cost), marginPct: revenue > 0 ? (revenue - cost) / revenue : null,
       shipDate, payDate, daysToPay: payDate ? daysBetween(shipDate, payDate) : null,
       paid, gross: r2(gross), paidPct: gross > 0 ? Math.min(1, paid / gross) : null,
-      missingCost: list.some(s => s.missing.length), docs: list.length,
+      missingCost: list.some(s => s.missing.length), estimatedCost: list.some(s => s.estimated?.length), docs: list.length,
     })
   })
   return rows.sort((a, b) => (b.shipDate || '').localeCompare(a.shipDate || ''))

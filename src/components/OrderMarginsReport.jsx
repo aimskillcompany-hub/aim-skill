@@ -79,8 +79,8 @@ export default function OrderMarginsReport() {
                     <td style={{ whiteSpace: 'nowrap' }}><Link to={`/orders/${r.id}`}>№{r.number}</Link></td>
                     <td><div className="trunc" style={{ maxWidth: 260 }}>{r.client}</div></td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{money(r.revenue)}</td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: r.missingCost ? '#B45309' : undefined }} title={r.missingCost ? 'Частина позицій без собівартості — маржа завищена' : undefined}>
-                      {money(r.cost)}{r.missingCost && <i className="ti ti-alert-triangle" style={{ marginLeft: 4 }} />}
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: r.missingCost ? '#B45309' : undefined }} title={r.missingCost ? 'Частина позицій без собівартості — маржа завищена' : r.estimatedCost ? 'Частина позицій без партії — собівартість оцінена (поточна)' : undefined}>
+                      {money(r.cost)}{(r.missingCost || r.estimatedCost) && <i className="ti ti-alert-triangle" style={{ marginLeft: 4 }} />}
                     </td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 600, color: r.margin >= 0 ? 'var(--green)' : 'var(--red)' }}>{money(r.margin)}</td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{r.marginPct != null ? (r.marginPct * 100).toFixed(1) + '%' : '—'}</td>
