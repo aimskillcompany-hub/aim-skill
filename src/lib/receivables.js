@@ -22,7 +22,11 @@ let _lock = Promise.resolve()
 export async function loadReceivables(companies, year, month) {
   const run = async () => {
     const asOf = lastDay(year, month)
-    const asOfMs = new Date(asOf).getTime()
+    // Вік боргу — до сьогодні (для поточного/майбутнього періоду) або до кінця минулого періоду.
+    // Склад боргів (документи/оплати ≤ asOf) не змінюється — щоб сума збігалась із Балансом.
+    const todayIso = new Date().toISOString().slice(0, 10)
+    const ageRef = asOf < todayIso ? asOf : todayIso
+    const asOfMs = new Date(ageRef).getTime()
     const saved = getActiveCompanyId()
     const docsOut = []
     const companyMeta = []
@@ -85,7 +89,7 @@ export async function loadReceivables(companies, year, month) {
     } finally {
       setActiveCompanyId(saved); clearCompanyCache()
     }
-    return { docs: docsOut, companies: companyMeta, asOf }
+    return { docs: docsOut, companies: companyMeta, asOf, ageRef }
   }
   const result = _lock.then(run, run)
   _lock = result.then(() => {}, () => {})
