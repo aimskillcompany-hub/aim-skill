@@ -432,7 +432,7 @@ export function PLView({ fixedYear = null, fixedMonth = null } = {}) {
 
       {/* Прогноз (факт + дебіторка + маржа відкритих замовлень) — майбутнє, не прив'язане до місяця.
           У режимі закриття (locked) ховаємо: там потрібен лише об'єктивний факт періоду. */}
-      {!locked && <ForecastCard year={year} month={month || null} />}
+      {!locked && <ForecastCard year={year} month={month || null} accrualNet={accrual ? (acc ? acc.netTotal : undefined) : null} />}
 
       {plErr && <div className="card" style={{ color: 'var(--red)', marginBottom: 12 }}>Помилка: {plErr}</div>}
       <div className="card">
@@ -555,8 +555,9 @@ function ReconCard({ recon }) {
     </div>
   )
   const ex = r.explained
-  const known = ex.loans + ex.fixedAssets + ex.vat + ex.unvalidated + (ex.vatInDocs || 0)
+  const known = ex.loans + ex.fixedAssets + ex.vat + ex.withdrawals + ex.other + ex.noArticle + ex.unvalidated + (ex.vatInDocs || 0)
   const rest = r.diff - known
+  const di = r.dataIssues || {}
   return (
     <div className="card" style={{ marginTop: 14 }}>
       <div className="card-title" style={{ marginBottom: 6 }}>Звірка з грошовим потоком</div>
@@ -573,12 +574,29 @@ function ReconCard({ recon }) {
           {Math.abs(ex.vat) >= 1 && line('ПДВ, сплачений до бюджету', ex.vat, { indent: true, small: true, muted: true, sign: true })}
           {Math.abs(ex.loans) >= 1 && line('позики (ПФД)', ex.loans, { indent: true, small: true, muted: true, sign: true })}
           {Math.abs(ex.fixedAssets) >= 1 && line('основні засоби', ex.fixedAssets, { indent: true, small: true, muted: true, sign: true })}
+          {Math.abs(ex.withdrawals) >= 1 && line('вивід коштів', ex.withdrawals, { indent: true, small: true, muted: true, sign: true })}
+          {Math.abs(ex.other) >= 1 && line('інше (надходження/витрати поза P&L)', ex.other, { indent: true, small: true, muted: true, sign: true })}
+          {Math.abs(ex.noArticle) >= 1 && line('без статті', ex.noArticle, { indent: true, small: true, muted: true, sign: true })}
           {Math.abs(ex.unvalidated) >= 1 && line('непідтверджені транзакції (не в P&L)', ex.unvalidated, { indent: true, small: true, muted: true, sign: true })}
           {Math.abs(rest) >= 1 && line('решта (оцінка складу за ціною закупівлі vs собівартість, оплати без документів, аванси)', rest, { indent: true, small: true, muted: true, sign: true })}
         </>}
       </div>
+      {r.opening && (
+        <p style={{ fontSize: 12, color: 'var(--text2)', margin: '10px 0 0' }}>
+          На початок ({r.opening.date.split('-').reverse().join('.')}): дебіторка <b>{fmtInt(r.opening.receivable)}</b>, кредиторка <b>{fmtInt(r.opening.payable)}</b>, запаси <b>{fmtInt(r.opening.inventory)}</b> — з документів і рухів складу всіх попередніх періодів.
+        </p>
+      )}
+      {(di.noDateInPeriod > 0 || di.noAmount > 0 || di.noDirection > 0) && (
+        <div style={{ fontSize: 12, color: '#7A4B00', background: '#FFF8E6', borderRadius: 8, padding: '8px 10px', marginTop: 8 }}>
+          <i className="ti ti-alert-triangle" /> Дані, що спотворюють борги й виручку:
+          {di.noDateInPeriod > 0 && <> <b>{di.noDateInPeriod}</b> док. у цьому періоді без дати документа (всього {di.noDate}) — датуються днем внесення в систему, тож старі документи потрапляють у виручку цього періоду, а не в борги на початок;</>}
+          {di.noAmount > 0 && <> <b>{di.noAmount}</b> док. без суми — не входять ні в борги, ні у виручку;</>}
+          {di.noDirection > 0 && <> <b>{di.noDirection}</b> док. без напряму (дебіторка/кредиторка) — не входять у борги.</>}
+          {' '}Виправляється в розділі «Документи».
+        </div>
+      )}
       <p style={{ fontSize: 11.5, color: 'var(--text3)', margin: '8px 0 0' }}>
-        Дебіторка/кредиторка — з ПДВ, станом на кінець попереднього і поточного періоду; запаси — за ціною закупівлі з довідника. Знак «≈»: прибуток рахується без ПДВ, а гроші й борги — з ПДВ, тому різниця на суму ПДВ очікувана.
+        Дебіторка/кредиторка — з ПДВ, станом на кінець попереднього і поточного періоду; запаси — за середньою ціною приходів (без ПДВ). Знак «≈»: прибуток рахується без ПДВ, а гроші й борги — з ПДВ, тому різниця на суму ПДВ очікувана.
       </p>
     </div>
   )
@@ -605,10 +623,14 @@ function Cell({ r, v, pv, bucketKey, colLabel, setDrill, showPending, bold }) {
   )
 }
 
-function ForecastCard({ year, month }) {
-  const [f, setF] = useState(null)
+// accrualNet: число — режим нарахування (Net з таблиці; дебіторка вже у виручці — не додаємо);
+// undefined — нарахування ще рахується; null — касовий режим.
+function ForecastCard({ year, month, accrualNet = null }) {
+  const [f0, setF] = useState(null)
   useEffect(() => { setF(null); computeForecast(year, month).then(setF) }, [year, month])
-  if (!f) return null
+  if (!f0 || accrualNet === undefined) return null
+  const isAcc = accrualNet !== null
+  const f = isAcc ? { ...f0, factNet: accrualNet, receivable: 0, expected: accrualNet + (f0.pipelineMargin || 0) } : f0
   const line = (label, val, hint, color) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0' }}>
       <span style={{ color: 'var(--text2)', fontSize: 13 }}>{label}{hint && <span style={{ color: 'var(--text3)', fontSize: 11, marginLeft: 6 }}>{hint}</span>}</span>
@@ -622,10 +644,10 @@ function ForecastCard({ year, month }) {
       </div>
       <div style={{ maxWidth: 520 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0' }}>
-          <span style={{ color: 'var(--text2)', fontSize: 13 }}>Фактичний результат (Net)</span>
+          <span style={{ color: 'var(--text2)', fontSize: 13 }}>Фактичний результат (Net{isAcc ? ', за нарахуванням' : ''})</span>
           <span style={{ fontWeight: 600, color: signColor(f.factNet), fontVariantNumeric: 'tabular-nums' }}>{fmtInt(f.factNet)}</span>
         </div>
-        {line('Дебіторка — виписано, чекає оплати', f.receivable, null, AMBER)}
+        {!isAcc && line('Дебіторка — виписано, чекає оплати', f.receivable, null, AMBER)}
         {line('Очікувана маржа з відкритих замовлень', f.pipelineMargin, `${f.pipelineCount} зам.`)}
         <div style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <span style={{ fontWeight: 700 }}>≈ Очікуваний результат</span>
@@ -633,7 +655,9 @@ function ForecastCard({ year, month }) {
         </div>
       </div>
       <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 10, marginBottom: 0 }}>
-        Оцінка, а не факт. Фактичний P&L — лише підтверджені гроші; сюди додано дебіторку (виписані видаткові/акти, ще не оплачені) та очікувану маржу з відкритих замовлень (без виданої видаткової — щоб не рахувати двічі).
+        {isAcc
+          ? 'Оцінка, а не факт. Результат за нарахуванням уже містить виписані видаткові/акти (дебіторку), тож її не додаємо; плюс очікувана маржа з відкритих замовлень без видаткової.'
+          : 'Оцінка, а не факт. Фактичний P&L — лише підтверджені гроші; сюди додано дебіторку (виписані видаткові/акти, ще не оплачені) та очікувану маржу з відкритих замовлень (без виданої видаткової — щоб не рахувати двічі).'}
         {f.pipelineNoItems > 0 && ` У ${f.pipelineNoItems} відкритих зам. немає позицій — їхня маржа не врахована.`}
       </p>
     </div>

@@ -14,7 +14,7 @@ import { qc } from './companyScope'
 import { fetchAll, fetchAllIn } from './fetchAll'
 import { computePLBreakdown, periodRange } from './pl'
 import { countsAsDebt, debtDate, loadDocPayments } from './debts'
-import { computeOrderPlan } from './orderPlan'
+import { computeOrderPlan, itemCost, itemSale } from './orderPlan'
 import { getCompany } from './companyConfig'
 import { addDaysIso, daysBetween } from './dates'
 
@@ -33,16 +33,34 @@ export async function accrualSalesDocs(from, to) {
   const ids = docs.map(d => d.id)
 
   const movs = await fetchAllIn(() => qc('stock_movements').select('id, document_id, product_id, quantity, cost_price, price, description').eq('type', 'out'), 'document_id', ids)
-  const prodIds = [...new Set(movs.map(m => m.product_id).filter(Boolean))]
-  const prods = prodIds.length ? await fetchAllIn(() => supabase.from('products').select('id, name, product_type, buy_price'), 'id', prodIds) : []
-  const prodById = {}; prods.forEach(p => { prodById[p.id] = p })
   const movsByDoc = {}; movs.forEach(m => { (movsByDoc[m.document_id] ||= []).push(m) })
 
-  // для документів без рухів складу — позиції їхніх замовлень (частка собівартості)
-  const noMovOrderIds = [...new Set(docs.filter(d => !movsByDoc[d.id]?.length && d.order_id).map(d => d.order_id))]
-  const oItems = noMovOrderIds.length ? await fetchAllIn(() => supabase.from('order_items').select('id, order_id, qty, unit_price, cost_price, vat_rate, cost_vat_rate, price_includes_vat, name'), 'order_id', noMovOrderIds) : []
+  // позиції замовлень цих документів — джерело закупівельної ціни (2-й пріоритет) і частки для документів без руху
+  const orderIds = [...new Set(docs.map(d => d.order_id).filter(Boolean))]
+  const oItems = orderIds.length ? await fetchAllIn(() => supabase.from('order_items').select('id, order_id, product_id, qty, unit_price, cost_price, vat_rate, cost_vat_rate, price_includes_vat, name'), 'order_id', orderIds) : []
   const itemsByOrder = {}; oItems.forEach(i => { (itemsByOrder[i.order_id] ||= []).push(i) })
   const vatOn = (await getCompany().catch(() => null))?.isVatPayer !== false
+
+  const prodIds = [...new Set([...movs.map(m => m.product_id), ...oItems.map(i => i.product_id)].filter(Boolean))]
+  const prods = prodIds.length ? await fetchAllIn(() => supabase.from('products').select('id, name, product_type'), 'id', prodIds) : []
+  const prodById = {}; prods.forEach(p => { prodById[p.id] = p })
+  // 3-й пріоритет: середня закупівельна (зважена) з ПРИХОДІВ на склад, без ПДВ. Поле довідника buy_price
+  // НЕ використовуємо — туди раніше записувалась ціна продажу.
+  const ins = prodIds.length ? await fetchAllIn(() => qc('stock_movements').select('id, product_id, quantity, price, cost_price').eq('type', 'in'), 'product_id', prodIds) : []
+  const avgIn = {}
+  ;(() => { const agg = {}; ins.forEach(m => { const u = Number(m.cost_price) || Number(m.price) || 0, q = Number(m.quantity) || 0; if (u > 0 && q > 0) { const x = (agg[m.product_id] ||= { q: 0, v: 0 }); x.q += q; x.v += q * u } }); Object.entries(agg).forEach(([k, x]) => { avgIn[k] = x.q ? x.v / x.q : 0 }) })()
+
+  const norm = (t) => String(t || '').toLowerCase().replace(/\s+/g, ' ').trim()
+  // ціна продажу ніколи не є собівартістю: відкидаємо значення, що збігаються з ціною продажу без ПДВ або з ПДВ
+  const isSalePrice = (cost, saleNet) => saleNet > 0 && cost > 0 && [1, 1.2, 1.07].some(k => Math.abs(cost - saleNet * k) <= Math.max(0.01, saleNet * k * 0.002))
+  const orderItemCost = (orderId, productId, name) => {
+    const it = (itemsByOrder[orderId] || []).find(i => (productId && i.product_id === productId)) || (itemsByOrder[orderId] || []).find(i => norm(i.name) === norm(name))
+    if (!it) return 0
+    const q = Number(it.qty) || 0
+    if (!q) return 0
+    const unitCost = itemCost(it, vatOn).net / q, unitSale = itemSale(it, vatOn).net / q
+    return unitCost > 0 && !isSalePrice(unitCost, unitSale) ? unitCost : 0
+  }
 
   return docs.map(d => {
     const gross = Math.abs(Number(d.amount) || 0)
@@ -56,18 +74,34 @@ export async function accrualSalesDocs(from, to) {
         const p = prodById[m.product_id] || {}
         const qty = Number(m.quantity) || 0
         if ((p.product_type || 'goods') !== 'goods') return // послуги/витратні — без собівартості
-        const unit = Number(m.cost_price) || Number(p.buy_price) || 0
-        if (!(unit > 0)) out.missing.push({ name: p.name || (m.description || '').replace(/^.*?:\s*/, '') || '—', qty, reason: 'немає собівартості' })
+        const name = p.name || (m.description || '').replace(/^.*?:\s*/, '') || '—'
+        const saleNet = Number(m.price) || 0
+        // 1) рух складу → 2) закупівельна позиції замовлення → 3) середня закупівельна з приходів → 4) 0 + у блок
+        let unit = Number(m.cost_price) || 0
+        let polluted = false
+        if (unit > 0 && isSalePrice(unit, saleNet)) { unit = 0; polluted = true }
+        if (!unit && d.order_id) unit = orderItemCost(d.order_id, m.product_id, name)
+        if (!unit) unit = avgIn[m.product_id] && !isSalePrice(avgIn[m.product_id], saleNet) ? avgIn[m.product_id] : 0
+        if (!(unit > 0)) out.missing.push({ name, qty, reason: polluted ? 'у русі складу стояла ціна продажу — закупівельної ціни немає' : 'немає собівартості' })
         out.cost += qty * unit
       })
     } else if (d.type === 'serviceAct') {
       out.costSource = 'service' // акт без складу — послуга, собівартості товарів немає
     } else if (d.order_id && itemsByOrder[d.order_id]?.length) {
-      const plan = computeOrderPlan(itemsByOrder[d.order_id], { vatOn })
+      // документ без руху складу: частка (виручка документа / виручка замовлення) від собівартості позицій замовлення
+      const items = itemsByOrder[d.order_id]
+      const plan = computeOrderPlan(items, { vatOn })
       const share = plan.revenueNet > 0 ? Math.min(1, net / plan.revenueNet) : 0
       out.costSource = 'order'
-      out.cost = plan.costNet * share
-      itemsByOrder[d.order_id].filter(i => !(Number(i.cost_price) > 0)).forEach(i => out.missing.push({ name: i.name, qty: Number(i.qty) || 0, reason: 'немає собівартості в замовленні' }))
+      let cost = 0
+      items.forEach(i => {
+        const q = Number(i.qty) || 0
+        let unit = orderItemCost(d.order_id, i.product_id, i.name)
+        if (!unit && i.product_id) { const saleNet = q ? itemSale(i, vatOn).net / q : 0; unit = avgIn[i.product_id] && !isSalePrice(avgIn[i.product_id], saleNet) ? avgIn[i.product_id] : 0 }
+        if (!(unit > 0)) out.missing.push({ name: i.name, qty: q, reason: 'немає собівартості (ні в замовленні, ні в приходах складу)' })
+        cost += q * unit
+      })
+      out.cost = cost * share
     } else {
       out.missing.push({ name: 'усі позиції документа', qty: null, reason: 'немає руху складу і замовлення — собівартість невідома' })
     }
@@ -140,11 +174,17 @@ async function debtsAsOf(date) {
   return { receivable, payable }
 }
 async function inventoryAsOf(date) {
-  const sm = await fetchAll(() => qc('stock_movements').select('id, product_id, type, quantity').lte('date', date))
-  const bal = {}; sm.forEach(m => { const q = Number(m.quantity) || 0; bal[m.product_id] = (bal[m.product_id] || 0) + (m.type === 'in' ? q : -q) })
+  // оцінка — за середньою ціною приходів (без ПДВ), а не за buy_price довідника (там могла бути ціна продажу)
+  const sm = await fetchAll(() => qc('stock_movements').select('id, product_id, type, quantity, price, cost_price').lte('date', date))
+  const bal = {}, agg = {}
+  sm.forEach(m => {
+    const q = Number(m.quantity) || 0
+    bal[m.product_id] = (bal[m.product_id] || 0) + (m.type === 'in' ? q : -q)
+    if (m.type === 'in') { const u = Number(m.cost_price) || Number(m.price) || 0; if (u > 0 && q > 0) { const x = (agg[m.product_id] ||= { q: 0, v: 0 }); x.q += q; x.v += q * u } }
+  })
   const ids = Object.keys(bal).filter(id => Math.abs(bal[id]) > 0.0001)
-  const prods = ids.length ? await fetchAllIn(() => supabase.from('products').select('id, buy_price, product_type'), 'id', ids) : []
-  return prods.reduce((s, p) => s + ((p.product_type || 'goods') === 'goods' ? bal[p.id] * (Number(p.buy_price) || 0) : 0), 0)
+  const prods = ids.length ? await fetchAllIn(() => supabase.from('products').select('id, product_type'), 'id', ids) : []
+  return prods.reduce((s, p) => s + ((p.product_type || 'goods') === 'goods' && agg[p.id] ? bal[p.id] * (agg[p.id].v / agg[p.id].q) : 0), 0)
 }
 
 // ── Звірка: прибуток за нарахуванням − Δдебіторки + Δкредиторки − Δзапасів ≈ чистий грошовий потік ──
@@ -154,10 +194,18 @@ export async function accrualReconciliation(year, month, netProfit) {
   const [d0, d1, i0, i1, txs, periodDocs] = await Promise.all([
     debtsAsOf(before), debtsAsOf(to), inventoryAsOf(before), inventoryAsOf(to),
     fetchAll(() => qc('bank_transactions').select('id, amount, direction, article, is_validated').eq('is_ignored', false).gte('date', from).lte('date', to)),
-    fetchAll(() => qc('documents').select('id, type, direction, vat_amount, doc_date, created_at').not('amount', 'is', null).not('direction', 'is', null)),
+    fetchAll(() => qc('documents').select('id, type, direction, amount, vat_amount, doc_date, created_at')),
   ])
   // ПДВ у документах періоду: у боргах (з ПДВ), але не в прибутку (без ПДВ) → вихідний − вхідний
-  const docsInPeriod = periodDocs.filter(d => countsAsDebt(d.type) && debtDate(d) >= from && debtDate(d) <= to)
+  const docsInPeriod = periodDocs.filter(d => d.amount != null && d.direction && countsAsDebt(d.type) && debtDate(d) >= from && debtDate(d) <= to)
+  // Діагностика даних: документи, які не потрапляють у борги на початок / виручку свого періоду
+  const debtLike = periodDocs.filter(d => countsAsDebt(d.type))
+  const dataIssues = {
+    noDate: debtLike.filter(d => !d.doc_date && d.amount != null && d.direction).length,        // датуються днем внесення в систему
+    noDateInPeriod: debtLike.filter(d => !d.doc_date && d.amount != null && d.direction && debtDate(d) >= from && debtDate(d) <= to).length,
+    noAmount: debtLike.filter(d => d.amount == null).length,                                     // не входять у борги взагалі
+    noDirection: debtLike.filter(d => d.amount != null && !d.direction).length,                  // невідомо, дебіторка чи кредиторка
+  }
   const vatOf = (dir) => docsInPeriod.filter(d => d.direction === dir).reduce((s, d) => s + Math.abs(Number(d.vat_amount) || 0), 0)
   const vatInDocs = r2(vatOf('receivable') - vatOf('payable'))
   const dAR = d1.receivable - d0.receivable
@@ -166,17 +214,17 @@ export async function accrualReconciliation(year, month, netProfit) {
   const estimated = netProfit - dAR + dAP - dInv
   const cashFlow = txs.reduce((s, t) => s + (Number(t.amount) || 0), 0)
   // відомі причини різниці: те, що є в грошах, але не в прибутку
-  const sumBy = (f) => r2(txs.filter(f).reduce((s, t) => s + (Number(t.amount) || 0), 0))
-  const explained = {
-    loans: sumBy(t => t.direction === 'ПФД'),                    // позики (ПФД)
-    fixedAssets: sumBy(t => t.direction === 'ОЗ'),               // основні засоби
-    vat: sumBy(t => isVatArticle(t.article)),                    // сплачений/повернений ПДВ
-    vatInDocs,                                                    // ПДВ у документах періоду (продажі − закупівлі)
-    unvalidated: sumBy(t => !t.is_validated && t.direction !== 'ПФД' && t.direction !== 'ОЗ' && !isVatArticle(t.article)), // не підтверджені — не в P&L
-  }
+  // Взаємовиключні категорії грошей, яких немає в прибутку (порядок важливий)
+  const isWithdraw = (t) => /вивід|вивед|дивіденд/i.test(t.article || '')
+  const cat = (t) => t.direction === 'ПФД' ? 'loans' : t.direction === 'ОЗ' ? 'fixedAssets' : isVatArticle(t.article) ? 'vat'
+    : isWithdraw(t) ? 'withdrawals' : t.direction === 'Інше' ? 'other' : !(t.article || '').trim() ? 'noArticle' : !t.is_validated ? 'unvalidated' : null
+  const explained = { loans: 0, fixedAssets: 0, vat: 0, withdrawals: 0, other: 0, noArticle: 0, unvalidated: 0, vatInDocs }
+  txs.forEach(t => { const k = cat(t); if (k) explained[k] += Number(t.amount) || 0 })
+  Object.keys(explained).forEach(k => { explained[k] = r2(explained[k]) })
   return {
     netProfit: r2(netProfit), dAR: r2(dAR), dAP: r2(dAP), dInv: r2(dInv),
-    estimated: r2(estimated), cashFlow: r2(cashFlow), diff: r2(cashFlow - estimated), explained,
+    estimated: r2(estimated), cashFlow: r2(cashFlow), diff: r2(cashFlow - estimated), explained, dataIssues,
+    opening: { receivable: r2(d0.receivable), payable: r2(d0.payable), inventory: r2(i0), date: before },
   }
 }
 

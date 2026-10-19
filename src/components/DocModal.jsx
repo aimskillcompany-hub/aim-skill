@@ -241,7 +241,8 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
       if (!qty || !it.name) { if (it.name) failures.push(`«${it.name}»: немає кількості`); continue }
       const price = Number(it.unit_price ?? it.unitPrice ?? it.price) || null
       try {
-        const resolved = await resolveProduct(it.name, it.unit, price, user?.id, it.sku ?? it.code ?? null)
+        // закупівельну ціну в довідник — лише з прихідних (у видатковій це ціна продажу)
+        const resolved = await resolveProduct(it.name, it.unit, stockDir === 'in' ? price : null, user?.id, it.sku ?? it.code ?? null)
         const productId = resolved?.productId
         if (!productId) { failures.push(`«${it.name}»: не вдалося знайти/створити товар`); continue }
         productIds.push(productId)

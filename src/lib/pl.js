@@ -235,8 +235,11 @@ export async function salesProfitReport(year, month) {
     const prod = prodMap[m.product_id]
     // Послуги не мають собівартості (COGS) — уся сума є маржею/доходом.
     // Для товарів: cost_price руху, а якщо порожній — фолбек на останню закупівлю (рішення #16).
+    // собівартість руху, що збігається з ціною продажу (без ПДВ / з ПДВ), — помилкова: беремо останню закупівлю
+    const sale = Number(m.price) || 0, mc = Number(m.cost_price) || 0
+    const mcIsSale = sale > 0 && mc > 0 && [1, 1.2, 1.07].some(k => Math.abs(mc - sale * k) <= Math.max(0.01, sale * k * 0.002))
     const cost = prod?.product_type === 'service' ? 0
-      : (Number(m.cost_price) || purchaseByProd[m.product_id]?.lastInNet || 0)
+      : ((mcIsSale ? 0 : mc) || purchaseByProd[m.product_id]?.lastInNet || 0)
     byDoc[m.document_id].rows.push(calcRow(
       prod?.name || (m.description || '').replace(/^.*?:\s*/, '') || '—',
       Number(m.quantity) || 0, Number(m.price) || 0, cost,

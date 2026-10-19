@@ -218,8 +218,7 @@ export async function getLastPurchaseCost(productId, onDate = null) {
   const withDoc = (data || []).find(m => m.document_id && unit(m) > 0)
   const any = (data || []).find(m => unit(m) > 0)
   if (withDoc || any) return unit(withDoc || any)
-  const { data: p } = await supabase.from('products').select('buy_price').eq('id', productId).maybeSingle()
-  return Number(p?.buy_price) || null
+  return null // без приходів собівартість невідома (довідник buy_price не беремо — там могла бути ціна продажу)
 }
 
 // ── FIFO собівартість (використовується для компонентів збірки) ──
@@ -630,7 +629,7 @@ export async function processDocumentItems(savedItems, {
           }, { onConflict: 'normalized', ignoreDuplicates: true })
         }
       } else {
-        result = await resolveProduct(item.name, item.unit, item.unit_price, userId, item.sku || null)
+        result = await resolveProduct(item.name, item.unit, movementType === 'in' ? item.unit_price : null, userId, item.sku || null) // лише закупівельна ціна
       }
       if (!result) {
         errors.push(`Не вдалося створити продукт: ${item.name}`)

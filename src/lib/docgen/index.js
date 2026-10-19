@@ -316,7 +316,7 @@ export async function createStockFromDoc(docId, docType, items, date, userId) {
     // Знайти або створити продукт
     const resolved = item.productId
       ? { productId: item.productId, isNew: false }
-      : await resolveProduct(item.name, item.unit || 'шт', parseFloat(item.unitPrice) || null, userId, item.sku || null)
+      : await resolveProduct(item.name, item.unit || 'шт', dt.stockEffect === 'in' ? (parseFloat(item.unitPrice) || null) : null, userId, item.sku || null) // ціна продажу ≠ закупівельна
 
     if (!resolved?.productId) continue
 
