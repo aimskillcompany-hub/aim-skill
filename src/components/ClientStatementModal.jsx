@@ -182,6 +182,7 @@ function Preview({ st, dim }) {
       <div style={{ fontSize: 12, color: '#5E5A6B' }}>
         {st.contractor.edrpou && `ЄДРПОУ ${st.contractor.edrpou}`}
       </div>
+      <div style={{ fontSize: 13, marginTop: 6 }}><span style={{ color: '#5E5A6B' }}>Заборгованість перед: </span><b>{st.company.shortName || st.company.name}</b></div>
       <div style={{ fontSize: 11.5, color: '#9AA0AE', margin: '2px 0 14px' }}>станом на {dmy(st.asOf)}</div>
 
       <div style={{ overflowX: 'auto' }}>

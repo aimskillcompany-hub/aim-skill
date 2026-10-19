@@ -62,6 +62,7 @@ export function clientStatementDoc(st) {
       { text: 'КОМУ', fontSize: 7, bold: true, color: GREY, letterSpacing: 1 },
       { text: st.contractor.name, bold: true, fontSize: 10.5, margin: [0, 1, 0, 0] },
       st.contractor.edrpou ? { text: `ЄДРПОУ ${st.contractor.edrpou}`, fontSize: 8.5, color: GREY } : {},
+      { text: [{ text: 'Заборгованість перед: ', color: GREY }, { text: c.shortName || c.name, bold: true }], fontSize: 9.5, margin: [0, 6, 0, 0] },
       { text: `станом на ${dmy(st.asOf)}`, fontSize: 8, color: LIGHT, margin: [0, 2, 0, 14] },
 
       // Документи

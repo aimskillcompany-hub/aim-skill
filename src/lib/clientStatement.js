@@ -105,8 +105,8 @@ export async function exportClientStatementXlsx(st) {
   // як у PDF: лише «Кому» + станом на (шапки постачальника немає)
   ws.addRow(['КОМУ']).font = { bold: true, size: 9, color: { argb: 'FF5E5A6B' } }
   ws.addRow([`${st.contractor.name}${st.contractor.edrpou ? ' (ЄДРПОУ ' + st.contractor.edrpou + ')' : ''}`]).font = { bold: true, size: 12 }
+  ws.addRow([`Заборгованість перед: ${st.company.shortName || st.company.name}`]).font = { bold: true, size: 10 }
   ws.addRow([`станом на ${dmy(st.asOf)}`]).font = { size: 9, color: { argb: 'FF9AA0AE' } }
-  ws.addRow([])
   const head = ws.addRow(['Документ / товар', 'Артикул', 'К-сть', 'Од.', 'Ціна з ПДВ', 'Дата відвант.', 'Сума, грн', 'Залишок, грн', 'Днів з відвант.'])
   head.font = { bold: true, color: { argb: 'FF5E5A6B' } }
   head.eachCell(c => { c.border = { bottom: { style: 'thin', color: { argb: 'FFCFCBD9' } } } })
