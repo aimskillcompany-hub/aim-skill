@@ -11,9 +11,6 @@ const qn = (v) => _q.format(Number(v) || 0).replace(/ /g, ' ')
 
 export function clientStatementDoc(st) {
   const c = st.company
-  const contractLine = st.contracts.length
-    ? st.contracts.map(x => `№ ${x.num}${x.date ? ' від ' + dmy(x.date) : ''}`).join('; ')
-    : null
 
   // ── Таблиця: Документ / товар · Дата відвант. · Сума · Залишок · Днів з відвантаження ──
   const H = (t, right) => ({ text: t, bold: true, fontSize: 7.5, color: GREY, alignment: right ? 'right' : 'left', margin: [0, 2, 0, 2] })
@@ -64,7 +61,7 @@ export function clientStatementDoc(st) {
       // Кому
       { text: 'КОМУ', fontSize: 7, bold: true, color: GREY, letterSpacing: 1 },
       { text: st.contractor.name, bold: true, fontSize: 10.5, margin: [0, 1, 0, 0] },
-      { text: [st.contractor.edrpou ? `ЄДРПОУ ${st.contractor.edrpou}` : '', contractLine ? `${st.contractor.edrpou ? '  ·  ' : ''}Договір ${contractLine}` : ''].join(''), fontSize: 8.5, color: GREY },
+      st.contractor.edrpou ? { text: `ЄДРПОУ ${st.contractor.edrpou}`, fontSize: 8.5, color: GREY } : {},
       { text: `станом на ${dmy(st.asOf)}`, fontSize: 8, color: LIGHT, margin: [0, 2, 0, 14] },
 
       // Документи

@@ -180,7 +180,7 @@ function Preview({ st, dim }) {
       <div style={{ fontSize: 11, color: '#5E5A6B', fontWeight: 700, letterSpacing: 1 }}>КОМУ</div>
       <div style={{ fontWeight: 700 }}>{st.contractor.name}</div>
       <div style={{ fontSize: 12, color: '#5E5A6B' }}>
-        {st.contractor.edrpou && `ЄДРПОУ ${st.contractor.edrpou}`}{st.contracts.length > 0 && ` · Договір ${st.contracts.map(x => `№ ${x.num}${x.date ? ' від ' + dmy(x.date) : ''}`).join('; ')}`}
+        {st.contractor.edrpou && `ЄДРПОУ ${st.contractor.edrpou}`}
       </div>
       <div style={{ fontSize: 11.5, color: '#9AA0AE', margin: '2px 0 14px' }}>станом на {dmy(st.asOf)}</div>
 
