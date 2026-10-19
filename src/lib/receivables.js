@@ -14,14 +14,21 @@ export const BUCKETS = [
 ]
 const bucketOf = (age) => BUCKETS.find(b => age >= b.from && age <= b.to)?.key || '30+'
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100
+const addDaysIso = (iso, n) => { const x = new Date(iso + 'T00:00:00Z'); x.setUTCDate(x.getUTCDate() + (Number(n) || 0)); return x.toISOString().slice(0, 10) }
 const lastDay = (y, m) => `${y}-${String(m).padStart(2, '0')}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`
 
 let _lock = Promise.resolve()
 
-// Повертає плаский список боргових документів по всіх компаніях + мета компаній.
-export async function loadReceivables(companies, year, month) {
+// Повертає плаский список боргових документів по всіх компаніях + мета компаній (станом на кінець місяця).
+export function loadReceivables(companies, year, month) {
+  return loadReceivablesAsOf(companies, lastDay(year, month))
+}
+
+// Те саме станом на довільну дату (YYYY-MM-DD) — для звіту по контрагенту.
+// Строк оплати = дата документа + відстрочка контрагента (contractors.payment_delay_days, інакше 0);
+// прострочка = дата відліку − строк оплати (не менше 0). Вік — від дати документа.
+export async function loadReceivablesAsOf(companies, asOf) {
   const run = async () => {
-    const asOf = lastDay(year, month)
     // Вік боргу — до сьогодні (для поточного/майбутнього періоду) або до кінця минулого періоду.
     // Склад боргів (документи/оплати ≤ asOf) не змінюється — щоб сума збігалась із Балансом.
     const todayIso = new Date().toISOString().slice(0, 10)
@@ -32,9 +39,9 @@ export async function loadReceivables(companies, year, month) {
     const companyMeta = []
     try {
       // контрагенти (не скоуплені) — один раз
-      const { data: contractors } = await supabase.from('contractors').select('id, name, edrpou')
-      const cName = {}, cEdr = {}
-      ;(contractors || []).forEach(c => { cName[c.id] = c.name; cEdr[c.id] = c.edrpou })
+      const { data: contractors } = await supabase.from('contractors').select('id, name, edrpou, payment_delay_days')
+      const cName = {}, cEdr = {}, cDelay = {}
+      ;(contractors || []).forEach(c => { cName[c.id] = c.name; cEdr[c.id] = c.edrpou; cDelay[c.id] = Number(c.payment_delay_days) || 0 })
 
       for (const comp of companies) {
         setActiveCompanyId(comp.id); clearCompanyCache()
@@ -42,14 +49,14 @@ export async function loadReceivables(companies, year, month) {
 
         // боргові документи клієнту до кінця періоду
         const { data: docs } = await qc('documents')
-          .select('id, doc_number, type, doc_date, amount, vat_amount, is_signed, is_verified, contractor_id, storage_path, order_id, created_at, direction')
+          .select('id, doc_number, type, doc_date, amount, vat_amount, is_signed, is_verified, contractor_id, storage_path, order_id, created_at, direction, generated_doc_id')
           .eq('direction', 'receivable').not('amount', 'is', null)
         const relevant = (docs || []).filter(d => countsAsDebt(d.type) && debtDate(d) <= asOf)
         const ids = relevant.map(d => d.id)
         if (!ids.length) continue
 
         // оплати ≤ кінця періоду (transaction_documents → bank_transactions.date)
-        const paidByDoc = {}
+        const paidByDoc = {}, paysByDoc = {}
         const tds = []
         for (let i = 0; i < ids.length; i += 200) {
           const { data } = await supabase.from('transaction_documents').select('document_id, amount, transaction_id').in('document_id', ids.slice(i, i + 200))
@@ -65,6 +72,7 @@ export async function loadReceivables(companies, year, month) {
           const pd = ptxDate[x.transaction_id]
           if (pd && pd > asOf) return // оплата пізніше кінця періоду
           paidByDoc[x.document_id] = (paidByDoc[x.document_id] || 0) + Math.abs(Number(x.amount) || 0)
+          ;(paysByDoc[x.document_id] ||= []).push({ date: pd || null, amount: r2(Math.abs(Number(x.amount) || 0)) })
         })
 
         relevant.forEach(d => {
@@ -74,10 +82,15 @@ export async function loadReceivables(companies, year, month) {
           if (outstanding <= 0.5) return
           const dd = debtDate(d)
           const ageDays = dd ? Math.max(0, Math.floor((asOfMs - new Date(dd).getTime()) / 864e5)) : 0
+          const delayDays = cDelay[d.contractor_id] || 0
+          const dueDate = dd ? addDaysIso(dd, delayDays) : null
+          const overdueDays = dueDate ? Math.max(0, Math.floor((asOfMs - new Date(dueDate).getTime()) / 864e5)) : 0
           docsOut.push({
             companyId: comp.id, companyName: comp.short_name || comp.name,
-            docId: d.id, doc_number: d.doc_number || '—', type: d.type, doc_date: dd,
+            docId: d.id, doc_number: d.doc_number || '—', hasNumber: !!(d.doc_number || '').trim(), type: d.type, doc_date: dd,
             amount, paid, outstanding, ageDays, bucket: bucketOf(ageDays),
+            delayDays, dueDate, overdueDays, payments: (paysByDoc[d.id] || []).sort((a, b) => (a.date || '').localeCompare(b.date || '')),
+            generated_doc_id: d.generated_doc_id || null,
             contractorId: d.contractor_id || 'unknown',
             contractorName: cName[d.contractor_id] || 'Без контрагента',
             edrpou: cEdr[d.contractor_id] || '',

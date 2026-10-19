@@ -62,6 +62,12 @@ export let COMPANY = loadLocal()
 let _cachedId = null // id активної компанії, для якої закешовано _cached
 
 // Скинути кеш реквізитів (при перемиканні/редагуванні компанії).
+// Реквізити конкретної юрособи за id (незалежно від активної) — для звітів по кількох юрособах.
+export async function getCompanyById(id) {
+  const { data } = await supabase.from('companies').select('*').eq('id', id).maybeSingle()
+  return data ? mapRow(data) : null
+}
+
 export function clearCompanyCache() { _cached = null; _cachedId = null }
 
 export async function getCompany() {
