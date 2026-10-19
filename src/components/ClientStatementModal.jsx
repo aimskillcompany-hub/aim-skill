@@ -8,9 +8,6 @@ import { downloadClientStatementPdf } from '../lib/clientStatementPdf'
 
 // «Звіт для клієнта» по одному контрагенту: налаштування → попередній перегляд → PDF / Excel / текст.
 // Якщо контрагент винен кільком нашим юрособам — окремий звіт на кожну (різні реквізити для оплати).
-const MGR_KEY = 'recv_manager'
-const loadMgr = () => { try { return JSON.parse(localStorage.getItem(MGR_KEY) || '{}') } catch { return {} } }
-const saveMgr = (m) => { try { localStorage.setItem(MGR_KEY, JSON.stringify(m)) } catch { /* ignore */ } }
 const todayIso = () => new Date().toISOString().slice(0, 10)
 
 export default function ClientStatementModal({ group, defaultAsOf, onClose, onLogged }) {
@@ -26,8 +23,8 @@ export default function ClientStatementModal({ group, defaultAsOf, onClose, onLo
   const [title, setTitle] = useState('reminder')
   const [withItems, setWithItems] = useState(true)
   const [onlyOverdue, setOnlyOverdue] = useState(false)
-  const saved = loadMgr()
-  const [mgr, setMgr] = useState({ name: saved.name || user?.full_name || user?.email || '', position: saved.position || 'Менеджер', phone: saved.phone || '', email: saved.email || user?.email || '' })
+  // менеджер — поточний користувач (лише для тексту нагадування і журналу; у PDF підпису немає)
+  const mgr = { name: user?.full_name || user?.email || '', phone: user?.phone || '' }
   const [st, setSt] = useState(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
@@ -48,19 +45,20 @@ export default function ClientStatementModal({ group, defaultAsOf, onClose, onLo
   }, [companyId, asOf, onlyOverdue, withItems, title, group.contractorId])
   useEffect(() => { remindersFor(group.contractorId).then(setLog) }, [group.contractorId])
 
-  const setM = (k, v) => setMgr(m => { const n = { ...m, [k]: v }; saveMgr(n); return n })
   const record = async (channel) => {
     if (!st) return
     const ok = await logReminder(st, { channel, userId: user?.id, userName: mgr.name })
     if (ok) { remindersFor(group.contractorId).then(setLog); onLogged?.() }
   }
-  const doPdf = async () => { downloadClientStatementPdf(st, mgr); await record('pdf') }
-  const doXlsx = async () => { exportClientStatementXlsx(st); await record('xlsx') }
+  const doPdf = async () => { downloadClientStatementPdf(st); await record('pdf') }
+  const doXlsx = async () => {
+    try { await exportClientStatementXlsx(st); await record('xlsx') } catch (e) { setErr('Excel: ' + e.message) }
+  }
   const doAllPdf = async () => {
     for (const c of cos) {
       const s = c.id === companyId && st ? st : await buildClientStatement({ contractorId: group.contractorId, companyId: c.id, asOf, onlyOverdue, withItems, title })
       if (!s.docs.length) continue
-      downloadClientStatementPdf(s, mgr)
+      downloadClientStatementPdf(s)
       await logReminder(s, { channel: 'pdf', userId: user?.id, userName: mgr.name })
     }
     remindersFor(group.contractorId).then(setLog); onLogged?.()
@@ -112,12 +110,6 @@ export default function ClientStatementModal({ group, defaultAsOf, onClose, onLo
           <div className="form-group"><label>Документи</label>
             <select className="form-input" value={onlyOverdue ? '1' : '0'} onChange={e => setOnlyOverdue(e.target.value === '1')}><option value="0">усі неоплачені</option><option value="1">лише прострочені</option></select></div>
         </div>
-        <div className="compact" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 10, alignItems: 'end', marginBottom: 12 }}>
-          <div className="form-group"><label>Менеджер (підпис)</label><input className="form-input" value={mgr.name} onChange={e => setM('name', e.target.value)} /></div>
-          <div className="form-group"><label>Посада</label><input className="form-input" value={mgr.position} onChange={e => setM('position', e.target.value)} /></div>
-          <div className="form-group"><label>Телефон</label><input className="form-input" value={mgr.phone} onChange={e => setM('phone', e.target.value)} placeholder="+380…" /></div>
-          <div className="form-group"><label>Email</label><input className="form-input" value={mgr.email} onChange={e => setM('email', e.target.value)} /></div>
-        </div>
 
         {/* Дії */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
@@ -151,7 +143,7 @@ export default function ClientStatementModal({ group, defaultAsOf, onClose, onLo
         {err && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 10 }}>Помилка: {err}</div>}
         {busy && !st && <p style={{ color: 'var(--text3)' }}>Формую…</p>}
         {empty && <p style={{ color: 'var(--text3)', fontSize: 13 }}>За цими налаштуваннями неоплачених документів немає.</p>}
-        {st && !empty && <Preview st={st} mgr={mgr} dim={busy} />}
+        {st && !empty && <Preview st={st} dim={busy} />}
 
         {/* Журнал */}
         <div style={{ marginTop: 16 }}>
@@ -180,9 +172,9 @@ export default function ClientStatementModal({ group, defaultAsOf, onClose, onLo
 }
 
 // Попередній перегляд — той самий зміст, що й у PDF
-function Preview({ st, mgr, dim }) {
+function Preview({ st, dim }) {
   const c = st.company
-  const td = { padding: '5px 8px', borderTop: '1px solid #EFECF5', fontSize: 12.5 }
+  const td = { padding: '5px 8px', fontSize: 12.5 }
   const num = { ...td, textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 20, background: '#fff', color: '#17151F', opacity: dim ? 0.55 : 1 }}>
@@ -202,91 +194,58 @@ function Preview({ st, mgr, dim }) {
       <div style={{ borderTop: '1px solid #E6E2F0', margin: '12px 0 10px' }} />
       <div style={{ fontSize: 11, color: '#5E5A6B', fontWeight: 700, letterSpacing: 1 }}>КОМУ</div>
       <div style={{ fontWeight: 700 }}>{st.contractor.name}</div>
-      <div style={{ fontSize: 12, color: '#5E5A6B', marginBottom: 12 }}>
+      <div style={{ fontSize: 12, color: '#5E5A6B', marginBottom: 14 }}>
         {st.contractor.edrpou && `ЄДРПОУ ${st.contractor.edrpou}`}{st.contracts.length > 0 && ` · Договір ${st.contracts.map(x => `№ ${x.num}${x.date ? ' від ' + dmy(x.date) : ''}`).join('; ')}`}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, marginBottom: 14 }}>
-        <Box label="До сплати" value={`${money(st.summary.total)} грн`} sub={st.vatPayer ? `у т.ч. ПДВ ${money(st.summary.vat)} грн` : 'Без ПДВ'} />
-        <Box label="З них прострочено" value={`${money(st.summary.overdue)} грн`} sub={st.summary.overdue > 0 ? `найбільша прострочка — ${st.summary.maxOverdue} дн.` : 'прострочки немає'} red={st.summary.overdue > 0} />
-        <Box label="Неоплачених документів" value={String(st.summary.count)} />
-      </div>
-
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', minWidth: 680, borderCollapse: 'collapse' }}>
-          <thead><tr style={{ fontSize: 11, color: '#5E5A6B', background: '#F6F4FA' }}>
-            <th style={{ ...td, textAlign: 'left', borderTop: 'none' }}>Документ / товар</th><th style={{ ...td, borderTop: 'none' }}>Дата відвант.</th><th style={{ ...td, borderTop: 'none' }}>Строк оплати</th>
-            <th style={{ ...num, borderTop: 'none' }}>Сума, грн</th><th style={{ ...num, borderTop: 'none' }}>Оплачено</th><th style={{ ...num, borderTop: 'none' }}>Залишок</th><th style={{ ...num, borderTop: 'none' }}>Простр., дн.</th>
+        <table style={{ width: '100%', minWidth: 600, borderCollapse: 'collapse' }}>
+          <thead><tr style={{ fontSize: 11, color: '#5E5A6B', borderBottom: '1px solid #CFCBD9' }}>
+            <th style={{ ...td, textAlign: 'left' }}>Документ / товар</th><th style={{ ...td, textAlign: 'left' }}>Дата відвант.</th>
+            <th style={num}>Сума, грн</th><th style={num}>Залишок, грн</th><th style={num}>Днів з відвант.</th>
           </tr></thead>
           <tbody>
-            {st.docs.map(d => (
-              <FragmentRows key={d.docId} d={d} st={st} td={td} num={num} />
-            ))}
-            <tr style={{ background: '#F6F4FA', fontWeight: 700 }}>
-              <td style={td} colSpan={5}>Разом до сплати</td><td style={num}>{money(st.summary.total)}</td><td style={td} />
+            {st.docs.map((d, i) => <FragmentRows key={d.docId} d={d} st={st} td={td} num={num} first={i === 0} />)}
+            <tr style={{ fontWeight: 700, borderTop: '1px solid #CFCBD9' }}>
+              <td style={{ ...td, fontSize: 13.5, paddingTop: 8 }} colSpan={3}>Разом до сплати</td>
+              <td style={{ ...num, fontSize: 13.5, paddingTop: 8 }}>{money(st.summary.total)}</td><td style={td} />
             </tr>
           </tbody>
         </table>
       </div>
-
-      <div style={{ fontSize: 11, color: '#5E5A6B', fontWeight: 700, letterSpacing: 1, margin: '16px 0 4px' }}>РЕКВІЗИТИ ДЛЯ ОПЛАТИ</div>
-      <div style={{ fontSize: 12.5, display: 'grid', gridTemplateColumns: '100px 1fr', gap: '2px 8px' }}>
-        <span style={{ color: '#5E5A6B' }}>Отримувач</span><span>{c.name || c.shortName}</span>
-        <span style={{ color: '#5E5A6B' }}>ЄДРПОУ</span><span>{c.edrpou}</span>
-        <span style={{ color: '#5E5A6B' }}>IBAN</span><span>{c.iban || <i style={{ color: 'var(--red)' }}>не заповнено в реквізитах юрособи</i>}</span>
-        <span style={{ color: '#5E5A6B' }}>Банк</span><span>{c.bankName}{c.mfo ? `, МФО ${c.mfo}` : ''}</span>
-        <span style={{ color: '#5E5A6B' }}>Призначення</span><span>{st.purpose}</span>
-      </div>
-      <div style={{ fontSize: 12.5, fontStyle: 'italic', color: '#5E5A6B', marginTop: 10 }}>Якщо оплату вже здійснено — просимо надіслати платіжне доручення.</div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 18, gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 12.5 }}>
-          <div style={{ color: '#5E5A6B', fontSize: 11.5 }}>{mgr.position}</div>
-          <div style={{ fontWeight: 700 }}>{mgr.name}</div>
-          <div style={{ color: '#5E5A6B' }}>{[mgr.phone, mgr.email].filter(Boolean).join(' · ')}</div>
-        </div>
-        <div style={{ width: 170, borderTop: '1px solid #5E5A6B', fontSize: 10.5, color: '#9AA0AE', paddingTop: 2 }}>підпис</div>
-      </div>
     </div>
   )
 }
 
-function FragmentRows({ d, st, td, num }) {
+function FragmentRows({ d, st, td, num, first }) {
+  const doc = { background: '#F2F2F2', fontWeight: 700 }
   return (
     <>
-      <tr style={{ fontWeight: 600 }}>
+      {!first && <tr><td colSpan={5} style={{ height: 8, padding: 0 }} /></tr>}
+      <tr style={{ ...doc, borderTop: first ? 'none' : '1px solid #CFCBD9' }}>
         <td style={td}>{docTitle(d)}</td>
-        <td style={{ ...td, whiteSpace: 'nowrap' }}>{dmy(d.doc_date)}</td>
-        <td style={{ ...td, whiteSpace: 'nowrap' }}>{dmy(d.dueDate)}</td>
+        <td style={{ ...td, whiteSpace: 'nowrap', fontWeight: 400 }}>{dmy(d.doc_date)}</td>
         <td style={num}>{money(d.amount)}</td>
-        <td style={{ ...num, color: d.paid > 0 ? undefined : '#B8B4C4' }}>{money(d.paid)}</td>
-        <td style={{ ...num, fontWeight: 700 }}>{money(d.outstanding)}</td>
-        <td style={{ ...num, color: d.overdueDays > 0 ? '#C62828' : '#B8B4C4' }}>{d.overdueDays > 0 ? d.overdueDays : '—'}</td>
+        <td style={num}>{money(d.outstanding)}</td>
+        <td style={num}>{d.ageDays}</td>
       </tr>
       {st.withItems && (d.items?.rows || []).map(r => (
         <tr key={r.n} style={{ color: '#5E5A6B' }}>
-          <td style={{ ...td, paddingLeft: 22, borderTop: 'none', fontSize: 12 }} colSpan={3}><span style={{ color: '#9AA0AE' }}>{r.n}.</span> {r.name}{r.sku && <span style={{ color: '#9AA0AE' }}> · арт. {r.sku}</span>}</td>
-          <td style={{ ...num, borderTop: 'none', fontSize: 11.5 }} colSpan={2}>{r.qty != null ? `${r.qty} ${r.unit || ''} × ${money(r.price)}` : ''}</td>
-          <td style={{ ...num, borderTop: 'none', fontSize: 12 }}>{money(r.sum)}</td>
-          <td style={{ ...td, borderTop: 'none' }} />
+          <td style={{ ...td, paddingLeft: 24, fontSize: 12 }} colSpan={2}>
+            <span style={{ color: '#9AA0AE' }}>{r.n}.</span> {r.name}{r.sku && <span style={{ color: '#9AA0AE' }}> · арт. {r.sku}</span>}
+            {r.qty != null && <span style={{ color: '#9AA0AE' }}> · {r.qty} {r.unit || ''} × {money(r.price)}</span>}
+          </td>
+          <td style={{ ...num, fontSize: 12 }}>{money(r.sum)}</td>
+          <td style={td} /><td style={td} />
         </tr>
       ))}
       {d.payments.filter(p => p.amount > 0).map((p, i) => (
         <tr key={'p' + i} style={{ color: '#1F7A4D', fontStyle: 'italic' }}>
-          <td style={{ ...td, paddingLeft: 22, borderTop: 'none', fontSize: 12 }} colSpan={4}>Оплата {p.date ? `від ${dmy(p.date)}` : ''}</td>
-          <td style={{ ...num, borderTop: 'none', fontSize: 12 }}>{money(p.amount)}</td>
-          <td style={{ ...td, borderTop: 'none' }} colSpan={2} />
+          <td style={{ ...td, paddingLeft: 24, fontSize: 12 }} colSpan={2}>Оплачено {p.date ? dmy(p.date) : ''}</td>
+          <td style={{ ...num, fontSize: 12 }}>−{money(p.amount)}</td>
+          <td style={td} colSpan={2} />
         </tr>
       ))}
     </>
-  )
-}
-
-function Box({ label, value, sub, red }) {
-  return (
-    <div style={{ background: '#F6F4FA', borderRadius: 10, padding: '8px 12px' }}>
-      <div style={{ fontSize: 11.5, color: '#5E5A6B' }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: red ? '#C62828' : '#17151F' }}>{value}</div>
-      {sub && <div style={{ fontSize: 11.5, color: '#5E5A6B' }}>{sub}</div>}
-    </div>
   )
 }

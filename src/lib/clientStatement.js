@@ -5,8 +5,6 @@ import { supabase } from './supabase'
 import { loadReceivablesAsOf } from './receivables'
 import { loadDocItems } from './docItems'
 import { getCompanyById } from './companyConfig'
-import { createWorkbook, downloadXlsx } from './docgen/xlsxBuilder'
-import * as XLSX from 'xlsx'
 
 const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100
 export const dmy = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('.') : '—'
@@ -75,7 +73,7 @@ export const DEFAULT_TEMPLATE = `Доброго дня!
 Деталізація по відвантаженнях — у вкладенні.
 
 Просимо здійснити оплату або повідомити орієнтовну дату.
-З повагою, {менеджер}, {телефон}`
+З повагою, {менеджер}`
 const TPL_KEY = 'recv_reminder_template'
 export function loadTemplate() { try { return localStorage.getItem(TPL_KEY) || DEFAULT_TEMPLATE } catch { return DEFAULT_TEMPLATE } }
 export function saveTemplate(t) { try { if (!t || t === DEFAULT_TEMPLATE) localStorage.removeItem(TPL_KEY); else localStorage.setItem(TPL_KEY, t) } catch { /* приватний режим */ } }
@@ -89,34 +87,63 @@ export function reminderText(st, manager, template = loadTemplate()) {
   // без прострочки рядок «з них прострочено 0,00 грн за 0 документами» не має сенсу — прибираємо його
   const tpl = st.summary.overdue > 0 ? template : template.split('\n').filter(l => !l.includes('{сума_прострочено}')).join('\n').replace(/ на суму \{сума\} грн,\s*$/m, ' на суму {сума} грн.')
   return tpl.replace(/\{([^}]+)\}/g, (m, k) => (k in vars ? vars[k] : m))
+    .replace(/,\s*,/g, ',').replace(/,\s*$/gm, '') // порожні {менеджер}/{телефон} не лишають «, ,» у кінці
 }
 
-// ── Excel: один аркуш, один рядок = одна товарна позиція з реквізитами документа; суми — числа ──
+// ── Excel (ExcelJS — зі стилями): як PDF — рядок документа жирний із сірою заливкою, товари з відступом ──
 const safeName = (s) => String(s || '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80)
 export const fileBase = (st) => `${safeName(st.contractor.short_name || st.contractor.name)}_${dmy(st.asOf)}`
 
-export function exportClientStatementXlsx(st) {
-  const head = ['Юрособа', 'Контрагент', 'ЄДРПОУ', 'Документ', '№ документа', 'Дата', 'Строк оплати', 'Прострочка, дн.',
-    'Сума документа', 'Оплачено', 'Залишок', '№ поз.', 'Найменування', 'Артикул', 'К-сть', 'Од.', 'Ціна з ПДВ', 'Сума з ПДВ']
-  const rows = [head]
-  const dateCell = (s) => s ? new Date(s + 'T00:00:00Z') : null
+export async function exportClientStatementXlsx(st) {
+  const ExcelJS = (await import('exceljs')).default || (await import('exceljs'))
+  const wb = new ExcelJS.Workbook()
+  const ws = wb.addWorksheet('Дебіторка', { views: [{ state: 'frozen', ySplit: 5 }] })
+  ws.columns = [
+    { width: 58 }, { width: 16 }, { width: 9 }, { width: 6 }, { width: 14 }, { width: 13 }, { width: 15 }, { width: 14 }, { width: 11 },
+  ]
+  const NUM = '#,##0.00'
+  ws.addRow([`${st.title} — ${st.contractor.name}${st.contractor.edrpou ? ' (ЄДРПОУ ' + st.contractor.edrpou + ')' : ''}`]).font = { bold: true, size: 13 }
+  ws.addRow([`Постачальник: ${st.company.name || st.company.shortName}${st.company.edrpou ? ', ЄДРПОУ ' + st.company.edrpou : ''}`])
+  ws.addRow([`Станом на ${dmy(st.asOf)}`])
+  ws.addRow([])
+  const head = ws.addRow(['Документ / товар', 'Артикул', 'К-сть', 'Од.', 'Ціна з ПДВ', 'Дата відвант.', 'Сума, грн', 'Залишок, грн', 'Днів з відвант.'])
+  head.font = { bold: true, color: { argb: 'FF5E5A6B' } }
+  head.eachCell(c => { c.border = { bottom: { style: 'thin', color: { argb: 'FFCFCBD9' } } } })
+
+  const dateOf = (iso) => iso ? new Date(iso + 'T00:00:00Z') : null
   st.docs.forEach(d => {
-    const base = [st.company.shortName || st.company.name, st.contractor.name, st.contractor.edrpou || '', docKind(d.type), d.hasNumber ? d.doc_number : '',
-      dateCell(d.doc_date), dateCell(d.dueDate), d.overdueDays, r2(d.amount), r2(d.paid), r2(d.outstanding)]
-    const lines = d.items?.rows?.length ? d.items.rows : [{ n: 1, name: 'Згідно документа', sku: null, qty: null, unit: '', price: null, sum: d.amount }]
-    lines.forEach(r => rows.push([...base, r.n, r.name, r.sku || '', r.qty ?? null, r.unit || '', r.price ?? null, r.sum ?? null]))
+    const r = ws.addRow([docTitle(d), null, null, null, null, dateOf(d.doc_date), r2(d.amount), r2(d.outstanding), d.ageDays])
+    r.font = { bold: true }
+    for (let c = 1; c <= 9; c++) {
+      const cell = r.getCell(c)
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } }
+      cell.border = { top: { style: 'thin', color: { argb: 'FFCFCBD9' } } }
+    }
+    r.getCell(6).numFmt = 'dd.mm.yyyy'; r.getCell(7).numFmt = NUM; r.getCell(8).numFmt = NUM
+    if (st.withItems) {
+      ;(d.items?.rows || []).forEach(it => {
+        const ir = ws.addRow([`${it.n}. ${it.name}`, it.sku || null, it.qty ?? null, it.unit || null, it.price ?? null, null, it.sum ?? null, null, null])
+        ir.font = { size: 10, color: { argb: 'FF5E5A6B' } }
+        ir.getCell(1).alignment = { indent: 1, wrapText: true }
+        ir.getCell(5).numFmt = NUM; ir.getCell(7).numFmt = NUM
+      })
+    }
+    d.payments.filter(p => p.amount > 0).forEach(p => {
+      const pr = ws.addRow([`Оплачено ${p.date ? dmy(p.date) : ''}`, null, null, null, null, dateOf(p.date), -r2(p.amount), null, null])
+      pr.font = { size: 10, italic: true, color: { argb: 'FF1F7A4D' } }
+      pr.getCell(1).alignment = { indent: 1 }
+      pr.getCell(6).numFmt = 'dd.mm.yyyy'; pr.getCell(7).numFmt = NUM
+    })
   })
-  const wb = createWorkbook()
-  const ws = XLSX.utils.aoa_to_sheet(rows, { cellDates: true })
-  const range = XLSX.utils.decode_range(ws['!ref'])
-  for (let R = 1; R <= range.e.r; R++) {
-    for (const C of [5, 6]) { const c = ws[XLSX.utils.encode_cell({ r: R, c: C })]; if (c) c.z = 'dd.mm.yyyy' }
-    for (const C of [8, 9, 10, 16, 17]) { const c = ws[XLSX.utils.encode_cell({ r: R, c: C })]; if (c && c.t === 'n') c.z = '#,##0.00' }
-  }
-  ws['!cols'] = [18, 30, 11, 20, 14, 11, 12, 10, 14, 12, 14, 6, 50, 16, 8, 6, 14, 14].map(w => ({ wch: w }))
-  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: range.e.r, c: range.e.c } }) }
-  XLSX.utils.book_append_sheet(wb, ws, 'Дебіторка')
-  downloadXlsx(wb, `Дебіторка_${fileBase(st)}.xlsx`)
+  const tot = ws.addRow(['Разом до сплати', null, null, null, null, null, null, r2(st.summary.total), null])
+  tot.font = { bold: true, size: 12 }
+  tot.getCell(8).numFmt = NUM
+  tot.eachCell(c => { c.border = { top: { style: 'medium', color: { argb: 'FF17151F' } } } })
+
+  const buf = await wb.xlsx.writeBuffer()
+  const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
+  const a = document.createElement('a'); a.href = url; a.download = `Дебіторка_${fileBase(st)}.xlsx`
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000)
 }
 
 // ── Журнал нагадувань (міграція 068) ──
