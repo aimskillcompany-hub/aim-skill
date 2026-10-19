@@ -4,6 +4,8 @@ import { fmtInt } from '../lib/fmt'
 import { PL_ORDER, PL_LABELS, fetchArticles, groupByType, TYPE_LABELS } from '../lib/articles'
 import * as XLSX from 'xlsx'
 import { computePL, computePLBreakdown, computeForecast, plDrill, computeAging } from '../lib/pl'
+import { computeAccrualPL, accrualReconciliation } from '../lib/accrual'
+import OrderMarginsReport from '../components/OrderMarginsReport'
 import { computeCashFlow, cashFlowDrill } from '../lib/cashflow'
 import { computeSnapshot, computeBalanceTrend } from '../lib/periodClose'
 import { getDocType } from '../lib/docgen'
@@ -35,13 +37,14 @@ export default function Analytics() {
     <div>
       <div className="page-header"><h1>Аналітика</h1></div>
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 18, overflowX: 'auto' }}>
-        {[['cashflow', 'Cash Flow', 'ti-arrows-exchange'], ['pl', 'P&L', 'ti-report-money'], ['balance', 'Баланс', 'ti-scale']].map(([id, lbl, icon]) => (
+        {[['cashflow', 'Cash Flow', 'ti-arrows-exchange'], ['pl', 'P&L', 'ti-report-money'], ['balance', 'Баланс', 'ti-scale'], ['margins', 'Маржа по замовленнях', 'ti-percentage']].map(([id, lbl, icon]) => (
           <button key={id} onClick={() => setTab(id)} style={tabStyle(tab === id)}><i className={`ti ${icon}`} style={{ fontSize: 15 }} />{lbl}</button>
         ))}
       </div>
       {tab === 'cashflow' && <CashFlowView />}
       {tab === 'pl' && <PLView />}
       {tab === 'balance' && <BalanceView />}
+      {tab === 'margins' && <OrderMarginsReport />}
     </div>
   )
 }
@@ -362,16 +365,30 @@ export function PLView({ fixedYear = null, fixedMonth = null } = {}) {
   const [month, setMonth] = useState(fixedMonth ?? 0)
   useEffect(() => { if (locked) { setYear(fixedYear); setMonth(fixedMonth) } }, [fixedYear, fixedMonth])
   const [mode, setMode] = useState('fact') // fact | plan | compare
+  const [basis, setBasis] = useState('accrual') // accrual (за замовчуванням) | cash
   const [data, setData] = useState(null)
   const [bd, setBd] = useState(null)
+  const [acc, setAcc] = useState(null)   // результат нарахування (документи без собівартості тощо)
+  const [recon, setRecon] = useState(null)
+  const [plErr, setPlErr] = useState(null)
   const [drill, setDrill] = useState(null)
   const [showPending, setShowPending] = useState(false)
+  const accrual = basis === 'accrual'
 
   useEffect(() => {
-    setData(null); setBd(null)
-    if (mode === 'fact') computePLBreakdown(year, month || null, { includePending: showPending }).then(setBd)
-    else computePL(year, month || null).then(setData)
-  }, [year, month, mode, showPending])
+    let cancelled = false
+    setData(null); setBd(null); setAcc(null); setRecon(null); setPlErr(null)
+    const fail = (e) => { if (!cancelled) setPlErr(e.message || String(e)) }
+    if (accrual) {
+      computeAccrualPL(year, month || null).then(r => {
+        if (cancelled) return
+        setBd(r); setAcc(r)
+        accrualReconciliation(year, month || null, r.netTotal).then(x => { if (!cancelled) setRecon(x) }).catch(fail)
+      }).catch(fail)
+    } else if (mode === 'fact') computePLBreakdown(year, month || null, { includePending: showPending }).then(r => { if (!cancelled) setBd(r) }).catch(fail)
+    else computePL(year, month || null).then(r => { if (!cancelled) setData(r) }).catch(fail)
+    return () => { cancelled = true }
+  }, [year, month, mode, showPending, basis])
 
   const rows = useMemo(() => {
     if (!data) return []
@@ -395,7 +412,12 @@ export function PLView({ fixedYear = null, fixedMonth = null } = {}) {
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         {!locked && <PeriodPicker year={year} setYear={setYear} month={month} setMonth={setMonth} />}
-        {mode === 'fact' && (
+        <div style={{ display: 'flex', gap: 0, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }} title="Нарахування — виручка і собівартість за документами відвантаження; Касовий — за датою оплати">
+          {[['accrual', 'Нарахування'], ['cash', 'Касовий']].map(([k, lbl]) => (
+            <button key={k} onClick={() => { setBasis(k); if (k === 'accrual') setMode('fact') }} style={{ border: 'none', padding: '6px 12px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', background: basis === k ? 'var(--text)' : 'var(--surface)', color: basis === k ? 'var(--surface)' : 'var(--text2)', fontWeight: basis === k ? 600 : 400 }}>{lbl}</button>
+          ))}
+        </div>
+        {!accrual && mode === 'fact' && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: AMBER, cursor: 'pointer', userSelect: 'none' }}>
             <input type="checkbox" checked={showPending} onChange={e => setShowPending(e.target.checked)} />
             + непідтверджені (превʼю)
@@ -403,7 +425,7 @@ export function PLView({ fixedYear = null, fixedMonth = null } = {}) {
         )}
         <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
           {[['fact', 'Факт'], ['plan', 'План'], ['compare', 'Порівняння']].map(([k, lbl]) => (
-            <button key={k} onClick={() => setMode(k)} className="btn" style={{ background: mode === k ? 'var(--blue)' : 'var(--surface)', color: mode === k ? '#fff' : 'var(--text2)', border: '1px solid var(--border)' }}>{lbl}</button>
+            <button key={k} disabled={accrual && k !== 'fact'} title={accrual && k !== 'fact' ? 'План/порівняння — у касовому режимі (план ведеться за статтями оплат)' : undefined} onClick={() => setMode(k)} className="btn" style={{ background: mode === k ? 'var(--blue)' : 'var(--surface)', color: mode === k ? '#fff' : 'var(--text2)', border: '1px solid var(--border)', opacity: accrual && k !== 'fact' ? 0.45 : 1 }}>{lbl}</button>
           ))}
         </div>
       </div>
@@ -412,8 +434,9 @@ export function PLView({ fixedYear = null, fixedMonth = null } = {}) {
           У режимі закриття (locked) ховаємо: там потрібен лише об'єктивний факт періоду. */}
       {!locked && <ForecastCard year={year} month={month || null} />}
 
+      {plErr && <div className="card" style={{ color: 'var(--red)', marginBottom: 12 }}>Помилка: {plErr}</div>}
       <div className="card">
-        {mode === 'fact' ? (
+        {(mode === 'fact' || accrual) ? (
           !bd ? <p style={{ color: 'var(--text3)' }}>Завантаження…</p> : (
             <div className="tbl-wrap" style={{ border: 'none' }}>
               <table>
@@ -478,9 +501,85 @@ export function PLView({ fixedYear = null, fixedMonth = null } = {}) {
             </table>
           </div>
         )}
-        <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>У P&L враховуються лише підтверджені (is_validated) транзакції. Натисніть на цифру, щоб побачити операції.</p>
+        <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>
+          {accrual
+            ? <>Нарахування: виручка — видаткові накладні й акти за датою документа (без ПДВ); собівартість — саме відвантажених позицій (склад, інакше частка з замовлення). Закупівлі товару до відвантаження — запас, у витрати не йдуть. Операційні витрати — підтверджені оплати за датою оплати; статті ПДВ не є витратою (виручка вже без ПДВ){acc?.excludedVat?.length ? ` — не враховано: ${acc.excludedVat.map(x => x.label + ' ' + fmtInt(x.total)).join(', ')}` : ''}.</>
+            : <>Касовий: враховуються лише підтверджені (is_validated) транзакції за датою оплати. Натисніть на цифру, щоб побачити операції.</>}
+        </p>
       </div>
+      {accrual && acc?.missing?.length > 0 && <MissingCostCard missing={acc.missing} />}
+      {accrual && <ReconCard recon={recon} />}
       {drill && <DrillModal drill={drill} year={year} month={month || null} onClose={() => setDrill(null)} />}
+    </div>
+  )
+}
+
+// Документи, у позиціях яких немає собівартості (підсвічуються — маржа й прибуток по них завищені)
+function MissingCostCard({ missing }) {
+  const [open, setOpen] = useState(false)
+  const items = missing.reduce((n, m) => n + m.items.length, 0)
+  return (
+    <div className="card" style={{ marginTop: 14, borderLeft: '4px solid ' + AMBER, background: '#FFF8E6' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => setOpen(o => !o)}>
+        <i className="ti ti-alert-triangle" style={{ color: AMBER }} />
+        <b>Немає собівартості: {items} поз. у {missing.length} документах</b>
+        <span style={{ fontSize: 12, color: 'var(--text3)' }}>— собівартість по них не врахована, прибуток завищений</span>
+        <i className={`ti ti-chevron-${open ? 'up' : 'down'}`} style={{ marginLeft: 'auto', color: 'var(--text3)' }} />
+      </div>
+      {open && (
+        <table style={{ width: '100%', fontSize: 13, marginTop: 10, borderCollapse: 'collapse' }}>
+          <tbody>
+            {missing.flatMap((m, i) => m.items.map((it, j) => (
+              <tr key={i + '-' + j} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>{j === 0 ? `${getDocType(m.doc.type)?.label || m.doc.type} ${m.doc.doc_number || ''}` : ''}</td>
+                <td style={{ padding: '4px 6px', whiteSpace: 'nowrap', color: 'var(--text3)' }}>{j === 0 ? m.date.split('-').reverse().join('.') : ''}</td>
+                <td style={{ padding: '4px 6px' }}>{it.name}{it.qty != null ? ` · ${it.qty}` : ''}</td>
+                <td style={{ padding: '4px 6px', color: '#B7791F', fontSize: 12 }}>{it.reason}</td>
+              </tr>
+            )))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
+// Звірка нарахування з грошима: прибуток − Δдебіторки + Δкредиторки − Δзапасів ≈ чистий грошовий потік
+function ReconCard({ recon }) {
+  if (!recon) return <div className="card" style={{ marginTop: 14 }}><p style={{ color: 'var(--text3)', margin: 0 }}>Звірка з грошовим потоком…</p></div>
+  const r = recon
+  const line = (label, v, opts = {}) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderTop: opts.top ? '1px solid var(--border)' : undefined, fontWeight: opts.bold ? 700 : 400, color: opts.muted ? 'var(--text2)' : undefined, fontSize: opts.small ? 12.5 : 13.5 }}>
+      <span style={{ paddingLeft: opts.indent ? 16 : 0 }}>{label}</span>
+      <span style={{ fontVariantNumeric: 'tabular-nums', color: opts.color }}>{v >= 0 ? (opts.sign ? '+' : '') : '−'}{fmtInt(v)}</span>
+    </div>
+  )
+  const ex = r.explained
+  const known = ex.loans + ex.fixedAssets + ex.vat + ex.unvalidated + (ex.vatInDocs || 0)
+  const rest = r.diff - known
+  return (
+    <div className="card" style={{ marginTop: 14 }}>
+      <div className="card-title" style={{ marginBottom: 6 }}>Звірка з грошовим потоком</div>
+      <div style={{ maxWidth: 560 }}>
+        {line('Прибуток за нарахуванням (Net)', r.netProfit, { bold: true })}
+        {line('− зміна дебіторки (виписано, але ще не оплачено)', -r.dAR, { sign: true, muted: true })}
+        {line('+ зміна кредиторки (отримано, але ще не оплачено)', r.dAP, { sign: true, muted: true })}
+        {line('− зміна запасів (куплено на склад, ще не продано)', -r.dInv, { sign: true, muted: true })}
+        {line('= Розрахунковий грошовий потік', r.estimated, { top: true, bold: true })}
+        {line('Фактичний чистий грошовий потік (банк + каса)', r.cashFlow, { bold: true, color: 'var(--blue)' })}
+        {line('Різниця', r.diff, { top: true, bold: true, color: Math.abs(r.diff) < 1 ? 'var(--green)' : '#B7791F' })}
+        {Math.abs(r.diff) >= 1 && <>
+          {Math.abs(ex.vatInDocs || 0) >= 1 && line('з них ПДВ у документах (продажі − закупівлі): у боргах, не в прибутку', ex.vatInDocs, { indent: true, small: true, muted: true, sign: true })}
+          {Math.abs(ex.vat) >= 1 && line('ПДВ, сплачений до бюджету', ex.vat, { indent: true, small: true, muted: true, sign: true })}
+          {Math.abs(ex.loans) >= 1 && line('позики (ПФД)', ex.loans, { indent: true, small: true, muted: true, sign: true })}
+          {Math.abs(ex.fixedAssets) >= 1 && line('основні засоби', ex.fixedAssets, { indent: true, small: true, muted: true, sign: true })}
+          {Math.abs(ex.unvalidated) >= 1 && line('непідтверджені транзакції (не в P&L)', ex.unvalidated, { indent: true, small: true, muted: true, sign: true })}
+          {Math.abs(rest) >= 1 && line('решта (оцінка складу за ціною закупівлі vs собівартість, оплати без документів, аванси)', rest, { indent: true, small: true, muted: true, sign: true })}
+        </>}
+      </div>
+      <p style={{ fontSize: 11.5, color: 'var(--text3)', margin: '8px 0 0' }}>
+        Дебіторка/кредиторка — з ПДВ, станом на кінець попереднього і поточного періоду; запаси — за ціною закупівлі з довідника. Знак «≈»: прибуток рахується без ПДВ, а гроші й борги — з ПДВ, тому різниця на суму ПДВ очікувана.
+      </p>
     </div>
   )
 }
