@@ -1,7 +1,10 @@
 // Telegram-бот для AiM Skill (вебхук). Працює 24/7 у Vercel.
-// Налаштування webhook (один раз):
-//   https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://aim-skill.vercel.app/api/telegram
+// Налаштування webhook (один раз, і після зміни токена): відкрити в браузері
+//   https://aim-skill.vercel.app/api/telegram?setup=1
+// — сервер сам зареєструє вебхук із secret_token. Без правильного заголовка
+// X-Telegram-Bot-Api-Secret-Token запити відхиляються (захист від підроблених апдейтів, аудит 2026-10-19).
 // Env: TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_IDS (через кому), TELEGRAM_OWNER_ID, APP_URL
+import { createHash, timingSafeEqual } from 'crypto'
 import { getAdmin, nextOrderNumber } from './_lib.js'
 
 const TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim()
@@ -9,6 +12,13 @@ const ALLOWED = (process.env.TELEGRAM_ALLOWED_IDS || '').split(',').map(s => s.t
 const OWNER = (process.env.TELEGRAM_OWNER_ID || '').trim()
 const APP_URL = process.env.APP_URL || 'https://aim-skill.vercel.app'
 const orderUrl = (id) => `${APP_URL}/#/orders/${id}`
+// Секрет вебхука — похідний від токена бота (знає лише сервер і Telegram); символи [0-9a-f] дозволені Telegram
+const WEBHOOK_SECRET = TOKEN ? createHash('sha256').update('aim-skill-webhook:' + TOKEN).digest('hex').slice(0, 48) : ''
+function secretOk(req) {
+  const got = String(req.headers['x-telegram-bot-api-secret-token'] || '')
+  if (!WEBHOOK_SECRET || got.length !== WEBHOOK_SECRET.length) return false
+  return timingSafeEqual(Buffer.from(got), Buffer.from(WEBHOOK_SECRET))
+}
 
 const STATUS_LABEL = {
   new: 'Новий', tender: 'Тендер', processing: 'В опрацюванні', needs_contract: 'Потребує договір',
@@ -191,6 +201,18 @@ function parseDue(text) {
 
 // ── Головний обробник ──
 export default async function handler(req, res) {
+  // Одноразове (ідемпотентне) налаштування вебхука з секретом. Безпечно для будь-кого:
+  // реєструє лише нашу ж адресу з нашим секретом.
+  if (req.method === 'GET' && (req.query?.setup === '1' || /[?&]setup=1/.test(req.url || ''))) {
+    if (!TOKEN) return res.status(500).json({ ok: false, error: 'TELEGRAM_BOT_TOKEN не задано' })
+    const r = await fetch(`https://api.telegram.org/bot${TOKEN}/setWebhook`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: `${APP_URL}/api/telegram`, secret_token: WEBHOOK_SECRET, allowed_updates: ['message', 'callback_query'] }),
+    })
+    const j = await r.json().catch(() => ({}))
+    return res.status(r.ok && j.ok ? 200 : 502).json({ ok: !!j.ok, description: j.description || null })
+  }
+  if (!secretOk(req)) return res.status(401).json({ ok: false })
   if (req.method !== 'POST') return res.status(200).json({ ok: true })
   if (!TOKEN) return res.status(200).json({ ok: false, error: 'no token' })
   const admin = getAdmin()

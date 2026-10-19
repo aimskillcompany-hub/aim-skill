@@ -1,5 +1,12 @@
 // Vercel serverless function — proxy for Anthropic API
-// Keeps API key on server, never exposed to browser
+// Keeps API key on server, never exposed to browser.
+// Лише для залогінених користувачів (JWT Supabase); модель і max_tokens обмежуються на сервері,
+// щоб чужий запит не міг крутити дорогу модель на рахунку компанії (аудит 2026-10-19).
+import { verifyUser } from './_lib.js'
+
+const ALLOWED_MODELS = new Set(['claude-sonnet-4-6'])
+const DEFAULT_MODEL = 'claude-sonnet-4-6'
+const MAX_TOKENS_CAP = 4000
 
 // Simple in-memory rate limiting (per serverless instance)
 const rateMap = new Map()
@@ -22,9 +29,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  // Rate limiting
-  const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket?.remoteAddress || 'unknown'
-  if (!checkRateLimit(ip)) {
+  const user = await verifyUser(req)
+  if (!user) return res.status(401).json({ error: 'Потрібен вхід у систему' })
+
+  // Rate limiting (на користувача, а не на IP)
+  if (!checkRateLimit(user.id)) {
     return res.status(429).json({ error: 'Забагато запитів. Спробуйте через хвилину.' })
   }
 
@@ -34,7 +43,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { model, max_tokens, system, messages } = req.body
+    const { model, max_tokens, system, messages } = req.body || {}
+    if (!Array.isArray(messages) || !messages.length) return res.status(400).json({ error: 'messages required' })
+    const useModel = ALLOWED_MODELS.has(model) ? model : DEFAULT_MODEL
+    const useMax = Math.min(Math.max(1, Number(max_tokens) || 2000), MAX_TOKENS_CAP)
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -44,8 +56,8 @@ export default async function handler(req, res) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: model || 'claude-sonnet-4-6',
-        max_tokens: max_tokens || 2000,
+        model: useModel,
+        max_tokens: useMax,
         system,
         messages,
       }),
@@ -54,7 +66,7 @@ export default async function handler(req, res) {
     const data = await response.json()
     res.status(response.status).json(data)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: 'AI proxy error' })
   }
 }
 

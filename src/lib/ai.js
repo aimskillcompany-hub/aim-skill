@@ -1,7 +1,15 @@
+import { supabase } from './supabase'
 import { unzipSync, strFromU8 } from 'fflate'
 import { getCompany } from './companyConfig'
 // API key тепер на сервері — виклики через /api/ai proxy
 const USE_PROXY = !import.meta.env.DEV // В dev режимі fallback на прямий доступ
+
+// Проксі /api/ai приймає лише залогінених: передаємо access_token поточної сесії Supabase.
+async function proxyHeaders() {
+  const { data } = await supabase.auth.getSession()
+  const token = data?.session?.access_token
+  return { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+}
 const API_KEY = import.meta.env.VITE_ANTHROPIC_KEY
 
 // Виклик Claude з авто-повтором на тимчасових помилках (overloaded 529 / rate limit 429 / 503).
@@ -9,7 +17,7 @@ export async function callClaude(requestBody, { retries = 4 } = {}) {
   let lastErr
   for (let attempt = 0; attempt <= retries; attempt++) {
     const res = USE_PROXY
-      ? await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requestBody) })
+      ? await fetch('/api/ai', { method: 'POST', headers: await proxyHeaders(), body: JSON.stringify(requestBody) })
       : await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
@@ -407,7 +415,7 @@ export async function parseCompanyFromText(text) {
   const requestBody = { model: 'claude-sonnet-4-6', max_tokens: 1000, system: systemPrompt, messages: [{ role: 'user', content: text.trim() }] }
   let res
   if (USE_PROXY) {
-    res = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requestBody) })
+    res = await fetch('/api/ai', { method: 'POST', headers: await proxyHeaders(), body: JSON.stringify(requestBody) })
   } else {
     res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
