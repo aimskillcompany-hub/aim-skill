@@ -87,16 +87,20 @@ export function calcTotals(items) {
   let subtotal = 0
   let vatAmount = 0
   const vatByRate = {} // { '20': 1234.56, '7': 100.00 }
+  // Округлення до копійок на рівні рядка (сума і ПДВ рядка), підсумки — сума округлених рядків:
+  // документ сходиться з рядками, а в базу не пишуться «2999.988».
+  const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100
   for (const item of items) {
-    const amount = parseFloat(item.amount) || (parseFloat(item.quantity || 0) * parseFloat(item.unitPrice || 0))
+    const amount = r2(parseFloat(item.amount) || (parseFloat(item.quantity || 0) * parseFloat(item.unitPrice || 0)))
     const vatRate = parseFloat(item.vatRate) || 0
-    const vat = vatRate > 0 ? amount * vatRate / 100 : 0
+    const vat = vatRate > 0 ? r2(amount * vatRate / 100) : 0
     subtotal += amount
     vatAmount += vat
     if (vatRate > 0) {
       const key = String(vatRate)
-      vatByRate[key] = (vatByRate[key] || 0) + vat
+      vatByRate[key] = r2((vatByRate[key] || 0) + vat)
     }
   }
-  return { subtotal, vatAmount, total: subtotal + vatAmount, vatByRate }
+  subtotal = r2(subtotal); vatAmount = r2(vatAmount)
+  return { subtotal, vatAmount, total: r2(subtotal + vatAmount), vatByRate }
 }

@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { qc, withCompany } from './companyScope'
+import { todayKyiv } from './dates'
 
 // ── Кеш аліасів (оновлюється раз на 2 хвилини) ──
 let _aliasCache = null
@@ -202,7 +203,26 @@ export async function resolveProduct(name, unit, price, userId, sku = null) {
   return { productId: newProd.id, isNew: true }
 }
 
-// ── FIFO собівартість: розрахувати cost_price для OUT руху ──
+// ── Собівартість продажу = ціна ОСТАННЬОЇ закупівлі (рішення №16 у CONTEXT.md) ──
+// Найсвіжіший прихід товару з документом (cost_price або ціна, NET) на дату продажу; якщо таких немає —
+// будь-який прихід; далі — закупівельна ціна з довідника. Так рахує і звіт «Рентабельність»
+// (раніше нові продажі отримували FIFO-собівартість і звіт розходився до перерахунку скриптом).
+export async function getLastPurchaseCost(productId, onDate = null) {
+  if (!productId) return null
+  let q = qc('stock_movements').select('price, cost_price, date, document_id, created_at')
+    .eq('product_id', productId).eq('type', 'in')
+  if (onDate) q = q.lte('date', onDate)
+  const { data, error } = await q.order('date', { ascending: false }).order('created_at', { ascending: false }).limit(50)
+  if (error) throw new Error(error.message)
+  const unit = (m) => Number(m.cost_price) || Number(m.price) || 0
+  const withDoc = (data || []).find(m => m.document_id && unit(m) > 0)
+  const any = (data || []).find(m => unit(m) > 0)
+  if (withDoc || any) return unit(withDoc || any)
+  const { data: p } = await supabase.from('products').select('buy_price').eq('id', productId).maybeSingle()
+  return Number(p?.buy_price) || null
+}
+
+// ── FIFO собівартість (використовується для компонентів збірки) ──
 export async function getFifoCost(productId, quantity) {
   if (!productId || !quantity) return null
 
@@ -284,10 +304,10 @@ export async function createStockMovement({
     if (existing) return existing // вже створений
   }
 
-  // Для OUT рухів — розрахувати FIFO собівартість
+  // Для OUT рухів — собівартість за останньою закупівлею (рішення №16)
   let costPrice = null
   if (type === 'out') {
-    costPrice = await getFifoCost(productId, quantity)
+    costPrice = await getLastPurchaseCost(productId, date || null)
   }
 
   const { data: movement, error } = await qc('stock_movements').insert(withCompany({
@@ -302,7 +322,7 @@ export async function createStockMovement({
     document_id: documentId || null,
     order_id: orderId || null,
     supplier_order_id: supplierOrderId || null,
-    date: date || new Date().toISOString().split('T')[0],
+    date: date || todayKyiv(),
     description: description || null,
     source: bankTransactionId ? 'auto' : documentId ? 'document' : 'manual',
     created_by: userId,
@@ -422,7 +442,7 @@ export async function assembleProduct({ name, resultProductId, quantity, compone
   const { data: assembly, error: aErr } = await qc('assemblies').insert(withCompany({
     name, result_product_id: productId, quantity,
     total_cost: totalCost, notes: notes || null,
-    assembled_at: date || new Date().toISOString().split('T')[0],
+    assembled_at: date || todayKyiv(),
     created_by: userId,
   })).select('id').single()
 
@@ -450,7 +470,7 @@ export async function assembleProduct({ name, resultProductId, quantity, compone
     const { error: oErr } = await qc('stock_movements').insert(withCompany({
       product_id: c.productId, type: 'out',
       quantity: (c.qty || c.quantity) * quantity, price: c.costPrice, cost_price: c.costPrice, total: c.total,
-      date: date || new Date().toISOString().split('T')[0],
+      date: date || todayKyiv(),
       description: `Збірка: ${name}`, created_by: userId,
       assembly_id: assembly.id, source: 'assembly',
     }))
@@ -462,7 +482,7 @@ export async function assembleProduct({ name, resultProductId, quantity, compone
   const { error: inErr } = await qc('stock_movements').insert(withCompany({
     product_id: productId, type: 'in',
     quantity, price: unitCost, cost_price: unitCost, total: totalCost,
-    date: date || new Date().toISOString().split('T')[0],
+    date: date || todayKyiv(),
     description: `Збірка: ${name} (${enrichedComponents.length} компонентів)`,
     created_by: userId,
     assembly_id: assembly.id, source: 'assembly',
@@ -496,7 +516,7 @@ async function reverseAssemblyMovements(id) {
   if (dErr) throw new Error(dErr.message) // напр. закритий період — НЕ переходимо до компенсуючих рухів
   if (deleted && deleted.length) return // рухи були прив'язані — видалили, цього досить
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayKyiv()
   for (const it of (items || [])) {
     const { error } = await qc('stock_movements').insert(withCompany({
       product_id: it.product_id, type: 'in', quantity: it.quantity, price: it.cost_price, cost_price: it.cost_price, total: it.total,

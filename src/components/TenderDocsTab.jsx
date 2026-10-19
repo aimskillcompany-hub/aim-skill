@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { extractTenderDoc } from '../lib/ai'
+import { todayKyiv } from '../lib/dates'
 
 // Вкладка «Тендерна документація» — файли зберігаються ЛИШЕ в замовленні (не в загальних Документах),
 // з прив'язкою до ідентифікатора закупівлі. Авто-нумерація: останні 6 цифр закупівлі/N.
@@ -17,7 +18,7 @@ const procBase = (pid) => {
 export default function TenderDocsTab({ o }) {
   const { user } = useUser()
   const [rows, setRows] = useState(null)
-  const [form, setForm] = useState({ name: '', out_number: '', doc_date: new Date().toISOString().slice(0, 10) })
+  const [form, setForm] = useState({ name: '', out_number: '', doc_date: todayKyiv() })
   const [file, setFile] = useState(null)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
@@ -74,7 +75,7 @@ export default function TenderDocsTab({ o }) {
         file_name: file.name, storage_path: path, file_type: file.type || null, created_by: user?.id || null,
       })
       if (error) throw error
-      setForm({ name: '', out_number: '', doc_date: new Date().toISOString().slice(0, 10) })
+      setForm({ name: '', out_number: '', doc_date: todayKyiv() })
       setFile(null); if (fileRef.current) fileRef.current.value = ''
       load()
     } catch (e) {

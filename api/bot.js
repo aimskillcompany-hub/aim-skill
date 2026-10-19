@@ -2,6 +2,8 @@
 // Авторизація: заголовок  Authorization: Bearer <BOT_API_TOKEN>  (env BOT_API_TOKEN).
 // Усі операції — service-role (обходить RLS). Тримати BOT_API_TOKEN у Vercel env.
 import { getAdmin, nextOrderNumber } from './_lib.js'
+// Київська календарна дата (сервер працює в UTC — з 00:00 до 03:00 за Києвом toISOString давав учора)
+const kyivToday = (shiftDays = 0) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv' }).format(new Date(Date.now() + shiftDays * 864e5))
 
 // Єдиний спрощений набір статусів для всіх типів (узгоджено з src/lib/orders.js)
 const STAGES = ['new', 'tender', 'processing', 'needs_contract', 'ordering_supplier', 'shipped', 'needs_payment', 'paid', 'closed']
@@ -200,7 +202,7 @@ export default async function handler(req, res) {
       // ── Прострочення (для сповіщень) ──
       case 'overdue': {
         const cutoff = new Date(Date.now() - 48 * 3600e3).toISOString()
-        const today = new Date().toISOString().slice(0, 10)
+        const today = kyivToday()
         const [{ data: late }, { data: due }] = await Promise.all([
           admin.from('commercial_proposals').select('order_id, sent_at, total').eq('status', 'sent').lt('sent_at', cutoff),
           admin.from('supplier_orders').select('order_id, supplier_id, payment_due_date, total, contractors(name)').neq('status', 'paid').lt('payment_due_date', today),

@@ -27,14 +27,34 @@ export const SCOPED_TABLES = new Set([
 
 export const isScoped = (table) => SCOPED_TABLES.has(table)
 
+// Дві «активні юрособи» (аудит 2026-10-19):
+//   _activeCompanyId — вибір КОРИСТУВАЧА (перемикач у шапці); за нею йдуть УСІ записи (withCompany).
+//   _reportScope     — тимчасова юрособа звіту по всіх юрособах (Зведений баланс, Дебіторка, Рентабельність):
+//                      впливає лише на читання qc(). Раніше звіт перемикав спільну змінну, і нові
+//                      транзакції/документи, створені в цей момент в іншому розділі, отримували чужий company_id,
+//                      а після звіту перемикач повертався на стару юрособу, навіть якщо користувач її змінив.
 let _activeCompanyId = null
+let _reportScope = null
 
 export function getActiveCompanyId() {
+  return _reportScope || _activeCompanyId
+}
+export function getUserCompanyId() {
   return _activeCompanyId
 }
-
 export function setActiveCompanyId(id) {
   _activeCompanyId = id || null
+}
+export function setReportScope(id) {
+  _reportScope = id || null
+}
+// Звіти, що перемикають _reportScope, виконуються строго по черзі (один спільний замок на всі модулі)
+let _reportLock = Promise.resolve()
+export function runExclusive(fn) {
+  const wrapped = async () => { try { return await fn() } finally { _reportScope = null } }
+  const result = _reportLock.then(wrapped, wrapped)
+  _reportLock = result.then(() => {}, () => {})
+  return result
 }
 
 // Скоуплений SELECT: qc('bank_transactions').select('*').eq(...) →
@@ -44,7 +64,7 @@ export function setActiveCompanyId(id) {
 // Назва qc (query-company), НЕ q — щоб не колізувати з поширеним локальним `q` (пошук/лічильники).
 export function qc(table) {
   const builder = supabase.from(table)
-  const id = _activeCompanyId
+  const id = _reportScope || _activeCompanyId
   if (!id || !isScoped(table)) return builder
   return new Proxy(builder, {
     get(target, prop, receiver) {

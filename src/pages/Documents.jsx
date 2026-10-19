@@ -10,6 +10,7 @@ import DocModal from '../components/DocModal'
 import BatchDocUploadModal from '../components/BatchDocUploadModal'
 import GeneratedDocModal from '../components/GeneratedDocModal'
 import { useSort, SortTh } from '../components/Sort'
+import { kyivDateOfTs } from '../lib/dates'
 
 // Документ без метаданих — потребує розпізнавання
 const isIncomplete = (d) => !d.type || d.amount == null || !d.contractor_id
@@ -67,7 +68,7 @@ export default function Documents() {
       if (verFilter === 'unverified' && d.is_verified) return false
       // Період за датою документа (doc_date; якщо немає — created_at)
       if (dateFrom || dateTo) {
-        const dstr = (d.doc_date || d.created_at || '').slice(0, 10)
+        const dstr = (d.doc_date ? String(d.doc_date).slice(0, 10) : kyivDateOfTs(d.created_at))
         if (dateFrom && dstr < dateFrom) return false
         if (dateTo && dstr > dateTo) return false
       }
@@ -155,7 +156,7 @@ export default function Documents() {
                     <td>{d.is_verified
                       ? <span style={{ color: 'var(--green)', fontSize: 12, fontWeight: 600 }}><i className="ti ti-checkbox" /> так</span>
                       : <span style={{ color: 'var(--amber, #b45309)', fontSize: 12 }}><i className="ti ti-alert-circle" /> ні</span>}</td>
-                    <td style={{ fontSize: 12, color: 'var(--text2)' }}>{(d.doc_date || d.created_at || '').slice(0, 10)}</td>
+                    <td style={{ fontSize: 12, color: 'var(--text2)' }}>{(d.doc_date ? String(d.doc_date).slice(0, 10) : kyivDateOfTs(d.created_at))}</td>
                     <td style={{ textAlign: 'right' }}>
                       {isIncomplete(d) && (d.storage_path || d.file_path) && (
                         <button className="btn" onClick={(e) => { e.stopPropagation(); setOpenDoc({ doc: d, autoOcr: true }) }} title="Розпізнати метадані з файлу через OCR" style={{ whiteSpace: 'nowrap' }}><i className="ti ti-scan" /> Розпізнати</button>

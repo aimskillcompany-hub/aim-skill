@@ -6,6 +6,8 @@
 // Env: TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_IDS (через кому), TELEGRAM_OWNER_ID, APP_URL
 import { createHash, timingSafeEqual } from 'crypto'
 import { getAdmin, nextOrderNumber } from './_lib.js'
+// Київська календарна дата (сервер працює в UTC — з 00:00 до 03:00 за Києвом toISOString давав учора)
+const kyivToday = (shiftDays = 0) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv' }).format(new Date(Date.now() + shiftDays * 864e5))
 
 const TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim()
 const ALLOWED = (process.env.TELEGRAM_ALLOWED_IDS || '').split(',').map(s => s.trim()).filter(Boolean)
@@ -164,7 +166,7 @@ async function sendDoc(admin, chatId, docId) {
 
 // ── Задачі ──
 async function showTasks(admin, chatId) {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = kyivToday()
   const { data } = await admin.from('tasks').select('id, title, due_date, priority')
     .eq('status', 'open').order('due_date', { nullsFirst: false }).limit(25)
   if (!data?.length) return send(chatId, '✅ Активних задач немає. Додати — «➕ Задача».', { reply_markup: MAIN_KB })
@@ -191,9 +193,9 @@ async function showTaskCard(admin, chatId, id) {
 function parseDue(text) {
   const t = (text || '').trim().toLowerCase()
   if (!t || t === '-' || t === 'без' || t === 'нема') return null
-  if (t === 'сьогодні') return new Date().toISOString().slice(0, 10)
-  if (t === 'завтра') { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10) }
-  const plus = t.match(/^\+?(\d+)\s*д/); if (plus) { const d = new Date(); d.setDate(d.getDate() + Number(plus[1])); return d.toISOString().slice(0, 10) }
+  if (t === 'сьогодні') return kyivToday()
+  if (t === 'завтра') return kyivToday(1)
+  const plus = t.match(/^\+?(\d+)\s*д/); if (plus) return kyivToday(Number(plus[1]))
   const iso = t.match(/(\d{4})[-.\/](\d{1,2})[-.\/](\d{1,2})/); if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`
   const dmy = t.match(/(\d{1,2})[-.\/](\d{1,2})[-.\/](\d{4})/); if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`
   return undefined // не розпізнано
@@ -361,7 +363,7 @@ export default async function handler(req, res) {
     if (s?.flow === 'op' && s.step === 'op_desc') {
       const signed = s.kind === 'in' ? Math.abs(s.amount) : -Math.abs(s.amount)
       const { error } = await admin.from('bank_transactions').insert({
-        account_id: s.account_id, date: new Date().toISOString().slice(0, 10), amount: signed,
+        account_id: s.account_id, date: kyivToday(), amount: signed,
         direction: s.kind === 'in' ? 'Доходи' : 'Витрати', description: text === '-' ? null : text,
         is_validated: true, is_ignored: false,
       })

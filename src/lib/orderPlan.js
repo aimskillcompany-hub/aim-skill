@@ -5,7 +5,7 @@
 // ПДВ продажу — vat_rate; ПДВ закупівлі — cost_vat_rate (міграція 067; null → як vat_rate).
 // Неплатник ПДВ (компанія замовлення) → усі ставки 0: net = gross.
 
-export const PROFIT_TAX = 0.18 // податок на прибуток від валового (лише в «Прибутковості», не в «Прогнозі»)
+export const PROFIT_TAX = 0.18 // податок на прибуток: валовий × 18% (лише юрособа-платник ПДВ; ФОП/єдиний податок — 0)
 
 const n = (v) => Number(v) || 0
 const hasVal = (v) => v !== null && v !== undefined && v !== ''
@@ -27,7 +27,10 @@ export function itemCost(r, vatOn = true) {
 }
 
 // План замовлення. items — order_items; agentPct — частка (0.35 = 35%); otherExpenses — Σ «Інших витрат».
-export function computeOrderPlan(items, { vatOn = true, agentPct = 0, otherExpenses = 0 } = {}) {
+// Єдині правила (рішення власника 2026-10-19, як у звіті інвестору):
+//   податок = валовий × 18% (лише якщо юрособа платник ПДВ — загальна система; інакше 0);
+//   агентські = (валовий − податок) × %. Від'ємний валовий → податок і агентські 0.
+export function computeOrderPlan(items, { vatOn = true, agentPct = 0, otherExpenses = 0, profitTax = vatOn } = {}) {
   let revenueNet = 0, revenueGross = 0, costNet = 0, costGross = 0
   const bySupplier = {}
   for (const r of items || []) {
@@ -40,8 +43,8 @@ export function computeOrderPlan(items, { vatOn = true, agentPct = 0, otherExpen
   const saleVat = revenueGross - revenueNet
   const purchaseVat = costGross - costNet
   const gross = revenueNet - costNet
-  const tax = gross > 0 ? gross * PROFIT_TAX : 0
-  const agent = gross > 0 ? gross * n(agentPct) : 0
+  const tax = gross > 0 && profitTax ? gross * PROFIT_TAX : 0
+  const agent = gross > 0 ? (gross - tax) * n(agentPct) : 0
   const other = n(otherExpenses)
   const net = gross - tax - agent - other
   return {

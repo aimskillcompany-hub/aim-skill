@@ -6,8 +6,9 @@ import {
   DOCUMENT_TYPES, getNextDocNumber, generatePdf, generateXlsx,
   saveDoc, calcTotals, formatMoney
 } from '../lib/docgen'
+import { todayKyiv } from '../lib/dates'
 
-const today = () => new Date().toISOString().split('T')[0]
+const today = () => todayKyiv()
 
 export default function DocGenModal({ contractor, userId, onClose, onSaved, editDoc, orderId }) {
   const isEdit = !!editDoc && !!editDoc.id
@@ -132,16 +133,20 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
       if (i !== idx) return it
       const updated = { ...it, [field]: value }
       if (field === 'quantity' || field === 'unitPrice' || field === 'vatRate') {
-        let netPrice = parseFloat(field === 'unitPrice' ? value : it.unitPrice) || 0
-        // Якщо режим "з ПДВ" — конвертуємо введену ціну в нетто
-        if (priceMode === 'gross' && field === 'unitPrice') {
-          const rate = parseFloat(it.vatRate) || 0
-          netPrice = rate > 0 ? netPrice / (1 + rate / 100) : netPrice
-          updated.unitPrice = Math.round(netPrice * 100) / 100
-        }
         const qty = parseFloat(field === 'quantity' ? value : it.quantity) || 0
-        const price = parseFloat(updated.unitPrice) || 0
-        updated.amount = (qty * price).toFixed(2)
+        const rate = parseFloat(field === 'vatRate' ? value : it.vatRate) || 0
+        // Режим «з ПДВ»: пам'ятаємо введену ціну з ПДВ (grossPrice); сума рядка без ПДВ = к-сть × ціна з ПДВ / (1+ставка),
+        // округлена один раз → «Всього» = к-сть × ціна з ПДВ до копійки (раніше округлювали ціну за одиницю → 2 999,99).
+        if (priceMode === 'gross' && field === 'unitPrice') updated.grossPrice = parseFloat(value) || 0
+        else if (field === 'unitPrice') delete updated.grossPrice
+        if (updated.grossPrice != null && priceMode === 'gross') {
+          const amount = Math.round(qty * updated.grossPrice / (1 + rate / 100) * 100) / 100
+          updated.unitPrice = qty ? amount / qty : (rate > 0 ? updated.grossPrice / (1 + rate / 100) : updated.grossPrice)
+          updated.amount = amount.toFixed(2)
+        } else {
+          const price = parseFloat(updated.unitPrice) || 0
+          updated.amount = (qty * price).toFixed(2)
+        }
       }
       return updated
     }))

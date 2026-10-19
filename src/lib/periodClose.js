@@ -2,7 +2,8 @@
 import { supabase } from './supabase'
 import { qc, withCompany, getActiveCompanyId } from './companyScope'
 import { computePL, salesProfitReport, periodRange } from './pl'
-import { countsAsDebt, debtDate } from './debts'
+import { countsAsDebt, debtDate, loadDocPayments } from './debts'
+import { fetchAll as fetchAllShared } from './fetchAll'
 
 // Список закриттів — лише активної юрософи (закриття окреме для кожної, міграція 070)
 export async function listClosings() {
@@ -150,7 +151,8 @@ export async function computeSnapshot(year, month) {
     if (acc?.opening_balance_date && t.date && t.date < acc.opening_balance_date) return
     accAgg[t.account_id] = (accAgg[t.account_id] || 0) + (Number(t.amount) || 0)
   })
-  const balances = (accs || []).map(a => ({ id: a.id, name: a.name, type: a.type, balance: (Number(a.opening_balance) || 0) + (accAgg[a.id] || 0) }))
+  const openedBy = (a, d) => !a.opening_balance_date || a.opening_balance_date <= d
+  const balances = (accs || []).map(a => ({ id: a.id, name: a.name, type: a.type, balance: (openedBy(a, to) ? Number(a.opening_balance) || 0 : 0) + (accAgg[a.id] || 0) }))
   const cashBankTotal = balances.reduce((s, b) => s + b.balance, 0)
 
   // Поворотна фінансова допомога (ПФД) — позики: сальдо до кінця періоду.
@@ -193,21 +195,9 @@ export async function computeSnapshot(year, month) {
   // щоб борг був коректний станом на цю дату (а не «як зараз») — узгоджено з computeBalanceTrend.
   const paidByDoc = {}
   if (debtIds.length) {
-    const tds = []
-    for (let i = 0; i < debtIds.length; i += 200) {
-      const { data } = await supabase.from('transaction_documents').select('document_id, amount, transaction_id').in('document_id', debtIds.slice(i, i + 200))
-      ;(data || []).forEach(t => tds.push(t))
-    }
-    const ptxIds = [...new Set(tds.map(t => t.transaction_id).filter(Boolean))]
-    const ptxDate = {}
-    for (let i = 0; i < ptxIds.length; i += 200) {
-      const { data } = await supabase.from('bank_transactions').select('id, date').in('id', ptxIds.slice(i, i + 200))
-      ;(data || []).forEach(t => ptxDate[t.id] = t.date)
-    }
-    tds.forEach(t => {
-      const pd = ptxDate[t.transaction_id]
-      if (pd && pd > to) return // оплата сталась після кінця періоду — ще не оплачено на цю дату
-      paidByDoc[t.document_id] = (paidByDoc[t.document_id] || 0) + Math.abs(Number(t.amount) || 0)
+    ;(await loadDocPayments(debtIds)).forEach(t => {
+      if (t.date && t.date > to) return // оплата сталась після кінця періоду — ще не оплачено на цю дату
+      paidByDoc[t.document_id] = (paidByDoc[t.document_id] || 0) + t.amount
     })
   }
   let receivable = 0, payable = 0
@@ -256,7 +246,6 @@ export async function computeBalanceTrend(toY, toM, opts = {}) {
   // 1. Рахунки + транзакції (гроші + ПФД)
   const { data: accs } = await qc('accounts').select('id, opening_balance, opening_balance_date')
   const accById = {}; (accs || []).forEach(a => accById[a.id] = a)
-  const openingTotal = (accs || []).reduce((s, a) => s + (Number(a.opening_balance) || 0), 0)
   const txs = await fetchAll('bank_transactions', 'account_id, amount, date, direction', q => q.eq('is_ignored', false).lte('date', lastEnd))
 
   // 2. Склад (лише goods)
@@ -274,26 +263,16 @@ export async function computeBalanceTrend(toY, toM, opts = {}) {
   const debtIds = relevant.map(d => d.id)
   const paysByDoc = {}
   if (debtIds.length) {
-    const tds = []
-    for (let i = 0; i < debtIds.length; i += 200) {
-      const { data } = await supabase.from('transaction_documents').select('document_id, amount, transaction_id').in('document_id', debtIds.slice(i, i + 200))
-      ;(data || []).forEach(t => tds.push(t))
-    }
-    const txIds = [...new Set(tds.map(t => t.transaction_id).filter(Boolean))]
-    const txDate = {}
-    for (let i = 0; i < txIds.length; i += 200) {
-      const { data } = await supabase.from('bank_transactions').select('id, date').in('id', txIds.slice(i, i + 200))
-      ;(data || []).forEach(t => txDate[t.id] = t.date)
-    }
-    tds.forEach(t => {
-      (paysByDoc[t.document_id] ||= []).push({ amount: Math.abs(Number(t.amount) || 0), date: txDate[t.transaction_id] || '0000-00-00' })
+    ;(await loadDocPayments(debtIds)).forEach(t => {
+      (paysByDoc[t.document_id] ||= []).push({ amount: t.amount, date: t.date || '0000-00-00' })
     })
   }
 
   const rows = months.map(mo => {
     const end = mo.end
     // Гроші + ПФД + ОЗ
-    let cash = openingTotal, loans = 0, fixedAssets = 0
+    // початковий залишок — лише рахунків, відкритих не пізніше кінця місяця
+    let cash = (accs || []).reduce((t, a) => t + (!a.opening_balance_date || a.opening_balance_date <= end ? Number(a.opening_balance) || 0 : 0), 0), loans = 0, fixedAssets = 0
     txs.forEach(t => {
       if (t.date > end) return
       const acc = accById[t.account_id]
@@ -597,17 +576,9 @@ export async function computeContinuity(year, month) {
 // stock_movements, documents, accounts…) стосувався фільтр активної компанії. Інакше у звіти
 // (Баланс/Товари/Динаміка) витікали б дані ВСІХ компаній (напр. дебіторка іншої юрособи).
 async function fetchAll(table, cols, mod) {
-  let from = 0, all = []
-  while (true) {
-    let q = qc(table).select(cols).range(from, from + 999)
-    if (mod) q = mod(q)
-    const { data } = await q
-    if (!data?.length) break
-    all.push(...data)
-    if (data.length < 1000) break
-    from += 1000
-  }
-  return all
+  // спільний посторінковий читач: помилка кидається (раніше — тихий частковий результат, який
+  // потрапляв у знімок закриття), сторінки впорядковані за id (без пропусків/дублів)
+  return fetchAllShared(() => { const q = qc(table).select(cols); return mod ? mod(q) : q })
 }
 
 // ── Звіт ПДВ за рік: зобов'язання / кредит / до сплати з ПЕРЕНОСОМ від'ємного значення ──

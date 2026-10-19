@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useUser } from '../lib/auth'
 import { listMinutes, createMinute, updateMinute, deleteMinute } from '../lib/minutes'
+import { todayKyiv } from '../lib/dates'
 
 // Протоколи нарад: зберігаємо обговорення й ухвалені рішення (відповідальний/строк/статус).
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => todayKyiv()
 const d = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('.') : '—'
 const emptyDecision = () => ({ text: '', owner: '', due: '', done: false })
 

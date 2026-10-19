@@ -5,11 +5,12 @@ import { useCompany } from '../lib/company'
 import { fmtInt } from '../lib/fmt'
 import { labelForStatus, statusAccent } from '../lib/orders'
 import { loadForecast, flattenForecast, currentCashByCompany, addForecastItem, removeForecastItem } from '../lib/forecast'
+import { todayKyiv } from '../lib/dates'
 
 // «Прогноз»: рядки генеруються із замовлень (план − факт), тут лише перегляд.
 // Вручну — тільки надходження/витрати без замовлення (оренда, зарплата…).
 const d = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('.') : '—'
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => todayKyiv()
 const MONTHS = ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Лип', 'Сер', 'Вер', 'Жов', 'Лис', 'Гру']
 const money = (v) => `${v < 0 ? '−' : ''}${fmtInt(v)}`
 

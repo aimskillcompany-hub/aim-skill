@@ -7,22 +7,16 @@
 // ПФД сумується ЧИСТОЮ → внутрішньогрупова ПФД (одна наша компанія позичила іншій) самознищується.
 // УВАГА: внутрішньогрупові дебіторка/кредиторка НЕ елімінуються (показані «грос»); на Капітал це не впливає.
 import { computeSnapshot } from './periodClose'
-import { getActiveCompanyId, setActiveCompanyId } from './companyScope'
+import { setReportScope, runExclusive } from './companyScope'
 import { clearCompanyCache } from './companyConfig'
 
-// КРИТИЧНО: computeSnapshot читає активну компанію з ГЛОБАЛЬНОГО скоупу (_activeCompanyId).
-// Ми перемикаємо його по колу. Якщо два computeConsolidated запустяться паралельно (повторний
-// useEffect на зміну companies/місяця/року), вони клобберять один одному глобальний скоуп і дані
-// юросіб змішуються. Тому СЕРІАЛІЗУЄМО: кожен виклик чекає завершення попереднього.
-let _lock = Promise.resolve()
 
 export async function computeConsolidated(year, month, companies) {
   const run = async () => {
-    const saved = getActiveCompanyId()
     const rows = []
     try {
       for (const c of companies) {
-        setActiveCompanyId(c.id)
+        setReportScope(c.id)
         clearCompanyCache()
         let s = null, error = null
         try { s = await computeSnapshot(year, month) }
@@ -38,7 +32,7 @@ export async function computeConsolidated(year, month, companies) {
         rows.push({ id: c.id, name: c.short_name || c.name, cash, stock, recv, fa, assets, pay, loans, equity, error })
       }
     } finally {
-      setActiveCompanyId(saved)
+      setReportScope(null)
       clearCompanyCache()
     }
     const sum = (k) => Math.round(rows.reduce((t, r) => t + (r[k] || 0), 0) * 100) / 100
@@ -49,7 +43,5 @@ export async function computeConsolidated(year, month, companies) {
     return { rows, total }
   }
   // Ланцюжимо за попереднім викликом (навіть якщо той впав), щоб скоуп не перетинався.
-  const result = _lock.then(run, run)
-  _lock = result.then(() => {}, () => {})
-  return result
+  return runExclusive(run)
 }

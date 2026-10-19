@@ -1,6 +1,8 @@
 // Cron: щоденне нагадування власнику про задачі (прострочені + на сьогодні) у Telegram.
 // Тригери: Vercel Cron (Authorization: Bearer <CRON_SECRET>) або ручний виклик із тим самим секретом.
 import { getAdmin } from './_lib.js'
+// Київська календарна дата (сервер працює в UTC — з 00:00 до 03:00 за Києвом toISOString давав учора)
+const kyivToday = (shiftDays = 0) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv' }).format(new Date(Date.now() + shiftDays * 864e5))
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN
 const OWNER = (process.env.TELEGRAM_OWNER_ID || '').trim()
@@ -17,7 +19,7 @@ export default async function handler(req, res) {
 
   try {
     const admin = getAdmin()
-    const today = new Date().toISOString().slice(0, 10)
+    const today = kyivToday()
     const { data: tasks } = await admin.from('tasks')
       .select('id, title, due_date, priority')
       .eq('status', 'open').not('due_date', 'is', null).lte('due_date', today)

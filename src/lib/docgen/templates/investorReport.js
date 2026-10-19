@@ -2,6 +2,7 @@
 // Рентабельність, потрібний капітал, прибуток, ROI — для рішення про участь у закупівлі.
 import { formatMoney, formatDate } from '../formatUtils'
 import { LOGO_BASE64 } from '../logo'
+import { todayKyiv } from '../../dates'
 
 const BLACK = '#0A0A0A'
 const DARK = '#1C1C1E'
@@ -57,7 +58,7 @@ export function pdf(company, order, items, options = {}) {
   const m = compute(items)
   const client = order?.contractors?.name || order?.client_name || '—'
   const orderNo = order?.order_number || (order?.id || '').slice(0, 6)
-  const today = options.date || new Date().toISOString().slice(0, 10)
+  const today = options.date || todayKyiv()
 
   const th = (t, align) => ({ text: t, fontSize: 6.5, bold: true, color: G2, alignment: align || 'left', letterSpacing: 0.3, margin: [0, 3, 0, 5] })
   const td = (t, align, opt = {}) => ({ text: t, fontSize: 8.5, alignment: align || 'left', color: opt.color || G1, bold: opt.bold, margin: [0, 3, 0, 3] })

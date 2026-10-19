@@ -2,13 +2,13 @@
 // прибуток→агентські→чистий. Усі суми БЕЗ ПДВ (окрім «ПДВ до сплати»).
 // Рішення власника: собівартість FIFO; неплатник-постачальник → повний ПДВ з реалізації;
 // послуги (закупка 0) → прибуток = вся сума; один агент на накладну.
-import { qc, getActiveCompanyId, setActiveCompanyId } from './companyScope'
+import { qc, setReportScope, runExclusive } from './companyScope'
+import { fetchAll, fetchAllIn } from './fetchAll'
 import { clearCompanyCache } from './companyConfig'
 import { supabase } from './supabase'
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100
 const VAT = 0.20
-let _lock = Promise.resolve()
 
 export async function loadAgents(docIds) {
   if (!docIds.length) return {}
@@ -30,14 +30,13 @@ export async function saveAgent(documentId, { agentName, percent, userId }) {
 
 export async function computeProfitability(companyId, companyIsVat, from, to) {
   const run = async () => {
-    const saved = getActiveCompanyId()
     try {
-      setActiveCompanyId(companyId); clearCompanyCache()
+      setReportScope(companyId); clearCompanyCache()
 
-      const { data: docs } = await qc('documents')
+      const docs = (await fetchAll(() => qc('documents')
         .select('id, doc_number, doc_date, contractor_id, amount, vat_amount')
-        .eq('type', 'waybill').gte('doc_date', from).lte('doc_date', to)
-        .order('doc_date').order('doc_number')
+        .eq('type', 'waybill').gte('doc_date', from).lte('doc_date', to)))
+        .sort((a, b) => (a.doc_date || '').localeCompare(b.doc_date || '') || String(a.doc_number || '').localeCompare(String(b.doc_number || '')))
       if (!docs?.length) return { invoices: [], totals: emptyTotals() }
 
       const docIds = docs.map(d => d.id)
@@ -51,13 +50,8 @@ export async function computeProfitability(companyId, companyIsVat, from, to) {
       // агенти
       const agents = await loadAgents(docIds)
       // OUT-рухи всіх цих видаткових
-      const moves = []
-      for (let i = 0; i < docIds.length; i += 200) {
-        const { data } = await qc('stock_movements')
-          .select('document_id, product_id, quantity, price, cost_price, created_at')
-          .in('document_id', docIds.slice(i, i + 200)).eq('type', 'out')
-        ;(data || []).forEach(m => moves.push(m))
-      }
+      const moves = await fetchAllIn(() => qc('stock_movements')
+          .select('id, document_id, product_id, quantity, price, cost_price, created_at').eq('type', 'out'), 'document_id', docIds)
       const prodIds = [...new Set(moves.map(m => m.product_id).filter(Boolean))]
       const pInfo = {}
       for (let i = 0; i < prodIds.length; i += 100) {
@@ -108,12 +102,10 @@ export async function computeProfitability(companyId, companyIsVat, from, to) {
 
       return { invoices, totals: computeTotals(invoices) }
     } finally {
-      setActiveCompanyId(saved); clearCompanyCache()
+      setReportScope(null); clearCompanyCache()
     }
   }
-  const result = _lock.then(run, run)
-  _lock = result.then(() => {}, () => {})
-  return result
+  return runExclusive(run)
 }
 
 // Чи має товар вхідний ПДВ (куплений у платника ПДВ): прихідна з vat_amount>0

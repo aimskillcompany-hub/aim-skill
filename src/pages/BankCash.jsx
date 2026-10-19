@@ -14,6 +14,7 @@ import { countsAsDebt } from '../lib/debts'
 import ContractorSelect from '../components/ui/ContractorSelect'
 import DocModal from '../components/DocModal'
 import { useSort, SortTh } from '../components/Sort'
+import { todayKyiv } from '../lib/dates'
 
 // поля документа для DocModal
 const DOC_FIELDS = 'id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)'
@@ -371,7 +372,7 @@ function TransactionsTab({ accounts, onChange }) {
 // ───────── Ручне додавання операції (надходження / витрата) ─────────
 function AddTxModal({ accounts, grouped, onClose, onSaved }) {
   const { user } = useUser()
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayKyiv()
   const [f, setF] = useState({
     account_id: accounts[0]?.id || '', date: today, kind: 'in', amount: '',
     direction: 'Доходи', article: '', contractor_id: null, cname: '', description: '',
@@ -599,15 +600,28 @@ function TxLinkModal({ tx, onClose }) {
   const remaining = Math.abs(Number(tx.amount) || 0) - linked.reduce((s, l) => s + (Number(l.amount) || 0), 0)
   const outstandingOf = (doc) => Math.abs(Number(doc.amount) || 0) - (cov[doc.id] || 0)
 
+  // Прив'язуємо не більше нерозподіленого залишку транзакції і не більше непогашеного залишку документа.
+  // (Раніше при повністю розподіленій транзакції бралась повна сума ще раз → одна оплата «гасила» два документи.)
+  const [linkErr, setLinkErr] = useState(null)
   const attach = async (doc) => {
+    setLinkErr(null)
+    const txRemaining = Math.round(remaining * 100) / 100
+    const docOut = Math.round(outstandingOf(doc) * 100) / 100
+    if (txRemaining <= 0.01) { setLinkErr('Транзакцію вже повністю розподілено між документами. Щоб перерозподілити — спершу відв\'яжіть зайве.'); return }
+    if (docOut <= 0.01) { setLinkErr('Цей документ уже повністю оплачено іншими транзакціями.'); return }
+    const cover = Math.min(txRemaining, docOut)
     setBusy(true)
-    const txRemaining = Math.abs(remaining) > 0.01 ? Math.abs(remaining) : Math.abs(Number(tx.amount) || 0)
-    const docOut = outstandingOf(doc)
-    const cover = Math.round(Math.min(txRemaining, docOut > 0.01 ? docOut : Math.abs(Number(doc.amount) || 0)) * 100) / 100
-    await supabase.from('transaction_documents').insert({ transaction_id: tx.id, document_id: doc.id, amount: cover })
-    setBusy(false); load()
+    const { error } = await supabase.from('transaction_documents').insert({ transaction_id: tx.id, document_id: doc.id, amount: cover })
+    setBusy(false)
+    if (error) setLinkErr('Не вдалося прив\'язати: ' + error.message)
+    load()
   }
-  const detach = async (l) => { await supabase.from('transaction_documents').delete().eq('id', l.id); load() }
+  const detach = async (l) => {
+    if (!confirm('Відв\'язати документ від цієї транзакції? Борг по документу знову стане непогашеним на цю суму.')) return
+    const { error } = await supabase.from('transaction_documents').delete().eq('id', l.id)
+    if (error) setLinkErr('Не вдалося відв\'язати: ' + error.message)
+    load()
+  }
 
   const scored = docs
     .filter(d => !linkedIds.has(d.id))
@@ -623,6 +637,7 @@ function TxLinkModal({ tx, onClose }) {
     <div className="modal-bg" onClick={onClose}>
       <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
         <div className="modal-header"><h2>Прив'язати транзакцію</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
+        {linkErr && <div style={{ background: '#FDECEC', color: 'var(--red)', borderRadius: 8, padding: '8px 12px', fontSize: 13, marginBottom: 10 }}>{linkErr}</div>}
         <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 12 }}>
           {tx.date} · {tx.counterparty || tx.description} · <b>{fmt(tx.amount)} грн</b> · непокрито: <b style={{ color: remaining > 0.5 ? 'var(--red)' : 'var(--green)' }}>{fmt(remaining)}</b>
         </div>
@@ -894,7 +909,7 @@ function TransferTab({ accounts, onDone }) {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [amount, setAmount] = useState('')
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  const [date, setDate] = useState(todayKyiv())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
 

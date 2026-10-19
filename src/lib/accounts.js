@@ -8,21 +8,13 @@
 //   Залишок = opening_balance + (Надходження − Витрати) від opening_balance_date
 import { supabase } from './supabase'
 import { qc } from './companyScope'
+import { fetchAll } from './fetchAll'
 
 export async function getAccountBalances() {
   // ВАЖЛИВО: Supabase віддає максимум 1000 рядків за запит. Транзакцій набагато більше,
   // тож вибираємо посторінково — інакше залишок рахувався б лише по перших 1000 (завищено/занижено).
-  const fetchAllTx = async () => {
-    let from = 0, all = []
-    while (true) {
-      const { data } = await qc('bank_transactions').select('account_id, amount, date').eq('is_ignored', false).range(from, from + 999)
-      if (!data?.length) break
-      all.push(...data)
-      if (data.length < 1000) break
-      from += 1000
-    }
-    return all
-  }
+  // спільний читач: впорядковані сторінки + помилка не перетворюється на «залишок 0»
+  const fetchAllTx = () => fetchAll(() => qc('bank_transactions').select('account_id, amount, date').eq('is_ignored', false))
   const [{ data: accs }, txs] = await Promise.all([
     qc('accounts').select('id, name, type, bank_name, is_active, opening_balance, opening_balance_date, sort_order').order('sort_order'),
     fetchAllTx(),

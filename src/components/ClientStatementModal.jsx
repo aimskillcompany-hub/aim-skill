@@ -5,10 +5,11 @@ import {
   logReminder, remindersFor, money, dmy, docTitle, TITLES,
 } from '../lib/clientStatement'
 import { downloadClientStatementPdf } from '../lib/clientStatementPdf'
+import { todayKyiv } from '../lib/dates'
 
 // «Звіт для клієнта» по одному контрагенту: налаштування → попередній перегляд → PDF / Excel / текст.
 // Якщо контрагент винен кільком нашим юрособам — окремий звіт на кожну (різні реквізити для оплати).
-const todayIso = () => new Date().toISOString().slice(0, 10)
+const todayIso = () => todayKyiv()
 
 export default function ClientStatementModal({ group, defaultAsOf, onClose, onLogged }) {
   const { user } = useUser()

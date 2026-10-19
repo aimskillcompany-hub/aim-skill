@@ -21,6 +21,9 @@ import OrderFinanceTab from '../components/OrderFinanceTab'
 import {
   ORDER_TYPES, TYPE_COLORS, OUTCOME, flowFor, proposalOverdue,
 } from '../lib/orders'
+import { todayKyiv, addDaysIso, kyivDateOfTs } from '../lib/dates'
+// Полудень обраної дати за Києвом як timestamptz (±1 год DST не змінює календарний день)
+const kyivNoon = (iso) => new Date(iso + 'T12:00:00+02:00').toISOString()
 const VAT_RATES = [0, 20]
 
 // Дата ISO → ДД.ММ.РРРР (для показу)
@@ -301,13 +304,13 @@ function DetailsTab({ o, onSaved }) {
     procurement_subject: o.procurement_subject || '',
     client_id: o.client_id || null,
     clientName: o.contractors?.name || '',
-    closed_at: o.closed_at ? o.closed_at.slice(0, 10) : '',
+    closed_at: kyivDateOfTs(o.closed_at),
     manager_id: o.manager_id || '',
     contract_id: o.contract_id || '',
     company_id: o.company_id || activeId || '',
     agent_commission_pct: o.agent_commission_pct != null ? String(Math.round(o.agent_commission_pct * 10000) / 100) : '',
     in_investor: !!o.in_investor,
-    created_at: o.created_at ? o.created_at.slice(0, 10) : '',
+    created_at: kyivDateOfTs(o.created_at),
   })
   const [saved, setSaved] = useState(false)
   const [users, setUsers] = useState([])
@@ -342,12 +345,14 @@ function DetailsTab({ o, onSaved }) {
       procurement_url: form.procurement_type === 'tender' ? (form.procurement_url || null) : null,
       procurement_subject: form.procurement_type === 'tender' ? (form.procurement_subject || null) : null,
       client_id: form.client_id || null,
-      closed_at: form.closed_at ? new Date(form.closed_at).toISOString() : null,
+      // дату пишемо лише якщо її змінили (інакше зберігаємо точний час); нова дата — полудень за Києвом,
+      // щоб у будь-якому часовому поясі це був той самий календарний день
+      closed_at: !form.closed_at ? null : form.closed_at === kyivDateOfTs(o.closed_at) ? o.closed_at : kyivNoon(form.closed_at),
       manager_id: form.manager_id || null,
       contract_id: form.contract_id || null,
       agent_commission_pct: Math.max(0, (Number(form.agent_commission_pct) || 0)) / 100,
       in_investor: !!form.in_investor,
-      ...(form.created_at ? { created_at: new Date(form.created_at).toISOString() } : {}),
+      ...(form.created_at && form.created_at !== kyivDateOfTs(o.created_at) ? { created_at: kyivNoon(form.created_at) } : {}),
     }
     // Деякі колонки можуть ще не існувати (міграції 033/037/040/046/047/058/059).
     // Прибираємо З ОНОВЛЕННЯ ЛИШЕ ту колонку, якої бракує (з тексту помилки), і повторюємо —
@@ -955,7 +960,7 @@ function ProposalsTab({ o, onChange }) {
         const net = (vatOn && it.incl) ? (vr > 0 ? price / (1 + vr / 100) : price) : price
         return { name: it.name, characteristics: it.characteristics || '', quantity: Number(it.qty) || 0, unit: it.unit || unitByName[it.name] || 'шт', unitPrice: net, vatRate: vr }
       })
-      const today = new Date().toISOString().slice(0, 10)
+      const today = todayKyiv()
       const opts = { docNumber: `КП-${o.order_number || o.id.slice(0, 6)}`, docDate: today, withStamp: stampCP, vatPayer: vatOn }
       await previewPdf('commercialProposal', c || { name: o.contractors?.name }, items, opts)
     } catch (e) { alert('Помилка формування: ' + e.message) }
@@ -1124,8 +1129,14 @@ function DocumentsTab({ o }) {
       const movedFromNonVat = vatOn && storedV === 0
       const v = vatOn ? (storedV || 20) : 0
       const inclVat = movedFromNonVat || !!it.price_includes_vat
-      const net = (vatOn && inclVat && v > 0) ? Number(it.unit_price) / (1 + v / 100) : Number(it.unit_price)
-      return { name: it.name, quantity: Number(it.qty) || 0, unit: it.unit || 'шт', unitPrice: Math.round((net || 0) * 100) / 100, vatRate: v, amount: '', productId: it.product_id || null }
+      const qty = Number(it.qty) || 0
+      // Ціна з ПДВ: сума рядка без ПДВ = (к-сть × ціна з ПДВ) / 1.2, округлена ОДИН раз — тоді «Всього» = к-сть × ціна
+      // з ПДВ до копійки. (Раніше округлювали ціну за одиницю → 3 × 1000 давало 2 999,99, «копійчана» дебіторка.)
+      if (vatOn && inclVat && v > 0) {
+        const amount = Math.round(qty * Number(it.unit_price) / (1 + v / 100) * 100) / 100
+        return { name: it.name, quantity: qty, unit: it.unit || 'шт', unitPrice: qty ? amount / qty : 0, vatRate: v, amount: amount.toFixed(2), grossPrice: Number(it.unit_price) || 0, productId: it.product_id || null }
+      }
+      return { name: it.name, quantity: qty, unit: it.unit || 'шт', unitPrice: Number(it.unit_price) || 0, vatRate: v, amount: '', productId: it.product_id || null }
     })
     setGen({ contractor: c || { id: o.client_id, name: o.contractors?.name }, editDoc: { doc_type: docType, items } })
   }
@@ -1320,7 +1331,7 @@ function SuppliersTab({ o }) {
 
   const create = async () => {
     const delay = Number(add.delay) || 0
-    const due = delay ? new Date(Date.now() + delay * 864e5).toISOString().split('T')[0] : null
+    const due = delay ? addDaysIso(todayKyiv(), delay) : null
     await qc('supplier_orders').insert(withCompany({ order_id: o.id, supplier_id: add.supplier_id || null, total: Number(add.total) || 0, payment_delay_days: delay, payment_due_date: due, status: 'new', source: 'manual' }))
     setAdd(null); load()
   }
@@ -1372,7 +1383,7 @@ function SuppliersTab({ o }) {
     if (s.supplier_id) { const { data } = await supabase.from('contractors').select('*').eq('id', s.supplier_id).single(); if (data) supplier = data }
     let client = { name: o.contractors?.name }
     if (o.client_id) { const { data } = await supabase.from('contractors').select('name, short_name, edrpou, legal_address, address').eq('id', o.client_id).single(); if (data) client = data }
-    const today = new Date().toISOString().slice(0, 10)
+    const today = todayKyiv()
     try {
       await supplierOrderPdf(supplier, list, {
         docNumber: `ЗП-${o.order_number || o.id.slice(0, 6)}-${s.id.slice(0, 4)}`,

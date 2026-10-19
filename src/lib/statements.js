@@ -23,6 +23,23 @@ function detectFormat(rows) {
   return 'unknown'
 }
 
+// Дата з виписки → 'YYYY-MM-DD' або null. Розуміє «ДД.ММ.РРРР», «ДД/ММ/РРРР», «РРРР-ММ-ДД», з часом після
+// дати («02.10.2026 14:35:12») і без провідних нулів. Неможливу дату (31.02) відкидає. Раніше дата з часом
+// давала «2026 14:35:12-10-02» (рядок падав), а нерозпізнаний формат ішов у базу як є (02.10 → 10 лютого).
+export function parseStatementDate(v) {
+  if (v == null) return null
+  if (v instanceof Date && !isNaN(v)) return v.toISOString().slice(0, 10)
+  const t = String(v).trim().split(/[ T]/)[0]
+  let y, m, d
+  let mm = t.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/)
+  if (mm) { d = +mm[1]; m = +mm[2]; y = +mm[3] }
+  else if ((mm = t.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/))) { y = +mm[1]; m = +mm[2]; d = +mm[3] }
+  else return null
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+}
+
 // Monobank Business: 0-дата,2-тип,3-опис,4-контрагент,5-ЄДРПОУ,6-IBAN,7-сума,14-референс
 function parseMonobank(rows) {
   const txs = []
@@ -31,9 +48,8 @@ function parseMonobank(rows) {
     const dateStr = row[0]?.toString().trim()
     const amtStr = row[7]?.toString().trim()
     if (!dateStr || !amtStr) continue
-    const parts = dateStr.split('.')
-    if (parts.length !== 3) continue
-    const date = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`
+    const date = parseStatementDate(dateStr)
+    if (!date) continue
     const amount = parseFloat(amtStr.replace(/\s/g, '').replace(',', '.')) || 0
     if (amount === 0) continue
     const desc = (row[3] || '').toString().trim()
@@ -90,9 +106,8 @@ function parsePUMB(rows) {
     if (!row || !row[cols.date]) continue
     let dateStr = row[cols.date]?.toString().trim()
     if (!dateStr) continue
-    let date = dateStr
-    if (/^\d{2}\.\d{2}\.\d{4}$/.test(dateStr)) { const [d, m, y] = dateStr.split('.'); date = `${y}-${m}-${d}` }
-    else if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) { const [d, m, y] = dateStr.split('/'); date = `${y}-${m}-${d}` }
+    const date = parseStatementDate(dateStr)
+    if (!date) continue // нерозпізнану дату не пишемо в базу (раніше йшла як є)
     const debitVal = parseAmt(row[cols.debit])
     const creditVal = parseAmt(row[cols.credit])
     if (debitVal === 0 && creditVal === 0) continue

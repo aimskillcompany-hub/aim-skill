@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { qc, withCompany } from '../lib/companyScope'
+import { fetchAll, fetchAllData, fetchAllIn } from '../lib/fetchAll'
 import { useUser } from '../lib/auth'
 import { fmt, fmtInt } from '../lib/fmt'
 import { assembleProduct, getAssembly, deleteAssembly, editAssembly, mergeProducts } from '../lib/stockService'
@@ -9,6 +10,7 @@ import { getDocType } from '../lib/docgen'
 import DocModal from '../components/DocModal'
 import GeneratedDocModal from '../components/GeneratedDocModal'
 import { useSort, SortTh } from '../components/Sort'
+import { todayKyiv } from '../lib/dates'
 
 // поля документа-джерела, потрібні для модалки DocModal / GeneratedDocModal
 const DOC_EMBED = 'documents(id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, source, generated_doc_id, contractors(name))'
@@ -55,11 +57,11 @@ function StockTab() {
 
   const load = async () => {
     setLoading(true)
-    let query = qc('product_stock')
+    // усі товари (раніше .limit(2000) мовчки обрізався сервером до 1000)
+    const make = () => { let q = qc('product_stock')
       .select('id, name, sku, unit, category, buy_price, sell_price, computed_stock, total_in, total_out, status')
-      .eq('product_type', 'goods').order('name').limit(2000)
-    if (!showArchived) query = query.eq('status', 'active')
-    const { data } = await query
+      .eq('product_type', 'goods'); return showArchived ? q : q.eq('status', 'active') }
+    const { data } = await fetchAllData(make).then(r => ({ ...r, data: [...(r.data || [])].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'uk')) }))
     setRows(data || [])
     setLoading(false)
   }
@@ -208,16 +210,10 @@ function ServicesTab() {
   const [showArchived, setShowArchived] = useState(false)
 
   const load = async () => {
-    let pq = qc('product_stock')
-      .select('id, name, category, status').eq('product_type', 'service').order('name').limit(2000)
-    if (!showArchived) pq = pq.eq('status', 'active')
-    const { data: prods } = await pq
+    const makeP = () => { const q = qc('product_stock').select('id, name, category, status').eq('product_type', 'service'); return showArchived ? q : q.eq('status', 'active') }
+    const { data: prods } = await fetchAllData(makeP).then(r => ({ ...r, data: [...(r.data || [])].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'uk')) }))
     const ids = (prods || []).map(p => p.id)
-    let movs = []
-    if (ids.length) {
-      const { data } = await qc('stock_movements').select('product_id, type, quantity, total').in('product_id', ids)
-      movs = data || []
-    }
+    const movs = ids.length ? await fetchAllIn(() => qc('stock_movements').select('id, product_id, type, quantity, total'), 'product_id', ids) : []
     const agg = {}
     movs.forEach(m => {
       const a = (agg[m.product_id] ||= { inQty: 0, inVal: 0, outQty: 0, outVal: 0 })
@@ -291,10 +287,9 @@ function ConsumablesTab() {
   const [showArchived, setShowArchived] = useState(false)
 
   const load = async () => {
-    let query = qc('product_stock')
-      .select('id, name, unit, computed_stock, total_in, total_out, status').eq('product_type', 'expense').order('name').limit(2000)
-    if (!showArchived) query = query.eq('status', 'active')
-    const { data } = await query
+    const make = () => { const q = qc('product_stock')
+      .select('id, name, unit, computed_stock, total_in, total_out, status').eq('product_type', 'expense'); return showArchived ? q : q.eq('status', 'active') }
+    const { data } = await fetchAllData(make).then(r => ({ ...r, data: [...(r.data || [])].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'uk')) }))
     setRows(data || [])
   }
   useEffect(() => { load() }, [showArchived])
@@ -340,7 +335,7 @@ function ConsumablesTab() {
 
 function ConsumeModal({ product, user, onClose, onDone }) {
   const [qty, setQty] = useState('')
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(todayKyiv())
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
@@ -534,7 +529,7 @@ function ManualMoveModal({ product, stock, user, onClose, onDone }) {
   const [kind, setKind] = useState('in') // in | out | set
   const [qty, setQty] = useState('')
   const [cost, setCost] = useState('')
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(todayKyiv())
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
@@ -838,7 +833,7 @@ function AssemblyDetailModal({ id, user, onClose, onChanged }) {
         qty: qy ? (Number(it.quantity) || 0) / qy : Number(it.quantity) || 0,
       })))
     })
-    qc('product_stock').select('id, name, sku, unit, computed_stock').eq('status', 'active').order('name').limit(3000).then(({ data }) => setStock(data || []))
+    fetchAllData(() => qc('product_stock').select('id, name, sku, unit, computed_stock').eq('status', 'active')).then(r => ({ ...r, data: [...(r.data || [])].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'uk')) })).then(({ data }) => setStock(data || []))
   }, [id])
 
   const addComp = (p) => { if (!comps.find(c => c.productId === p.id)) setComps(cs => [...cs, { productId: p.id, productName: p.name, unit: p.unit, qty: 1 }]); setQ('') }
@@ -971,7 +966,7 @@ function NewAssemblyModal({ user, onClose, onSaved }) {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    qc('product_stock').select('id, name, sku, unit, computed_stock').eq('status', 'active').order('name').limit(3000).then(({ data }) => setStock(data || []))
+    fetchAllData(() => qc('product_stock').select('id, name, sku, unit, computed_stock').eq('status', 'active')).then(r => ({ ...r, data: [...(r.data || [])].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'uk')) })).then(({ data }) => setStock(data || []))
   }, [])
 
   const addComp = (p) => {

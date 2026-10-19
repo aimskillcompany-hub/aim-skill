@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { fmt, fmtInt } from '../lib/fmt'
 import { labelForStatus, statusAccent } from '../lib/orders'
+import { itemSale, itemCost } from '../lib/orderPlan'
+import { kyivDateOfTs, todayKyiv } from '../lib/dates'
 
 // Звіт власника («Розрахунок») — по-замовленнєвий прибуток + агентські, ПО ВСІХ КОМПАНІЯХ.
 // Навмисно БЕЗ company-scope (крос-компанійний): запити напряму через supabase.
@@ -19,12 +21,12 @@ const d = (x) => {
   return y && m && day ? `${day}.${m}.${y}` : s
 }
 // Ціна/собівартість → net (без ПДВ), з урахуванням price_includes_vat позиції
-const netUnit = (price, vat, incl) => { const p = +price || 0, v = +vat || 0; return incl ? (v > 0 ? p / (1 + v / 100) : p) : p }
 
 async function chunkedIn(table, cols, col, ids) {
   const out = []
   for (let i = 0; i < ids.length; i += 300) {
-    const { data } = await supabase.from(table).select(cols).in(col, ids.slice(i, i + 300))
+    const { data, error } = await supabase.from(table).select(cols).in(col, ids.slice(i, i + 300))
+    if (error) throw new Error(error.message) // не показуємо «порожньо» замість помилки
     if (data) out.push(...data)
   }
   return out
@@ -32,7 +34,7 @@ async function chunkedIn(table, cols, col, ids) {
 
 export default function OwnerReport() {
   const [from, setFrom] = useState(() => `${new Date().getFullYear()}-01-01`)
-  const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10))
+  const [to, setTo] = useState(() => todayKyiv())
   const [vatRate, setVatRate] = useState(20)
   const [taxRate, setTaxRate] = useState(18)
   const [showUnpaid, setShowUnpaid] = useState(true)
@@ -73,7 +75,7 @@ export default function OwnerReport() {
       })
 
       // Позиції + ланцюг оплати (документи → transaction_documents → банк)
-      const items = ids.length ? await chunkedIn('order_items', 'order_id, qty, unit_price, cost_price, vat_rate, price_includes_vat', 'order_id', ids) : []
+      const items = ids.length ? await chunkedIn('order_items', 'order_id, qty, unit_price, cost_price, vat_rate, cost_vat_rate, price_includes_vat', 'order_id', ids) : []
       const docs = ids.length ? await chunkedIn('documents', 'id, order_id', 'order_id', ids) : []
       const docIds = docs.map(x => x.id)
       const docToOrder = {}; docs.forEach(x => { docToOrder[x.id] = x.order_id })
@@ -90,13 +92,14 @@ export default function OwnerReport() {
         if (!paidByOrder[oid] || tx.date < paidByOrder[oid]) paidByOrder[oid] = String(tx.date).slice(0, 10)
       })
 
-      // Позиції по замовленню → net-суми
+      // Позиції по замовленню → net-суми (єдині правила orderPlan: ПДВ закупівлі позиції, неплатник ПДВ — без ПДВ)
+      const vatOnOf = {}; (ords || []).forEach(o => { vatOnOf[o.id] = (compById[o.company_id] || {}).is_vat_payer !== false })
       const byOrder = {}
       items.forEach(it => {
         const o = (byOrder[it.order_id] ||= { rev: 0, cost: 0 })
-        const q = +it.qty || 0
-        o.rev += netUnit(it.unit_price, it.vat_rate, it.price_includes_vat) * q
-        o.cost += netUnit(it.cost_price, it.vat_rate, it.price_includes_vat) * q
+        const vatOn = vatOnOf[it.order_id] !== false
+        o.rev += itemSale(it, vatOn).net
+        o.cost += itemCost(it, vatOn).net
       })
 
       const vr = (Number(vatRate) || 0) / 100, tr = (Number(taxRate) || 0) / 100
@@ -108,20 +111,20 @@ export default function OwnerReport() {
         const vatPayer = comp.is_vat_payer !== false
         const direct = directPay[o.id]
         const paid = direct?.date || paidByOrder[o.id] || null // пряма прив'язка має пріоритет
-        const refDate = (o.created_at || '').slice(0, 10) // період — за датою створення замовлення
+        const refDate = kyivDateOfTs(o.created_at) // період — за датою створення замовлення (київською)
         if (from && refDate < from) continue
         if (to && refDate > to) continue
         if (!paid && !showUnpaid) continue
         const margin = agg.rev - agg.cost
         const vat = vatPayer ? margin * vr : 0
-        const tax = vatPayer ? margin * tr : 0
+        const tax = vatPayer && margin > 0 ? margin * tr : 0 // збиток — податку немає
         const net = margin - tax
         const pct = +o.agent_commission_pct || 0
         result.push({
           id: o.id, number: o.order_number || o.id.slice(0, 6),
           client: o.contractors?.name || '— без клієнта —', clientId: o.client_id || '_none',
           company: comp.short_name || comp.name || '—', status: o.status,
-          paid, paidAmount: direct?.amount ?? null, cost: agg.cost, rev: agg.rev, vat, tax, net, pct, agent: net * pct,
+          paid, paidAmount: direct?.amount ?? null, cost: agg.cost, rev: agg.rev, vat, tax, net, pct, agent: net > 0 ? net * pct : 0,
           commissionPaid: !!o.commission_paid,
         })
       }
@@ -178,7 +181,7 @@ export default function OwnerReport() {
     XLSX.writeFile(wb, `Розрахунок_${from}_${to}.xlsx`)
   }
 
-  const Num = ({ v, bold, color }) => <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: bold ? 700 : 400, color }}>{fmt(v)}</td>
+  const Num = ({ v, bold, color }) => <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: bold ? 700 : 400, color: color || (Number(v) < -0.005 ? 'var(--red)' : undefined) }}>{Number(v) < -0.005 ? '−' : ''}{fmt(v)}</td>
 
   return (
     <div>

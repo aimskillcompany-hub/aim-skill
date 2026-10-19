@@ -9,6 +9,7 @@ import { DOCUMENT_TYPES, getDocType } from '../lib/docgen'
 import { fmt } from '../lib/fmt'
 import ContractorSelect from './ui/ContractorSelect'
 import MailSendModal from './MailSendModal'
+import { kyivDateOfTs, todayKyiv } from '../lib/dates'
 
 export const dirFromType = (key) => {
   const t = getDocType(key)
@@ -65,7 +66,7 @@ const defaultForm = (fileName = '', posted = true) => ({
   doc_number: '',
   contractor_id: null, contractorName: '', edrpou: '',
   amount: '', vat_amount: 0,
-  date: new Date().toISOString().split('T')[0],
+  date: todayKyiv(),
   doc_role: 'incoming', items: [], posted,
 })
 
@@ -165,7 +166,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
           edrpou: '',
           amount: d.amount ?? '',
           vat_amount: d.vat_amount ?? 0,
-          date: d.doc_date || (d.created_at || '').slice(0, 10),
+          date: d.doc_date || kyivDateOfTs(d.created_at),
           is_signed: d.is_signed || false,
           doc_role: d.doc_role || null,
           items: d.ocr_data?.items || [],
@@ -201,7 +202,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
         // Повна сума З ПДВ (банк платить gross; борг = повна сума)
         amount: data.totalAmount ?? (data.amountNoVat != null ? Number(data.amountNoVat) + Number(data.vatAmount || 0) : (data.amount ?? '')),
         vat_amount: data.vatAmount ?? 0,
-        date: data.date || existingDoc?.doc_date || new Date().toISOString().split('T')[0],
+        date: data.date || existingDoc?.doc_date || todayKyiv(),
         is_signed: existingDoc?.is_signed || false,
         doc_role: docRole,
         items: data.items || [],

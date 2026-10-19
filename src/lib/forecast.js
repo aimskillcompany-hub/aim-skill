@@ -17,7 +17,8 @@
 // тому окремо повертаємо receivableCollect і payablePay.
 import { supabase } from './supabase'
 import { computeOrderPlan } from './orderPlan'
-import { countsAsDebt, debtDate } from './debts'
+import { countsAsDebt, debtDate, loadDocPayments } from './debts'
+import { fetchAll } from './fetchAll'
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100
 const iso = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
@@ -33,6 +34,20 @@ const vatDueFor = (shipDate) => {
 export const DEFAULT_SHIP_DAYS = 14   // відвантаження за замовчуванням: сьогодні + 14 дн. (орієнтовно)
 export const DEFAULT_CLIENT_DAYS = 30 // оплата клієнта: через 30 дн. після відвантаження
 const EPS = 0.5
+
+// Факт оплат з кількох джерел прив'язки без подвійного рахунку:
+// perTx — сума по кожній транзакції в межах одного джерела; paidAcrossSources — по транзакції беремо максимум
+// між джерелами (та сама оплата через замовлення і через документ), різні транзакції сумуємо.
+const perTx = (entries) => {
+  const m = {}; let k = 0
+  entries.forEach(e => { const key = e.txId || ('__no_tx_' + (k++)); m[key] = (m[key] || 0) + (Number(e.amount) || 0) })
+  return m
+}
+function paidAcrossSources(maps) {
+  const best = {}
+  maps.forEach(m => Object.entries(m).forEach(([tx, v]) => { best[tx] = Math.max(best[tx] || 0, v) }))
+  return Object.values(best).reduce((t, v) => t + v, 0)
+}
 
 // Пакетне читання .in(...) по 200
 async function inChunks(table, cols, col, ids, mod) {
@@ -76,9 +91,10 @@ export async function buildOrderForecasts({ orderIds = null } = {}) {
   // Документи замовлень (відвантаження = боргові документи клієнту; прихідні постачальників) + оплати по них
   const { data: docs } = await inChunks('documents', 'id, order_id, type, direction, amount, doc_date, created_at, contractor_id', 'order_id', ids)
   const debtDocs = (docs || []).filter(d => countsAsDebt(d.type) && d.amount != null && (d.direction === 'receivable' || d.direction === 'payable'))
-  const { data: tds } = debtDocs.length ? await inChunks('transaction_documents', 'document_id, amount', 'document_id', debtDocs.map(d => d.id)) : { data: [] }
-  const paidOnDoc = {}
-  ;(tds || []).forEach(t => { paidOnDoc[t.document_id] = (paidOnDoc[t.document_id] || 0) + Math.abs(Number(t.amount) || 0) })
+  // оплати документів (без проігнорованих транзакцій); зберігаємо transaction_id — щоб не рахувати двічі
+  const docPays = await loadDocPayments(debtDocs.map(d => d.id))
+  const paysOfDoc = {}
+  docPays.forEach(t => { (paysOfDoc[t.document_id] ||= []).push(t) })
   // Назви постачальників
   const supIds = [...new Set((items || []).map(i => i.supplier_id).filter(Boolean))]
   const supName = {}
@@ -113,9 +129,14 @@ export async function buildOrderForecasts({ orderIds = null } = {}) {
     const oOts = otBy[o.id] || []
     const otTxIds = new Set(oOts.map(t => t.transaction_id).filter(Boolean))
     const paidTx = o.paid_transaction_id && !otTxIds.has(o.paid_transaction_id) ? paidTxById[o.paid_transaction_id] : null
-    const clientFactTx = oOts.filter(t => t.kind === 'income').reduce((s, t) => s + (Number(t.amount) || 0), 0) + (paidTx ? Math.abs(Number(paidTx.amount) || 0) : 0)
-    const clientFactDocs = recvDocs.reduce((s, d) => s + (paidOnDoc[d.id] || 0), 0)
-    const clientPaid = Math.max(clientFactTx, clientFactDocs)
+    // Факт оплати клієнта: та сама транзакція може бути прив'язана і до замовлення, і до документа —
+    // рахуємо її один раз (по транзакції — максимум між джерелами), а різні транзакції сумуємо.
+    // (Раніше max(усі прив'язки замовлення, усі прив'язки документів) недораховував змішані випадки.)
+    const clientPaid = paidAcrossSources([
+      perTx(oOts.filter(t => t.kind === 'income').map(t => ({ txId: t.transaction_id, amount: Number(t.amount) || 0 }))),
+      perTx(paidTx ? [{ txId: paidTx.id, amount: Math.abs(Number(paidTx.amount) || 0) }] : []),
+      perTx(recvDocs.flatMap(d => (paysOfDoc[d.id] || []).map(t => ({ txId: t.transaction_id, amount: t.amount })))),
+    ])
 
     const lines = []
     const push = (l) => { l.plan = r2(l.plan); l.fact = r2(Math.min(l.fact || 0, Math.max(l.plan, 0))); l.remaining = r2(Math.max(0, l.plan - l.fact)); lines.push(l) }
@@ -135,10 +156,11 @@ export async function buildOrderForecasts({ orderIds = null } = {}) {
     supKeys.forEach(key => {
       const b = plan.bySupplier[key]
       const sid = b.supplierId
-      const factOt = sid ? expOts.filter(t => t.bank_transactions?.contractor_id === sid).reduce((s, t) => s + (Number(t.amount) || 0), 0) : 0
       const sDocs = sid ? payDocs.filter(d => d.contractor_id === sid) : []
-      const factDocs = sDocs.reduce((s, d) => s + (paidOnDoc[d.id] || 0), 0)
-      const fact = Math.max(factOt, factDocs)
+      const fact = sid ? paidAcrossSources([
+        perTx(expOts.filter(t => t.bank_transactions?.contractor_id === sid).map(t => ({ txId: t.transaction_id, amount: Number(t.amount) || 0 }))),
+        perTx(sDocs.flatMap(d => (paysOfDoc[d.id] || []).map(t => ({ txId: t.transaction_id, amount: t.amount })))),
+      ]) : 0
       const pPlan = pl.find(x => x.kind === 'supplier' && (x.supplier_id || null) === sid)
       const subDue = (subBy[o.id] || []).find(s => (s.supplier_id || null) === sid && s.payment_due_date)?.payment_due_date
       const received = sDocs.reduce((s, d) => s + Math.abs(Number(d.amount) || 0), 0)
@@ -262,16 +284,12 @@ export async function currentCashByCompany() {
   const accById = {}; (accs || []).forEach(a => accById[a.id] = a)
   const byCo = {}
   ;(accs || []).forEach(a => { byCo[a.company_id] = (byCo[a.company_id] || 0) + (Number(a.opening_balance) || 0) })
-  for (let from = 0; ; from += 1000) {
-    const { data } = await supabase.from('bank_transactions').select('account_id, amount, date').eq('is_ignored', false).range(from, from + 999)
-    if (!data?.length) break
-    data.forEach(t => {
-      const a = accById[t.account_id]; if (!a) return
-      if (a.opening_balance_date && t.date && t.date < a.opening_balance_date) return
-      byCo[a.company_id] = (byCo[a.company_id] || 0) + (Number(t.amount) || 0)
-    })
-    if (data.length < 1000) break
-  }
+  const txs = await fetchAll(() => supabase.from('bank_transactions').select('id, account_id, amount, date').eq('is_ignored', false))
+  txs.forEach(t => {
+    const a = accById[t.account_id]; if (!a) return
+    if (a.opening_balance_date && t.date && t.date < a.opening_balance_date) return
+    byCo[a.company_id] = (byCo[a.company_id] || 0) + (Number(t.amount) || 0)
+  })
   Object.keys(byCo).forEach(k => byCo[k] = r2(byCo[k]))
   return byCo
 }

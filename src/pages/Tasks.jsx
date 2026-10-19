@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
+import { todayKyiv } from '../lib/dates'
 
 const PRIORITY = {
   high: { label: 'Високий', color: 'var(--red)', bg: 'var(--red-bg)' },
   normal: { label: 'Звичайний', color: 'var(--text2)', bg: 'var(--surface2)' },
   low: { label: 'Низький', color: 'var(--text3)', bg: 'var(--surface2)' },
 }
-const todayStr = () => new Date().toISOString().slice(0, 10)
+const todayStr = () => todayKyiv()
 
 export default function Tasks() {
   const { user } = useUser()

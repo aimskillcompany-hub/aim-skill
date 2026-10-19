@@ -240,7 +240,7 @@ function PlannedProfit({ o, userId }) {
         <Kpi label="Виручка" value={revenue} />
         <Kpi label="Собівартість" value={cost} color="var(--text2)" />
         <Kpi label="Валовий прибуток" value={gross} color={gross >= 0 ? 'var(--green)' : 'var(--red)'} />
-        <Kpi label="Податок 18%" value={-tax} color="var(--red)" />
+        <Kpi label={vatOn ? 'Податок 18%' : 'Податок (єдиний — не тут)'} value={-tax} color="var(--red)" />
         {agent > 0 && <Kpi label="Агентські" value={-agent} color="var(--red)" />}
         <Kpi label="Інші витрати" value={-otherSum} color="var(--red)" />
         <Kpi label="Чистий прибуток" value={net} color={net >= 0 ? 'var(--green)' : 'var(--red)'} />
@@ -297,10 +297,31 @@ function TxPicker({ kind, orderId, clientId, userId, onClose, onAdded }) {
   }
   useEffect(() => { const id = setTimeout(() => search(q), q ? 300 : 0); return () => clearTimeout(id) }, [q, onlyClient])
 
-  const pick = (t) => { setChosen(t); setAmount(String(Math.abs(Number(t.amount) || 0))) }
+  // Скільки з транзакції вже розподілено на замовлення (частки + пряма прив'язка оплати клієнта) —
+  // щоб одна транзакція не потрапила повною сумою в кілька замовлень (подвійний факт у прибутковості/прогнозі).
+  const [allocated, setAllocated] = useState(0)
+  const [pickErr, setPickErr] = useState(null)
+  const pick = async (t) => {
+    setPickErr(null)
+    const total = Math.abs(Number(t.amount) || 0)
+    const [{ data: shares }, { data: direct }] = await Promise.all([
+      supabase.from('order_transactions').select('order_id, amount').eq('transaction_id', t.id),
+      qc('orders').select('id').eq('paid_transaction_id', t.id),
+    ])
+    const used = (shares || []).reduce((s2, x) => s2 + (Number(x.amount) || 0), 0)
+      + ((direct || []).some(o => o.id !== orderId && !(shares || []).some(x => x.order_id === o.id)) ? total : 0)
+    const already = Math.round(used * 100) / 100
+    setAllocated(already)
+    setChosen(t)
+    setAmount(String(Math.max(0, Math.round((total - already) * 100) / 100)))
+  }
 
   const add = async () => {
     if (!chosen) return
+    const total = Math.abs(Number(chosen.amount) || 0)
+    const share = Math.abs(Number(amount) || 0)
+    if (share <= 0) { setPickErr('Вкажіть суму частки'); return }
+    if (share > total - allocated + 0.01) { setPickErr(`Перевищено суму транзакції: вільно ${fmt(Math.max(0, total - allocated))} грн (уже розподілено ${fmt(allocated)} грн на інші замовлення).`); return }
     setBusy(true)
     const { error } = await supabase.from('order_transactions').insert({
       order_id: orderId, transaction_id: chosen.id, kind,
@@ -347,8 +368,9 @@ function TxPicker({ kind, orderId, clientId, userId, onClose, onAdded }) {
           <>
             <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 13 }}>
               <div>{d(chosen.date)} · <b>{chosen.counterparty || chosen.description || '—'}</b></div>
-              <div style={{ color: 'var(--text3)', marginTop: 2 }}>Сума транзакції: {fmt(chosen.amount)} грн</div>
+              <div style={{ color: 'var(--text3)', marginTop: 2 }}>Сума транзакції: {fmt(chosen.amount)} грн{allocated > 0.005 && <> · уже розподілено на замовлення: <b>{fmt(allocated)}</b> грн</>}</div>
             </div>
+            {pickErr && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 10 }}>{pickErr}</div>}
             <div className="form-grid">
               <div className="form-group"><label>Сума частки на замовлення (грн)</label>
                 <input className="form-input" type="number" value={amount} onChange={e => setAmount(e.target.value)} />

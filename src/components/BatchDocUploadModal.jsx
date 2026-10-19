@@ -7,6 +7,7 @@ import { getContractorMatcher } from '../lib/contractorMatch'
 import { DOCUMENT_TYPES, getDocType } from '../lib/docgen'
 import { fmt } from '../lib/fmt'
 import { dirFromType, typeFromOcr, buildDocFileName } from './DocModal'
+import { todayKyiv } from '../lib/dates'
 
 // Масове завантаження: КОЖЕН файл = окремий документ (на відміну від DocModal,
 // де кілька файлів = сторінки одного документа). Кожен файл розпізнається окремо,
@@ -34,7 +35,7 @@ export default function BatchDocUploadModal({ user, onClose, onSaved }) {
       contractorName,
       edrpou: data.edrpou || '',
       amount, vat_amount: data.vatAmount ?? 0,
-      date: data.date || new Date().toISOString().split('T')[0],
+      date: data.date || todayKyiv(),
       doc_role: docRole,
       items: data.items || [],
       file_name: buildDocFileName({ type, docNumber: data.docNumber, contractorName, date: data.date }, data.origName || ''),

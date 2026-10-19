@@ -3,6 +3,7 @@
 // компоненти й простежуємо кожен компонент до його прихідної. + архів усіх документів.
 import { qc } from './companyScope'
 import { supabase } from './supabase'
+import { fetchAll } from './fetchAll'
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100
 const EPS = 0.0001
@@ -12,9 +13,11 @@ const isOutgoingAct = (d) => d.type === 'serviceAct' && (d.doc_role === 'outgoin
 
 // Список наших документів реалізації (видаткові + вихідні акти) для вибору
 export async function listOutgoingDocs() {
-  const { data } = await qc('documents')
+  // усі документи (раніше .limit(3000) сервер обрізав до 1000) → сортуємо від найновіших
+  const data = (await fetchAll(() => qc('documents')
     .select('id, type, doc_role, direction, doc_number, doc_date, amount, contractor_id, created_at')
-    .in('type', ['waybill', 'serviceAct']).order('doc_date', { ascending: false }).order('created_at', { ascending: false }).limit(3000)
+    .in('type', ['waybill', 'serviceAct'])))
+    .sort((a, b) => (b.doc_date || '').localeCompare(a.doc_date || '') || (b.created_at || '').localeCompare(a.created_at || ''))
   const docs = (data || []).filter(d => d.type === 'waybill' || isOutgoingAct(d))
   const ids = [...new Set(docs.map(d => d.contractor_id).filter(Boolean))]
   const cn = {}
@@ -28,9 +31,11 @@ export async function listOutgoingDocs() {
 // FIFO-розподіл OUT-рухів товару по IN-рухах → { allocs: [{ in, qty }], short } лише для ourOutIds.
 // short — кількість наших OUT, на яку не вистачило прихідних (мінусовий залишок / не оприбутковано).
 async function allocate(productId, ourOutIds) {
-  const [{ data: ins }, { data: outs }] = await Promise.all([
-    qc('stock_movements').select('id, product_id, document_id, quantity, price, date, source, assembly_id, description, created_at').eq('product_id', productId).eq('type', 'in').order('date').order('created_at'),
-    qc('stock_movements').select('id, quantity, date, created_at').eq('product_id', productId).eq('type', 'out').order('date').order('created_at'),
+  // FIFO по ВСІХ рухах товару (без обрізання на 1000), у хронологічному порядку
+  const byTime = (a, b) => (a.date || '').localeCompare(b.date || '') || (a.created_at || '').localeCompare(b.created_at || '') || String(a.id).localeCompare(String(b.id))
+  const [ins, outs] = await Promise.all([
+    fetchAll(() => qc('stock_movements').select('id, product_id, document_id, quantity, price, date, source, assembly_id, description, created_at').eq('product_id', productId).eq('type', 'in')).then(r => r.sort(byTime)),
+    fetchAll(() => qc('stock_movements').select('id, quantity, date, created_at').eq('product_id', productId).eq('type', 'out')).then(r => r.sort(byTime)),
   ])
   const inState = (ins || []).map(m => ({ ...m, remaining: Number(m.quantity) || 0 }))
   const out = []
@@ -67,9 +72,10 @@ async function resolveAssemblyId(inM) {
 
 // Best-effort: розподілити qty товару по його IN-рухах з документом (найраніші першими)
 async function allocateQty(productId, need) {
-  const { data: ins } = await qc('stock_movements')
+  const ins = (await fetchAll(() => qc('stock_movements')
     .select('id, product_id, document_id, quantity, price, date, source, assembly_id, description, created_at')
-    .eq('product_id', productId).eq('type', 'in').order('date').order('created_at')
+    .eq('product_id', productId).eq('type', 'in')))
+    .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.created_at || '').localeCompare(b.created_at || ''))
   const out = []
   let left = Number(need) || 0
   for (const inM of (ins || [])) {

@@ -6,6 +6,7 @@ import { downloadXlsx } from './xlsxBuilder'
 import { calcTotals } from './formatUtils'
 import { supabase } from '../supabase'
 import { qc, withCompany } from '../companyScope'
+import { todayKyiv } from '../dates'
 
 export { DOCUMENT_TYPES, getDocType, getDocLabel, STATUS_LABELS, STATUS_COLORS } from './templates/registry'
 export { calcTotals, amountInWords, formatMoney, formatDate } from './formatUtils'
@@ -328,8 +329,8 @@ export async function createStockFromDoc(docId, docType, items, date, userId) {
     // Для OUT — FIFO cost, для IN — ціна закупки
     let costPrice = null
     if (dt.stockEffect === 'out') {
-      const { getFifoCost } = await import('../stockService')
-      costPrice = await getFifoCost(resolved.productId, qty)
+      const { getLastPurchaseCost } = await import('../stockService')
+      costPrice = await getLastPurchaseCost(resolved.productId, date || null) // остання закупівля (рішення №16)
     } else if (dt.stockEffect === 'in') {
       costPrice = unitPrice // для IN cost = ціна закупки
     }
@@ -342,7 +343,7 @@ export async function createStockFromDoc(docId, docType, items, date, userId) {
       total,
       cost_price: costPrice,
       document_id: mirrorId,
-      date: date || new Date().toISOString().split('T')[0],
+      date: date || todayKyiv(),
       description: `${dt.label}: ${item.name}`,
       source: 'document',
       created_by: userId,

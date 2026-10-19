@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { qc } from '../lib/companyScope'
 import { STATUS_ORDER, labelForStatus } from '../lib/orders'
 import { fmt } from '../lib/fmt'
+import { addDaysIso, kyivDayStartTs, todayKyiv } from '../lib/dates'
 
 // Звіт по замовленнях: фільтри Замовник / Статус / Період →
 // таблиця з № і датами договору / видаткової / рахунку + загальна сума.
@@ -29,7 +30,7 @@ export default function OrderReport() {
   const [clientId, setClientId] = useState('')
   const [status, setStatus] = useState('')
   const [from, setFrom] = useState(() => `${new Date().getFullYear()}-01-01`)
-  const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10))
+  const [to, setTo] = useState(() => todayKyiv())
   const [rows, setRows] = useState(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState(null)
@@ -47,8 +48,9 @@ export default function OrderReport() {
         .is('archived_at', null)
       if (clientId) query = query.eq('client_id', clientId)
       if (status) query = query.eq('status', status)
-      if (from) query = query.gte('created_at', from)
-      if (to) query = query.lte('created_at', to + 'T23:59:59')
+      // межі доби — за Києвом (created_at зберігається в UTC)
+      if (from) query = query.gte('created_at', kyivDayStartTs(from))
+      if (to) query = query.lt('created_at', kyivDayStartTs(addDaysIso(to, 1)))
       let { data: ords, error } = await query.order('order_number')
       // Фолбек, якщо колонку contract_id ще не додано (міграція 040)
       if (error && /contract_id/.test(error.message || '')) {
@@ -57,8 +59,8 @@ export default function OrderReport() {
           .is('archived_at', null)
         if (clientId) q2 = q2.eq('client_id', clientId)
         if (status) q2 = q2.eq('status', status)
-        if (from) q2 = q2.gte('created_at', from)
-        if (to) q2 = q2.lte('created_at', to + 'T23:59:59')
+        if (from) q2 = q2.gte('created_at', kyivDayStartTs(from))
+        if (to) q2 = q2.lt('created_at', kyivDayStartTs(addDaysIso(to, 1)))
         ;({ data: ords, error } = await q2.order('order_number'))
       }
       if (error) throw error

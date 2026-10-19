@@ -2,6 +2,7 @@
 // Статті «Виручка: товари / ПЗ» і «Закупівля товарів» розкладаються по проектах
 // (bank_transactions.project_id → finance_projects). Решта — за статтею.
 import { qc } from './companyScope'
+import { fetchAllData } from './fetchAll'
 
 export const REVENUE_ART = 'Виручка: товари / ПЗ'
 export const PURCHASE_ART = 'Закупівля товарів'
@@ -11,8 +12,8 @@ const emptyMonths = () => Array(12).fill(0)
 export async function computeCashflow(year) {
   const from = `${year}-01-01`, to = `${year}-12-31`
   const [{ data: txs }, { data: projects }] = await Promise.all([
-    qc('bank_transactions').select('date, amount, article, direction, project_id, is_ignored')
-      .eq('is_ignored', false).gte('date', from).lte('date', to),
+    fetchAllData(() => qc('bank_transactions').select('date, amount, article, direction, project_id, is_ignored')
+      .eq('is_ignored', false).gte('date', from).lte('date', to)),
     qc('finance_projects').select('id, name').then(r => r).catch(() => ({ data: [] })),
   ])
   const projName = {}; (projects || []).forEach(p => projName[p.id] = p.name)

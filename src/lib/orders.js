@@ -1,5 +1,6 @@
 // Статуси замовлень — єдиний спрощений набір для всіх типів (trade/service/agent).
 // Статус — єдиний контрол стану заявки, рухається вручну (випадайка «Статус» у «Деталях»).
+import { todayKyiv } from './dates'
 
 export const ORDER_TYPES = { trade: 'Торгівля', service: 'Послуги', agent: 'Агент' }
 export const TYPE_COLORS = { trade: '#2563EB', service: '#7C3AED', agent: '#0D9488' }
@@ -57,6 +58,6 @@ export function proposalOverdue(o, latestSentAt) {
 
 // Прострочення оплати по субзамовленнях (payment_due_date минув)
 export function paymentOverdue(supplierOrders = []) {
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayKyiv()
   return supplierOrders.some(s => s.payment_due_date && s.payment_due_date < today && s.status !== 'paid')
 }

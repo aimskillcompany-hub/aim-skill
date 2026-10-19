@@ -1,10 +1,14 @@
 // Аналітика: P&L (Факт/План), Борги (Aging), Dashboard.
 // Принципи ТЗ: у P&L лише is_validated транзакції; борги = документи − прив'язані транзакції.
 import { supabase } from './supabase'
+import { itemSale, itemCost } from './orderPlan'
+import { getCompany } from './companyConfig'
+import { fetchAll, fetchAllData, fetchAllIn } from './fetchAll'
+import { todayKyiv, daysBetween, monthStartIso } from './dates'
 import { qc } from './companyScope'
 import { PL_ORDER, PL_LABELS, PL_SIGN } from './articles'
 import { getAccountBalances } from './accounts'
-import { countsAsDebt } from './debts'
+import { countsAsDebt, debtDate, loadDocPayments } from './debts'
 
 const pad = n => String(n).padStart(2, '0')
 const monthEnd = (y, m) => new Date(y, m, 0).getDate()
@@ -18,7 +22,7 @@ export function periodRange(year, month) {
 export async function computePL(year, month) {
   const { from, to, ym } = periodRange(year, month)
   const [{ data: txs }, { data: arts }, { data: plans }] = await Promise.all([
-    qc('bank_transactions').select('amount, article, direction').eq('is_validated', true).eq('is_ignored', false).gte('date', from).lte('date', to),
+    fetchAllData(() => qc('bank_transactions').select('amount, article, direction').eq('is_validated', true).eq('is_ignored', false).gte('date', from).lte('date', to)),
     supabase.from('articles').select('name, type, pl_level, sort_order'),
     qc('plans').select('article, amount, year_month'),
   ])
@@ -67,7 +71,7 @@ export async function computePLBreakdown(year, month, opts = {}) {
   const includePending = !!opts.includePending
   const { from, to } = periodRange(year, month)
   const [{ data: txs }, { data: arts }] = await Promise.all([
-    qc('bank_transactions').select('amount, article, direction, date, is_validated').eq('is_ignored', false).gte('date', from).lte('date', to),
+    fetchAllData(() => qc('bank_transactions').select('amount, article, direction, date, is_validated').eq('is_ignored', false).gte('date', from).lte('date', to)),
     supabase.from('articles').select('name, type, pl_level, sort_order'),
   ])
   const meta = {}; (arts || []).forEach(a => { meta[a.name] = a })
@@ -143,12 +147,12 @@ export async function plDrill(year, month, bucketKey, articleNames, opts = {}) {
     if (bucketKey === 'total') ({ from, to } = periodRange(year, null))
     else { const m = Number(bucketKey); from = `${year}-${pad(m)}-01`; to = `${year}-${pad(m)}-${pad(monthEnd(year, m))}` }
   }
-  const { data } = await qc('bank_transactions')
+  const { data } = await fetchAllData(() => qc('bank_transactions')
     .select('id, date, amount, article, direction, counterparty, contractor_id, description')
     .eq('is_validated', opts.validated === false ? false : true).eq('is_ignored', false)
     .gte('date', from).lte('date', to)
     .in('article', articleNames)
-    .order('date', { ascending: true })
+    .order('date', { ascending: true }))
   const list = (data || []).filter(t => t.direction !== 'Інше' && t.direction !== 'ПФД' && t.direction !== 'ОЗ')
   // прив'язані документи (transaction_documents → documents) для звірки
   const ids = list.map(t => t.id)
@@ -170,9 +174,9 @@ export async function plDrill(year, month, bucketKey, articleNames, opts = {}) {
 // cost_price = FIFO собівартість/од (net). ПДВ 20% для колонок «з ПДВ». Податок на дохід 18%.
 export async function salesProfitReport(year, month) {
   const { from, to } = periodRange(year, month)
-  const { data: movs } = await qc('stock_movements')
+  const movs = await fetchAll(() => qc('stock_movements')
     .select('product_id, document_id, quantity, price, cost_price, date, description')
-    .eq('type', 'out').not('document_id', 'is', null).gte('date', from).lte('date', to)
+    .eq('type', 'out').not('document_id', 'is', null).gte('date', from).lte('date', to))
   if (!movs?.length) return { groups: [], grand: null }
 
   const docIds = [...new Set(movs.map(m => m.document_id))]
@@ -187,9 +191,9 @@ export async function salesProfitReport(year, month) {
   // Джерело закупівлі по товару: постачальник + № прихідної (найсвіжіший прихід із документом)
   const purchaseByProd = {}
   if (prodIds.length) {
-    const { data: inMovs } = await qc('stock_movements')
-      .select('product_id, date, document_id, price, cost_price').eq('type', 'in').in('product_id', prodIds).not('document_id', 'is', null)
-      .order('date', { ascending: false })
+    const inMovs = (await fetchAllIn(() => qc('stock_movements')
+      .select('id, product_id, date, document_id, price, cost_price').eq('type', 'in').not('document_id', 'is', null), 'product_id', prodIds))
+      .sort((a, b) => (b.date || '').localeCompare(a.date || '')) // найсвіжіша закупівля першою
     const inDocIds = [...new Set((inMovs || []).map(m => m.document_id))]
     const { data: inDocs } = inDocIds.length ? await qc('documents').select('id, doc_number, doc_date, vat_amount, contractors(name, is_vat_payer)').in('id', inDocIds) : { data: [] }
     const inDocMap = {}; (inDocs || []).forEach(d => { inDocMap[d.id] = d })
@@ -206,16 +210,17 @@ export async function salesProfitReport(year, month) {
 
   const calcRow = (name, qty, sellUnitNet, costUnitNet, purchase) => {
     const sellNet = qty * sellUnitNet, costNet = qty * costUnitNet
-    const gross = sellNet - costNet            // Валовий прибуток
-    const marginGross = gross * 1.2            // Маржа з ПДВ
-    const vat = gross * 0.2                     // ПДВ (з маржі)
-    const net = gross / 1.18                    // Чистий
-    const tax = gross - net                     // Податок на дохід (18%)
+    const gross = sellNet - costNet            // Валовий прибуток (net)
     const costMult = purchase?.costHasVat === false ? 1 : 1.2  // закупівля без ПДВ — собівартість не множимо
+    const sellSum = sellNet * 1.2, costSum = costNet * costMult
+    const marginGross = sellSum - costSum      // Маржа з ПДВ = продаж − закупівля (у тій самій базі, що й колонки)
+    const vat = sellNet * 0.2 - (costMult > 1 ? costNet * 0.2 : 0) // ПДВ до сплати: вихідний − вхідний (без ПДВ у закупівлі — вхідного немає)
+    const tax = gross > 0 ? gross * 0.18 : 0    // Податок на прибуток 18% від валового (як у замовленні та звіті інвестору)
+    const net = gross - tax                     // Чистий
     return {
       name, qty,
-      sellUnit: sellUnitNet * 1.2, sellSum: sellNet * 1.2,
-      costUnit: costUnitNet * costMult, costSum: costNet * costMult,
+      sellUnit: sellUnitNet * 1.2, sellSum,
+      costUnit: costUnitNet * costMult, costSum,
       marginUnit: qty ? marginGross / qty : 0, marginSum: marginGross,
       marginPct: sellNet ? gross / sellNet : 0,
       vat, gross, tax, net,
@@ -254,13 +259,15 @@ export async function salesProfitReport(year, month) {
 const BUCKETS = [['0-7', 0, 7], ['8-14', 8, 14], ['15-30', 15, 30], ['30+', 31, Infinity]]
 
 export async function computeAging() {
-  const today = new Date()
-  const [{ data: docs }, { data: tdocs }, { data: contractors }] = await Promise.all([
-    qc('documents').select('id, contractor_id, amount, direction, type, doc_number, doc_date, created_at').not('amount', 'is', null).not('direction', 'is', null),
-    supabase.from('transaction_documents').select('document_id, amount'),
+  const today = todayKyiv()
+  const [docs, { data: contractors }] = await Promise.all([
+    fetchAll(() => qc('documents').select('id, contractor_id, amount, direction, type, doc_number, doc_date, created_at').not('amount', 'is', null).not('direction', 'is', null)),
     supabase.from('contractors').select('id, name'),
   ])
-  const paidByDoc = {}; (tdocs || []).forEach(t => { paidByDoc[t.document_id] = (paidByDoc[t.document_id] || 0) + Math.abs(Number(t.amount) || 0) })
+  // Оплати — лише по документах цієї юрособи (раніше читались усі прив'язки всіх компаній, з обрізанням на 1000)
+  // і лише від неігнорованих транзакцій (проігнорований дубль не «гасить» борг)
+  const pays = await loadDocPayments(docs.filter(d => countsAsDebt(d.type)).map(d => d.id))
+  const paidByDoc = {}; pays.forEach(t => { paidByDoc[t.document_id] = (paidByDoc[t.document_id] || 0) + t.amount })
   const cname = {}; (contractors || []).forEach(c => { cname[c.id] = c.name })
 
   const make = () => ({ total: 0, buckets: Object.fromEntries(BUCKETS.map(b => [b[0], 0])), byContractor: {}, docs: [] })
@@ -270,7 +277,8 @@ export async function computeAging() {
     if (!countsAsDebt(d.type)) return // рахунок/замовлення не створюють борг (захист від подвоєння)
     const outstanding = (Math.abs(Number(d.amount) || 0)) - (paidByDoc[d.id] || 0)
     if (outstanding <= 0.5) return
-    const ageDays = Math.floor((today - new Date(d.doc_date || d.created_at)) / 864e5)
+    // вік за київською датою; майбутня дата документа → 0 (раніше −1 потрапляло в «30+»)
+    const ageDays = Math.max(0, daysBetween(debtDate(d), today))
     const bucket = BUCKETS.find(b => ageDays >= b[1] && ageDays <= b[2])?.[0] || '30+'
     const tgt = d.direction === 'receivable' ? recv : d.direction === 'payable' ? pay : null
     if (!tgt) return
@@ -278,7 +286,7 @@ export async function computeAging() {
     tgt.buckets[bucket] += outstanding
     const key = d.contractor_id || 'unknown'
     tgt.byContractor[key] = (tgt.byContractor[key] || 0) + outstanding
-    tgt.docs.push({ id: d.id, type: d.type, doc_number: d.doc_number, doc_date: (d.doc_date || d.created_at || '').slice(0, 10), contractor_id: key, contractorName: cname[d.contractor_id] || 'Без контрагента', outstanding, ageDays })
+    tgt.docs.push({ id: d.id, type: d.type, doc_number: d.doc_number, doc_date: debtDate(d), contractor_id: key, contractorName: cname[d.contractor_id] || 'Без контрагента', outstanding, ageDays })
   })
 
   const topList = (obj) => Object.entries(obj.byContractor)
@@ -326,15 +334,13 @@ export async function computeForecast(year, month) {
   const withItems = new Set()
   if (pipelineIds.length) {
     const { data: items } = await supabase.from('order_items')
-      .select('order_id, qty, unit_price, cost_price, vat_rate, price_includes_vat').in('order_id', pipelineIds)
+      .select('order_id, qty, unit_price, cost_price, vat_rate, cost_vat_rate, price_includes_vat').in('order_id', pipelineIds)
+    // єдині правила orderPlan: ПДВ закупівлі позиції, неплатник ПДВ — без ПДВ
+    const vatOn = (await getCompany().catch(() => null))?.isVatPayer !== false
     ;(items || []).forEach(it => {
-      const q = Number(it.qty) || 0, v = Number(it.vat_rate) || 0, incl = !!it.price_includes_vat
-      const sell = Number(it.unit_price) || 0, cost = Number(it.cost_price) || 0
-      const netSell = incl ? (v > 0 ? sell / (1 + v / 100) : sell) : sell
-      const netCost = incl ? (v > 0 ? cost / (1 + v / 100) : cost) : cost
-      const gross = incl ? sell : sell * (1 + v / 100)
-      pipelineMargin += (netSell - netCost) * q
-      pipelineRevenue += gross * q
+      const s = itemSale(it, vatOn), c = itemCost(it, vatOn)
+      pipelineMargin += s.net - c.net
+      pipelineRevenue += s.gross
       if (it.order_id) withItems.add(it.order_id)
     })
   }
@@ -350,13 +356,12 @@ export async function computeForecast(year, month) {
 
 // ── Dashboard: KPI + помісячний ряд + топ клієнтів ──
 export async function dashboardStats(year) {
-  const monthStart = new Date(); monthStart.setDate(1)
-  const mFrom = monthStart.toISOString().split('T')[0]
+  const mFrom = monthStartIso() // 1-ше число поточного місяця за Києвом (раніше вночі — останній день попереднього)
   const yFrom = `${year}-01-01`
 
   const [{ data: monthTxs }, { data: yearTxs }, balances, aging] = await Promise.all([
-    qc('bank_transactions').select('amount, direction').eq('is_validated', true).eq('is_ignored', false).gte('date', mFrom),
-    qc('bank_transactions').select('amount, direction, date, counterparty, contractor_id').eq('is_validated', true).eq('is_ignored', false).gte('date', yFrom),
+    fetchAllData(() => qc('bank_transactions').select('amount, direction').eq('is_validated', true).eq('is_ignored', false).gte('date', mFrom)),
+    fetchAllData(() => qc('bank_transactions').select('amount, direction, date, counterparty, contractor_id').eq('is_validated', true).eq('is_ignored', false).gte('date', yFrom)),
     getAccountBalances(),
     computeAging(),
   ])

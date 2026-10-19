@@ -1,9 +1,11 @@
 // Дані для звіту «Дебіторка» (receivable) по всіх юрособах, станом на кінець періоду.
 // Борг = сума документа − оплати (transaction_documents) з датою ≤ кінця періоду. Лише боргові
 // документи клієнту (видаткова/акт, countsAsDebt), direction='receivable'.
-import { qc, getActiveCompanyId, setActiveCompanyId } from './companyScope'
+import { qc, setReportScope, runExclusive } from './companyScope'
 import { clearCompanyCache } from './companyConfig'
-import { countsAsDebt, debtDate } from './debts'
+import { countsAsDebt, debtDate, loadDocPayments } from './debts'
+import { fetchAll } from './fetchAll'
+import { todayKyiv } from './dates'
 import { supabase } from './supabase'
 
 export const BUCKETS = [
@@ -17,7 +19,6 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100
 const addDaysIso = (iso, n) => { const x = new Date(iso + 'T00:00:00Z'); x.setUTCDate(x.getUTCDate() + (Number(n) || 0)); return x.toISOString().slice(0, 10) }
 const lastDay = (y, m) => `${y}-${String(m).padStart(2, '0')}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`
 
-let _lock = Promise.resolve()
 
 // Повертає плаский список боргових документів по всіх компаніях + мета компаній (станом на кінець місяця).
 export function loadReceivables(companies, year, month) {
@@ -31,10 +32,9 @@ export async function loadReceivablesAsOf(companies, asOf) {
   const run = async () => {
     // Вік боргу — до сьогодні (для поточного/майбутнього періоду) або до кінця минулого періоду.
     // Склад боргів (документи/оплати ≤ asOf) не змінюється — щоб сума збігалась із Балансом.
-    const todayIso = new Date().toISOString().slice(0, 10)
+    const todayIso = todayKyiv() // київська дата (UTC-дата вночі давала вчора)
     const ageRef = asOf < todayIso ? asOf : todayIso
     const asOfMs = new Date(ageRef).getTime()
-    const saved = getActiveCompanyId()
     const docsOut = []
     const companyMeta = []
     try {
@@ -44,35 +44,23 @@ export async function loadReceivablesAsOf(companies, asOf) {
       ;(contractors || []).forEach(c => { cName[c.id] = c.name; cEdr[c.id] = c.edrpou; cDelay[c.id] = Number(c.payment_delay_days) || 0 })
 
       for (const comp of companies) {
-        setActiveCompanyId(comp.id); clearCompanyCache()
+        setReportScope(comp.id); clearCompanyCache()
         companyMeta.push({ id: comp.id, name: comp.short_name || comp.name })
 
         // боргові документи клієнту до кінця періоду
-        const { data: docs } = await qc('documents')
+        const docs = await fetchAll(() => qc('documents')
           .select('id, doc_number, type, doc_date, amount, vat_amount, is_signed, is_verified, contractor_id, storage_path, order_id, created_at, direction, generated_doc_id')
-          .eq('direction', 'receivable').not('amount', 'is', null)
+          .eq('direction', 'receivable').not('amount', 'is', null))
         const relevant = (docs || []).filter(d => countsAsDebt(d.type) && debtDate(d) <= asOf)
         const ids = relevant.map(d => d.id)
         if (!ids.length) continue
 
         // оплати ≤ кінця періоду (transaction_documents → bank_transactions.date)
         const paidByDoc = {}, paysByDoc = {}
-        const tds = []
-        for (let i = 0; i < ids.length; i += 200) {
-          const { data } = await supabase.from('transaction_documents').select('document_id, amount, transaction_id').in('document_id', ids.slice(i, i + 200))
-          ;(data || []).forEach(x => tds.push(x))
-        }
-        const ptxIds = [...new Set(tds.map(x => x.transaction_id).filter(Boolean))]
-        const ptxDate = {}
-        for (let i = 0; i < ptxIds.length; i += 200) {
-          const { data } = await supabase.from('bank_transactions').select('id, date').in('id', ptxIds.slice(i, i + 200))
-          ;(data || []).forEach(x => ptxDate[x.id] = x.date)
-        }
-        tds.forEach(x => {
-          const pd = ptxDate[x.transaction_id]
-          if (pd && pd > asOf) return // оплата пізніше кінця періоду
-          paidByDoc[x.document_id] = (paidByDoc[x.document_id] || 0) + Math.abs(Number(x.amount) || 0)
-          ;(paysByDoc[x.document_id] ||= []).push({ date: pd || null, amount: r2(Math.abs(Number(x.amount) || 0)) })
+        ;(await loadDocPayments(ids)).forEach(x => {
+          if (x.date && x.date > asOf) return // оплата пізніше кінця періоду
+          paidByDoc[x.document_id] = (paidByDoc[x.document_id] || 0) + x.amount
+          ;(paysByDoc[x.document_id] ||= []).push({ date: x.date, amount: r2(x.amount) })
         })
 
         relevant.forEach(d => {
@@ -100,13 +88,11 @@ export async function loadReceivablesAsOf(companies, asOf) {
         })
       }
     } finally {
-      setActiveCompanyId(saved); clearCompanyCache()
+      setReportScope(null); clearCompanyCache()
     }
     return { docs: docsOut, companies: companyMeta, asOf, ageRef }
   }
-  const result = _lock.then(run, run)
-  _lock = result.then(() => {}, () => {})
-  return result
+  return runExclusive(run)
 }
 
 // Групування боргових документів за контрагентом + підсумки (чиста функція).

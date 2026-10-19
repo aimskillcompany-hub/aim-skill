@@ -3,6 +3,9 @@
 // Дебіторка (receivable) — клієнт винен нам; кредиторка (payable) — ми винні постачальнику.
 // Борги НІКОЛИ не вводяться вручну.
 import { qc } from './companyScope'
+import { fetchAll, fetchAllIn } from './fetchAll'
+import { supabase } from './supabase'
+import { kyivDateOfTs } from './dates'
 
 const sum = (arr, f) => (arr || []).reduce((s, x) => s + (Number(f(x)) || 0), 0)
 
@@ -16,17 +19,32 @@ export const countsAsDebt = (type) => !NON_DEBT_TYPES.has(type)
 // Дата виникнення боргу. Згенерований документ можна зберегти «без дати» (дата вписується від руки) →
 // doc_date = null; тоді беремо дату створення. ЄДИНЕ правило для Балансу, динаміки й звіту «Дебіторка»
 // (раніше Баланс фільтрував .lte('doc_date') і такі видаткові «ВН-…» випадали з дебіторки).
-export const debtDate = (d) => String(d.doc_date || d.created_at || '').slice(0, 10)
+// Дата створення — київська (документ, збережений о 01:00 1-го числа, не «переїжджає» в попередній місяць).
+export const debtDate = (d) => (d.doc_date ? String(d.doc_date).slice(0, 10) : kyivDateOfTs(d.created_at))
+
+// Оплати документів: [{ document_id, transaction_id, amount (≥0), date }] — ЄДИНЕ джерело для
+// Дебіторки, Балансу, динаміки, старіння й прогнозу. Без обрізання на 1000 рядках; помилка кидається;
+// оплати від ПРОІГНОРОВАНИХ транзакцій (дублі імпорту) не рахуються — вони не «гасять» борг.
+export async function loadDocPayments(docIds) {
+  if (!docIds?.length) return []
+  const tds = await fetchAllIn(() => supabase.from('transaction_documents').select('id, document_id, amount, transaction_id'), 'document_id', docIds)
+  const txIds = [...new Set(tds.map(t => t.transaction_id).filter(Boolean))]
+  const txs = txIds.length ? await fetchAllIn(() => supabase.from('bank_transactions').select('id, date, is_ignored'), 'id', txIds) : []
+  const txById = {}; txs.forEach(t => { txById[t.id] = t })
+  return tds
+    .filter(t => !txById[t.transaction_id]?.is_ignored)
+    .map(t => ({ document_id: t.document_id, transaction_id: t.transaction_id, amount: Math.abs(Number(t.amount) || 0), date: txById[t.transaction_id]?.date || null }))
+}
 
 // Детальний баланс одного контрагента (для картки)
 export async function getContractorBalance(contractorId) {
   const since = new Date(); since.setFullYear(since.getFullYear() - 1)
   const sinceStr = since.toISOString().split('T')[0]
 
-  const [{ data: docs }, { data: txs }] = await Promise.all([
-    qc('documents').select('amount, direction, type, is_signed').eq('contractor_id', contractorId),
-    qc('bank_transactions').select('amount, direction, date')
-      .eq('contractor_id', contractorId).eq('is_ignored', false),
+  const [docs, txs] = await Promise.all([
+    fetchAll(() => qc('documents').select('amount, direction, type, is_signed').eq('contractor_id', contractorId)),
+    fetchAll(() => qc('bank_transactions').select('amount, direction, date')
+      .eq('contractor_id', contractorId).eq('is_ignored', false)),
   ])
 
   const debtDocs = (docs || []).filter(d => countsAsDebt(d.type))
@@ -43,20 +61,4 @@ export async function getContractorBalance(contractorId) {
     income: paidIn,
     expense: paidOut,
   }
-}
-
-// Баланси всіх контрагентів (для списку) — рахуються з документів і транзакцій
-// АКТИВНОЇ компанії (scoped через qc). Раніше бралися з в'юхи contractor_balances,
-// яка не знала про company_id → показувала суму по всіх юрособах.
-export async function getAllBalances() {
-  const [{ data: docs }, { data: txs }] = await Promise.all([
-    qc('documents').select('contractor_id, amount, type').not('contractor_id', 'is', null),
-    qc('bank_transactions').select('contractor_id, amount').eq('is_ignored', false).not('contractor_id', 'is', null),
-  ])
-  const map = {}
-  const ensure = (id) => (map[id] ||= { contractor_id: id, documents_total: 0, transactions_total: 0, balance: 0 })
-  ;(docs || []).forEach(d => { if (countsAsDebt(d.type)) ensure(d.contractor_id).documents_total += Number(d.amount) || 0 })
-  ;(txs || []).forEach(t => { ensure(t.contractor_id).transactions_total += Number(t.amount) || 0 })
-  Object.values(map).forEach(m => { m.balance = m.documents_total - m.transactions_total })
-  return map
 }

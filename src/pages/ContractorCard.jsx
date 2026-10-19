@@ -51,8 +51,13 @@ export default function ContractorCard() {
 
       {/* KPI */}
       <div className="kpi-grid" style={{ marginBottom: 20 }}>
-        <Kpi label="Дебіторка (нам винні)" value={bal ? bal.receivable : null} positive />
-        <Kpi label="Кредиторка (ми винні)" value={bal ? bal.payable : null} negative />
+        {/* Від'ємне сальдо = передоплата: показуємо окремим підписом, а не як борг (раніше знак губився) */}
+        {bal && bal.receivable < -0.5
+          ? <Kpi label="Аванс від клієнта (оплачено наперед)" value={-bal.receivable} />
+          : <Kpi label="Дебіторка (нам винні)" value={bal ? Math.max(0, bal.receivable) : null} positive />}
+        {bal && bal.payable < -0.5
+          ? <Kpi label="Наш аванс постачальнику" value={-bal.payable} />
+          : <Kpi label="Кредиторка (ми винні)" value={bal ? Math.max(0, bal.payable) : null} negative />}
         <Kpi label="Оборот за рік" value={bal ? bal.turnoverYear : null} />
       </div>
 
