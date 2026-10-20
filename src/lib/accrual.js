@@ -24,6 +24,71 @@ const isVatArticle = (name) => /ПДВ/i.test(name || '')
 const DOC_LABEL = { waybill: 'Видаткові накладні (товари)', serviceAct: 'Акти (послуги)' }
 
 // ── Документи реалізації періоду з собівартістю ──
+// ── ПДВ постачальника по замовленню: з прихідних (vat_amount), для перевірки — текст платежів ──
+// → { '<order>|<supplier>': { docVat: true|false|undefined, payVat: true|false|undefined, docs: [...], pays: [...] } }
+// '<order>|*' — по всіх постачальниках замовлення. docVat — головне джерело; payVat лише для ⚠ «розбіжність ПДВ».
+export const payTextVat = (t) => {
+  const x = String(t || '').toLowerCase()
+  if (/без\s*пдв|пдв\s*не\s*(перед|обклад|нарах)|не\s*(є\s*)?платник\w*\s*пдв|звільн\w*\s*від\s*пдв/.test(x)) return false
+  if (/пдв|vat/.test(x)) return true
+  return undefined
+}
+export async function loadSupplierVat(orderIds, oItems = []) {
+  const map = {}
+  if (!orderIds?.length) return map
+  const docs = (await fetchAllIn(() => qc('documents').select('id, type, order_id, contractor_id, vat_amount, amount, doc_number, doc_date, created_at, direction').eq('direction', 'payable'), 'order_id', orderIds))
+    .filter(d => countsAsDebt(d.type) && d.amount != null)
+  const tds = docs.length ? await fetchAllIn(() => supabase.from('transaction_documents').select('document_id, transaction_id'), 'document_id', docs.map(d => d.id)).catch(() => []) : []
+  const ots = await fetchAllIn(() => supabase.from('order_transactions').select('order_id, transaction_id'), 'order_id', orderIds).catch(() => [])
+  const txIds = [...new Set([...tds, ...ots].map(t => t.transaction_id).filter(Boolean))]
+  const txs = txIds.length ? await fetchAllIn(() => supabase.from('bank_transactions').select('id, description, contractor_id, amount, date, is_ignored'), 'id', txIds).catch(() => []) : []
+  const txById = {}; txs.forEach(t => { txById[t.id] = t })
+  const docById = {}; docs.forEach(d => { docById[d.id] = d })
+  const ensure = (k) => (map[k] ||= { docs: [], pays: [] })
+  docs.forEach(d => {
+    const e = { id: d.id, number: d.doc_number || '—', date: debtDate(d), vat: Math.abs(Number(d.vat_amount) || 0) > 0.005 }
+    ensure(`${d.order_id}|${d.contractor_id}`).docs.push(e); ensure(`${d.order_id}|*`).docs.push(e)
+  })
+  const seen = new Set()
+  const addPay = (orderId, t) => {
+    if (!t || t.is_ignored || Number(t.amount) >= 0 || seen.has(orderId + t.id)) return   // лише оплати постачальникам
+    seen.add(orderId + t.id)
+    const p = { id: t.id, date: t.date, text: t.description || '', vat: payTextVat(t.description) }
+    if (t.contractor_id) ensure(`${orderId}|${t.contractor_id}`).pays.push(p)
+    ensure(`${orderId}|*`).pays.push(p)
+  }
+  tds.forEach(td => { const d = docById[td.document_id]; if (d) addPay(d.order_id, txById[td.transaction_id]) })
+  ots.forEach(o => addPay(o.order_id, txById[o.transaction_id]))
+  // запасний варіант без прихідних — ознака платника ПДВ у картці постачальника
+  const supIds = [...new Set(oItems.map(i => i.supplier_id).filter(Boolean))]
+  const sups = supIds.length ? await fetchAllIn(() => supabase.from('contractors').select('id, name, is_vat_payer'), 'id', supIds).catch(() => []) : []
+  const supById = {}; sups.forEach(c => { supById[c.id] = c })
+  Object.entries(map).forEach(([k, v]) => {
+    v.docVat = v.docs.length ? v.docs.some(d => d.vat) : undefined
+    const pv = v.pays.map(p => p.vat).filter(x => x !== undefined)
+    v.payVat = pv.length ? (pv.every(Boolean) ? true : pv.every(x => !x) ? false : 'mixed') : undefined
+    v.mismatch = v.docVat !== undefined && v.payVat !== undefined && v.payVat !== v.docVat
+  })
+  map.__suppliers = supById
+  return map
+}
+// ПДВ для позиції замовлення: прихідна цього постачальника → (позиція без постачальника) усі прихідні замовлення,
+// якщо однакові → картка постачальника (is_vat_payer) → як у позиції
+export function vatInfo(map, orderId, supplierId) {
+  const own = supplierId ? map[`${orderId}|${supplierId}`] : null
+  if (own?.docVat !== undefined) return { vat: own.docVat, source: 'прихідна', info: own }
+  const all = map[`${orderId}|*`]
+  if (!supplierId && all?.docs.length && (all.docs.every(d => d.vat) || all.docs.every(d => !d.vat))) return { vat: all.docVat, source: 'прихідні замовлення', info: all }
+  const c = supplierId ? map.__suppliers?.[supplierId] : null
+  if (c && c.is_vat_payer === false) return { vat: false, source: 'постачальник — неплатник ПДВ' }
+  return { vat: undefined, source: 'ставка в позиції' }
+}
+function withSupplierVat(it, v) {
+  if (v.vat === false) return { ...it, cost_vat_rate: 0 }
+  if (v.vat === true && !(Number(it.cost_vat_rate ?? it.vat_rate) > 0)) return { ...it, cost_vat_rate: 20 }
+  return it
+}
+
 // OUT-рухи з полями FIFO (071) і оцінки (074), з відступом для старіших схем
 async function loadOutMovs(run, extra = '') {
   const base = 'id, document_id, product_id, quantity, cost_price, price, description, date, source' + extra
@@ -80,9 +145,11 @@ export async function accrualSalesDocs(from, to) {
 
   // позиції замовлень цих документів — джерело закупівельної ціни (2-й пріоритет) і частки для документів без руху
   const orderIds = [...new Set(docs.map(d => d.order_id).filter(Boolean))]
-  const oItems = orderIds.length ? await fetchAllIn(() => supabase.from('order_items').select('id, order_id, product_id, qty, unit_price, cost_price, vat_rate, cost_vat_rate, price_includes_vat, name'), 'order_id', orderIds) : []
+  const oItems = orderIds.length ? await fetchAllIn(() => supabase.from('order_items').select('id, order_id, product_id, qty, unit_price, cost_price, vat_rate, cost_vat_rate, price_includes_vat, name, supplier_id'), 'order_id', orderIds) : []
   const itemsByOrder = {}; oItems.forEach(i => { (itemsByOrder[i.order_id] ||= []).push(i) })
   const vatOn = (await getCompany().catch(() => null))?.isVatPayer !== false
+  // ПДВ закупівлі — за прихідною постачальника (є ПДВ у документі), а не за ставкою в позиції / текстом платежу
+  const supVat = await loadSupplierVat(orderIds, oItems)
 
   const prodIds = [...new Set([...movs.map(m => m.product_id), ...oItems.map(i => i.product_id)].filter(Boolean))]
   const prods = prodIds.length ? await fetchAllIn(() => supabase.from('products').select('id, name, product_type'), 'id', prodIds) : []
@@ -101,7 +168,7 @@ export async function accrualSalesDocs(from, to) {
     if (!it) return 0
     const q = Number(it.qty) || 0
     if (!q) return 0
-    const unitCost = itemCost(it, vatOn).net / q, unitSale = itemSale(it, vatOn).net / q
+    const unitCost = itemCost(withSupplierVat(it, vatInfo(supVat, orderId, it.supplier_id)), vatOn).net / q, unitSale = itemSale(it, vatOn).net / q
     return unitCost > 0 && !isSalePrice(unitCost, unitSale) ? unitCost : 0
   }
 

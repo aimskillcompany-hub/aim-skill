@@ -548,6 +548,18 @@ export async function mergeProducts(keepId, dupId) {
   if (!keepId || !dupId || keepId === dupId) return { error: 'Оберіть інший товар' }
   const { data: dup } = await supabase.from('products').select('name').eq('id', dupId).maybeSingle()
   if (!dup) return { error: 'Товар для об\'єднання не знайдено' }
+  // 075: одна транзакція в базі, без перезапуску розподілу по партіях (собівартість відвантажень не змінюється)
+  const { data: rpcRes, error: rpcErr } = await supabase.rpc('merge_products', { p_keep: keepId, p_dup: dupId })
+  if (!rpcErr) {
+    await supabase.from('product_aliases').upsert({ product_id: keepId, alias: dup.name.trim(), normalized: normalizeName(dup.name) }, { onConflict: 'normalized', ignoreDuplicates: true }).then(() => {}, () => {})
+    return { ok: true, moved: rpcRes }
+  }
+  if (!(rpcErr.code === 'PGRST202' || /merge_products/.test(rpcErr.message || ''))) {
+    return { error: /PERIOD_CLOSED/i.test(rpcErr.message || '')
+      ? 'Частина рухів цього товару — у ЗАКРИТОМУ періоді. Спершу «Переоткрийте» відповідний місяць у Закритті періоду, потім об\'єднайте знову.'
+      : rpcErr.message }
+  }
+  // до міграції 075 — покроково
   // Перенести рухи складу. Може впасти, якщо хоч один рух — у ЗАКРИТОМУ періоді (тригер guard_period).
   // Раніше помилку ковтали → частина рухів (напр. прихід) не переносилась, а товар усе одно архівувався.
   // Тепер: якщо не вдалось — НЕ архівуємо дубль (щоб не втратити рухи) і показуємо зрозумілу причину.

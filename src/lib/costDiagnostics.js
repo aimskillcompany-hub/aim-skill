@@ -7,7 +7,9 @@
 import { supabase } from './supabase'
 import { qc, getUserCompanyId } from './companyScope'
 import { fetchAll, fetchAllIn } from './fetchAll'
-import { accrualSalesDocs, accrualWriteoffs } from './accrual'
+import { accrualSalesDocs, accrualWriteoffs, loadSupplierVat } from './accrual'
+import { mergeProducts } from './stockService'
+import { todayKyiv } from './dates'
 import { countsAsDebt, debtDate } from './debts'
 import { daysBetween } from './dates'
 
@@ -41,6 +43,42 @@ function buildEstimates(sales) {
 export async function moveInDate(inId, newDate) {
   const { error } = await qc('stock_movements').update({ date: newDate }).eq('id', inId).eq('type', 'in')
   if (error) throw new Error(/PERIOD_CLOSED/.test(error.message || '') ? 'Місяць закрито — дату змінити не можна' : error.message)
+}
+
+// прив'язати прихідну (документ) або прихід без документа до замовлення — FIFO візьме її як «своє замовлення»
+export async function linkToOrder({ docId, inId, orderId }) {
+  const q = docId ? qc('documents').update({ order_id: orderId }).eq('id', docId) : qc('stock_movements').update({ order_id: orderId }).eq('id', inId).eq('type', 'in')
+  const { error } = await q
+  if (error) throw new Error(/PERIOD_CLOSED/.test(error.message || '') ? 'Місяць закрито — змінити не можна' : error.message)
+}
+export async function mergeDuplicate(keepId, dupId) {
+  const r = await mergeProducts(keepId, dupId)
+  if (r.error) throw new Error(r.error)
+  return r
+}
+
+// «Застосувати FIFO»: оцінки (поточна собівартість) по всіх відвантаженнях з from до сьогодні → набір у базі →
+// fifo_apply_set (сама робить резервну копію). Якщо запит перевищить час — повертає SQL для SQL Editor.
+export async function applyFifo(from) {
+  const sales = await accrualSalesDocs(from, todayKyiv())
+  const { data: set, error: sErr } = await supabase.from('fifo_estimate_sets').insert({ cost_from: from, estimates: buildEstimates(sales) }).select('id').single()
+  if (sErr) throw new Error(/fifo_estimate_sets/.test(sErr.message || '') ? 'Спершу застосуйте міграцію 075.' : sErr.message)
+  const { data, error } = await supabase.rpc('fifo_apply_set', { p_set: set.id })
+  if (error) {
+    if (/timeout|canceling statement/i.test(error.message || '')) return { timeout: true, sql: `select fifo_apply_set('${set.id}');` }
+    throw new Error(/PERIOD_CLOSED/.test(error.message || '') ? 'Закритий місяць: ' + error.message.replace(/^.*PERIOD_CLOSED:\s*/, '') : error.message)
+  }
+  return { result: data, setId: set.id }
+}
+export async function listBackups() {
+  const { data, error } = await supabase.from('cost_backups').select('id, created_at, label, cost_from, movements, allocations, prices').order('created_at', { ascending: false }).limit(5)
+  if (error) return []
+  return data || []
+}
+export async function restoreBackup(id) {
+  const { data, error } = await supabase.rpc('cost_backup_restore', { p_backup: id })
+  if (error) throw new Error(error.message)
+  return data
 }
 
 export async function runCostDiagnostics(from, to) {
@@ -88,7 +126,7 @@ export async function runCostDiagnostics(from, to) {
   const orderRows = Object.values(byOrder).map(g => {
     const o = orderById[g.key]
     return {
-      order: o ? o.order_number : GROUP_LABEL[g.key] || g.key, neutral: g.key === '__assembly',
+      order: o ? o.order_number : GROUP_LABEL[g.key] || g.key, neutral: g.key === '__assembly', vatWarn: [],
       orderId: o?.id || null, client: o?.contractors?.name || '',
       shipments: g.shipments, current: r2(g.current), fifo: r2(g.fifo), diff: r2(g.fifo - g.current),
       missingQty: r2(g.missingQty), estQty: r2(g.estQty), estValue: r2(g.estValue), currentMissing: g.currentMissing, bases: [...g.bases].join('; '),
@@ -102,7 +140,7 @@ export async function runCostDiagnostics(from, to) {
   const ins = missProdIds.length ? await fetchAllIn(() => qc('stock_movements').select('id, product_id, quantity, date, document_id, order_id').eq('type', 'in'), 'product_id', missProdIds) : []
   const insByProd = {}; ins.forEach(m => { (insByProd[m.product_id] ||= []).push(m) })
   // прихідні документи, не проведені на склад
-  const payDocs = (await fetchAll(() => qc('documents').select('id, type, direction, doc_number, doc_date, created_at, amount, contractor_id, generated_doc_id, contractors(name)').eq('direction', 'payable')))
+  const payDocs = (await fetchAll(() => qc('documents').select('id, type, direction, doc_number, doc_date, created_at, amount, contractor_id, order_id, generated_doc_id, contractors(name)').eq('direction', 'payable')))
     .filter(d => countsAsDebt(d.type) && d.type !== 'serviceAct')
   const postedDocIds = new Set(payDocs.length ? (await fetchAllIn(() => qc('stock_movements').select('id, document_id').eq('type', 'in'), 'document_id', payDocs.map(d => d.id))).map(m => m.document_id) : [])
   const unposted = payDocs.filter(d => !postedDocIds.has(d.id))
@@ -116,8 +154,27 @@ export async function runCostDiagnostics(from, to) {
   const missOrderIds = [...new Set(missingRows.map(r => r.order_id).filter(Boolean))]
   const oItems = missOrderIds.length ? await fetchAllIn(() => supabase.from('order_items').select('id, order_id, product_id, name, supplier_id, qty, unit, cost_price'), 'order_id', missOrderIds) : []
   const inDocIds = [...new Set(ins.map(m => m.document_id).filter(Boolean))]
-  const inDocs = inDocIds.length ? await fetchAllIn(() => qc('documents').select('id, doc_number, doc_date, created_at, contractors(name)'), 'id', inDocIds) : []
+  const inDocs = inDocIds.length ? await fetchAllIn(() => qc('documents').select('id, doc_number, doc_date, created_at, order_id, contractors(name)'), 'id', inDocIds) : []
   const inDocById = {}; inDocs.forEach(d => { inDocById[d.id] = d })
+
+  // дублі карток: активні товари з дуже схожою назвою, що мають приходи
+  const allProds = missProdIds.length ? await fetchAll(() => supabase.from('products').select('id, name, sku, unit, status').neq('status', 'archived')) : []
+  const near = {}
+  missProdIds.forEach(pid => { const p = prodById[pid]; if (p?.name) near[pid] = allProds.filter(x => x.id !== pid && nameScore(p.name, x.name) >= 0.75) })
+  const nearIds = [...new Set(Object.values(near).flat().map(x => x.id))]
+  const nearIns = nearIds.length ? await fetchAllIn(() => qc('stock_movements').select('id, product_id, quantity').eq('type', 'in'), 'product_id', nearIds) : []
+  const inQtyOf = {}; nearIns.forEach(m => { inQtyOf[m.product_id] = (inQtyOf[m.product_id] || 0) + (Number(m.quantity) || 0) })
+  const dupsOf = (p) => (near[p.id] || []).filter(x => inQtyOf[x.id] > 0).slice(0, 3).map(x => ({ ...x, inQty: r2(inQtyOf[x.id]) }))
+  // ПДВ: прихідна (є ПДВ у документі) vs текст платежу постачальнику
+  const vatMap = await loadSupplierVat(orderIds)
+  const vatWarn = {}
+  Object.entries(vatMap).forEach(([k, v]) => {
+    if (k.startsWith('__') || k.endsWith('|*') || !v.mismatch) return
+    const orderId = k.split('|')[0]
+    const docTxt = v.docs.map(d => `№ ${d.number} від ${dmy(d.date)} — ${d.vat ? 'з ПДВ' : 'без ПДВ'}`).join(', ')
+    const pay = v.pays.find(p => p.vat !== undefined && p.vat !== v.docVat) || v.pays[0]
+    ;(vatWarn[orderId] ||= []).push(`⚠ розбіжність ПДВ: прихідна ${docTxt}; платіж ${dmy(pay?.date)} «${(pay?.text || '').slice(0, 90)}» — ${pay?.vat ? 'з ПДВ' : 'без ПДВ'}. Собівартість — за прихідною.`)
+  })
 
   const missing = missingRows.map(r => {
     const p = prodById[r.product_id] || {}
@@ -128,7 +185,7 @@ export async function runCostDiagnostics(from, to) {
     // а) прихід є, але пізніше відвантаження
     ;(insByProd[r.product_id] || []).filter(m => m.date > outDate).forEach(m => {
       const idoc = inDocById[m.document_id]
-      cands.push({ kind: 'later', inId: m.id, inDate: m.date, outDate, docId: m.document_id,
+      cands.push({ kind: 'later', inId: m.id, inDate: m.date, outDate, docId: m.document_id, linkedOrder: idoc ? idoc.order_id : m.order_id,
         text: `прихід ${m.quantity} ${p.unit || 'од.'} від ${dmy(m.date)}${idoc ? ` (${idoc.contractors?.name || 'постачальник ?'} № ${idoc.doc_number || '—'} від ${dmy(debtDate(idoc))})` : ''} — пізніше відвантаження ${dmy(outDate)}, FIFO на дату його не бере` })
     })
     // г) одиниці виміру: у довіднику / позиції замовлення / прихідних різні, або к-сть відрізняється в ~1000 разів
@@ -142,13 +199,18 @@ export async function runCostDiagnostics(from, to) {
     // б) непроведені прихідні з цим товаром у позиціях
     unposted.forEach(u => {
       const hit = u.items.map(i => ({ i, s: Math.max(nameScore(p.name, i.name), p.sku && (i.sku || i.code) && norm(p.sku) === norm(i.sku || i.code) ? 1 : 0) })).sort((a, b) => b.s - a.s)[0]
-      if (hit && hit.s >= 0.6) cands.push({ kind: 'unposted', score: hit.s, text: `не проведена на склад: ${u.contractors?.name || 'постачальник ?'} № ${u.doc_number || '—'} від ${(debtDate(u) || '').split('-').reverse().join('.')}, позиція «${hit.i.name}» ${hit.i.quantity ?? hit.i.qty ?? ''} ${hit.i.unit || ''} × ${hit.i.unitPrice ?? hit.i.price ?? ''}`, docId: u.id, date: debtDate(u) })
+      if (hit && hit.s >= 0.6) cands.push({ kind: 'unposted', score: hit.s, linkedOrder: u.order_id, text: `не проведена на склад: ${u.contractors?.name || 'постачальник ?'} № ${u.doc_number || '—'} від ${(debtDate(u) || '').split('-').reverse().join('.')}, позиція «${hit.i.name}» ${hit.i.quantity ?? hit.i.qty ?? ''} ${hit.i.unit || ''} × ${hit.i.unitPrice ?? hit.i.price ?? ''}`, docId: u.id, date: debtDate(u) })
     })
     // в) непроведені прихідні від постачальника цієї позиції замовлення, ±60 днів
     const supIds = new Set(oItems.filter(i => i.order_id === r.order_id && (i.product_id === r.product_id || nameScore(i.name, p.name) >= 0.6) && i.supplier_id).map(i => i.supplier_id))
     unposted.filter(u => supIds.has(u.contractor_id) && !cands.some(c => c.docId === u.id) && Math.abs(daysBetween(debtDate(u), outDate)) <= 60)
-      .forEach(u => cands.push({ kind: 'supplier', text: `від постачальника позиції, не проведена: № ${u.doc_number || '—'} від ${(debtDate(u) || '').split('-').reverse().join('.')} на ${r2(u.amount)} грн (товар у позиціях не знайдено — перевірте)`, docId: u.id }))
-    const rank = { unposted: 0, later: 1, units: 2, supplier: 3 }
+      .forEach(u => cands.push({ kind: 'supplier', linkedOrder: u.order_id, text: `від постачальника позиції, не проведена: № ${u.doc_number || '—'} від ${(debtDate(u) || '').split('-').reverse().join('.')} на ${r2(u.amount)} грн (товар у позиціях не знайдено — перевірте)`, docId: u.id }))
+    // д) можливий дубль картки товару з приходами
+    dupsOf(p).forEach(x => cands.push({ kind: 'dup', dupId: x.id, dupName: x.name, keepId: r.product_id, keepName: p.name,
+      text: `можливий дубль картки: «${x.name}»${x.sku ? ` (${x.sku})` : ''} — приходів ${x.inQty} ${x.unit || ''}; об'єднання перенесе їх сюди` }))
+    // е) розбіжність ПДВ між прихідною і платежем по цьому замовленню
+    ;(vatWarn[r.order_id] || []).forEach(t => cands.push({ kind: 'vat', text: t }))
+    const rank = { vat: 0, unposted: 1, later: 2, dup: 3, units: 4, supplier: 5 }
     cands.sort((a, b) => rank[a.kind] - rank[b.kind] || (b.score || 0) - (a.score || 0))
     return {
       order: o?.order_number || '— без замовлення', orderId: o?.id || null, client: o?.contractors?.name || '',
@@ -159,11 +221,12 @@ export async function runCostDiagnostics(from, to) {
     }
   }).sort((a, b) => a.order.localeCompare(b.order) || a.date.localeCompare(b.date))
 
+  orderRows.forEach(x => { if (x.orderId) x.vatWarn = vatWarn[x.orderId] || [] })
   // збірки не входять у підсумок: їхня собівартість уже є в проданому виробі
   const counted = orderRows.filter(x => !x.neutral)
   const totals = { current: r2(counted.reduce((t, x) => t + x.current, 0)), fifo: r2(counted.reduce((t, x) => t + x.fifo, 0)),
     estValue: r2(counted.reduce((t, x) => t + x.estValue, 0)) }
   const unpostedDocs = unposted.map(u => ({ id: u.id, type: u.type, number: u.doc_number || '—', date: debtDate(u), contractor: u.contractors?.name || '—', amount: r2(u.amount), items: u.items }))
     .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
-  return { orderRows, missing, totals, unpostedCount: unposted.length, unpostedDocs, writeoffs }
+  return { orderRows, missing, totals, unpostedCount: unposted.length, unpostedDocs, writeoffs, vatWarnCount: Object.values(vatWarn).flat().length }
 }

@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { fmtInt } from '../lib/fmt'
-import { runCostDiagnostics, moveInDate } from '../lib/costDiagnostics'
+import { runCostDiagnostics, moveInDate, linkToOrder, mergeDuplicate, applyFifo, listBackups, restoreBackup } from '../lib/costDiagnostics'
+import { useUser } from '../lib/auth'
 import { todayKyiv } from '../lib/dates'
 
 // «Діагностика собівартості» (нічого не змінює): звіт зараз → FIFO по замовленнях, база ПДВ партій,
@@ -26,9 +27,30 @@ export default function CostDiagnosticsModal({ onClose }) {
   const [tab, setTab] = useState('orders')
   const [filter, setFilter] = useState('all')
   const [moved, setMoved] = useState({}) // inId → нова дата / помилка
+  const [acts, setActs] = useState({})    // ключ дії → { ok } / { err }
+  const { user } = useUser()
+  const isAdmin = user?.role === 'admin'
+  const [backups, setBackups] = useState([])
+  const [applying, setApplying] = useState(false)
+  const [applyRes, setApplyRes] = useState(null)
+  useEffect(() => { listBackups().then(setBackups) }, [])
+  const act = async (key, question, fn, okText) => {
+    if (!window.confirm(question)) return
+    try { await fn(); setActs(x => ({ ...x, [key]: { ok: okText } })) } catch (e) { setActs(x => ({ ...x, [key]: { err: e.message } })) }
+  }
+  const actState = (key) => acts[key] && <span style={{ marginLeft: 6, color: acts[key].ok ? 'var(--green)' : 'var(--red)' }}>{acts[key].ok || acts[key].err}</span>
+  const doApply = async () => {
+    const closedNote = 'Закриті місяці не змінюються.'
+    if (!window.confirm(`ЗАСТОСУВАТИ FIFO до всіх відвантажень з ${dmy(from)}?\n\n1) Спершу автоматично створюється резервна копія: собівартість усіх рухів, списання з партій, ціни довідника.\n2) Собівартість відвантажень перераховується за партіями; на що партій немає — поточна собівартість з позначкою ⚠ (не 0). ${closedNote}\n3) Ціна в довіднику = остання закупівельна.\n\nВідкотити можна кнопкою «Відновити» біля резервної копії.`)) return
+    if (!window.confirm('Підтвердіть ще раз: застосувати FIFO зараз?')) return
+    setApplying(true); setApplyRes(null)
+    try { setApplyRes(await applyFifo(from)); setBackups(await listBackups()) } catch (e) { setApplyRes({ err: e.message }) } finally { setApplying(false) }
+  }
+  const doRestore = (b) => act('restore' + b.id, `Відновити собівартість з резервної копії від ${new Date(b.created_at).toLocaleString('uk-UA')} («${b.label}»)?\n\nСобівартість рухів, списання з партій і ціни довідника повернуться до стану на момент копії (закриті місяці не змінюються).`,
+    () => restoreBackup(b.id), 'відновлено — запустіть діагностику ще раз')
 
-  const KINDS = { later: '⏱ прихід пізніше відвантаження', unposted: '✓ непроведена прихідна', units: '⚠ одиниці виміру', none: 'джерел не знайдено' }
-  const hasKind = (m, k) => k === 'all' || (k === 'none' ? !m.candidates.some(c => c.kind !== 'supplier') : m.candidates.some(c => c.kind === k))
+  const KINDS = { later: '⏱ прихід пізніше відвантаження', unposted: '✓ непроведена прихідна', dup: '⧉ дубль картки', units: '⚠ одиниці виміру', vat: '⚠ розбіжність ПДВ', none: 'джерел не знайдено' }
+  const hasKind = (m, k) => k === 'all' || (k === 'none' ? !m.candidates.some(c => !['supplier', 'vat'].includes(c.kind)) : m.candidates.some(c => c.kind === k))
   const missingShown = res ? res.missing.filter(m => hasKind(m, filter)) : []
   const doMove = async (c, m) => {
     const ok = window.confirm(`Змінити дату ПРИХОДУ на складі ${dmy(c.inDate)} → ${dmy(c.outDate)}?\n\nТовар: ${m.product}\nВідвантаження: ${m.doc} (замовлення ${m.order})\n\nЗмінюється лише дата руху складу (оприбуткування); дата документа постачальника лишається. Якщо пізніше перезберегти прихідну з галочкою «Рух на складі», дата руху знову стане датою документа.`)
@@ -56,7 +78,7 @@ export default function CostDiagnosticsModal({ onClose }) {
         <div className="modal-header">
           <div>
             <h2 style={{ margin: 0 }}>Діагностика собівартості</h2>
-            <div style={{ fontSize: 12.5, color: 'var(--text3)', marginTop: 2 }}>Нічого не змінює: FIFO рахується в тимчасових таблицях, постійні дані лише читаються. Змінити можна лише дату приходу — кнопкою з підтвердженням.</div>
+            <div style={{ fontSize: 12.5, color: 'var(--text3)', marginTop: 2 }}>Діагностика нічого не змінює: FIFO рахується в тимчасових таблицях. Зміни — лише кнопками з підтвердженням (дата приходу, прив'язка до замовлення, об'єднання карток, «Застосувати FIFO»).</div>
           </div>
           <button className="btn" onClick={onClose} disabled={busy}><i className="ti ti-x" /></button>
         </div>
@@ -73,6 +95,7 @@ export default function CostDiagnosticsModal({ onClose }) {
               <span>За FIFO: <b>{money(res.totals.fifo)}</b></span>
               <span>Різниця: <b style={{ color: res.totals.fifo - res.totals.current >= 0 ? 'var(--red)' : 'var(--green)' }}>{money(res.totals.fifo - res.totals.current)}</b></span>
               <span>Позицій без партій: <b>{res.missing.length}</b></span>
+              {res.vatWarnCount > 0 && <span style={{ color: '#B45309' }}>⚠ розбіжностей ПДВ: <b>{res.vatWarnCount}</b></span>}
               {res.totals.estValue > 0 && <span>з них оцінено поточною собівартістю ⚠: <b>{money(res.totals.estValue)}</b></span>}
               <span style={{ color: 'var(--text3)' }}>Непроведених прихідних у системі: {res.unpostedCount}</span>
             </div>
@@ -96,7 +119,7 @@ export default function CostDiagnosticsModal({ onClose }) {
                   {res.orderRows.map(r => (
                     <tr key={r.order} style={r.neutral ? { color: 'var(--text3)' } : undefined}>
                       <td style={{ whiteSpace: 'nowrap' }}>{r.orderId ? <Link to={`/orders/${r.orderId}`} onClick={onClose}>№{r.order}</Link> : r.order}</td>
-                      <td><div className="trunc" style={{ maxWidth: 220 }}>{r.client}</div></td>
+                      <td><div className="trunc" style={{ maxWidth: 220 }}>{r.client}</div>{r.vatWarn?.length > 0 && <div style={{ fontSize: 11.5, color: '#B45309' }} title={r.vatWarn.join('\n')}>⚠ розбіжність ПДВ</div>}</td>
                       <td style={{ textAlign: 'right' }}>{r.shipments}</td>
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{money(r.current)}{r.currentMissing && <i className="ti ti-alert-triangle" title="у звіті частина позицій без собівартості" style={{ color: '#B45309', marginLeft: 4 }} />}</td>
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 600 }}>{money(r.fifo)}</td>
@@ -141,12 +164,30 @@ export default function CostDiagnosticsModal({ onClose }) {
                       </td>
                       <td style={{ fontSize: 12.5, verticalAlign: 'top' }}>
                         {m.candidates.length ? m.candidates.map((c, j) => (
-                          <div key={j} style={{ color: c.kind === 'unposted' ? 'var(--green)' : c.kind === 'later' || c.kind === 'units' ? '#B45309' : 'var(--text2)', marginBottom: 3 }}>
-                            {c.kind === 'unposted' ? '✓ ' : c.kind === 'later' ? '⏱ ' : c.kind === 'units' ? '⚠ ' : '? '}{c.text}
+                          <div key={j} style={{ color: c.kind === 'unposted' ? 'var(--green)' : ['later', 'units', 'vat', 'dup'].includes(c.kind) ? '#B45309' : 'var(--text2)', marginBottom: 3 }}>
+                            {c.kind === 'unposted' ? '✓ ' : c.kind === 'later' ? '⏱ ' : c.kind === 'units' ? '⚠ ' : c.kind === 'dup' ? '⧉ ' : c.kind === 'vat' ? '' : '? '}{c.text}
                             {c.kind === 'later' && (moved[c.inId]?.ok
                               ? <span style={{ color: 'var(--green)', marginLeft: 6 }}>— дату змінено на {dmy(moved[c.inId].ok)}, запустіть діагностику ще раз</span>
                               : <button className="btn btn-sm" style={{ marginLeft: 6, padding: '1px 8px', fontSize: 12 }} onClick={() => doMove(c, m)}>Перенести дату приходу на {dmy(c.outDate)}</button>)}
                             {c.kind === 'later' && moved[c.inId]?.err && <span style={{ color: 'var(--red)', marginLeft: 6 }}>{moved[c.inId].err}</span>}
+                            {['later', 'unposted', 'supplier'].includes(c.kind) && m.orderId && c.linkedOrder !== m.orderId && (c.docId || c.inId) && (() => {
+                              const key = 'link' + (c.docId || c.inId) + m.orderId
+                              return acts[key]?.ok ? actState(key) : <>
+                                <button className="btn btn-sm" style={{ marginLeft: 6, padding: '1px 8px', fontSize: 12 }}
+                                  onClick={() => act(key, `Прив'язати ${c.docId ? 'прихідну' : 'прихід'} до замовлення №${m.order}?\n\n${c.text}${c.linkedOrder ? '\n\nУВАГА: зараз вона прив\'язана до ІНШОГО замовлення — прив\'язку буде замінено.' : ''}\n\nFIFO братиме цю партію для відвантажень замовлення №${m.order} першою (навіть якщо вона датована пізніше).`,
+                                    () => linkToOrder({ docId: c.docId, inId: c.docId ? null : c.inId, orderId: m.orderId }), `прив'язано до №${m.order} — запустіть діагностику ще раз`)}>
+                                  Прив'язати до №{m.order}
+                                </button>{actState(key)}</>
+                            })()}
+                            {c.kind === 'dup' && (() => {
+                              const key = 'merge' + c.dupId
+                              return acts[key]?.ok ? actState(key) : <>
+                                <button className="btn btn-sm" style={{ marginLeft: 6, padding: '1px 8px', fontSize: 12 }}
+                                  onClick={() => act(key, `Об'єднати картки товарів?\n\nЗалишається: «${c.keepName}»\nПриєднується (і йде в архів): «${c.dupName}»\n\nУсі рухи складу, позиції замовлень і збірок дубля перейдуть у картку «${c.keepName}», назва дубля стане синонімом. Собівартість уже записаних відвантажень не зміниться до «Застосувати FIFO».`,
+                                    () => mergeDuplicate(c.keepId, c.dupId), "об'єднано — запустіть діагностику ще раз")}>
+                                  Об'єднати картки
+                                </button>{actState(key)}</>
+                            })()}
                           </div>
                         )) : <span style={{ color: 'var(--text3)' }}>не знайдено — немає ні приходу, ні прихідної з цим товаром</span>}
                       </td>
@@ -154,6 +195,31 @@ export default function CostDiagnosticsModal({ onClose }) {
                   ))}
                 </tbody>
               </table></div>
+            )}
+            {isAdmin && (
+              <div className="card" style={{ marginTop: 14, padding: 12, borderLeft: '4px solid var(--red)' }}>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <b>Застосувати FIFO з {dmy(from)}</b>
+                  <span style={{ fontSize: 12.5, color: 'var(--text3)' }}>спершу автоматично — резервна копія; нестача партій — поточна собівартість ⚠; закриті місяці не змінюються</span>
+                  <span style={{ flex: 1 }} />
+                  <button className="btn" style={{ color: 'var(--red)', borderColor: 'var(--red)' }} onClick={doApply} disabled={applying || busy}>{applying ? 'Застосовую… (до кількох хвилин)' : 'Застосувати FIFO'}</button>
+                </div>
+                {applyRes?.err && <p style={{ color: 'var(--red)', margin: '8px 0 0' }}>Помилка: {applyRes.err} — нічого не змінено.</p>}
+                {applyRes?.timeout && <p style={{ margin: '8px 0 0', fontSize: 13 }}>Сайт не дочекався відповіді бази (обмеження часу запиту) — <b>нічого не змінено</b>. Запустіть у Supabase → SQL Editor: <code style={{ userSelect: 'all' }}>{applyRes.sql}</code> (резервну копію функція зробить сама).</p>}
+                {applyRes?.result && <p style={{ color: 'var(--green)', margin: '8px 0 0', fontSize: 13 }}>Застосовано: собівартість {applyRes.result.costs_updated} відвантажень, списань з партій {applyRes.result.allocations_written}, збірок {applyRes.result.assemblies_updated ?? 0}, цін довідника {applyRes.result.prices_updated}. Резервна копія створена — нижче. Запустіть діагностику ще раз.</p>}
+              </div>
+            )}
+            {backups.length > 0 && (
+              <div style={{ marginTop: 10, fontSize: 12.5 }}>
+                <b>Резервні копії собівартості:</b>
+                {backups.map(b => (
+                  <div key={b.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '4px 0', borderTop: '1px solid var(--border)' }}>
+                    <span>{new Date(b.created_at).toLocaleString('uk-UA')}</span><span style={{ color: 'var(--text3)' }}>{b.label} · рухів {b.movements}, списань {b.allocations}, цін {b.prices}</span>
+                    {isAdmin && !acts['restore' + b.id]?.ok && <button className="btn btn-sm" onClick={() => doRestore(b)}>Відновити</button>}
+                    {actState('restore' + b.id)}
+                  </div>
+                ))}
+              </div>
             )}
             <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>
               «Зараз у звіті» — собівартість, яку показують P&L «Нарахування» і «Маржа по замовленнях» (з підстановками); для списань — рядок «Списання товарів» у витратах. «За FIFO» — після перебудови: прихідна того ж замовлення (навіть пізніша; також через субзамовлення) → партії без замовлення → найстаріші на дату; ціна партії без ПДВ (з ПДВ — для постачальника-неплатника або якщо ми неплатник); на що партій немає — поточна собівартість з позначкою ⚠ (не 0). Збірки нейтральні: виріб — за собівартістю компонентів, у підсумок не входять.
