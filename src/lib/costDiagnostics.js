@@ -33,14 +33,24 @@ const GROUP_LABEL = {
 const dmy = (s) => (s || '').split('-').reverse().join('.')
 const normUnit = (u) => String(u || 'шт').toLowerCase().replace(/[.\s]/g, '')
 // поточна собівартість одиниці по кожному руху відвантаження — оцінка для нестачі партій
-function buildEstimates(sales) {
+export function buildEstimates(sales) {
   const est = {}
   sales.forEach(s => (s.movUnits || []).forEach(m => { if (m.unit > 0) est[m.id] = Math.round(m.unit * 10000) / 10000 }))
   return est
 }
 
 // перенос дати приходу (рух складу) на дату відвантаження — дата документа постачальника НЕ змінюється
+// 076: для приходу з документом — RPC set_warehouse_date (дата оприбуткування прихідної, не скидається при
+// перезбереженні; перевірка ролі в базі); прихід без документа або до 076 — пряма зміна дати руху
 export async function moveInDate(inId, newDate) {
+  const { data: m } = await qc('stock_movements').select('document_id').eq('id', inId).maybeSingle()
+  if (m?.document_id) {
+    const { error } = await supabase.rpc('set_warehouse_date', { p_in_doc: m.document_id, p_date: newDate, p_recalc_out_doc: null })
+    if (!error) return
+    if (!(error.code === 'PGRST202' || /set_warehouse_date/.test(error.message || ''))) {
+      throw new Error(/NO_RIGHTS/.test(error.message || '') ? 'Немає прав: дату оприбуткування змінюють адміністратор або бухгалтер' : /PERIOD_CLOSED/.test(error.message || '') ? 'Місяць закрито — дату змінити не можна' : error.message)
+    }
+  }
   const { error } = await qc('stock_movements').update({ date: newDate }).eq('id', inId).eq('type', 'in')
   if (error) throw new Error(/PERIOD_CLOSED/.test(error.message || '') ? 'Місяць закрито — дату змінити не можна' : error.message)
 }
@@ -222,7 +232,7 @@ export async function runCostDiagnostics(from, to) {
     return {
       order: o?.order_number || '— без замовлення', orderId: o?.id || null, client: o?.contractors?.name || '',
       doc: d ? `${d.doc_number || '—'} від ${(debtDate(d) || '').split('-').reverse().join('.')}` : '—',
-      date: outDate, product: p.name || r.product_id, sku: p.sku || '', unit: p.unit || '', qty: Number(r.qty) || 0, missingQty: r2(r.missing_qty),
+      docId: r.document_id || null, date: outDate, product: p.name || r.product_id, sku: p.sku || '', unit: p.unit || '', qty: Number(r.qty) || 0, missingQty: r2(r.missing_qty),
       estQty: r2(r.est_qty), estUnit: Number(r.est_unit) || 0, source: r.source,
       candidates: cands.slice(0, 8),
     }

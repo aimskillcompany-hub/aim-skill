@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { qc, withCompany } from '../lib/companyScope'
 import { extractDocumentMulti } from '../lib/ai'
@@ -85,6 +86,8 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
   const [verified, setVerified] = useState(!!existingDoc?.is_verified) // документ перевірено (звірка скан↔поля)
   const [signedSaved, setSignedSaved] = useState(false) // індикатор авто-збереження «Підписаний»
   const [docMovements, setDocMovements] = useState(null) // фактично створені складські рухи цього документа
+  const [whDate, setWhDate] = useState(null) // дата оприбуткування прихідної (076; змінюється лише в «Звірці видаткових»)
+  const navigate = useNavigate()
   const [stockMsg, setStockMsg] = useState(null) // результат ручного «Оприбуткувати на склад зараз»
 
   useEffect(() => { if (existingDoc) recognizeExisting(autoOcr) }, [])
@@ -95,6 +98,9 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
     const { data: mv } = await qc('stock_movements')
       .select('id, type, quantity, price, cost_price, product_id, source, description, date')
       .eq('document_id', existingDoc.id).order('date')
+    // дата оприбуткування (076) — якщо колонки ще немає, просто null
+    const { data: wd, error: wdErr } = await qc('documents').select('warehouse_date').eq('id', existingDoc.id).maybeSingle()
+    setWhDate(!wdErr ? wd?.warehouse_date || null : null)
     const pids = [...new Set((mv || []).map(m => m.product_id).filter(Boolean))]
     let pn = {}
     if (pids.length) {
@@ -236,7 +242,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
     const failures = []
     const productIds = []
     let created = 0
-    for (const it of (form.items || [])) {
+    for (const [idx, it] of (form.items || []).entries()) {
       const qty = Number(it.quantity ?? it.qty) || 0
       if (!qty || !it.name) { if (it.name) failures.push(`«${it.name}»: немає кількості`); continue }
       const price = Number(it.unit_price ?? it.unitPrice ?? it.price) || null
@@ -249,7 +255,9 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
         await createStockMovement({
           productId, type: stockDir, quantity: qty, price,
           total: Number(it.amount) || (price ? qty * price : null),
-          documentId, date: form.date, description: `${getDocType(form.type)?.label}: ${it.name}`.slice(0, 200), userId: user?.id,
+          // прихід — на дату оприбуткування, якщо її виправлено (warehouse_date не скидається перезбереженням)
+          documentId, date: stockDir === 'in' && whDate ? whDate : form.date, description: `${getDocType(form.type)?.label}: ${it.name}`.slice(0, 200), userId: user?.id,
+          docLine: idx + 1,
         })
         created++
       } catch (e) {
@@ -286,15 +294,26 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
   }
 
   // Дата рухів складу = дата документа (без перестворення рухів: товари, ціни й списання з партій лишаються)
+  // Якщо в прихідної виправлено дату оприбуткування (warehouse_date), приходи лишаються на ній — не чіпаємо їх.
+  const movTarget = (m) => (m.type === 'in' && whDate ? whDate : form.date)
   const syncMovementDates = async (date) => {
     if (!existingDoc?.id || !date) return 0
-    const { data, error } = await qc('stock_movements').update({ date })
-      .eq('document_id', existingDoc.id).neq('source', 'assembly').neq('date', date).select('id')
+    let q = qc('stock_movements').update({ date }).eq('document_id', existingDoc.id).neq('source', 'assembly').neq('date', date)
+    if (whDate) q = q.neq('type', 'in')
+    const { data, error } = await q.select('id')
+    let n = data?.length || 0
+    if (!error && whDate) {
+      const r = await qc('stock_movements').update({ date: whDate }).eq('document_id', existingDoc.id).eq('type', 'in').neq('source', 'assembly').neq('date', whDate).select('id')
+      if (r.error) throw new Error(r.error.message)
+      n += r.data?.length || 0
+    }
     if (error) throw new Error(/PERIOD_CLOSED/.test(error.message || '') ? 'Місяць закрито — дату рухів змінити не можна: ' + String(error.message).replace(/^.*PERIOD_CLOSED:\s*/, '') : error.message)
-    return data?.length || 0
+    return n
   }
   const fixMovementDates = async () => {
-    if (!window.confirm(`Встановити всім складським рухам цього документа дату документа ${(form.date || '').split('-').reverse().join('.')}?\n\nТовари, кількості й ціни не змінюються. Для приходу це дата, з якої партія доступна для відвантажень (FIFO).`)) return
+    if (!window.confirm(whDate
+      ? `Встановити складським рухам цього документа: приходам — дату оприбуткування ${whDate.split('-').reverse().join('.')}, решті — дату документа ${(form.date || '').split('-').reverse().join('.')}?\n\nТовари, кількості й ціни не змінюються.`
+      : `Встановити всім складським рухам цього документа дату документа ${(form.date || '').split('-').reverse().join('.')}?\n\nТовари, кількості й ціни не змінюються. Для приходу це дата, з якої партія доступна для відвантажень (FIFO).`)) return
     setBusy(true); setStockMsg(null)
     try { const n = await syncMovementDates(form.date); await loadMovements(); setStockMsg({ ok: `Дату змінено в ${n} рухах.` }) } catch (e) { setStockMsg({ err: e.message }) }
     setBusy(false)
@@ -491,7 +510,11 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
                 </div>
                 <div className="form-group"><label>Сума (з ПДВ)</label><input className="form-input" type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} /></div>
                 <div className="form-group"><label>у т.ч. ПДВ</label><input className="form-input" type="number" value={form.vat_amount} onChange={e => setForm(f => ({ ...f, vat_amount: e.target.value }))} /></div>
-                <div className="form-group"><label>Дата</label><input className="form-input" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} /></div>
+                <div className="form-group"><label>Дата</label><input className="form-input" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
+                  {whDate && <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4 }} title="Змінюється лише в «Склад → Звірка видаткових» (дія «Виправити дату оприбуткування»); не скидається при перезбереженні">
+                    <i className="ti ti-package-import" /> Оприбуткування: <b>{whDate.split('-').reverse().join('.')}</b> <span style={{ color: 'var(--text3)' }}>(змінюється у «Звірці видаткових»)</span>
+                  </div>}
+                </div>
                 <div className="form-group"><label>Підписаний</label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 44 }}>
                     <input type="checkbox" checked={!!form.is_signed} onChange={e => toggleSigned(e.target.checked)} style={{ width: 18, height: 18 }} />
@@ -588,10 +611,16 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
                     <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>
                       Складські рухи {docMovements ? `(${docMovements.length})` : ''}
                     </div>
-                    {docMovements?.some(m => m.source !== 'assembly' && form.date && (m.date || '').slice(0, 10) !== form.date) && (
+                    {docMovements?.some(m => m.source !== 'assembly' && form.date && (m.date || '').slice(0, 10) !== movTarget(m)) && (
                       <button type="button" className="btn" onClick={fixMovementDates} disabled={busy} style={{ fontSize: 12, padding: '4px 10px', color: 'var(--red)' }}
-                        title="Дата рухів не збігається з датою документа">
-                        <i className="ti ti-calendar" /> Дата рухів = {(form.date || '').split('-').reverse().join('.')}
+                        title={whDate ? 'Дата приходів не збігається з датою оприбуткування' : 'Дата рухів не збігається з датою документа'}>
+                        <i className="ti ti-calendar" /> Дата рухів = {(whDate || form.date || '').split('-').reverse().join('.')}
+                      </button>
+                    )}
+                    {existingDoc && docMovements?.some(m => m.type === 'out') && (
+                      <button type="button" className="btn" onClick={() => { onClose?.(); navigate(`/inventory/recon?doc=${existingDoc.id}`) }} style={{ fontSize: 12, padding: '4px 10px' }}
+                        title="Звідки собівартість кожної позиції: прихідна, з якої списано; прив'язка, дата оприбуткування">
+                        <i className="ti ti-arrows-exchange" /> Звірка
                       </button>
                     )}
                     {(form.items || []).length > 0 && getDocType(form.type)?.stockEffect && (
@@ -624,7 +653,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
                         <tbody>
                           {docMovements.map(m => {
                             const movDate = (m.date || '').slice(0, 10)
-                            const docDate = (form.date || '').slice(0, 10)
+                            const docDate = (movTarget(m) || '').slice(0, 10)
                             const dateMismatch = movDate && docDate && movDate !== docDate
                             return (
                             <tr key={m.id} style={{ borderTop: '1px solid var(--border)' }}>

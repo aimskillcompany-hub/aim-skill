@@ -308,7 +308,7 @@ export async function createStockFromDoc(docId, docType, items, date, userId) {
   const created = [] // id створених рухів — щоб відкотити, якщо наступний не вдасться
   const rollback = async () => { if (created.length) await qc('stock_movements').delete().in('id', created) }
 
-  for (const item of items) {
+  for (const [idx, item] of items.entries()) {
     if (!item.name?.trim()) continue
     const qty = parseFloat(item.quantity) || 0
     if (qty <= 0) continue
@@ -335,7 +335,7 @@ export async function createStockFromDoc(docId, docType, items, date, userId) {
       costPrice = unitPrice // для IN cost = ціна закупки
     }
 
-    const { data: mv, error: sErr } = await qc('stock_movements').insert(withCompany({
+    const row = withCompany({
       product_id: resolved.productId,
       type: dt.stockEffect,
       quantity: qty,
@@ -347,7 +347,10 @@ export async function createStockFromDoc(docId, docType, items, date, userId) {
       description: `${dt.label}: ${item.name}`,
       source: 'document',
       created_by: userId,
-    })).select('id').single()
+      doc_line: idx + 1, // номер позиції документа (076) — для ручної прив'язки рядка
+    })
+    let { data: mv, error: sErr } = await qc('stock_movements').insert(row).select('id').single()
+    if (sErr && /doc_line/.test(sErr.message || '')) { const { doc_line, ...rest } = row; ({ data: mv, error: sErr } = await qc('stock_movements').insert(rest).select('id').single()) }
     if (sErr) {
       await rollback()
       throw new Error('рух складу не створено (' + (item.name || '') + '): ' + cleanErr(sErr.message))

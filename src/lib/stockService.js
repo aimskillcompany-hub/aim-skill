@@ -283,7 +283,7 @@ export async function getFifoCost(productId, quantity) {
 // ── Створити складський рух (ідемпотентно) ──
 export async function createStockMovement({
   productId, type, quantity, price, total,
-  bankTransactionId, transactionItemId, documentId, orderId, supplierOrderId, date, description, userId
+  bankTransactionId, transactionItemId, documentId, orderId, supplierOrderId, date, description, userId, docLine
 }) {
   if (!productId || !quantity || quantity <= 0) return null
   // Не створювати сироти без bank_transaction (крім ручних рухів та документів)
@@ -309,7 +309,8 @@ export async function createStockMovement({
     costPrice = await getLastPurchaseCost(productId, date || null)
   }
 
-  const { data: movement, error } = await qc('stock_movements').insert(withCompany({
+  // doc_line — номер позиції в документі (076): по ньому ручна прив'язка знаходить рядок після перезбереження
+  const row = withCompany({
     product_id: productId,
     type: type || 'in',
     quantity,
@@ -325,7 +326,13 @@ export async function createStockMovement({
     description: description || null,
     source: bankTransactionId ? 'auto' : documentId ? 'document' : 'manual',
     created_by: userId,
-  })).select('id').single()
+    ...(docLine ? { doc_line: docLine } : {}),
+  })
+  let { data: movement, error } = await qc('stock_movements').insert(row).select('id').single()
+  if (error && docLine && /doc_line/.test(error.message || '')) {   // до міграції 076
+    const { doc_line, ...rest } = row
+    ;({ data: movement, error } = await qc('stock_movements').insert(rest).select('id').single())
+  }
 
   if (error) {
     if (error.code === '23505') return null // дублікат — не критично, пропускаємо

@@ -157,7 +157,7 @@ export default function CostDiagnosticsModal({ onClose }) {
                   {missingShown.map((m, i) => (
                     <tr key={i}>
                       <td style={{ whiteSpace: 'nowrap', verticalAlign: 'top' }}>{m.orderId ? <Link to={`/orders/${m.orderId}`} onClick={onClose}>№{m.order}</Link> : m.order}<div style={{ fontSize: 11.5, color: 'var(--text3)' }}>{m.client}</div></td>
-                      <td style={{ whiteSpace: 'nowrap', verticalAlign: 'top', fontSize: 12.5 }}>{m.doc}<div style={{ fontSize: 11.5, color: 'var(--text3)' }}>відвант. {dmy(m.date)}</div></td>
+                      <td style={{ whiteSpace: 'nowrap', verticalAlign: 'top', fontSize: 12.5 }}>{m.doc}<div style={{ fontSize: 11.5, color: 'var(--text3)' }}>відвант. {dmy(m.date)}</div>{m.docId && <Link to={`/inventory/recon?doc=${m.docId}`} onClick={onClose} style={{ fontSize: 12 }}><i className="ti ti-arrows-exchange" /> Звірка</Link>}</td>
                       <td style={{ verticalAlign: 'top' }}>{m.product}{m.sku && <div style={{ fontSize: 11.5, color: 'var(--text3)' }}>{m.sku}</div>}</td>
                       <td style={{ textAlign: 'right', verticalAlign: 'top', whiteSpace: 'nowrap' }}>
                         {m.missingQty > 0 && <div style={{ color: 'var(--red)', fontWeight: 600 }} title="без собівартості — ні партії, ні поточної собівартості">{m.missingQty}</div>}

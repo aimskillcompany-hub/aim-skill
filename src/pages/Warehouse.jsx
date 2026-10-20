@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { qc, withCompany } from '../lib/companyScope'
 import { fetchAll, fetchAllData, fetchAllIn } from '../lib/fetchAll'
 import { useUser } from '../lib/auth'
+import { Link } from 'react-router-dom'
 import { fmt, fmtInt } from '../lib/fmt'
 import { assembleProduct, getAssembly, deleteAssembly, editAssembly, mergeProducts } from '../lib/stockService'
 import { exportAssemblyAct } from '../lib/assemblyAct'
@@ -28,6 +29,7 @@ export default function Warehouse() {
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <h1>Склад</h1>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Link className="btn" to="/inventory/recon" title="Видаткова → позиції → прихідна, з якої списано; обидва документи поруч; прив'язка, дата оприбуткування, об'єднання карток"><i className="ti ti-arrows-exchange" /> Звірка видаткових</Link>
           <button className="btn" onClick={() => setDiag(true)} title="Звіт зараз vs FIFO, база ПДВ партій, позиції без партій — нічого не змінює"><i className="ti ti-stethoscope" /> Діагностика собівартості</button>
           <button className="btn" onClick={() => setRecalc(true)} title="Заново розподілити відвантаження періоду по партіях (FIFO) і перезаписати собівартість"><i className="ti ti-calculator" /> Перерахувати собівартість за період</button>
         </div>
