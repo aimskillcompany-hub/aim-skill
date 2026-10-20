@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { todayKyiv } from '../lib/dates'
@@ -70,13 +71,22 @@ export default function Tasks() {
                 <input type="checkbox" checked={done} onChange={() => toggle(t)} style={{ width: 18, height: 18, marginTop: 2, cursor: 'pointer' }} />
                 <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => setEdit(t)}>
                   <div style={{ fontWeight: 500, textDecoration: done ? 'line-through' : 'none', color: done ? 'var(--text3)' : 'var(--text)' }}>{t.title}</div>
-                  {t.description && <div style={{ fontSize: 12.5, color: 'var(--text3)', marginTop: 2 }}>{t.description}</div>}
+                  {t.description && (() => {
+                    // завдання зі звірки: посилання на проблему — окремою кнопкою, решта деталей — текстом
+                    const m = t.description.match(/\n*Звірка:\s*(\/inventory\/recon\?\S+)\s*$/)
+                    const text = m ? t.description.slice(0, m.index) : t.description
+                    return <>
+                      <div style={{ fontSize: 12.5, color: 'var(--text3)', marginTop: 2, whiteSpace: 'pre-line' }}>{text}</div>
+                      {m && <Link to={m[1]} onClick={e => e.stopPropagation()} style={{ fontSize: 12.5, display: 'inline-block', marginTop: 4 }}><i className="ti ti-arrows-exchange" /> Відкрити в звірці</Link>}
+                    </>
+                  })()}
                   <div style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: 12, flexWrap: 'wrap', alignItems: 'center' }}>
                     {t.due_date && <span style={{ color: late ? 'var(--red)' : today ? 'var(--amber, #b45309)' : 'var(--text3)', fontWeight: late || today ? 600 : 400 }}>
                       <i className="ti ti-calendar" /> {t.due_date}{late ? ' · прострочено' : today ? ' · сьогодні' : ''}
                     </span>}
                     {t.priority !== 'normal' && <span style={{ background: p.bg, color: p.color, borderRadius: 6, padding: '1px 8px', fontWeight: 600 }}>{p.label}</span>}
                     {t.source === 'bot' && <span style={{ color: 'var(--text3)' }}><i className="ti ti-brand-telegram" /> з бота</span>}
+                    {t.source === 'recon' && <span style={{ color: 'var(--text3)' }}><i className="ti ti-arrows-exchange" /> зі звірки</span>}
                   </div>
                 </div>
                 <button className="btn" onClick={() => remove(t)} style={{ padding: '2px 8px', color: 'var(--red)' }} title="Видалити"><i className="ti ti-trash" /></button>
@@ -117,7 +127,7 @@ function TaskModal({ task, userId, onClose, onSaved }) {
         <div className="modal-header"><h2>{isEdit ? 'Задача' : 'Нова задача'}</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div className="form-group"><label>Що зробити *</label><input className="form-input" value={title} autoFocus onChange={e => setTitle(e.target.value)} placeholder="Напр. подзвонити ПРООН щодо оплати" /></div>
-          <div className="form-group"><label>Деталі (опц.)</label><input className="form-input" value={desc} onChange={e => setDesc(e.target.value)} /></div>
+          <div className="form-group"><label>Деталі (опц.)</label><textarea className="form-input" rows={desc.includes('\n') ? 6 : 2} value={desc} onChange={e => setDesc(e.target.value)} style={{ resize: 'vertical' }} /></div>
           <div style={{ display: 'flex', gap: 12 }}>
             <div className="form-group" style={{ flex: 1 }}><label>Термін</label><input type="date" className="form-input" value={due} onChange={e => setDue(e.target.value)} /></div>
             <div className="form-group" style={{ flex: 1 }}><label>Пріоритет</label>

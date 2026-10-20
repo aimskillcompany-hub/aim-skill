@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
+import { useUser } from '../lib/auth'
+import { addDaysIso, todayKyiv } from '../lib/dates'
 import { fmtInt } from '../lib/fmt'
 import {
   dmy, tableRow, buildProblems, explainProblem, PROBLEM_KINDS, unitFactor, linkAdd, linkRemove, setWarehouseDate,
@@ -32,9 +36,14 @@ const ACTIONS = {
 }
 const NEEDS_INPUT = new Set(['link', 'manual', 'units', 'date'])
 
-export default function ReconInbox({ data, canEdit, reload, onDialog, onDates, onOpenDoc }) {
+export default function ReconInbox({ data, canEdit, reload, onDialog, onDates, onOpenDoc, initialLine = null }) {
   const [filter, setFilter] = useState('all')
-  const [sel, setSel] = useState(null)
+  const [sel, setSel] = useState(initialLine)
+  // завдання, створені з проблем звірки (розділ «Задачі», source = 'recon'); рядок — за посиланням у деталях
+  const [tasks, setTasks] = useState([])
+  const loadTasks = () => supabase.from('tasks').select('id, title, description, due_date, status, priority, created_at').eq('source', 'recon')
+    .then(({ data: t }) => setTasks(t || []))
+  useEffect(() => { loadTasks() }, [])
   const [mode, setMode] = useState(null)        // дія з полем вводу, відкрита в картці
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
@@ -59,7 +68,7 @@ export default function ReconInbox({ data, canEdit, reload, onDialog, onDates, o
   // після перезавантаження — відкрити наступну
   useEffect(() => {
     if (!problems.length) { setSel(null); return }
-    const want = nextRef.current
+    const want = nextRef.current || (initialLine && !sel ? initialLine : null)
     if (want && visible.some(p => p.id === want)) { setSel(want); nextRef.current = null; return }
     if (!sel || !visible.some(p => p.id === sel)) setSel(visible[0]?.id || null)
   }, [problems, filter])
@@ -158,6 +167,7 @@ export default function ReconInbox({ data, canEdit, reload, onDialog, onDates, o
         <div style={{ flex: '999 1 560px', minWidth: 0, position: 'sticky', top: 16 }}>
           {cur ? (
             <ProblemCard key={cur.id} p={cur} pos={pos} n={visible.length} canEdit={canEdit} busy={busy} err={err} mode={mode}
+              tasks={tasks.filter(t => (t.description || '').includes(reconLineToken(cur.row.line.outId)))} onTaskCreated={loadTasks}
               onPrev={() => go(-1)} onNext={() => go(1)} onClose={() => setSel(null)} onAction={doAction} onAck={() => ack(cur.kind, 'Не помилка — позначено перевіреним')}
               run={run} onOpenDoc={onOpenDoc} />
           ) : (
@@ -180,7 +190,7 @@ export default function ReconInbox({ data, canEdit, reload, onDialog, onDates, o
   )
 }
 
-function ProblemCard({ p, pos, n, canEdit, busy, err, mode, onPrev, onNext, onClose, onAction, onAck, run, onOpenDoc }) {
+function ProblemCard({ p, pos, n, canEdit, busy, err, mode, onPrev, onNext, onClose, onAction, onAck, run, onOpenDoc, tasks = [], onTaskCreated }) {
   const x = p.row, s = x.src
   const { explain, hint } = explainProblem(p)
   const acts = ACTIONS[p.kind] || []
@@ -257,6 +267,8 @@ function ProblemCard({ p, pos, n, canEdit, busy, err, mode, onPrev, onNext, onCl
           {mode === 'date' && <WhDate p={p} busy={busy} run={run} />}
         </div>
 
+        <TaskBlock p={p} explain={explain} hint={hint} tasks={tasks} onCreated={onTaskCreated} />
+
         {err && <div style={{ color: 'var(--red)', fontSize: 13.5 }}>Помилка: {err}</div>}
         {canEdit ? (
           <>
@@ -272,6 +284,81 @@ function ProblemCard({ p, pos, n, canEdit, busy, err, mode, onPrev, onNext, onCl
         ) : <div style={{ fontSize: 13, color: 'var(--text3)', paddingTop: 14, borderTop: '1px solid var(--border)' }}>Перегляд: виправляти можуть лише адміністратор або бухгалтер.</div>}
       </div>
     </section>
+  )
+}
+
+// посилання на проблему в деталях завдання (по ньому завдання показується в картці й відкриває проблему з «Задач»)
+export const reconLineToken = (outId) => `/inventory/recon?line=${outId}`
+
+// ── Завдання на усунення проблеми → розділ «Задачі» ──
+function TaskBlock({ p, explain, hint, tasks, onCreated }) {
+  const { user } = useUser()
+  const x = p.row
+  const [open, setOpen] = useState(false)
+  const [title, setTitle] = useState('')
+  const [desc, setDesc] = useState('')
+  const [due, setDue] = useState('')
+  const [priority, setPriority] = useState('normal')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const [saved, setSaved] = useState(null)
+  useEffect(() => { setOpen(false); setSaved(null); setErr(null) }, [p.id])
+  const start = () => {
+    setTitle(`Звірка: ${p.label.toLowerCase()} — ${x.saleName}`.slice(0, 200))
+    setDesc([
+      `${x.doc.number} від ${dmy(x.doc.date)}, рядок ${x.lineNo} · ${x.doc.contractor}${x.doc.orderNo ? ` · замовлення №${x.doc.orderNo}` : ''}`,
+      x.src?.docNo ? `Прихідна №${x.src.docNo}${x.src.supplier ? ` (${x.src.supplier})` : ''}` : 'Прихідну не знайдено',
+      `Що не так: ${explain}`,
+      `Як виправити: ${hint}`,
+    ].join('\n'))
+    setDue(addDaysIso(todayKyiv(), p.sev === 'err' ? 2 : 5))
+    setPriority(p.sev === 'err' ? 'high' : 'normal')
+    setOpen(true); setErr(null)
+  }
+  const save = async () => {
+    if (!title.trim()) { setErr('Вкажіть, що зробити'); return }
+    setBusy(true); setErr(null)
+    const { data, error } = await supabase.from('tasks').insert({
+      title: title.trim(), description: `${desc.trim()}\n\nЗвірка: ${reconLineToken(x.line.outId)}`, due_date: due || null, priority,
+      created_by: user?.id || null, source: 'recon',
+    }).select('id').single()
+    setBusy(false)
+    if (error) { setErr(error.message); return }
+    setSaved(data?.id || true); setOpen(false); onCreated?.()
+  }
+  const PR = { high: 'Високий', normal: 'Звичайний', low: 'Низький' }
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--text3)', flex: 1 }}>Завдання</div>
+        {!open && <button className="btn btn-sm" onClick={start}><i className="ti ti-checklist" /> Створити завдання</button>}
+      </div>
+      {tasks.length > 0 ? tasks.map(t => (
+        <div key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, flexWrap: 'wrap' }}>
+          <i className={`ti ${t.status === 'done' ? 'ti-circle-check' : 'ti-circle'}`} style={{ color: t.status === 'done' ? 'var(--green)' : 'var(--text3)' }} />
+          <span style={{ textDecoration: t.status === 'done' ? 'line-through' : 'none', flex: 1, minWidth: 160 }}>{t.title}</span>
+          {t.due_date && <span style={{ color: t.status !== 'done' && t.due_date < todayKyiv() ? 'var(--red)' : 'var(--text3)' }}>до {dmy(t.due_date)}</span>}
+          <Link to="/tasks" style={{ fontSize: 12.5 }}>у «Задачах»</Link>
+        </div>
+      )) : !open && <div style={{ fontSize: 13, color: 'var(--text3)' }}>Завдань немає. Якщо виправити зараз не вийде (треба запросити документ, уточнити ціну в постачальника) — створіть завдання, воно з'явиться в розділі «Задачі» з посиланням на цю проблему.</div>}
+      {saved && <div style={{ fontSize: 13, color: 'var(--green)' }}>Завдання створено — воно в розділі <Link to="/tasks">«Задачі»</Link>.</div>}
+      {open && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="form-group"><label>Що зробити</label><input className="form-input" value={title} onChange={e => setTitle(e.target.value)} /></div>
+          <div className="form-group"><label>Деталі</label><textarea className="form-input" rows={5} value={desc} onChange={e => setDesc(e.target.value)} style={{ resize: 'vertical', fontSize: 13 }} /></div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div className="form-group"><label>Термін</label><input type="date" className="form-input" value={due} onChange={e => setDue(e.target.value)} /></div>
+            <div className="form-group"><label>Пріоритет</label>
+              <select className="form-input" value={priority} onChange={e => setPriority(e.target.value)}>{Object.entries(PR).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+            </div>
+            <span style={{ flex: 1 }} />
+            <button className="btn" onClick={() => setOpen(false)} disabled={busy}>Скасувати</button>
+            <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? 'Створюю…' : 'Створити завдання'}</button>
+          </div>
+          {err && <div style={{ color: 'var(--red)', fontSize: 13 }}>Помилка: {err}</div>}
+        </div>
+      )}
+    </div>
   )
 }
 
