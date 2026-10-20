@@ -33,34 +33,67 @@ export const payTextVat = (t) => {
   if (/пдв|vat/.test(x)) return true
   return undefined
 }
-export async function loadSupplierVat(orderIds, oItems = []) {
+const vNorm = (t) => String(t || '').toLowerCase().replace(/[«»"'()[\],.;:]/g, ' ').replace(/\s+/g, ' ').trim()
+const vTokens = (t) => vNorm(t).split(' ').filter(w => w.length >= 3)
+function vNameScore(a, b) {
+  const A = vTokens(a), B = vTokens(b)
+  if (!A.length || !B.length) return 0
+  const [short, long] = A.length <= B.length ? [A, new Set(B)] : [B, new Set(A)]
+  return short.filter(w => long.has(w)).length / short.length
+}
+const vItems = (raw) => { if (!raw) return []; if (Array.isArray(raw)) return raw; try { const x = JSON.parse(raw); return Array.isArray(x) ? x : [] } catch { return [] } }
+
+// Прихідні постачальника по замовленню: прив'язані до замовлення (order_id) АБО від постачальника позиції замовлення,
+// не прив'язані до жодного замовлення, з товаром замовлення в позиціях (назва ≥ 60% слів).
+// Платежі постачальнику: прив'язані до прихідної (transaction_documents) або до замовлення (order_transactions)
+// АБО оплати цьому контрагенту від −30 до +120 днів від дати прихідної. how — як знайдено (для перевірки).
+export async function loadSupplierVat(orderIds, oItems = null) {
   const map = {}
   if (!orderIds?.length) return map
-  const docs = (await fetchAllIn(() => qc('documents').select('id, type, order_id, contractor_id, vat_amount, amount, doc_number, doc_date, created_at, direction').eq('direction', 'payable'), 'order_id', orderIds))
-    .filter(d => countsAsDebt(d.type) && d.amount != null)
-  const tds = docs.length ? await fetchAllIn(() => supabase.from('transaction_documents').select('document_id, transaction_id'), 'document_id', docs.map(d => d.id)).catch(() => []) : []
+  const items = oItems || await fetchAllIn(() => supabase.from('order_items').select('id, order_id, product_id, name, supplier_id'), 'order_id', orderIds).catch(() => [])
+  const isDebt = (d) => countsAsDebt(d.type) && d.amount != null
+  const linked = (await fetchAllIn(() => qc('documents').select('id, type, order_id, contractor_id, vat_amount, amount, doc_number, doc_date, created_at, direction').eq('direction', 'payable'), 'order_id', orderIds)).filter(isDebt)
+  const supIds = [...new Set(items.map(i => i.supplier_id).filter(Boolean))]
+  const supDocs = supIds.length ? (await fetchAllIn(() => qc('documents').select('id, type, order_id, contractor_id, vat_amount, amount, doc_number, doc_date, created_at, direction, ocr_data').eq('direction', 'payable'), 'contractor_id', supIds)).filter(d => isDebt(d) && !d.order_id) : []
+  const docs = linked.map(d => ({ ...d, how: 'прив\'язана до замовлення' }))
+  supDocs.forEach(d => {
+    const names = vItems(d.ocr_data?.items).map(i => i?.name).filter(Boolean)
+    orderIds.forEach(oid => {
+      const mine = items.filter(i => i.order_id === oid && i.supplier_id === d.contractor_id)
+      if (mine.some(i => names.some(n => vNameScore(i.name, n) >= 0.6))) docs.push({ ...d, order_id: oid, how: 'постачальник позиції, товар у прихідній' })
+    })
+  })
+  const docIds = [...new Set(docs.map(d => d.id))]
+  const tds = docIds.length ? await fetchAllIn(() => supabase.from('transaction_documents').select('document_id, transaction_id'), 'document_id', docIds).catch(() => []) : []
   const ots = await fetchAllIn(() => supabase.from('order_transactions').select('order_id, transaction_id'), 'order_id', orderIds).catch(() => [])
-  const txIds = [...new Set([...tds, ...ots].map(t => t.transaction_id).filter(Boolean))]
-  const txs = txIds.length ? await fetchAllIn(() => supabase.from('bank_transactions').select('id, description, contractor_id, amount, date, is_ignored'), 'id', txIds).catch(() => []) : []
+  const ctrIds = [...new Set([...docs.map(d => d.contractor_id), ...supIds].filter(Boolean))]
+  const byCtr = ctrIds.length ? await fetchAllIn(() => qc('bank_transactions').select('id, description, contractor_id, amount, date, is_ignored'), 'contractor_id', ctrIds).catch(() => []) : []
+  const txIds = [...new Set([...tds, ...ots].map(t => t.transaction_id).filter(Boolean))].filter(id => !byCtr.some(t => t.id === id))
+  const txs = [...byCtr, ...(txIds.length ? await fetchAllIn(() => supabase.from('bank_transactions').select('id, description, contractor_id, amount, date, is_ignored'), 'id', txIds).catch(() => []) : [])]
   const txById = {}; txs.forEach(t => { txById[t.id] = t })
-  const docById = {}; docs.forEach(d => { docById[d.id] = d })
   const ensure = (k) => (map[k] ||= { docs: [], pays: [] })
   docs.forEach(d => {
-    const e = { id: d.id, number: d.doc_number || '—', date: debtDate(d), vat: Math.abs(Number(d.vat_amount) || 0) > 0.005 }
+    const e = { id: d.id, number: d.doc_number || '—', date: debtDate(d), amount: Math.abs(Number(d.amount) || 0), vat: Math.abs(Number(d.vat_amount) || 0) > 0.005, how: d.how, contractorId: d.contractor_id }
     ensure(`${d.order_id}|${d.contractor_id}`).docs.push(e); ensure(`${d.order_id}|*`).docs.push(e)
   })
   const seen = new Set()
-  const addPay = (orderId, t) => {
-    if (!t || t.is_ignored || Number(t.amount) >= 0 || seen.has(orderId + t.id)) return   // лише оплати постачальникам
+  const addPay = (orderId, ctrId, t, how) => {
+    if (!t || t.is_ignored || !(Number(t.amount) < 0) || seen.has(orderId + t.id)) return   // лише оплати (видатки)
     seen.add(orderId + t.id)
-    const p = { id: t.id, date: t.date, text: t.description || '', vat: payTextVat(t.description) }
-    if (t.contractor_id) ensure(`${orderId}|${t.contractor_id}`).pays.push(p)
+    const p = { id: t.id, date: t.date, amount: Math.abs(Number(t.amount) || 0), text: t.description || '', vat: payTextVat(t.description), how }
+    const c = ctrId || t.contractor_id
+    if (c) ensure(`${orderId}|${c}`).pays.push(p)
     ensure(`${orderId}|*`).pays.push(p)
   }
-  tds.forEach(td => { const d = docById[td.document_id]; if (d) addPay(d.order_id, txById[td.transaction_id]) })
-  ots.forEach(o => addPay(o.order_id, txById[o.transaction_id]))
+  const docsById = {}; docs.forEach(d => { (docsById[d.id] ||= []).push(d) })
+  tds.forEach(td => (docsById[td.document_id] || []).forEach(d => addPay(d.order_id, d.contractor_id, txById[td.transaction_id], `прив'язаний до прихідної № ${d.doc_number || '—'}`)))
+  ots.forEach(o => addPay(o.order_id, null, txById[o.transaction_id], 'прив\'язаний до замовлення'))
+  docs.forEach(d => {
+    const dd = debtDate(d)
+    byCtr.filter(t => t.contractor_id === d.contractor_id && t.date && dd && daysBetween(dd, t.date) >= -30 && daysBetween(dd, t.date) <= 120)
+      .forEach(t => addPay(d.order_id, d.contractor_id, t, `оплата контрагенту ${dmyV(t.date)} (−30…+120 днів від прихідної)`))
+  })
   // запасний варіант без прихідних — ознака платника ПДВ у картці постачальника
-  const supIds = [...new Set(oItems.map(i => i.supplier_id).filter(Boolean))]
   const sups = supIds.length ? await fetchAllIn(() => supabase.from('contractors').select('id, name, is_vat_payer'), 'id', supIds).catch(() => []) : []
   const supById = {}; sups.forEach(c => { supById[c.id] = c })
   Object.entries(map).forEach(([k, v]) => {
@@ -72,6 +105,7 @@ export async function loadSupplierVat(orderIds, oItems = []) {
   map.__suppliers = supById
   return map
 }
+const dmyV = (s) => (s || '').split('-').reverse().join('.')
 // ПДВ для позиції замовлення: прихідна цього постачальника → (позиція без постачальника) усі прихідні замовлення,
 // якщо однакові → картка постачальника (is_vat_payer) → як у позиції
 export function vatInfo(map, orderId, supplierId) {

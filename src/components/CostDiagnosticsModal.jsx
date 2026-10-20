@@ -119,7 +119,9 @@ export default function CostDiagnosticsModal({ onClose }) {
                   {res.orderRows.map(r => (
                     <tr key={r.order} style={r.neutral ? { color: 'var(--text3)' } : undefined}>
                       <td style={{ whiteSpace: 'nowrap' }}>{r.orderId ? <Link to={`/orders/${r.orderId}`} onClick={onClose}>№{r.order}</Link> : r.order}</td>
-                      <td><div className="trunc" style={{ maxWidth: 220 }}>{r.client}</div>{r.vatWarn?.length > 0 && <div style={{ fontSize: 11.5, color: '#B45309' }} title={r.vatWarn.join('\n')}>⚠ розбіжність ПДВ</div>}</td>
+                      <td><div className="trunc" style={{ maxWidth: 220 }}>{r.client}</div>{r.vatWarn?.length > 0 && <div style={{ fontSize: 11.5, color: '#B45309' }} title={r.vatWarn.join('\n')}>⚠ розбіжність ПДВ</div>}
+                        {r.vatInfo?.length > 0 && <details style={{ fontSize: 11.5, color: 'var(--text3)' }}><summary style={{ cursor: 'pointer' }}>ПДВ: прихідні й платежі ({r.vatInfo.length})</summary>{r.vatInfo.map((t, k) => <div key={k} style={{ marginTop: 2 }}>{t}</div>)}</details>}
+                        {r.orderId && !r.vatInfo?.length && <div style={{ fontSize: 11.5, color: 'var(--text3)' }}>прихідних постачальника не знайдено</div>}</td>
                       <td style={{ textAlign: 'right' }}>{r.shipments}</td>
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{money(r.current)}{r.currentMissing && <i className="ti ti-alert-triangle" title="у звіті частина позицій без собівартості" style={{ color: '#B45309', marginLeft: 4 }} />}</td>
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 600 }}>{money(r.fifo)}</td>

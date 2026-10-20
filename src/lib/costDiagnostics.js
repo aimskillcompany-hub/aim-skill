@@ -167,13 +167,20 @@ export async function runCostDiagnostics(from, to) {
   const dupsOf = (p) => (near[p.id] || []).filter(x => inQtyOf[x.id] > 0).slice(0, 3).map(x => ({ ...x, inQty: r2(inQtyOf[x.id]) }))
   // ПДВ: прихідна (є ПДВ у документі) vs текст платежу постачальнику
   const vatMap = await loadSupplierVat(orderIds)
-  const vatWarn = {}
+  const vatWarn = {}, vatInfoByOrder = {}
+  const fmtDoc = (d) => `прихідна № ${d.number} від ${dmy(d.date)} на ${r2(d.amount)} — ${d.vat ? 'з ПДВ' : 'без ПДВ'} (${d.how})`
+  const fmtPay = (p) => `платіж ${dmy(p.date)} на ${r2(p.amount)} «${(p.text || '').slice(0, 90)}» — ${p.vat === true ? 'з ПДВ' : p.vat === false ? 'без ПДВ' : 'ПДВ у тексті не вказано'} (${p.how})`
   Object.entries(vatMap).forEach(([k, v]) => {
-    if (k.startsWith('__') || k.endsWith('|*') || !v.mismatch) return
-    const orderId = k.split('|')[0]
-    const docTxt = v.docs.map(d => `№ ${d.number} від ${dmy(d.date)} — ${d.vat ? 'з ПДВ' : 'без ПДВ'}`).join(', ')
-    const pay = v.pays.find(p => p.vat !== undefined && p.vat !== v.docVat) || v.pays[0]
-    ;(vatWarn[orderId] ||= []).push(`⚠ розбіжність ПДВ: прихідна ${docTxt}; платіж ${dmy(pay?.date)} «${(pay?.text || '').slice(0, 90)}» — ${pay?.vat ? 'з ПДВ' : 'без ПДВ'}. Собівартість — за прихідною.`)
+    if (k.startsWith('__')) return
+    const [orderId, ctr] = k.split('|')
+    if (ctr === '*') {
+      vatInfoByOrder[orderId] = [...v.docs.map(fmtDoc), ...v.pays.map(fmtPay)]
+      // «усі постачальники» — лише якщо прихідні від одного контрагента (інакше змішуються різні постачальники)
+      const ctrs = new Set(v.docs.map(d => d.contractorId))
+      if (!v.mismatch || ctrs.size !== 1 || vatMap[`${orderId}|${[...ctrs][0]}`]?.mismatch) return
+    } else if (!v.mismatch) return
+    const pays = v.pays.filter(p => p.vat !== undefined && p.vat !== v.docVat)
+    ;(vatWarn[orderId] ||= []).push(`⚠ розбіжність ПДВ: ${v.docs.map(fmtDoc).join('; ')} ↔ ${pays.map(fmtPay).join('; ')}. Собівартість — за прихідною.`)
   })
 
   const missing = missingRows.map(r => {
@@ -221,7 +228,7 @@ export async function runCostDiagnostics(from, to) {
     }
   }).sort((a, b) => a.order.localeCompare(b.order) || a.date.localeCompare(b.date))
 
-  orderRows.forEach(x => { if (x.orderId) x.vatWarn = vatWarn[x.orderId] || [] })
+  orderRows.forEach(x => { if (x.orderId) { x.vatWarn = vatWarn[x.orderId] || []; x.vatInfo = vatInfoByOrder[x.orderId] || [] } })
   // збірки не входять у підсумок: їхня собівартість уже є в проданому виробі
   const counted = orderRows.filter(x => !x.neutral)
   const totals = { current: r2(counted.reduce((t, x) => t + x.current, 0)), fifo: r2(counted.reduce((t, x) => t + x.fifo, 0)),
