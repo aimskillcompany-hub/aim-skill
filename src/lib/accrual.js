@@ -123,6 +123,15 @@ function withSupplierVat(it, v) {
   return it
 }
 
+// надруковані дати генерованих документів: { generated_doc_id: doc_date }
+export async function loadPrintDates(docs) {
+  const ids = [...new Set((docs || []).map(d => d.generated_doc_id).filter(Boolean))]
+  if (!ids.length) return {}
+  const rows = await fetchAllIn(() => qc('generated_docs').select('id, doc_date'), 'id', ids).catch(() => [])
+  const m = {}; rows.forEach(g => { if (g.doc_date) m[g.id] = String(g.doc_date).slice(0, 10) })
+  return m
+}
+
 // OUT-рухи з полями FIFO (071) і оцінки (074), з відступом для старіших схем
 async function loadOutMovs(run, extra = '') {
   const base = 'id, document_id, product_id, quantity, cost_price, price, description, date, source' + extra
@@ -158,9 +167,13 @@ export async function accrualWriteoffs(from, to) {
 // → [{ doc, net, vat, gross, date, cost, costSource: 'stock'|'order'|'none'|'service', missing: [{ name, qty, reason }] }]
 export async function accrualSalesDocs(from, to) {
   const docsAll = await fetchAll(() => qc('documents')
-    .select('id, type, doc_number, doc_date, created_at, amount, vat_amount, contractor_id, order_id, direction, contractors(name)')
+    .select('id, type, doc_number, doc_date, created_at, amount, vat_amount, contractor_id, order_id, direction, generated_doc_id, contractors(name)')
     .eq('direction', 'receivable').not('amount', 'is', null))
-  const docs = docsAll.filter(d => countsAsDebt(d.type) && debtDate(d) >= from && debtDate(d) <= to)
+  // дата видаткової — надрукована в документі (generated_docs.doc_date), далі doc_date, далі дата створення
+  const gdate = await loadPrintDates(docsAll)
+  const printDate = (d) => gdate[d.generated_doc_id] || debtDate(d)
+  docsAll.forEach(d => { d.print_date = printDate(d) })
+  const docs = docsAll.filter(d => countsAsDebt(d.type) && d.print_date >= from && d.print_date <= to)
   if (!docs.length) return []
   const ids = docs.map(d => d.id)
 
@@ -224,7 +237,7 @@ export async function accrualSalesDocs(from, to) {
     const vat = Math.abs(Number(d.vat_amount) || 0)
     const net = r2(gross - vat)
     // movUnits — поточна собівартість одиниці по кожному руху (оцінка для FIFO-нестачі); estimated — оцінені без партії (⚠)
-    const out = { doc: d, date: debtDate(d), net, vat, gross, cost: 0, costSource: 'none', missing: [], estimated: [], movUnits: [] }
+    const out = { doc: d, date: d.print_date, net, vat, gross, cost: 0, costSource: 'none', missing: [], estimated: [], movUnits: [] }
     const ms = movsByDoc[d.id] || []
     if (ms.length) {
       out.costSource = 'stock'

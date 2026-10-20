@@ -64,6 +64,7 @@ export function rpcMessage(error) {
   if (/SKU_CONFLICT/.test(m)) return m.replace(/^.*SKU_CONFLICT:\s*/, 'Об\'єднання заборонено: ')
   if (/PGRST202|could not find the function|does not exist/i.test(m) && /shipment_link|set_warehouse_date|unmerge_products|fifo_dry_run_detail|shipment_links|warehouse_date|cost_action_log/.test(m))
     return 'Спершу застосуйте міграцію 076 («Звірка видаткових»).'
+  if (/PGRST202|could not find the function|does not exist/i.test(m) && /sync_doc_dates|doc_date_mismatches|doc_print_date/.test(m)) return 'Спершу застосуйте міграцію 077 (дати видаткових).'
   return m
 }
 const call = async (fn, args) => {
@@ -77,6 +78,12 @@ export const linkRemove = (linkId) => call('shipment_link_remove', { p_link: lin
 export const setWarehouseDate = (inDoc, date, recalcOutDoc = null) => call('set_warehouse_date', { p_in_doc: inDoc, p_date: date || null, p_recalc_out_doc: recalcOutDoc })
 export const mergeCards = (keepId, dupId) => call('merge_products', { p_keep: keepId, p_dup: dupId })
 export const unmergeCards = (logId) => call('unmerge_products', { p_log: logId })
+// розбіжності дат (077): дзеркало ≠ генерований документ; дата руху видачі ≠ дата видаткової
+export async function loadDateMismatches() {
+  const { data, error } = await supabase.rpc('doc_date_mismatches_json')
+  return error ? null : data
+}
+export const syncDocDates = () => call('sync_doc_dates', {})
 
 // останні об'єднання карток (для «Скасувати об'єднання»)
 export async function loadRecentMerges(limit = 5) {
@@ -125,7 +132,7 @@ export async function loadDocFull(docId) {
 // джерелами (партії сухого прогону), кандидатами, статусами.
 export async function loadRecon(from, to) {
   const sales = await accrualSalesDocs(from, to)
-  const saleDocs = sales.map(s => s.doc)
+  const saleDocs = sales.map(s => s.doc)   // s.doc.print_date — дата видаткової (надрукована)
   const docIds = saleDocs.map(d => d.id)
   // doc_line (076) — номер рядка документа; до міграції — без нього
   const outCols = 'id, document_id, product_id, quantity, price, cost_price, date, order_id, created_at'
@@ -220,11 +227,14 @@ export function computeRecon({ saleDocs, outs, dry, links, prodById, similar, in
     // рядок = конкретний OUT-рух (той самий товар двічі в документі — два рядки), у порядку рядків документа
     const docOuts = outsByDoc[d.id].slice().sort((a, b) => (a.doc_line ?? 1e9) - (b.doc_line ?? 1e9) || String(a.created_at || '').localeCompare(String(b.created_at || '')) || String(a.id).localeCompare(String(b.id)))
     const orderId = d.order_id || docOuts.find(m => m.order_id)?.order_id || null
+    // дата відвантаження = дата видаткової (надрукована), а не дата руху / створення запису
+    const docShip = d.print_date || debtDate(d)
     const lines = docOuts.map((m0, idx) => {
       const pid = m0.product_id, ms = [m0]
       const p = prodById[pid] || {}
       const qty = r2(ms.reduce((s, m) => s + (Number(m.quantity) || 0), 0))
-      const shipDate = ms.map(m => m.date).sort()[0]
+      const shipDate = docShip
+      const movDate = ms.map(m => m.date).sort()[0]
       const saleNet = r2(ms.reduce((s, m) => s + (Number(m.quantity) || 0) * (Number(m.price) || 0), 0))
       const rows = ms.map(m => rowByOut[m.id]).filter(Boolean)
       const cost = r2(rows.reduce((s, r) => s + (Number(r.qty) || 0) * (Number(r.new_unit) || 0), 0))
@@ -300,6 +310,7 @@ export function computeRecon({ saleDocs, outs, dry, links, prodById, similar, in
       }
       const status = flags.length ? flags.slice().sort((a, b) => STATUS[b].rank - STATUS[a].rank)[0] : 'ok'
       return {
+        movDate, movDateDiffers: !!movDate && movDate !== shipDate,
         key: m0.id, outId: m0.id, lineNo: m0.doc_line ?? idx + 1, unitPrice: Number(m0.price) || 0, productId: pid, name: p.name || '—', sku: p.sku || '', unit: p.unit || 'шт', qty, shipDate,
         saleNet, cost, currentCost, estQty, missingQty, margin: r2(saleNet - cost), marginPct: saleNet > 0 ? (saleNet - cost) / saleNet : null,
         sources, candidates, links: lineLinks, unitIssues, vatMismatch, flags, status, service, outIds: ms.map(m => m.id),
@@ -311,7 +322,7 @@ export function computeRecon({ saleDocs, outs, dry, links, prodById, similar, in
     const flags = [...new Set([...lines.flatMap(l => l.flags), ...(hasBroken ? ['broken'] : [])])]
     // підказка: усі документи постачальника пізніші за видаткову
     let tip = null
-    const shipDate = docOuts.map(m => m.date).sort()[0]
+    const shipDate = docShip
     const prob = lines.filter(l => l.status === 'late')
     if (prob.length) {
       const v = orderId ? vatMap[`${orderId}|*`] : null
@@ -325,7 +336,7 @@ export function computeRecon({ saleDocs, outs, dry, links, prodById, similar, in
     }
     if (!tip && lines.some(l => l.status === 'other')) tip = 'Прихід є, але записаний на іншу картку товару. Порівняйте картки й об\'єднайте, якщо це той самий товар.'
     return {
-      id: d.id, type: d.type, number: d.doc_number || '—', date: debtDate(d), shipDate, contractor: d.contractors?.name || '—', orderId, orderNo: orderId ? orderNo[orderId] || null : null,
+      id: d.id, type: d.type, number: d.doc_number || '—', date: docShip, shipDate, contractor: d.contractors?.name || '—', orderId, orderNo: orderId ? orderNo[orderId] || null : null,
       lines, status: docStatus, flags, tip,
       // прив'язки, чий рядок не знайдено після редагування документа — перевірити / зняти
       brokenLinks: (links || []).filter(l => l.resolved === false && (l.out_document_id === d.id)).map(l => ({ ...l, productName: prodById[l.out_product_id]?.name || '—', inDocNo: inDocById[l.in_document_id]?.doc_number || '—' })),
@@ -378,6 +389,7 @@ export function tableRow(doc, l) {
     if (l.missingQty > 0 && pur) add('nocost', 'r', `без собівартості ${l.missingQty}`, ['pc'])
     if (costUnit > 0 && Math.abs(costUnit - salePrice) < 0.5) add('eq', 'r', 'собівартість = ціна продажу', ['pc'])
     if (l.vatMismatch) add('vat', 'a', '⚠ розбіжність ПДВ', ['vat'])
+    if (l.movDateDiffers) add('mdate', 'a', `дата руху складу ${dmy(l.movDate)} ≠ даті видаткової — вирівняйте дати`)
     if (marginSum < 0) add('marg', 'r', 'збиток', ['m'])
     else if (marginPct != null && marginPct < 5) add('marg', 'a', 'маржа < 5%', ['m'])
     else if (marginPct != null && marginPct > 60) add('marg', 'a', 'маржа > 60% — чи є собівартість?', ['m'])
@@ -392,6 +404,6 @@ export function tableRow(doc, l) {
     costUnit, costSum, vat: pur ? (pur.vat == null ? '—' : pur.vat ? 'так' : 'ні') : null,
     inDate: pur?.whDate || null, shipDate: l.shipDate, days, marginUnit, marginSum, marginPct,
     estimated: l.estQty > 0, service: l.service, flags, cls, bad: flags.length > 0,
-    tags: { late: has('late'), none: has('none'), name: has('name'), unit: has('unit'), marg: has('marg') || has('eq'), vat: has('vat'), est: has('est'), broken: has('broken') },
+    tags: { mdate: has('mdate'), late: has('late'), none: has('none'), name: has('name'), unit: has('unit'), marg: has('marg') || has('eq'), vat: has('vat'), est: has('est'), broken: has('broken') },
   }
 }

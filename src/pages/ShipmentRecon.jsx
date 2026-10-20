@@ -6,7 +6,7 @@ import { fmtInt } from '../lib/fmt'
 import { todayKyiv, daysBetween } from '../lib/dates'
 import {
   loadRecon, sortDocs, HOW_LABEL, dmy, linkAdd, linkRemove, setWarehouseDate, mergeCards, unmergeCards,
-  loadRecentMerges, loadCardStats, loadDocLines, loadDocFull, skuCompatible, nameScore, tableRow,
+  loadRecentMerges, loadCardStats, loadDocLines, loadDocFull, skuCompatible, nameScore, tableRow, loadDateMismatches, syncDocDates,
 } from '../lib/shipmentRecon'
 import DocModal from '../components/DocModal'
 
@@ -23,7 +23,7 @@ const BADGE = {
 }
 const CELL = { r: { background: 'var(--red-bg)', color: 'var(--red)', fontWeight: 600 }, a: { background: 'var(--amber-bg)', color: 'var(--amber)', fontWeight: 600 }, g: { color: 'var(--green)', fontWeight: 600 } }
 const FLAG = { r: BADGE.bad, a: BADGE.warn, g: BADGE.ok }
-const FILTERS = [['all', 'Усі'], ['bad', 'Тільки з недоліками'], ['late', 'Прихід пізніше'], ['none', 'Немає приходу'], ['name', 'Інша назва / картка'], ['unit', 'Одиниці'], ['marg', 'Підозріла маржа'], ['vat', 'Розбіжність ПДВ'], ['broken', 'Рядок змінився']]
+const FILTERS = [['all', 'Усі'], ['bad', 'Тільки з недоліками'], ['mdate', 'Дата руху ≠ дата видаткової'], ['late', 'Прихід пізніше'], ['none', 'Немає приходу'], ['name', 'Інша назва / картка'], ['unit', 'Одиниці'], ['marg', 'Підозріла маржа'], ['vat', 'Розбіжність ПДВ'], ['broken', 'Рядок змінився']]
 const COLS = [
   // [ключ сортування, заголовок, вирівнювання, група-роздільник]
   [null, '№'], ['saleName', 'Товар у видатковій'], ['qty', 'К-сть', 'r'], ['salePrice', 'Ціна прод. / од.', 'r', false, 'без ПДВ'],
@@ -60,11 +60,14 @@ export default function ShipmentRecon() {
   const [dialog, setDialog] = useState(null)     // { doc, type, line, src, link, log }
   const [docModal, setDocModal] = useState(null)
   const [merges, setMerges] = useState([])
+  const [mism, setMism] = useState(null)        // розбіжності дат (077)
+  const [datesDlg, setDatesDlg] = useState(false)
 
   const load = async () => {
     setLoading(true); setErr(null)
     try { setData(await loadRecon(from, to)) } catch (e) { setErr(e.message) } finally { setLoading(false) }
     loadRecentMerges().then(setMerges)
+    loadDateMismatches().then(setMism)
   }
   // ?doc=… — показати цю видаткову (якщо раніша за період — розширити період)
   useEffect(() => {
@@ -146,6 +149,12 @@ export default function ShipmentRecon() {
       {data?.needs076 && <div className="card" style={{ background: 'var(--amber-bg)', color: 'var(--amber)', marginBottom: 12 }}>Міграцію 076 ще не застосовано: ручні прив'язки, дати оприбуткування і дії недоступні; показано звичайний FIFO.</div>}
       {toast && <div className="card" style={{ background: 'var(--green-bg)', color: 'var(--green)', marginBottom: 12, display: 'flex', gap: 10 }}><span style={{ flex: 1 }}>{toast}</span><button className="btn btn-sm" onClick={() => setToast(null)}>✕</button></div>}
       {err && <div className="card" style={{ color: 'var(--red)', marginBottom: 12 }}>Помилка: {err}</div>}
+      {mism && (mism.mirror?.length > 0 || mism.outs?.length > 0) && (
+        <div className="card" style={{ background: 'var(--amber-bg)', color: 'var(--amber)', marginBottom: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ flex: 1 }}>⚠ Розбіжності дат: {mism.outs.length} видатков. — дата руху складу ≠ даті видаткової (FIFO рахує на дату руху){mism.mirror.length ? `; ${mism.mirror.length} док. — дата в «Документах» ≠ надрукованій` : ''}. Звірка вже показує дату видаткової; вирівняйте, щоб так рахував і FIFO.</span>
+          <button className="btn btn-sm" onClick={() => setDatesDlg(true)}>Переглянути{canEdit ? ' й вирівняти' : ''}</button>
+        </div>
+      )}
 
       <div className="compact" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
         <input type="date" className="form-input" value={from} onChange={e => e.target.value && setFrom(e.target.value)} style={{ width: 150 }} title="Відвантаження з" />
@@ -270,6 +279,7 @@ export default function ShipmentRecon() {
         </div>
       )}
 
+      {datesDlg && mism && <DatesDialog mism={mism} canEdit={canEdit} onClose={() => setDatesDlg(false)} onDone={async (t) => { setDatesDlg(false); await done(t) }} />}
       {drawer && <DocsDrawer {...drawer} canEdit={canEdit} onClose={() => setDrawer(null)} onDialog={(o) => setDialog({ doc: drawer.doc, ...o })} onOpenDoc={openDoc} />}
       {dialog && <ActionDialog {...dialog} onClose={() => setDialog(null)} onDone={done} />}
       {docModal && <DocModal user={user} existingDoc={docModal} autoOcr={false} onClose={() => setDocModal(null)} onSaved={() => { setDocModal(null); load() }} />}
@@ -278,6 +288,43 @@ export default function ShipmentRecon() {
 }
 const round2 = (v) => Math.round((Number(v) || 0) * 100) / 100
 const sumCost = (movs) => (movs || []).reduce((s, m) => s + (Number(m.qty) || 0) * (Number(m.cost_price) || 0), 0)
+
+// ───────── Вирівняти дати: дзеркало = надрукована дата; рухи видачі = дата видаткової ─────────
+function DatesDialog({ mism, canEdit, onClose, onDone }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const rowsOf = (list, kind) => list.map((x, i) => (
+    <tr key={kind + i} style={{ borderTop: '1px solid var(--border)' }}>
+      <td style={{ padding: '4px 6px' }}>{x.doc_number || '—'}</td>
+      <td style={{ padding: '4px 6px', color: 'var(--text3)' }}>{kind === 'mirror' ? 'дата в «Документах»' : `рух складу${x.movements > 1 ? ` (${x.movements})` : ''}`}</td>
+      <td style={{ padding: '4px 6px', ...r }}>{dmy(x.old_date)}</td>
+      <td style={{ padding: '4px 6px', ...r, fontWeight: 600 }}>→ {dmy(x.new_date)}</td>
+      <td style={{ padding: '4px 6px', color: 'var(--red)', fontSize: 12 }}>{x.closed ? 'закритий місяць — пропуск' : ''}</td>
+    </tr>
+  ))
+  const run = async () => {
+    if (!window.confirm('Вирівняти дати? Дата в «Документах» стане надрукованою датою, рухи видачі — датою видаткової. Собівартість при цьому не перераховується (лише «Застосувати FIFO»). Закриті місяці пропускаються. Дія пишеться в журнал.')) return
+    setBusy(true); setErr(null)
+    try { const res = await syncDocDates(); await onDone(`Дати вирівняно: документів ${res.mirror_fixed}, рухів видачі ${res.out_movements_fixed}${res.left_closed ? `; у закритих місяцях лишилось ${res.left_closed}` : ''}.`) } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+  return (
+    <div className="modal-bg" onClick={busy ? undefined : onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 720, width: '96%', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div className="modal-header"><h2 style={{ margin: 0, fontSize: 17 }}>Розбіжності дат видаткових</h2><button className="btn" onClick={onClose} disabled={busy}><i className="ti ti-x" /></button></div>
+        <p style={{ fontSize: 13, color: 'var(--text2)', marginTop: 0 }}>Дата відвантаження — дата, надрукована у видатковій. Рух складу отримує дату при створенні документа; якщо дату документа потім змінили, рух лишався зі старою — і FIFO вважав, що товар відвантажено раніше.</p>
+        <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+          <thead><tr style={{ color: 'var(--text3)', fontSize: 12 }}><th style={{ textAlign: 'left' }}>Документ</th><th style={{ textAlign: 'left' }}>Що</th><th style={{ textAlign: 'right' }}>Було</th><th style={{ textAlign: 'right' }}>Стане</th><th /></tr></thead>
+          <tbody>{rowsOf(mism.mirror || [], 'mirror')}{rowsOf(mism.outs || [], 'outs')}</tbody>
+        </table>
+        {err && <p style={{ color: 'var(--red)' }}>Помилка: {err}</p>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+          <button className="btn" onClick={onClose} disabled={busy}>Закрити</button>
+          {canEdit && <button className="btn btn-primary" onClick={run} disabled={busy}>{busy ? 'Вирівнюю…' : 'Вирівняти дати'}</button>}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // ───────── Рядок таблиці ─────────
 function Row({ x, open, onToggle, onSale, onRec }) {
