@@ -1,29 +1,42 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { fmtInt } from '../lib/fmt'
 import { todayKyiv, daysBetween } from '../lib/dates'
 import {
-  loadRecon, sortDocs, STATUS, HOW_LABEL, dmy, linkAdd, linkRemove, setWarehouseDate, mergeCards, unmergeCards,
-  loadRecentMerges, loadCardStats, loadDocLines, loadDocFull, skuCompatible, nameScore,
+  loadRecon, sortDocs, HOW_LABEL, dmy, linkAdd, linkRemove, setWarehouseDate, mergeCards, unmergeCards,
+  loadRecentMerges, loadCardStats, loadDocLines, loadDocFull, skuCompatible, nameScore, tableRow,
 } from '../lib/shipmentRecon'
 import DocModal from '../components/DocModal'
 
-// «Склад → Звірка видаткових» (ТЗ 2026-10-20): видаткова → її позиції → партія, з якої списано (або кандидати),
-// обидва документи поруч, дії: взяти з прихідної / виправити дату оприбуткування / об'єднати картки.
+// «Склад → Звірка: продаж ↔ закупівля» (макет 2026-10-20): таблиця, згрупована за видатковими — рядок-заголовок
+// з підсумком накладної, під ним позиції: що продали → з якої прихідної собівартість → дати → маржа → недоліки.
+// Клік по рядку з недоліком — джерело/кандидати і дії (взяти з прихідної, дата оприбуткування, об'єднати картки).
 const money = (v) => `${v < 0 ? '−' : ''}${fmtInt(v)}`
+const num = (v, dp = 0) => v == null || !isFinite(v) ? '—' : Number(v).toLocaleString('uk-UA', { minimumFractionDigits: dp, maximumFractionDigits: dp })
 const PAGE = 50
 const BADGE = {
   ok: { background: 'var(--green-bg)', color: 'var(--green)' },
   warn: { background: 'var(--amber-bg)', color: 'var(--amber)' },
   bad: { background: 'var(--red-bg)', color: 'var(--red)' },
 }
-const Badge = ({ status, style }) => (
-  <span className="badge" style={{ ...BADGE[STATUS[status].cls], fontWeight: 600, whiteSpace: 'nowrap', ...style }}>{STATUS[status].label}</span>
-)
-const FILTERS = [['all', 'Усі'], ['broken', '⚠ рядок змінився'], ['late', '⏱ прихід пізніше'], ['none', 'немає приходу'], ['other', '⧉ інша картка'], ['vat', '⚠ розбіжність ПДВ'], ['units', '⚠ одиниці виміру'], ['ok', '✓ ок']]
-const sumCost = (movs) => (movs || []).reduce((s, m) => s + (Number(m.qty) || 0) * (Number(m.cost_price) || 0), 0)
+const CELL = { r: { background: 'var(--red-bg)', color: 'var(--red)', fontWeight: 600 }, a: { background: 'var(--amber-bg)', color: 'var(--amber)', fontWeight: 600 }, g: { color: 'var(--green)', fontWeight: 600 } }
+const FLAG = { r: BADGE.bad, a: BADGE.warn, g: BADGE.ok }
+const FILTERS = [['all', 'Усі'], ['bad', 'Тільки з недоліками'], ['late', 'Прихід пізніше'], ['none', 'Немає приходу'], ['name', 'Інша назва / картка'], ['unit', 'Одиниці'], ['marg', 'Підозріла маржа'], ['vat', 'Розбіжність ПДВ'], ['broken', 'Рядок змінився']]
+const COLS = [
+  // [ключ сортування, заголовок, вирівнювання, група-роздільник]
+  [null, '№'], ['saleName', 'Товар у видатковій'], ['qty', 'К-сть', 'r'], ['salePrice', 'Ціна прод. / од.', 'r', false, 'без ПДВ'],
+  ['purName', 'Товар у прихідній', null, true], ['purDocNo', 'Прихідна · постачальник'], ['purQty', 'К-сть', 'r'], ['costUnit', 'Ціна закуп. / од.', 'r', false, 'без ПДВ'], ['vat', 'ПДВ'],
+  ['inDate', 'Прихід', 'r', true], ['shipDate', 'Відвант.', 'r'], ['days', 'Днів на складі', 'r'],
+  ['marginUnit', 'На од.', 'r', true], ['marginSum', 'Сума', 'r'], ['marginPct', '%', 'r'],
+  [null, 'Недоліки', null, true],
+]
+const sep = { borderLeft: '2px solid var(--border)' }
+const th = { position: 'sticky', top: 0, background: 'var(--surface2)', zIndex: 1, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.03em', color: 'var(--text3)', padding: '8px 10px', whiteSpace: 'nowrap', textAlign: 'left' }
+const td = { padding: '7px 10px', borderBottom: '1px solid var(--border)', verticalAlign: 'top', fontSize: 13 }
+const r = { textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }
+const linkBtn = { background: 'none', border: 0, padding: 0, font: 'inherit', fontWeight: 600, color: 'inherit', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'var(--text3)', textUnderlineOffset: 2 }
 
 export default function ShipmentRecon() {
   const { user } = useUser()
@@ -34,207 +47,282 @@ export default function ShipmentRecon() {
   const [from, setFrom] = useState(`${year}-01-01`)
   const [to, setTo] = useState(todayKyiv())
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState('all')
+  const [filter, setFilter] = useState(wantDoc ? 'all' : 'all')
   const [shown, setShown] = useState(PAGE)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState(null)
-  const [selId, setSelId] = useState(wantDoc || null)
   const [toast, setToast] = useState(null)
-  const [drawer, setDrawer] = useState(null)   // { mode, line, src }
-  const [dialog, setDialog] = useState(null)   // { type, line, src }
+  const [closed, setClosed] = useState(() => new Set())
+  const [openRow, setOpenRow] = useState(null)   // ключ рядка з розгорнутим «Джерело / дії»
+  const [sort, setSort] = useState({ key: null, dir: 1 })
+  const [drawer, setDrawer] = useState(null)     // { doc, mode, line, src }
+  const [dialog, setDialog] = useState(null)     // { doc, type, line, src, link, log }
   const [docModal, setDocModal] = useState(null)
   const [merges, setMerges] = useState([])
 
-  const load = async (keepSel = true) => {
+  const load = async () => {
     setLoading(true); setErr(null)
-    try {
-      const res = await loadRecon(from, to)
-      setData(res)
-      if (!keepSel || !selId || !res.docs.some(d => d.id === selId)) {
-        const first = sortDocs(res.docs)[0]
-        if (!(wantDoc && res.docs.some(d => d.id === wantDoc))) setSelId(first?.id || null)
-      }
-    } catch (e) { setErr(e.message) } finally { setLoading(false) }
+    try { setData(await loadRecon(from, to)) } catch (e) { setErr(e.message) } finally { setLoading(false) }
     loadRecentMerges().then(setMerges)
   }
-  // ?doc=… — відкрити видаткову; якщо вона раніша за період — розширити період
+  // ?doc=… — показати цю видаткову (якщо раніша за період — розширити період)
   useEffect(() => {
     if (!wantDoc) { load(); return }
-    supabase.from('documents').select('doc_date, created_at').eq('id', wantDoc).maybeSingle().then(({ data: d }) => {
+    supabase.from('documents').select('doc_date, created_at, doc_number').eq('id', wantDoc).maybeSingle().then(({ data: d }) => {
       const dd = d?.doc_date || d?.created_at?.slice(0, 10)
+      if (d?.doc_number) setSearch(d.doc_number)
       if (dd && dd < from) setFrom(dd.slice(0, 4) + '-01-01')
       else load()
-      setSelId(wantDoc)
     })
   }, [])
-  useEffect(() => { if (data) load() }, [from, to])
-  useEffect(() => { if (wantDoc && from !== `${year}-01-01` && !data) load() }, [from])
+  useEffect(() => { if (data || wantDoc) load() }, [from, to])
 
-  const docs = useMemo(() => {
+  // усі рядки (позиції) з аналізом
+  const allRows = useMemo(() => {
     if (!data) return []
     const q = search.trim().toLowerCase()
-    return sortDocs(data.docs).filter(d => !q || `${d.number} ${d.contractor} ${d.orderNo || ''}`.toLowerCase().includes(q))
+    return sortDocs(data.docs)
+      .filter(d => !q || `${d.number} ${d.contractor} ${d.orderNo || ''} ${d.lines.map(l => l.name).join(' ')}`.toLowerCase().includes(q))
+      .flatMap(d => d.lines.map(l => tableRow(d, l)))
   }, [data, search])
-  const counts = useMemo(() => Object.fromEntries(FILTERS.map(([k]) => [k, docs.filter(d => k === 'all' || (k === 'ok' ? d.status === 'ok' : d.flags.includes(k))).length])), [docs])
-  const listed = docs.filter(d => filter === 'all' || (filter === 'ok' ? d.status === 'ok' : d.flags.includes(filter)))
-  const sel = data?.docs.find(d => d.id === selId) || null
-  const select = (id) => { setSelId(id); setParams(id ? { doc: id } : {}, { replace: true }) }
+  const counts = useMemo(() => Object.fromEntries(FILTERS.map(([k]) => [k, allRows.filter(x => k === 'all' || (k === 'bad' ? x.bad : x.tags[k])).length])), [allRows])
+  const rows = useMemo(() => {
+    let v = allRows.filter(x => filter === 'all' || (filter === 'bad' ? x.bad : x.tags[filter]))
+    if (sort.key) v = v.slice().sort((a, b) => {
+      const x = a[sort.key], y = b[sort.key]
+      if (x == null && y == null) return 0
+      if (x == null) return 1
+      if (y == null) return -1
+      return (typeof x === 'string' ? x.localeCompare(y, 'uk') : x - y) * sort.dir
+    })
+    return v
+  }, [allRows, filter, sort])
+  // групи — у порядку першої появи (видаткові з проблемами — першими, далі новіші)
+  const groups = useMemo(() => {
+    const m = new Map()
+    rows.forEach(x => { if (!m.has(x.doc.id)) m.set(x.doc.id, { doc: x.doc, items: [] }); m.get(x.doc.id).items.push(x) })
+    return [...m.values()]
+  }, [rows])
+  const shownGroups = groups.slice(0, shown)
+  const kpi = useMemo(() => ({
+    n: allRows.length, bad: allRows.filter(x => x.bad).length, late: allRows.filter(x => x.tags.late).length, none: allRows.filter(x => x.tags.none).length,
+    est: allRows.filter(x => x.estimated).reduce((s, x) => s + x.costSum, 0),
+  }), [allRows])
+  const tot = useMemo(() => {
+    const rev = rows.reduce((s, x) => s + x.line.saleNet, 0), cost = rows.reduce((s, x) => s + x.costSum, 0)
+    return { rev, cost, m: rev - cost }
+  }, [rows])
 
-  const done = async (text) => { setToast(text); setDialog(null); setDrawer(null); await load(true) }
+  const toggle = (id) => setClosed(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const sortBy = (k) => k && setSort(s => ({ key: k, dir: s.key === k ? -s.dir : 1 }))
+  const done = async (text) => { setToast(text); setDialog(null); setDrawer(null); await load() }
+  const openDoc = (id) => loadDocFull(id).then(setDocModal)
+
+  const exportXlsx = async () => {
+    const XLSX = await import('xlsx')
+    const head = ['Видаткова', 'Дата', 'Клієнт', 'Замовлення', '№', 'Товар у видатковій', 'Артикул', 'К-сть', 'Од.', 'Ціна прод./од. без ПДВ', 'Сума продажу без ПДВ',
+      'Товар у прихідній', 'Прихідна', 'Постачальник', 'К-сть у прихідній', 'Од. прихідної', 'Ціна закуп./од. (в од. продажу) без ПДВ', 'Собівартість', 'ПДВ у прихідній',
+      'Прихід (оприбуткування)', 'Відвантаження', 'Днів на складі', 'Маржа на од.', 'Маржа сума', 'Маржа %', 'Джерело', 'Недоліки']
+    const body = rows.map(x => [x.doc.number, x.doc.date, x.doc.contractor, x.doc.orderNo || '', x.lineNo, x.saleName, x.saleSku, x.qty, x.saleUnit, round2(x.salePrice), round2(x.line.saleNet),
+      x.purName || '', x.purDocNo || '', x.supplier || '', x.purQty ?? '', x.purUnit || '', round2(x.costUnit), round2(x.costSum), x.vat || '',
+      x.inDate || '', x.shipDate || '', x.days ?? '', round2(x.marginUnit), round2(x.marginSum), x.marginPct == null ? '' : Math.round(x.marginPct * 10) / 10,
+      x.service ? 'послуга' : x.fromBatch ? (x.src?.how ? HOW_LABEL[x.src.how] || x.src.how : 'FIFO') : x.src ? 'кандидат' : '', x.flags.map(f => f.text).join('; ')])
+    const ws = XLSX.utils.aoa_to_sheet([head, ...body])
+    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: body.length, c: head.length - 1 } }) }
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Звірка')
+    XLSX.writeFile(wb, `Звірка продаж-закупівля ${from}_${to}.xlsx`)
+  }
 
   return (
     <div>
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ marginBottom: 2 }}>Звірка видаткових</h1>
-          <div style={{ fontSize: 13, color: 'var(--text3)' }}><Link to="/inventory">Склад</Link> → Звірка видаткових · звідки собівартість кожної позиції</div>
+          <h1 style={{ marginBottom: 2 }}>Звірка: продаж ↔ закупівля</h1>
+          <div style={{ fontSize: 13, color: 'var(--text3)' }}><Link to="/inventory">Склад</Link> → Звірка видаткових · згруповано за видатковими; клік по заголовку — згорнути / розгорнути</div>
         </div>
-        <button className="btn" onClick={() => load(true)} disabled={loading}><i className="ti ti-refresh" /> {loading ? 'Рахую… (до хвилини)' : 'Оновити'}</button>
+        <button className="btn" onClick={load} disabled={loading}><i className="ti ti-refresh" /> {loading ? 'Рахую… (до хвилини)' : 'Оновити'}</button>
       </div>
       {data?.needs076 && <div className="card" style={{ background: 'var(--amber-bg)', color: 'var(--amber)', marginBottom: 12 }}>Міграцію 076 ще не застосовано: ручні прив'язки, дати оприбуткування і дії недоступні; показано звичайний FIFO.</div>}
-      {!canEdit && <div style={{ fontSize: 12.5, color: 'var(--text3)', marginBottom: 10 }}>Перегляд: змінювати прив'язки, дати й картки можуть лише адміністратор або бухгалтер.</div>}
       {toast && <div className="card" style={{ background: 'var(--green-bg)', color: 'var(--green)', marginBottom: 12, display: 'flex', gap: 10 }}><span style={{ flex: 1 }}>{toast}</span><button className="btn btn-sm" onClick={() => setToast(null)}>✕</button></div>}
       {err && <div className="card" style={{ color: 'var(--red)', marginBottom: 12 }}>Помилка: {err}</div>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 330px) minmax(0, 1fr)', gap: 16 }} className="recon-grid">
-        <style>{`@media (max-width: 900px) { .recon-grid { grid-template-columns: minmax(0, 1fr) !important; } }`}</style>
-        {/* ── Ліва колонка: видаткові ── */}
-        <div className="card" style={{ padding: 12, alignSelf: 'start' }}>
-          <div className="compact" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <input type="date" className="form-input" value={from} onChange={e => e.target.value && setFrom(e.target.value)} style={{ flex: 1, minWidth: 120 }} title="Відвантаження з" />
-            <input type="date" className="form-input" value={to} onChange={e => e.target.value && setTo(e.target.value)} style={{ flex: 1, minWidth: 120 }} title="по" />
-          </div>
-          <input className="form-input" placeholder="№ або контрагент…" value={search} onChange={e => { setSearch(e.target.value); setShown(PAGE) }} style={{ marginTop: 6 }} />
-          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', margin: '10px 0' }}>
-            {FILTERS.map(([k, l]) => (
-              <button key={k} className={'btn btn-sm' + (filter === k ? ' btn-primary' : '')} style={{ fontSize: 12, padding: '3px 9px' }} onClick={() => { setFilter(k); setShown(PAGE) }}>{l} ({counts[k] || 0})</button>
-            ))}
-          </div>
-          {!data && loading && <div style={{ color: 'var(--text3)', fontSize: 13 }}>Рахую сухий прогін FIFO…</div>}
-          {data && !listed.length && <div style={{ color: 'var(--text3)', fontSize: 13 }}>Видаткових немає.</div>}
-          {listed.slice(0, shown).map(d => (
-            <button key={d.id} onClick={() => select(d.id)} style={{ display: 'block', width: '100%', textAlign: 'left', border: '1px solid ' + (d.id === selId ? 'var(--text)' : 'transparent'), background: d.id === selId ? 'var(--surface2)' : 'none', borderRadius: 10, padding: '8px 10px', marginBottom: 3, cursor: 'pointer', font: 'inherit', color: 'inherit' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}><b style={{ fontSize: 13.5 }}>{d.number} від {dmy(d.date)}</b><Badge status={d.status} style={{ fontSize: 11 }} /></div>
-              <div style={{ fontSize: 12, color: 'var(--text3)' }}>{d.contractor}{d.orderNo ? ` · №${d.orderNo}` : ''} · {d.lines.length} поз.</div>
-            </button>
-          ))}
-          {listed.length > shown && <button className="btn btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={() => setShown(s => s + PAGE)}>Завантажити ще ({listed.length - shown})</button>}
-        </div>
-
-        {/* ── Обрана видаткова ── */}
-        <div style={{ minWidth: 0 }}>
-          {wantDoc && data && !data.docs.some(d => d.id === wantDoc) && <div className="card" style={{ color: 'var(--text3)', marginBottom: 10 }}>Видаткову з посилання не знайдено в періоді або в ній немає складських рухів — змініть період.</div>}
-          {sel ? (
-            <ShipmentView doc={sel} canEdit={canEdit} onDrawer={setDrawer} onDialog={setDialog} onOpenDoc={(id) => loadDocFull(id).then(setDocModal)} />
-          ) : data && <div className="card" style={{ color: 'var(--text3)' }}>Оберіть видаткову зліва.</div>}
-          {merges.length > 0 && (
-            <div className="card" style={{ marginTop: 14, fontSize: 12.5 }}>
-              <b>Останні об'єднання карток</b>
-              {merges.map(m => (
-                <div key={m.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '5px 0', borderTop: '1px solid var(--border)' }}>
-                  <span>{new Date(m.created_at).toLocaleString('uk-UA')}</span>
-                  <span style={{ color: 'var(--text2)' }}>«{m.before?.dup?.name}» → «{m.before?.keep?.name}»</span>
-                  {canEdit && <button className="btn btn-sm" onClick={() => setDialog({ type: 'unmerge', log: m })}>Скасувати об'єднання</button>}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      <div className="compact" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+        <input type="date" className="form-input" value={from} onChange={e => e.target.value && setFrom(e.target.value)} style={{ width: 150 }} title="Відвантаження з" />
+        <input type="date" className="form-input" value={to} onChange={e => e.target.value && setTo(e.target.value)} style={{ width: 150 }} title="по" />
+        <input className="form-input" placeholder="№, контрагент або товар…" value={search} onChange={e => { setSearch(e.target.value); setShown(PAGE) }} style={{ width: 230 }} />
+        {FILTERS.map(([k, l]) => (
+          <button key={k} className={'btn btn-sm' + (filter === k ? ' btn-primary' : '')} style={{ fontSize: 12, padding: '3px 10px', borderRadius: 999 }} onClick={() => { setFilter(k); setShown(PAGE) }}>{l} ({counts[k] || 0})</button>
+        ))}
+        <span style={{ flex: 1 }} />
+        <button className="btn btn-sm" onClick={() => setClosed(new Set(groups.map(g => g.doc.id)))}>Згорнути всі</button>
+        <button className="btn btn-sm" onClick={() => setClosed(new Set())}>Розгорнути всі</button>
+        <button className="btn btn-sm" onClick={exportXlsx} disabled={!rows.length}><i className="ti ti-download" /> Excel</button>
       </div>
 
-      {drawer && sel && <DocsDrawer doc={sel} {...drawer} canEdit={canEdit} onClose={() => setDrawer(null)} onDialog={setDialog} onOpenDoc={(id) => loadDocFull(id).then(setDocModal)} />}
-      {dialog && sel && <ActionDialog doc={sel} {...dialog} onClose={() => setDialog(null)} onDone={done} />}
-      {docModal && <DocModal user={user} existingDoc={docModal} autoOcr={false} onClose={() => setDocModal(null)} onSaved={() => { setDocModal(null); load(true) }} />}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+        {[[kpi.n, 'позицій'], [kpi.bad, 'з недоліками', 'var(--red)'], [kpi.late, 'прихід пізніше продажу'], [kpi.none, 'без приходу'], [money(kpi.est), 'собівартість-оцінка, грн']].map(([v, l, c]) => (
+          <div key={l} className="card" style={{ padding: '8px 14px', margin: 0 }}><b style={{ display: 'block', fontSize: 17, color: c }}>{v}</b><span style={{ fontSize: 12, color: 'var(--text3)' }}>{l}</span></div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12, color: 'var(--text3)', marginBottom: 8 }}>
+        <span><span style={{ ...CELL.r, display: 'inline-block', width: 12, height: 12, borderRadius: 3, verticalAlign: -2, marginRight: 4 }} />помилка: прихід пізніше продажу, немає приходу, збиток, собівартість = ціні продажу, рядок змінився</span>
+        <span><span style={{ ...CELL.a, display: 'inline-block', width: 12, height: 12, borderRadius: 3, verticalAlign: -2, marginRight: 4 }} />перевірити: інша назва / картка, одиниці, маржа &lt;5% або &gt;60%, оцінка ⚠, розбіжність ПДВ</span>
+      </div>
+      {!canEdit && <div style={{ fontSize: 12.5, color: 'var(--text3)', marginBottom: 8 }}>Перегляд: змінювати прив'язки, дати й картки можуть лише адміністратор або бухгалтер.</div>}
+
+      <div className="card" style={{ padding: 0, overflow: 'auto', maxHeight: '72vh' }}>
+        <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%', minWidth: 1500 }}>
+          <thead>
+            <tr>
+              <th style={{ ...th, textAlign: 'center' }} colSpan={4}>Продаж (видаткова)</th>
+              <th style={{ ...th, ...sep, textAlign: 'center' }} colSpan={5}>Закупівля (прихідна)</th>
+              <th style={{ ...th, ...sep, textAlign: 'center' }} colSpan={3}>Дати</th>
+              <th style={{ ...th, ...sep, textAlign: 'center' }} colSpan={3}>Маржа</th>
+              <th style={{ ...th, ...sep }} />
+            </tr>
+            <tr>
+              {COLS.map(([k, label, align, isSep, sub], i) => (
+                <th key={i} onClick={() => sortBy(k)} style={{ ...th, top: 33, cursor: k ? 'pointer' : 'default', ...(align === 'r' ? { textAlign: 'right' } : {}), ...(isSep ? sep : {}) }}>
+                  {label}{sort.key === k && k ? (sort.dir > 0 ? ' ▲' : ' ▼') : ''}{sub && <div style={{ textTransform: 'none', fontSize: 10.5 }}>{sub}</div>}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {!data && loading && <tr><td colSpan={16} style={{ ...td, color: 'var(--text3)' }}>Рахую сухий прогін FIFO…</td></tr>}
+            {data && !groups.length && <tr><td colSpan={16} style={{ ...td, color: 'var(--text3)' }}>Нічого не знайдено.</td></tr>}
+            {shownGroups.map(g => {
+              const d = g.doc, open = !closed.has(d.id)
+              const rev = g.items.reduce((s, x) => s + x.line.saleNet, 0), cost = g.items.reduce((s, x) => s + x.costSum, 0), m = rev - cost
+              const nb = g.items.filter(x => x.bad).length, red = g.items.some(x => x.flags.some(f => f.level === 'r'))
+              return (
+                <Fragment key={d.id}>
+                  <tr onClick={() => toggle(d.id)} style={{ cursor: 'pointer' }}>
+                    <td colSpan={16} style={{ ...td, background: 'var(--surface2)', borderBottom: '1px solid var(--border2, var(--border))' }}>
+                      <div style={{ position: 'sticky', left: 10, maxWidth: 'calc(100vw - 120px)', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+                        <span style={{ width: 14, color: 'var(--text3)' }}>{open ? '▾' : '▸'}</span>
+                        <button style={{ ...linkBtn, fontSize: 14 }} onClick={e => { e.stopPropagation(); setDrawer({ doc: d, mode: 'sale' }) }}>{d.number} від {dmy(d.date)}</button>
+                        <span style={{ color: 'var(--text3)' }}>{d.contractor}{d.orderId ? <> · <Link to={`/orders/${d.orderId}`} onClick={e => e.stopPropagation()}>№{d.orderNo || '—'}</Link></> : ''} · {g.items.length} поз.</span>
+                        <span style={{ flex: 1 }} />
+                        <span>Продаж <b>{money(rev)}</b></span><span>Собівартість <b>{money(cost)}</b></span>
+                        <span>Маржа <b style={{ color: m < 0 ? 'var(--red)' : 'var(--green)' }}>{money(m)} · {rev ? num(m / rev * 100, 1) : '—'}%</b></span>
+                        {nb ? <span className="badge" style={{ ...(red ? BADGE.bad : BADGE.warn), fontWeight: 700 }}>{nb} з недоліками</span> : <span className="badge" style={{ ...BADGE.ok, fontWeight: 700 }}>✓ ок</span>}
+                        <button className="btn btn-sm" style={{ padding: '2px 10px', fontSize: 12 }} onClick={e => { e.stopPropagation(); setDrawer({ doc: d, mode: 'sale' }) }}><i className="ti ti-file-text" /> Документи</button>
+                      </div>
+                      {open && d.tip && <div style={{ position: 'sticky', left: 10, maxWidth: 'calc(100vw - 120px)', background: 'var(--amber-bg)', color: 'var(--amber)', borderRadius: 8, padding: '6px 10px', fontSize: 12.5, marginTop: 6 }}>{d.tip}</div>}
+                      {open && d.brokenLinks?.map(l => (
+                        <div key={l.id} onClick={e => e.stopPropagation()} style={{ position: 'sticky', left: 10, maxWidth: 'calc(100vw - 120px)', background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 8, padding: '6px 10px', fontSize: 12.5, marginTop: 6, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{ flex: 1 }}>⚠ Рядок прихідної/видаткової змінився — перевірте прив'язку: «{l.productName}» ← прихідна № {l.inDocNo}, {l.qty}.</span>
+                          {canEdit && <button className="btn btn-sm" onClick={() => setDialog({ doc: d, type: 'unlink', link: l, line: { name: l.productName, unit: '' }, src: { docNo: l.inDocNo } })}>Зняти прив'язку</button>}
+                        </div>
+                      ))}
+                    </td>
+                  </tr>
+                  {open && g.items.map(x => (
+                    <Fragment key={x.key}>
+                      <Row x={x} open={openRow === x.key} onToggle={() => setOpenRow(o => o === x.key ? null : x.key)}
+                        onSale={() => setDrawer({ doc: d, mode: 'sale', line: x.line })} onRec={() => setDrawer({ doc: d, mode: 'rec', line: x.line, src: x.src })} />
+                      {openRow === x.key && (
+                        <tr><td colSpan={16} style={{ ...td, background: 'var(--surface2)' }}>
+                          <div style={{ position: 'sticky', left: 10, maxWidth: 'calc(100vw - 120px)' }}>
+                            <Details doc={d} line={x.line} canEdit={canEdit} onDrawer={(o) => setDrawer({ doc: d, ...o })} onDialog={(o) => setDialog({ doc: d, ...o })} />
+                          </div>
+                        </td></tr>
+                      )}
+                    </Fragment>
+                  ))}
+                </Fragment>
+              )
+            })}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td style={{ ...td, position: 'sticky', bottom: 0, background: 'var(--surface2)', fontWeight: 700 }} colSpan={3}>Разом ({rows.length} рядків)</td>
+              <td style={{ ...td, ...r, position: 'sticky', bottom: 0, background: 'var(--surface2)', fontWeight: 700 }}>{money(tot.rev)}</td>
+              <td style={{ ...td, ...sep, position: 'sticky', bottom: 0, background: 'var(--surface2)' }} colSpan={3} />
+              <td style={{ ...td, ...r, position: 'sticky', bottom: 0, background: 'var(--surface2)', fontWeight: 700 }}>{money(tot.cost)}</td>
+              <td style={{ ...td, position: 'sticky', bottom: 0, background: 'var(--surface2)' }} />
+              <td style={{ ...td, ...sep, position: 'sticky', bottom: 0, background: 'var(--surface2)' }} colSpan={3} />
+              <td style={{ ...td, ...sep, position: 'sticky', bottom: 0, background: 'var(--surface2)' }} />
+              <td style={{ ...td, ...r, position: 'sticky', bottom: 0, background: 'var(--surface2)', fontWeight: 700, color: tot.m < 0 ? 'var(--red)' : undefined }}>{money(tot.m)}</td>
+              <td style={{ ...td, ...r, position: 'sticky', bottom: 0, background: 'var(--surface2)', fontWeight: 700 }}>{tot.rev ? num(tot.m / tot.rev * 100, 1) : '—'}%</td>
+              <td style={{ ...td, ...sep, position: 'sticky', bottom: 0, background: 'var(--surface2)' }} />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      {groups.length > shown && <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={() => setShown(s => s + PAGE)}>Завантажити ще ({groups.length - shown} видаткових)</button>}
+      <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>
+        Собівартість — як буде після «Застосувати FIFO» (без ПДВ): 1) ручна прив'язка, 2) прихідна того ж замовлення, 3) FIFO на дату оприбуткування, 4) оцінка ⚠ (поточна собівартість), не 0.
+        Якщо одиниці різні (км ↔ м), ціна закупівлі переведена в одиницю продажу. Клік по номеру документа — перегляд видаткової / прихідної; клік по рядку — джерело, кандидати й дії. Заголовки колонок сортують таблицю.
+      </p>
+      {merges.length > 0 && (
+        <div className="card" style={{ marginTop: 14, fontSize: 12.5 }}>
+          <b>Останні об'єднання карток</b>
+          {merges.map(m => (
+            <div key={m.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '5px 0', borderTop: '1px solid var(--border)' }}>
+              <span>{new Date(m.created_at).toLocaleString('uk-UA')}</span>
+              <span style={{ color: 'var(--text2)' }}>«{m.before?.dup?.name}» → «{m.before?.keep?.name}»</span>
+              {canEdit && <button className="btn btn-sm" onClick={() => setDialog({ doc: null, type: 'unmerge', log: m })}>Скасувати об'єднання</button>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {drawer && <DocsDrawer {...drawer} canEdit={canEdit} onClose={() => setDrawer(null)} onDialog={(o) => setDialog({ doc: drawer.doc, ...o })} onOpenDoc={openDoc} />}
+      {dialog && <ActionDialog {...dialog} onClose={() => setDialog(null)} onDone={done} />}
+      {docModal && <DocModal user={user} existingDoc={docModal} autoOcr={false} onClose={() => setDocModal(null)} onSaved={() => { setDocModal(null); load() }} />}
     </div>
   )
 }
+const round2 = (v) => Math.round((Number(v) || 0) * 100) / 100
+const sumCost = (movs) => (movs || []).reduce((s, m) => s + (Number(m.qty) || 0) * (Number(m.cost_price) || 0), 0)
 
-// ───────── Видаткова: шапка, показники, позиції з джерелами ─────────
-function ShipmentView({ doc, canEdit, onDrawer, onDialog, onOpenDoc }) {
+// ───────── Рядок таблиці ─────────
+function Row({ x, open, onToggle, onSale, onRec }) {
+  const c = (k) => x.cls[k] ? CELL[x.cls[k]] : {}
+  const stop = (fn) => (e) => { e.stopPropagation(); fn() }
   return (
-    <>
-      <div className="card" style={{ marginBottom: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 19 }}>
-              <button className="btn-link" onClick={() => onDrawer({ mode: 'sale' })} style={{ background: 'none', border: 0, padding: 0, font: 'inherit', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>{doc.number} від {dmy(doc.date)}</button>
-              {' '}<button className="btn btn-sm" onClick={() => onDrawer({ mode: 'sale' })}><i className="ti ti-file-text" /> Переглянути</button>
-            </h2>
-            <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 3 }}>
-              {doc.contractor}{doc.orderId ? <> · замовлення <Link to={`/orders/${doc.orderId}`}>№{doc.orderNo || '—'}</Link></> : ' · без замовлення'} · відвантажено {dmy(doc.shipDate)}
-            </div>
-          </div>
-          <Badge status={doc.status} style={{ fontSize: 13, padding: '4px 12px' }} />
-        </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
-          {[[doc.lines.length, 'позицій'], [money(doc.cost), 'собівартість, грн без ПДВ'], [doc.needsAction, 'потребують дії']].map(([v, l]) => (
-            <div key={l} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: '8px 14px', minWidth: 130 }}><b style={{ display: 'block', fontSize: 18 }}>{v}</b><span style={{ fontSize: 12, color: 'var(--text3)' }}>{l}</span></div>
-          ))}
-        </div>
-        {doc.tip && <div style={{ background: 'var(--amber-bg)', color: 'var(--amber)', borderRadius: 10, padding: '9px 12px', fontSize: 13, marginTop: 12 }}>{doc.tip}</div>}
-        {doc.brokenLinks?.map(l => (
-          <div key={l.id} style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 10, padding: '9px 12px', fontSize: 13, marginTop: 8, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ flex: 1 }}>⚠ Рядок прихідної/видаткової змінився — перевірте прив'язку: «{l.productName}» ← прихідна № {l.inDocNo}, {l.qty} (рядок документа не знайдено після редагування).</span>
-            {canEdit && <button className="btn btn-sm" onClick={() => onDialog({ type: 'unlink', link: l, line: { name: l.productName, unit: '' }, src: { docNo: l.inDocNo } })}>Зняти прив'язку</button>}
-          </div>
-        ))}
-      </div>
-
-      <div className="tbl-wrap">
-        <table>
-          <thead><tr>
-            <th>Товар</th><th style={{ textAlign: 'right' }}>К-сть</th><th style={{ textAlign: 'right' }}>Відвантаження</th>
-            <th style={{ textAlign: 'right' }}>Ціна продажу</th><th style={{ textAlign: 'right' }}>Собівартість</th><th style={{ textAlign: 'right' }}>Маржа</th><th>Статус</th>
-          </tr></thead>
-          <tbody>
-            {doc.lines.map(l => (
-              <LineRows key={l.key} doc={doc} line={l} canEdit={canEdit} onDrawer={onDrawer} onDialog={onDialog} onOpenDoc={onOpenDoc} />
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>
-        Собівартість — як буде після «Застосувати FIFO» (без ПДВ): 1) ручна прив'язка, 2) прихідна того ж замовлення, 3) FIFO на дату оприбуткування, 4) оцінка ⚠ (поточна собівартість), не 0.
-        Кожна дія відкриває вікно підтвердження і пишеться в журнал. Дата документа постачальника (від неї залежать ПДВ і борги) не змінюється — лише дата оприбуткування на складі.
-      </p>
-    </>
+    <tr onClick={onToggle} style={{ cursor: 'pointer', background: open ? 'var(--surface2)' : undefined }} title="Джерело, кандидати й дії">
+      <td style={{ ...td, ...r, paddingLeft: 22, color: 'var(--text3)', fontSize: 11.5 }}>{x.lineNo}</td>
+      <td style={td}>{x.saleName}{x.saleSku && <div style={{ fontSize: 11, color: 'var(--text3)' }}>{x.saleSku}</div>}</td>
+      <td style={{ ...td, ...r }}>{num(x.qty, x.qty % 1 ? 3 : 0)} {x.saleUnit}</td>
+      <td style={{ ...td, ...r }}>{num(x.salePrice, 2)}</td>
+      <td style={{ ...td, ...sep, ...c('nr') }}>{x.service ? <span style={{ color: 'var(--text3)' }}>послуга</span> : x.purName ?? '—'}</td>
+      <td style={{ ...td, ...c('rd') }}>{x.purDocNo ? <><button style={linkBtn} onClick={stop(onRec)}>№{x.purDocNo}</button>{!x.fromBatch && <span style={{ fontSize: 11, color: 'var(--text3)' }}> · кандидат</span>}<div style={{ fontSize: 11, color: 'var(--text3)' }}>{x.supplier}</div></> : '—'}</td>
+      <td style={{ ...td, ...r, ...c('ur') }}>{x.purQty == null ? '—' : `${num(x.purQty, x.purQty % 1 ? 3 : 0)} ${x.purUnit || ''}`}</td>
+      <td style={{ ...td, ...r, ...c('pc') }}>
+        {x.service ? '—' : num(x.costUnit, 2)}
+        {x.purUnit && x.purPriceRaw != null && x.purUnit !== x.saleUnit && <div style={{ fontSize: 11, color: 'var(--text3)' }}>{num(x.purPriceRaw, 0)} / {x.purUnit}</div>}
+        {x.estimated && <div style={{ fontSize: 11 }}>оцінка</div>}
+      </td>
+      <td style={{ ...td, ...c('vat') }}>{x.vat ?? '—'}</td>
+      <td style={{ ...td, ...r, ...sep, ...c('dr') }}>{x.inDate ? dmy(x.inDate) : '—'}</td>
+      <td style={{ ...td, ...r }}><button style={{ ...linkBtn, fontWeight: 400 }} onClick={stop(onSale)}>{dmy(x.shipDate)}</button></td>
+      <td style={{ ...td, ...r, ...c('days') }}>{x.days == null ? '—' : x.days}</td>
+      <td style={{ ...td, ...r, ...sep, ...c('m') }}>{x.service ? '—' : num(x.marginUnit, 2)}</td>
+      <td style={{ ...td, ...r, ...c('m') }}>{money(x.marginSum)}</td>
+      <td style={{ ...td, ...r, ...c('m') }}>{x.marginPct == null ? '—' : num(x.marginPct, 1) + '%'}</td>
+      <td style={{ ...td, ...sep }}>
+        {x.flags.length ? x.flags.map((f, i) => <span key={i} className="badge" style={{ ...FLAG[f.level], fontWeight: 700, fontSize: 11, margin: '0 3px 3px 0', display: 'inline-block' }}>{f.text}</span>)
+          : <span className="badge" style={{ ...BADGE.ok, fontWeight: 700, fontSize: 11 }}>✓ ок</span>}
+      </td>
+    </tr>
   )
 }
 
-function LineRows({ doc, line: l, canEdit, onDrawer, onDialog }) {
-  const tdSrc = { background: 'var(--surface2)', padding: '8px 12px' }
+// ───────── Розгорнутий рядок: ПДВ / одиниці, партії-джерела, кандидати, дії ─────────
+function Details({ doc, line: l, canEdit, onDrawer, onDialog }) {
   return (
-    <>
-      <tr>
-        <td><span style={{ fontSize: 11.5, color: 'var(--text3)' }}>рядок {l.lineNo} · </span><b>{l.name}</b>{l.sku && <div style={{ fontSize: 12, color: 'var(--text3)' }}>{l.sku}</div>}</td>
-        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{l.qty} {l.unit}</td>
-        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{dmy(l.shipDate)}</td>
-        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{money(l.saleNet)}<div style={{ fontSize: 11.5, color: 'var(--text3)' }}>{l.qty} × {money(l.unitPrice)}</div></td>
-        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-          {l.service ? <span style={{ color: 'var(--text3)' }}>послуга</span> : <>{money(l.cost)}
-            {l.estQty > 0 && <div style={{ fontSize: 11.5, color: 'var(--amber)' }} title="партії немає — поточна собівартість">⚠ оцінка {l.estQty} {l.unit}</div>}
-            {l.missingQty > 0 && <div style={{ fontSize: 11.5, color: 'var(--red)' }}>без собівартості {l.missingQty}</div>}
-            {Math.abs(l.currentCost - l.cost) >= 1 && <div style={{ fontSize: 11, color: 'var(--text3)' }}>зараз у звіті {money(l.currentCost)}</div>}</>}
-        </td>
-        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{money(l.margin)}{l.marginPct != null && <div style={{ fontSize: 11.5, color: 'var(--text3)' }}>{(l.marginPct * 100).toFixed(1)}%</div>}</td>
-        <td><Badge status={l.status} />{l.flags.filter(f => f !== l.status).map(f => <div key={f} style={{ marginTop: 3 }}><Badge status={f} style={{ fontSize: 11 }} /></div>)}</td>
-      </tr>
-      <tr>
-        <td colSpan={7} style={tdSrc}>
-          {l.vatMismatch && <div style={{ fontSize: 12, color: 'var(--amber)', marginBottom: 6 }}>⚠ розбіжність ПДВ: прихідні {l.vatMismatch.docs.map(d => `№ ${d.number} (${d.vat ? 'з ПДВ' : 'без ПДВ'})`).join(', ')} ↔ платежі {l.vatMismatch.pays.filter(p => p.vat !== undefined).map(p => `${dmy(p.date)} «${(p.text || '').slice(0, 60)}»`).join(', ')}. Собівартість — за прихідною.</div>}
-          {l.unitIssues.length > 0 && <div style={{ fontSize: 12, color: 'var(--amber)', marginBottom: 6 }}>⚠ одиниці виміру: {l.unitIssues.join('; ')}</div>}
-          {l.sources.map((s, i) => (
-            <SourceBox key={'s' + i} doc={doc} line={l} src={s} used canEdit={canEdit} onDrawer={onDrawer} onDialog={onDialog} />
-          ))}
-          {l.candidates.map((c, i) => (
-            <SourceBox key={'c' + i} doc={doc} line={l} src={c} best={i === 0} canEdit={canEdit} onDrawer={onDrawer} onDialog={onDialog} />
-          ))}
-          {!l.service && !l.sources.length && !l.candidates.length && <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>Кандидатів немає: немає ні приходу цього товару, ні схожої картки з приходом. Проведіть прихідну на склад (Документи → «Рух на складі»).</div>}
-          {l.service && <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>Послуга — собівартість товарів не рахується.</div>}
-        </td>
-      </tr>
-    </>
+    <div>
+      {l.vatMismatch && <div style={{ fontSize: 12, color: 'var(--amber)', marginBottom: 6 }}>⚠ розбіжність ПДВ: прихідні {l.vatMismatch.docs.map(d => `№ ${d.number} (${d.vat ? 'з ПДВ' : 'без ПДВ'})`).join(', ')} ↔ платежі {l.vatMismatch.pays.filter(p => p.vat !== undefined).map(p => `${dmy(p.date)} «${(p.text || '').slice(0, 60)}»`).join(', ')}. Собівартість — за прихідною.</div>}
+      {l.unitIssues.length > 0 && <div style={{ fontSize: 12, color: 'var(--amber)', marginBottom: 6 }}>⚠ одиниці виміру: {l.unitIssues.join('; ')}</div>}
+      {l.sources.map((s, i) => <SourceBox key={'s' + i} doc={doc} line={l} src={s} used canEdit={canEdit} onDrawer={onDrawer} onDialog={onDialog} />)}
+      {l.candidates.map((c, i) => <SourceBox key={'c' + i} doc={doc} line={l} src={c} best={i === 0} canEdit={canEdit} onDrawer={onDrawer} onDialog={onDialog} />)}
+      {!l.service && !l.sources.length && !l.candidates.length && <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>Кандидатів немає: немає ні приходу цього товару, ні схожої картки з приходом. Проведіть прихідну на склад (Документи → «Рух на складі»).</div>}
+      {l.service && <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>Послуга — собівартість товарів не рахується.</div>}
+    </div>
   )
 }
 

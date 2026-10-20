@@ -10,6 +10,7 @@ import { fetchAll, fetchAllIn } from './fetchAll'
 import { accrualSalesDocs, loadSupplierVat } from './accrual'
 import { buildEstimates } from './costDiagnostics'
 import { debtDate } from './debts'
+import { daysBetween } from './dates'
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100
 const EPS = 0.00001
@@ -236,6 +237,7 @@ export function computeRecon({ saleDocs, outs, dry, links, prodById, similar, in
         const im = inById[a.in_id] || {}, idoc = inDocById[im.document_id]
         return {
           inId: a.in_id, inDocId: im.document_id || null, inLine: im.doc_line ?? null, inProductId: im.product_id || null, docNo: idoc?.doc_number || '—', docDate: idoc ? debtDate(idoc) : im.date,
+          inProductName: prodById[im.product_id]?.name || '', inProductSku: prodById[im.product_id]?.sku || '', inUnit: prodById[im.product_id]?.unit || '', inQty: Number(im.quantity) || 0,
           whDate: idoc?.warehouse_date || im.date, supplier: idoc?.contractors?.name || '—', qty: r2(a.qty), unit: Number(a.unit) || 0,
           vat: idoc ? Math.abs(Number(idoc.vat_amount) || 0) > 0.005 : null, how: a.how || 'fifo', basis: a.basis, otherCard: im.product_id && im.product_id !== pid,
           late: (idoc?.warehouse_date || im.date) > shipDate,
@@ -256,7 +258,7 @@ export function computeRecon({ saleDocs, outs, dry, links, prodById, similar, in
           const wd = whDate(m)
           return {
             kind, inId: m.id, inDocId: m.document_id || null, inLine: m.doc_line ?? null, inProductId: m.product_id, inProductName: prodById[m.product_id]?.name || '',
-            inProductSku: prodById[m.product_id]?.sku || '', docNo: idoc?.doc_number || '—', docDate: idoc ? debtDate(idoc) : m.date, whDate: wd,
+            inProductSku: prodById[m.product_id]?.sku || '', inUnit: prodById[m.product_id]?.unit || '', inQty: Number(m.quantity) || 0, docNo: idoc?.doc_number || '—', docDate: idoc ? debtDate(idoc) : m.date, whDate: wd,
             supplier: idoc?.contractors?.name || '—', late: wd > shipDate, unit: r2(u.unit), basis: u.basis, vat: u.vat, free, qty: Number(m.quantity) || 0,
             otherCard: m.product_id !== pid, sameOrder: !!orderId && orderOfIn(m) === orderId,
           }
@@ -334,4 +336,62 @@ export function computeRecon({ saleDocs, outs, dry, links, prodById, similar, in
 
 export function sortDocs(docs) {
   return docs.slice().sort((a, b) => (STATUS[b.status].rank > 0) - (STATUS[a.status].rank > 0) || String(b.date || '').localeCompare(String(a.date || '')))
+}
+
+// ───────────────────────── Таблиця «продаж ↔ закупівля» (макет 2026-10-20) ─────────────────────────
+const UNIT_K = { 'км|м': 1 / 1000, 'м|км': 1000, 'т|кг': 1 / 1000, 'кг|т': 1000, 'кг|г': 1 / 1000, 'г|кг': 1000, 'л|мл': 1 / 1000, 'мл|л': 1000 }
+// ціна за одиницю закупівлі → за одиницю продажу (км → м: /1000); null — одиниці різні й непереводимі
+export function unitFactor(inUnit, saleUnit) {
+  const a = normUnit(inUnit), b = normUnit(saleUnit)
+  if (!inUnit || a === b) return 1
+  return UNIT_K[`${a}|${b}`] ?? null
+}
+const normName = (t) => String(t || '').toLowerCase().replace(/[«»"'()[\],.;:]/g, ' ').replace(/\s+/g, ' ').trim()
+
+// рядок таблиці: продаж (рядок видаткової) ↔ закупівля (партія, з якої списано, або найкращий кандидат), дати, маржа, недоліки
+// flags: [{ code, level: 'r'|'a', text }]; cls — підсвітка клітинок
+export function tableRow(doc, l) {
+  const src = l.sources.slice().sort((a, b) => b.qty - a.qty)[0] || null
+  const pur = src || l.candidates[0] || null
+  const k = pur ? unitFactor(pur.inUnit, l.unit) : 1
+  const unitsDiffer = !!pur && !!pur.inUnit && normUnit(pur.inUnit) !== normUnit(l.unit)
+  const salePrice = l.qty ? l.saleNet / l.qty : 0
+  // собівартість одиниці продажу: FIFO (з оцінкою) у тих самих одиницях; якщо одиниці різні — ціна партії, переведена
+  const costUnit = l.service ? 0
+    : unitsDiffer && k != null && pur ? pur.unit * k
+    : l.cost > 0 && l.qty ? l.cost / l.qty
+    : pur ? pur.unit * (k ?? 1) : 0
+  const costSum = r2(costUnit * l.qty)
+  const marginUnit = salePrice - costUnit, marginSum = r2(l.saleNet - costSum)
+  const marginPct = l.saleNet > 0 ? marginSum / l.saleNet * 100 : null
+  const days = pur?.whDate && l.shipDate ? daysBetween(pur.whDate, l.shipDate) : null
+  const flags = [], cls = {}
+  const add = (code, level, text, cells = []) => { flags.push({ code, level, text }); cells.forEach(c => { if (cls[c] !== 'r') cls[c] = level }) }
+  if (!l.service) {
+    if (l.status === 'broken' || l.flags.includes('broken')) add('broken', 'r', '⚠ рядок змінився')
+    if (!pur) add('none', 'r', 'немає приходу', ['rd', 'pc'])
+    else if (!src && l.missingQty + l.estQty <= 0.0001) { /* покрито без джерела (напр. послуга) */ }
+    if (days != null && days < 0) add('late', 'r', `прихід на ${-days} дн. пізніше`, ['dr', 'days'])
+    if (pur && (pur.otherCard || (pur.inProductName && normName(pur.inProductName) !== normName(l.name)))) add('name', 'a', pur.otherCard ? '⧉ інша картка' : 'інша назва', ['nr'])
+    if (unitsDiffer || l.unitIssues.length) add('unit', 'a', unitsDiffer ? `одиниці: ${l.unit} ↔ ${pur.inUnit}${k == null ? ' (не переводяться)' : ''}` : '⚠ одиниці', ['ur'])
+    if (l.estQty > 0) add('est', 'a', '⚠ оцінка', ['pc'])
+    if (l.missingQty > 0 && pur) add('nocost', 'r', `без собівартості ${l.missingQty}`, ['pc'])
+    if (costUnit > 0 && Math.abs(costUnit - salePrice) < 0.5) add('eq', 'r', 'собівартість = ціна продажу', ['pc'])
+    if (l.vatMismatch) add('vat', 'a', '⚠ розбіжність ПДВ', ['vat'])
+    if (marginSum < 0) add('marg', 'r', 'збиток', ['m'])
+    else if (marginPct != null && marginPct < 5) add('marg', 'a', 'маржа < 5%', ['m'])
+    else if (marginPct != null && marginPct > 60) add('marg', 'a', 'маржа > 60% — чи є собівартість?', ['m'])
+    else cls.m = cls.m || 'g'
+  }
+  const has = (c) => flags.some(f => f.code === c)
+  return {
+    key: l.key, doc, line: l, src: pur, fromBatch: !!src,
+    lineNo: l.lineNo, saleName: l.name, saleSku: l.sku, qty: l.qty, saleUnit: l.unit, salePrice,
+    purName: pur?.inProductName || (pur ? l.name : null), purDocNo: pur?.docNo || null, purDocId: pur?.inDocId || null, supplier: pur?.supplier || null,
+    purQty: pur ? (src ? pur.inQty || pur.qty : pur.inQty || pur.qty) : null, purUnit: pur?.inUnit || null, purPriceRaw: pur?.unit ?? null,
+    costUnit, costSum, vat: pur ? (pur.vat == null ? '—' : pur.vat ? 'так' : 'ні') : null,
+    inDate: pur?.whDate || null, shipDate: l.shipDate, days, marginUnit, marginSum, marginPct,
+    estimated: l.estQty > 0, service: l.service, flags, cls, bad: flags.length > 0,
+    tags: { late: has('late'), none: has('none'), name: has('name'), unit: has('unit'), marg: has('marg') || has('eq'), vat: has('vat'), est: has('est'), broken: has('broken') },
+  }
 }
