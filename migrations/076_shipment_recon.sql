@@ -39,13 +39,24 @@ create trigger trg_doc_warehouse_date_guard before update of warehouse_date on d
   for each row execute function trg_doc_warehouse_date_guard();
 
 -- ── 5.1 Ручні прив'язки ──
+-- Прив'язка — до КОНКРЕТНОГО рядка (руху складу) видаткової і прихідної, а не «документ + товар»: той самий
+-- товар може бути в документі кількома рядками з різною ціною/кількістю. Рухи перестворюються при
+-- перезбереженні документа, тому рядок запам'ятовується трьома ознаками, від найточнішої:
+--   1) id руху (поки рух існує);  2) номер рядка документа (stock_movements.doc_line; для старих рухів —
+--   порядковий номер руху цього товару в документі) + товар;  3) «відбиток» рядка: товар + к-сть + ціна.
+-- Якщо рядок не знайдено жодним способом — прив'язка «не знайдена» (не застосовується, на екрані ⚠).
+alter table stock_movements add column if not exists doc_line integer;   -- номер позиції в документі (1, 2, …)
 create table if not exists shipment_links (
   id uuid default gen_random_uuid() primary key,
   company_id uuid,
   out_document_id uuid not null references documents(id) on delete cascade,
   out_product_id uuid not null references products(id),
+  out_movement_id uuid references stock_movements(id) on delete set null,
+  out_line integer, out_qty numeric, out_price numeric,
   in_document_id uuid not null references documents(id) on delete cascade,
   in_product_id uuid not null references products(id),
+  in_movement_id uuid references stock_movements(id) on delete set null,
+  in_line integer, in_qty numeric, in_price numeric,
   qty numeric not null check (qty > 0),
   prev_state jsonb,                    -- собівартість і списання рядка до прив'язки (для точного скасування)
   created_by uuid default auth.uid(),
@@ -53,8 +64,8 @@ create table if not exists shipment_links (
   removed_by uuid,
   removed_at timestamptz
 );
-create index if not exists idx_shipment_links_out on shipment_links (out_document_id, out_product_id) where removed_at is null;
-create index if not exists idx_shipment_links_in on shipment_links (in_document_id, in_product_id) where removed_at is null;
+create index if not exists idx_shipment_links_out on shipment_links (out_document_id) where removed_at is null;
+create index if not exists idx_shipment_links_in on shipment_links (in_document_id) where removed_at is null;
 alter table shipment_links enable row level security;
 drop policy if exists shipment_links_read on shipment_links;
 create policy shipment_links_read on shipment_links for select to authenticated using (true);   -- запис лише через RPC
@@ -78,38 +89,85 @@ create policy cost_action_log_read on cost_action_log for select to authenticate
 -- як списано з партії: manual | order | fifo
 alter table stock_allocations add column if not exists how text;
 
--- ── Активні ручні прив'язки → пари рухів (відвантаження, прихід, к-сть) ──
-create or replace function shipment_link_pairs()
+-- номер рядка руху в документі: doc_line, а для старих рухів — порядковий номер руху цього товару в документі
+create or replace function stock_line_of(p_mov uuid)
+returns integer
+language sql stable security invoker set search_path = public as $$
+  select coalesce(m.doc_line, (
+           select count(*)::integer from stock_movements x
+            where x.document_id = m.document_id and x.type = m.type and x.product_id = m.product_id
+              and x.source is distinct from 'assembly' and (x.created_at, x.id) <= (m.created_at, m.id)))
+    from stock_movements m where m.id = p_mov
+$$;
+
+-- знайти рух рядка прив'язки (див. 5.1); p_used — уже зайнята прив'язками к-сть по рухах
+create or replace function link_resolve(p_mov uuid, p_doc uuid, p_product uuid, p_line integer, p_qty numeric, p_price numeric,
+                                        p_type text, p_need numeric, p_used jsonb)
+returns uuid
+language plpgsql stable security invoker set search_path = public as $$
+declare v uuid;
+begin
+  -- 1) той самий рух
+  select m.id into v from stock_movements m
+   where m.id = p_mov and m.document_id = p_doc and m.type = p_type and m.product_id = p_product;
+  if v is not null then return v; end if;
+  -- 2) той самий номер рядка (рух перестворено)
+  select m.id into v from stock_movements m
+   where m.document_id = p_doc and m.type = p_type and m.product_id = p_product and m.source is distinct from 'assembly'
+     and p_line is not null and stock_line_of(m.id) = p_line
+     and (p_qty is null or abs(coalesce(m.quantity, 0) - p_qty) < 0.00001)
+   order by m.created_at, m.id limit 1;
+  if v is not null then return v; end if;
+  -- 3) відбиток: товар + к-сть + ціна (з вільною місткістю)
+  select m.id into v from stock_movements m
+   where m.document_id = p_doc and m.type = p_type and m.product_id = p_product and m.source is distinct from 'assembly'
+     and abs(coalesce(m.quantity, 0) - coalesce(p_qty, -1)) < 0.00001
+     and abs(coalesce(m.price, 0) - coalesce(p_price, 0)) < 0.005
+     and coalesce(m.quantity, 0) - coalesce((p_used ->> m.id::text)::numeric, 0) >= p_need - 0.00001
+   order by m.created_at, m.id limit 1;
+  return v;
+end $$;
+
+-- ── Активні ручні прив'язки → пари рухів (відвантаження, прихід, к-сть); нерозпізнані — out_id/in_id null ──
+create or replace function shipment_link_pairs(p_all boolean default false)
 returns table (link_id uuid, out_id uuid, in_id uuid, qty numeric)
 language plpgsql stable security invoker set search_path = public as $$
 declare
-  l record; o record; i record;
-  v_left numeric; v_out_left numeric; v_take numeric;
-  v_in_used jsonb;
+  l record; v_used_out jsonb := '{}'::jsonb; v_used_in jsonb := '{}'::jsonb;
+  v_out uuid; v_in uuid; v_q numeric; v_cap_out numeric; v_cap_in numeric;
 begin
   for l in select * from shipment_links where removed_at is null order by created_at, id loop
-    v_left := l.qty;
-    v_in_used := '{}'::jsonb;
-    for o in select m.id, coalesce(m.quantity, 0) as q from stock_movements m
-              where m.document_id = l.out_document_id and m.product_id = l.out_product_id and m.type = 'out'
-              order by m.created_at, m.id loop
-      exit when v_left <= 0.00001;
-      v_out_left := least(o.q, v_left);
-      for i in select m.id, coalesce(m.quantity, 0) as q from stock_movements m
-                where m.document_id = l.in_document_id and m.product_id = l.in_product_id and m.type = 'in'
-                order by m.created_at, m.id loop
-        exit when v_out_left <= 0.00001;
-        v_take := least(v_out_left, i.q - coalesce((v_in_used ->> i.id::text)::numeric, 0));
-        continue when v_take <= 0.00001;
-        v_in_used := v_in_used || jsonb_build_object(i.id::text, coalesce((v_in_used ->> i.id::text)::numeric, 0) + v_take);
-        link_id := l.id; out_id := o.id; in_id := i.id; qty := v_take;
-        return next;
-        v_out_left := v_out_left - v_take;
-        v_left := v_left - v_take;
-      end loop;
-    end loop;
+    v_out := link_resolve(l.out_movement_id, l.out_document_id, l.out_product_id, l.out_line, l.out_qty, l.out_price, 'out', l.qty, v_used_out);
+    v_in  := link_resolve(l.in_movement_id, l.in_document_id, l.in_product_id, l.in_line, l.in_qty, l.in_price, 'in', l.qty, v_used_in);
+    v_q := 0;
+    if v_out is not null and v_in is not null then
+      select coalesce(quantity, 0) - coalesce((v_used_out ->> v_out::text)::numeric, 0) into v_cap_out from stock_movements where id = v_out;
+      select coalesce(quantity, 0) - coalesce((v_used_in ->> v_in::text)::numeric, 0) into v_cap_in from stock_movements where id = v_in;
+      v_q := greatest(least(l.qty, v_cap_out, v_cap_in), 0);
+      v_used_out := v_used_out || jsonb_build_object(v_out::text, coalesce((v_used_out ->> v_out::text)::numeric, 0) + v_q);
+      v_used_in := v_used_in || jsonb_build_object(v_in::text, coalesce((v_used_in ->> v_in::text)::numeric, 0) + v_q);
+    end if;
+    if v_q > 0.00001 then
+      link_id := l.id; out_id := v_out; in_id := v_in; qty := v_q; return next;
+    elsif p_all then
+      link_id := l.id; out_id := v_out; in_id := v_in; qty := 0; return next;
+    end if;
   end loop;
 end $$;
+
+-- для екрана: усі активні прив'язки з розпізнаними рухами (resolved = false — рядок документа змінився)
+create or replace function shipment_links_resolved_json()
+returns jsonb
+language sql stable security invoker set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'id', l.id, 'out_document_id', l.out_document_id, 'out_product_id', l.out_product_id, 'out_line', l.out_line,
+           'in_document_id', l.in_document_id, 'in_product_id', l.in_product_id, 'in_line', l.in_line,
+           'qty', l.qty, 'out_id', p.out_id, 'in_id', p.in_id, 'applied_qty', p.qty,
+           'resolved', p.out_id is not null and p.in_id is not null and p.qty > 0,
+           'created_at', l.created_at, 'created_by', l.created_by) order by l.created_at), '[]'::jsonb)
+    from shipment_links l join shipment_link_pairs(true) p on p.link_id = l.id
+   where l.removed_at is null
+$$;
 
 -- ── Розподіл одного відвантаження ──
 create or replace function allocate_out(p_out uuid, p_update_cost boolean default true)
@@ -125,6 +183,7 @@ declare
   v_nocost numeric := 0;
   v_est numeric := 0;
   v_ptype text;
+  v_pairs jsonb;
 begin
   select m.* into o from stock_movements m where m.id = p_out;
   if not found then return; end if;
@@ -139,12 +198,13 @@ begin
 
   v_order := stock_order_of(p_out);
   v_need := coalesce(o.quantity, 0);
+  select coalesce(jsonb_agg(to_jsonb(x)), '[]'::jsonb) into v_pairs from shipment_link_pairs() x;   -- один раз
 
   -- 1) ручна прив'язка — незалежно від дат
   for b in
     select p.in_id, p.qty as want, bu.unit, bu.basis,
            m.quantity - coalesce((select sum(a.qty) from stock_allocations a where a.in_movement_id = m.id), 0) as remaining
-      from shipment_link_pairs() p
+      from jsonb_to_recordset(v_pairs) as p(link_id uuid, out_id uuid, in_id uuid, qty numeric)
       join stock_movements m on m.id = p.in_id
       cross join lateral batch_unit_cost(m.id) bu
      where p.out_id = p_out
@@ -165,7 +225,8 @@ begin
            m.quantity - coalesce((select sum(a.qty) from stock_allocations a where a.in_movement_id = m.id), 0)
              - coalesce((select sum(greatest(p.qty - coalesce((select sum(a2.qty) from stock_allocations a2
                                                                where a2.in_movement_id = p.in_id and a2.out_movement_id = p.out_id), 0), 0))
-                           from shipment_link_pairs() p where p.in_id = m.id and p.out_id <> p_out), 0) as remaining
+                           from jsonb_to_recordset(v_pairs) as p(link_id uuid, out_id uuid, in_id uuid, qty numeric)
+                          where p.in_id = m.id and p.out_id <> p_out), 0) as remaining
       from stock_movements m
       left join documents d on d.id = m.document_id
       left join supplier_orders so on so.id = m.supplier_order_id
@@ -494,117 +555,112 @@ begin
   return n;
 end $$;
 
--- ── Перерахунок однієї видаткової (після дії на екрані) ──
-create or replace function recalc_shipment(p_out_doc uuid, p_product uuid default null)
+-- ── Перерахунок однієї видаткової або одного її рядка (після дії на екрані) ──
+create or replace function recalc_shipment(p_out_doc uuid, p_out_mov uuid default null)
 returns jsonb
 language plpgsql volatile security invoker set search_path = public as $$
 declare r record; v_outs uuid[];
 begin
   select array_agg(m.id order by m.date, m.created_at, m.id) into v_outs from stock_movements m
-   where m.document_id = p_out_doc and m.type = 'out' and (p_product is null or m.product_id = p_product)
+   where m.document_id = p_out_doc and m.type = 'out' and (p_out_mov is null or m.id = p_out_mov)
      and not period_is_closed(m.company_id, m.date);
   if v_outs is null then return '[]'::jsonb; end if;
   perform keep_cost_as_estimate(v_outs);
   for r in select unnest(v_outs) as id loop perform allocate_out(r.id, true); end loop;
-  return (select coalesce(jsonb_agg(jsonb_build_object('id', m.id, 'product_id', m.product_id, 'qty', m.quantity, 'cost_price', m.cost_price,
-                                                         'missing', m.cost_missing_qty, 'estimated', m.cost_estimated_qty)), '[]'::jsonb)
+  return (select coalesce(jsonb_agg(jsonb_build_object('id', m.id, 'product_id', m.product_id, 'line', stock_line_of(m.id), 'qty', m.quantity,
+                                                         'cost_price', m.cost_price, 'missing', m.cost_missing_qty, 'estimated', m.cost_estimated_qty)), '[]'::jsonb)
             from stock_movements m where m.id = any (v_outs));
 end $$;
 
--- рядок у закритому місяці?
-create or replace function doc_line_closed(p_doc uuid, p_product uuid, p_type text)
+-- рух або його документ — у закритому місяці?
+create or replace function movement_closed(p_mov uuid)
 returns boolean
 language sql stable security invoker set search_path = public as $$
-  select exists (select 1 from stock_movements m where m.document_id = p_doc and m.product_id = p_product and m.type = p_type
-                   and period_is_closed(m.company_id, m.date))
-      or exists (select 1 from documents d where d.id = p_doc and period_is_closed(d.company_id, coalesce(d.doc_date, d.created_at::date)))
+  select exists (select 1 from stock_movements m left join documents d on d.id = m.document_id
+                  where m.id = p_mov and (period_is_closed(m.company_id, m.date)
+                     or (d.id is not null and period_is_closed(d.company_id, coalesce(d.doc_date, d.created_at::date)))))
 $$;
 
--- ── 4.1 «Взяти з цієї прихідної» ──
-create or replace function shipment_link_add(p_out_doc uuid, p_out_product uuid, p_in_doc uuid, p_in_product uuid, p_qty numeric)
+-- стан рядка видаткової (руху) — для точного скасування
+create or replace function out_line_state(p_out uuid)
+returns jsonb
+language sql stable security invoker set search_path = public as $$
+  select jsonb_build_object(
+           'movement', (select jsonb_build_object('id', m.id, 'cost_price', m.cost_price, 'cost_missing_qty', m.cost_missing_qty,
+                                                  'cost_estimated_qty', m.cost_estimated_qty, 'cost_estimate_unit', m.cost_estimate_unit,
+                                                  'cost_stale', m.cost_stale) from stock_movements m where m.id = p_out),
+           'allocations', coalesce((select jsonb_agg(jsonb_build_object('out', a.out_movement_id, 'in', a.in_movement_id, 'qty', a.qty, 'unit', a.unit_cost,
+                                                                       'date', a.out_date, 'company', a.company_id, 'basis', a.basis, 'how', a.how))
+                                      from stock_allocations a where a.out_movement_id = p_out), '[]'::jsonb))
+$$;
+
+-- ── 4.1 «Взяти з цієї прихідної»: рядок видаткової (рух OUT) ← рядок прихідної (рух IN) ──
+create or replace function shipment_link_add(p_out_mov uuid, p_in_mov uuid, p_qty numeric)
 returns jsonb
 language plpgsql volatile security definer set search_path = public as $$
 declare
-  v_out_qty numeric; v_in_qty numeric; v_out_linked numeric; v_in_linked numeric;
-  v_others text; v_prev jsonb; v_id uuid; v_res jsonb; v_company uuid;
+  o record; i record; v_out_used numeric; v_in_used numeric; v_others text; v_prev jsonb; v_id uuid; v_res jsonb;
 begin
   perform require_cost_editor();
   if coalesce(p_qty, 0) <= 0 then raise exception 'Кількість має бути більшою за 0'; end if;
-  if doc_line_closed(p_out_doc, p_out_product, 'out') then raise exception 'PERIOD_CLOSED: видаткова в закритому місяці'; end if;
-  if doc_line_closed(p_in_doc, p_in_product, 'in') then raise exception 'PERIOD_CLOSED: прихідна в закритому місяці'; end if;
+  select * into o from stock_movements where id = p_out_mov and type = 'out';
+  if not found or o.document_id is null then raise exception 'Рядок видаткової не знайдено'; end if;
+  select * into i from stock_movements where id = p_in_mov and type = 'in';
+  if not found or i.document_id is null then raise exception 'Рядок прихідної не знайдено (проведіть прихідну на склад)'; end if;
+  if movement_closed(p_out_mov) then raise exception 'PERIOD_CLOSED: видаткова в закритому місяці'; end if;
+  if movement_closed(p_in_mov) then raise exception 'PERIOD_CLOSED: прихідна в закритому місяці'; end if;
 
-  select coalesce(sum(quantity), 0), max(company_id::text)::uuid into v_out_qty, v_company from stock_movements
-   where document_id = p_out_doc and product_id = p_out_product and type = 'out';
-  select coalesce(sum(quantity), 0) into v_in_qty from stock_movements
-   where document_id = p_in_doc and product_id = p_in_product and type = 'in';
-  if v_out_qty <= 0 then raise exception 'У видатковій немає складського руху цього товару'; end if;
-  if v_in_qty <= 0 then raise exception 'У прихідній немає складського руху цього товару (проведіть її на склад)'; end if;
-
-  select coalesce(sum(qty), 0) into v_out_linked from shipment_links
-   where out_document_id = p_out_doc and out_product_id = p_out_product and removed_at is null;
-  if p_qty > v_out_qty - v_out_linked + 0.00001 then
-    raise exception 'Рядок видаткової: % з % уже прив''язано, вільно %', v_out_linked, v_out_qty, v_out_qty - v_out_linked;
+  select coalesce(sum(p.qty), 0) into v_out_used from shipment_link_pairs() p where p.out_id = p_out_mov;
+  if p_qty > coalesce(o.quantity, 0) - v_out_used + 0.00001 then
+    raise exception 'Рядок видаткової: уже прив''язано % з %, вільно %', v_out_used, o.quantity, coalesce(o.quantity, 0) - v_out_used;
   end if;
-  select coalesce(sum(qty), 0) into v_in_linked from shipment_links
-   where in_document_id = p_in_doc and in_product_id = p_in_product and removed_at is null;
-  if p_qty > v_in_qty - v_in_linked + 0.00001 then
-    select string_agg(coalesce(d.doc_number, '—') || ' від ' || to_char(coalesce(d.doc_date, d.created_at::date), 'DD.MM.YYYY') || ' (' || l.qty || ')', ', ')
+  select coalesce(sum(p.qty), 0) into v_in_used from shipment_link_pairs() p where p.in_id = p_in_mov;
+  if p_qty > coalesce(i.quantity, 0) - v_in_used + 0.00001 then
+    select string_agg(coalesce(d.doc_number, '—') || ' від ' || to_char(coalesce(d.doc_date, d.created_at::date), 'DD.MM.YYYY')
+                      || ', рядок ' || stock_line_of(p.out_id) || ' (' || p.qty || ')', '; ')
       into v_others
-      from shipment_links l join documents d on d.id = l.out_document_id
-     where l.in_document_id = p_in_doc and l.in_product_id = p_in_product and l.removed_at is null;
-    raise exception 'TAKEN: партію вже взято іншою видатковою: % — спершу зніміть ту прив''язку (вільно %)', v_others, v_in_qty - v_in_linked;
+      from shipment_link_pairs() p join stock_movements m on m.id = p.out_id join documents d on d.id = m.document_id
+     where p.in_id = p_in_mov;
+    raise exception 'TAKEN: рядок прихідної вже взято: % — спершу зніміть ту прив''язку (вільно %)', v_others, coalesce(i.quantity, 0) - v_in_used;
   end if;
 
-  -- стан рядка до прив'язки — для точного скасування
-  select jsonb_build_object(
-           'movements', coalesce(jsonb_agg(jsonb_build_object('id', m.id, 'cost_price', m.cost_price, 'cost_missing_qty', m.cost_missing_qty,
-                                                              'cost_estimated_qty', m.cost_estimated_qty, 'cost_estimate_unit', m.cost_estimate_unit,
-                                                              'cost_stale', m.cost_stale)), '[]'::jsonb),
-           'allocations', coalesce((select jsonb_agg(jsonb_build_object('out', a.out_movement_id, 'in', a.in_movement_id, 'qty', a.qty, 'unit', a.unit_cost,
-                                                                       'date', a.out_date, 'company', a.company_id, 'basis', a.basis, 'how', a.how))
-                                      from stock_allocations a join stock_movements mm on mm.id = a.out_movement_id
-                                     where mm.document_id = p_out_doc and mm.product_id = p_out_product and mm.type = 'out'), '[]'::jsonb))
-    into v_prev
-    from stock_movements m where m.document_id = p_out_doc and m.product_id = p_out_product and m.type = 'out';
-
-  insert into shipment_links (company_id, out_document_id, out_product_id, in_document_id, in_product_id, qty, prev_state)
-  values (v_company, p_out_doc, p_out_product, p_in_doc, p_in_product, p_qty, v_prev)
+  v_prev := out_line_state(p_out_mov);
+  insert into shipment_links (company_id, out_document_id, out_product_id, out_movement_id, out_line, out_qty, out_price,
+                              in_document_id, in_product_id, in_movement_id, in_line, in_qty, in_price, qty, prev_state)
+  values (o.company_id, o.document_id, o.product_id, o.id, stock_line_of(o.id), o.quantity, o.price,
+          i.document_id, i.product_id, i.id, stock_line_of(i.id), i.quantity, i.price, p_qty, v_prev)
   returning id into v_id;
 
-  v_res := recalc_shipment(p_out_doc, p_out_product);
+  v_res := recalc_shipment(o.document_id, p_out_mov);
   insert into cost_action_log (action, document_id, line, before, after)
-  values ('link_add', p_out_doc, p_out_product::text, v_prev,
-          jsonb_build_object('link_id', v_id, 'in_document_id', p_in_doc, 'in_product_id', p_in_product, 'qty', p_qty, 'movements', v_res));
+  values ('link_add', o.document_id, 'рядок ' || stock_line_of(o.id), v_prev,
+          jsonb_build_object('link_id', v_id, 'in_document_id', i.document_id, 'in_line', stock_line_of(i.id), 'in_movement_id', i.id,
+                             'qty', p_qty, 'movements', v_res));
   return jsonb_build_object('link_id', v_id, 'movements', v_res);
 end $$;
 
--- «Зняти прив'язку» (м'яке скасування); якщо інших прив'язок рядка немає — точне повернення попереднього стану
+-- «Зняти прив'язку» (м'яке скасування); якщо інших прив'язок цього рядка немає — точне повернення попереднього стану
 create or replace function shipment_link_remove(p_link uuid)
 returns jsonb
 language plpgsql volatile security definer set search_path = public as $$
-declare l record; v_res jsonb; v_restored boolean := false; x jsonb;
+declare l record; v_out uuid; v_res jsonb; v_restored boolean := false; x jsonb; e jsonb;
 begin
   perform require_cost_editor();
   select * into l from shipment_links where id = p_link and removed_at is null;
   if not found then raise exception 'Прив''язку не знайдено або вже знято'; end if;
-  if doc_line_closed(l.out_document_id, l.out_product_id, 'out') then raise exception 'PERIOD_CLOSED: видаткова в закритому місяці'; end if;
+  select p.out_id into v_out from shipment_link_pairs(true) p where p.link_id = p_link;
+  if v_out is not null and movement_closed(v_out) then raise exception 'PERIOD_CLOSED: видаткова в закритому місяці'; end if;
 
   update shipment_links set removed_by = auth.uid(), removed_at = now() where id = p_link;
 
-  if l.prev_state is not null
-     and not exists (select 1 from shipment_links o where o.out_document_id = l.out_document_id and o.out_product_id = l.out_product_id
-          and o.removed_at is null)
-     and (select count(*) from jsonb_array_elements(l.prev_state -> 'movements') e
-           where exists (select 1 from stock_movements m where m.id = (e ->> 'id')::uuid))
-         = jsonb_array_length(l.prev_state -> 'movements')
-  then
-    delete from stock_allocations a
-     where a.out_movement_id in (select m.id from stock_movements m
-                                  where m.document_id = l.out_document_id and m.product_id = l.out_product_id and m.type = 'out');
+  e := l.prev_state -> 'movement';
+  if v_out is not null and e is not null and (e ->> 'id')::uuid = v_out
+     and not exists (select 1 from shipment_link_pairs() p where p.out_id = v_out) then
+    delete from stock_allocations a where a.out_movement_id = v_out;
     for x in select * from jsonb_array_elements(l.prev_state -> 'allocations') loop
       if exists (select 1 from stock_movements m where m.id = (x ->> 'in')::uuid) then
         insert into stock_allocations (out_movement_id, in_movement_id, qty, unit_cost, out_date, company_id, basis, how)
-        values ((x ->> 'out')::uuid, (x ->> 'in')::uuid, (x ->> 'qty')::numeric, (x ->> 'unit')::numeric, (x ->> 'date')::date,
+        values (v_out, (x ->> 'in')::uuid, (x ->> 'qty')::numeric, (x ->> 'unit')::numeric, (x ->> 'date')::date,
                 (x ->> 'company')::uuid, x ->> 'basis', x ->> 'how');
       end if;
     end loop;
@@ -612,18 +668,19 @@ begin
        set cost_price = (e ->> 'cost_price')::numeric, cost_missing_qty = coalesce((e ->> 'cost_missing_qty')::numeric, 0),
            cost_estimated_qty = coalesce((e ->> 'cost_estimated_qty')::numeric, 0), cost_estimate_unit = (e ->> 'cost_estimate_unit')::numeric,
            cost_stale = coalesce((e ->> 'cost_stale')::boolean, false)
-      from jsonb_array_elements(l.prev_state -> 'movements') e
-     where m.id = (e ->> 'id')::uuid;
+     where m.id = v_out;
     v_restored := true;
-    select coalesce(jsonb_agg(jsonb_build_object('id', m.id, 'product_id', m.product_id, 'qty', m.quantity, 'cost_price', m.cost_price,
-                                                 'missing', m.cost_missing_qty, 'estimated', m.cost_estimated_qty)), '[]'::jsonb)
-      into v_res from stock_movements m where m.document_id = l.out_document_id and m.product_id = l.out_product_id and m.type = 'out';
+    select coalesce(jsonb_agg(jsonb_build_object('id', m.id, 'product_id', m.product_id, 'line', stock_line_of(m.id), 'qty', m.quantity,
+                                                 'cost_price', m.cost_price, 'missing', m.cost_missing_qty, 'estimated', m.cost_estimated_qty)), '[]'::jsonb)
+      into v_res from stock_movements m where m.id = v_out;
+  elsif v_out is not null then
+    v_res := recalc_shipment(l.out_document_id, v_out);
   else
-    v_res := recalc_shipment(l.out_document_id, l.out_product_id);
+    v_res := '[]'::jsonb;   -- рядок уже не існує — лише знімаємо прив'язку
   end if;
 
   insert into cost_action_log (action, document_id, line, before, after)
-  values ('link_remove', l.out_document_id, l.out_product_id::text, to_jsonb(l) - 'prev_state',
+  values ('link_remove', l.out_document_id, 'рядок ' || coalesce(l.out_line::text, '?'), to_jsonb(l) - 'prev_state',
           jsonb_build_object('restored_previous', v_restored, 'movements', v_res));
   return jsonb_build_object('restored_previous', v_restored, 'movements', v_res);
 end $$;
@@ -765,10 +822,10 @@ do $$
 declare f text;
 begin
   foreach f in array array[
-    'can_edit_costs()', 'require_cost_editor()', 'shipment_link_pairs()', 'allocate_out(uuid, boolean)', 'keep_cost_as_estimate(uuid[])',
+    'can_edit_costs()', 'require_cost_editor()', 'shipment_link_pairs(boolean)', 'stock_line_of(uuid)', 'link_resolve(uuid, uuid, uuid, integer, numeric, numeric, text, numeric, jsonb)', 'shipment_links_resolved_json()', 'allocate_out(uuid, boolean)', 'keep_cost_as_estimate(uuid[])',
     'fifo_compute(date, jsonb)', 'fifo_dry_run_detail_json(date, jsonb)', 'fifo_apply(date, text, jsonb)', 'fifo_apply_set(uuid, text)',
-    'cost_backup_restore(uuid)', 'recalc_cost_period(uuid, date, date)', 'recalc_shipment(uuid, uuid)', 'doc_line_closed(uuid, uuid, text)',
-    'shipment_link_add(uuid, uuid, uuid, uuid, numeric)', 'shipment_link_remove(uuid)', 'set_warehouse_date(uuid, date, uuid)',
+    'cost_backup_restore(uuid)', 'recalc_cost_period(uuid, date, date)', 'recalc_shipment(uuid, uuid)', 'movement_closed(uuid)', 'out_line_state(uuid)',
+    'shipment_link_add(uuid, uuid, numeric)', 'shipment_link_remove(uuid)', 'set_warehouse_date(uuid, date, uuid)',
     'merge_products(uuid, uuid)', 'unmerge_products(uuid)', 'jsonb_text_list(jsonb)'] loop
     execute format('revoke execute on function %s from public', f);
     execute format('revoke execute on function %s from anon', f);
