@@ -9,6 +9,8 @@ import {
   loadRecentMerges, loadCardStats, loadDocLines, loadDocFull, skuCompatible, nameScore, tableRow, loadDateMismatches, syncDocDates,
 } from '../lib/shipmentRecon'
 import DocModal from '../components/DocModal'
+import ReconInbox from '../components/ReconInbox'
+import { buildProblems } from '../lib/shipmentRecon'
 
 // «Склад → Звірка: продаж ↔ закупівля» (макет 2026-10-20): таблиця, згрупована за видатковими — рядок-заголовок
 // з підсумком накладної, під ним позиції: що продали → з якої прихідної собівартість → дати → маржа → недоліки.
@@ -62,6 +64,7 @@ export default function ShipmentRecon() {
   const [merges, setMerges] = useState([])
   const [mism, setMism] = useState(null)        // розбіжності дат (077)
   const [datesDlg, setDatesDlg] = useState(false)
+  const [tab, setTab] = useState(wantDoc ? 'table' : 'inbox')   // «Проблеми» (інбокс) | «Таблиця»
 
   const load = async () => {
     setLoading(true); setErr(null)
@@ -117,6 +120,7 @@ export default function ShipmentRecon() {
     return { rev, cost, m: rev - cost }
   }, [rows])
 
+  const problemsN = useMemo(() => data ? buildProblems((data.docs || []).flatMap(d => d.lines.map(l => tableRow(d, l))), data.acks || []).length : 0, [data])
   const toggle = (id) => setClosed(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
   const sortBy = (k) => k && setSort(s => ({ key: k, dir: s.key === k ? -s.dir : 1 }))
   const done = async (text) => { setToast(text); setDialog(null); setDrawer(null); await load() }
@@ -141,7 +145,7 @@ export default function ShipmentRecon() {
     <div>
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ marginBottom: 2 }}>Звірка: продаж ↔ закупівля</h1>
+          <h1 style={{ marginBottom: 2 }}>{tab === 'inbox' ? 'Проблеми звірки' : 'Звірка: продаж ↔ закупівля'}</h1>
           <div style={{ fontSize: 13, color: 'var(--text3)' }}><Link to="/inventory">Склад</Link> → Звірка видаткових · згруповано за видатковими; клік по заголовку — згорнути / розгорнути</div>
         </div>
         <button className="btn" onClick={load} disabled={loading}><i className="ti ti-refresh" /> {loading ? 'Рахую… (до хвилини)' : 'Оновити'}</button>
@@ -156,6 +160,15 @@ export default function ShipmentRecon() {
         </div>
       )}
 
+      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border)', marginBottom: 14 }}>
+        {[['inbox', `Проблеми${data ? ` (${problemsN})` : ''}`, 'ti-inbox'], ['table', 'Таблиця', 'ti-table']].map(([k, l, ic]) => (
+          <button key={k} onClick={() => setTab(k)} style={{ background: 'none', border: 0, borderBottom: '2px solid ' + (tab === k ? 'var(--text)' : 'transparent'), padding: '8px 14px', font: 'inherit', fontWeight: tab === k ? 700 : 500, color: tab === k ? 'var(--text)' : 'var(--text3)', cursor: 'pointer', display: 'flex', gap: 6, alignItems: 'center' }}><i className={`ti ${ic}`} />{l}</button>
+        ))}
+      </div>
+      {tab === 'inbox' && (data
+        ? <ReconInbox data={data} canEdit={canEdit} reload={load} onDialog={setDialog} onDates={() => setDatesDlg(true)} onOpenDoc={openDoc} />
+        : <div className="card" style={{ color: 'var(--text3)' }}>{loading ? 'Рахую сухий прогін FIFO… (до хвилини)' : 'Немає даних.'}</div>)}
+      {tab === 'table' && <>
       <div className="compact" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
         <input type="date" className="form-input" value={from} onChange={e => e.target.value && setFrom(e.target.value)} style={{ width: 150 }} title="Відвантаження з" />
         <input type="date" className="form-input" value={to} onChange={e => e.target.value && setTo(e.target.value)} style={{ width: 150 }} title="по" />
@@ -278,7 +291,7 @@ export default function ShipmentRecon() {
           ))}
         </div>
       )}
-
+      </>}
       {datesDlg && mism && <DatesDialog mism={mism} canEdit={canEdit} onClose={() => setDatesDlg(false)} onDone={async (t) => { setDatesDlg(false); await done(t) }} />}
       {drawer && <DocsDrawer {...drawer} canEdit={canEdit} onClose={() => setDrawer(null)} onDialog={(o) => setDialog({ doc: drawer.doc, ...o })} onOpenDoc={openDoc} />}
       {dialog && <ActionDialog {...dialog} onClose={() => setDialog(null)} onDone={done} />}

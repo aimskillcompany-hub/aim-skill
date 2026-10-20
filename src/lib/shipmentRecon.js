@@ -65,6 +65,7 @@ export function rpcMessage(error) {
   if (/PGRST202|could not find the function|does not exist/i.test(m) && /shipment_link|set_warehouse_date|unmerge_products|fifo_dry_run_detail|shipment_links|warehouse_date|cost_action_log/.test(m))
     return 'Спершу застосуйте міграцію 076 («Звірка видаткових»).'
   if (/PGRST202|could not find the function|does not exist/i.test(m) && /sync_doc_dates|doc_date_mismatches|doc_print_date/.test(m)) return 'Спершу застосуйте міграцію 077 (дати видаткових).'
+  if (/PGRST202|PGRST205|could not find the function|does not exist|schema cache/i.test(m) && /set_manual_cost|recon_ack|recon_unack|recon_acks|manual_costs/.test(m)) return 'Спершу застосуйте міграцію 078 (проблеми звірки: ручна собівартість, «перевірено»).'
   return m
 }
 const call = async (fn, args) => {
@@ -84,8 +85,152 @@ export async function loadDateMismatches() {
   return error ? null : data
 }
 export const syncDocDates = () => call('sync_doc_dates', {})
+// 078: ручна собівартість рядка (null — прибрати) і позначка «перевірено, не помилка»
+export const setManualCost = (outMov, unit, note = null) => call('set_manual_cost', { p_out_mov: outMov, p_unit: unit == null || unit === '' ? null : Number(unit), p_note: note })
+export const reconAck = (outMov, kind, note = null) => call('recon_ack', { p_out_mov: outMov, p_kind: kind, p_note: note })
+export const reconUnack = (ackId) => call('recon_unack', { p_ack: ackId })
 
-// останні об'єднання карток (для «Скасувати об'єднання»)
+// пошук рядків прихідних (IN-рухи) за № прихідної, постачальником або товаром — для «Прив'язати прихідну»
+export async function searchIncomingLines(q, limit = 40) {
+  const t = String(q || '').trim().replace(/[%,()]/g, ' ').trim()
+  if (t.length < 2) return []
+  const [byNo, byCtr, byProd] = await Promise.all([
+    qc('documents').select('id').eq('direction', 'payable').ilike('doc_number', `%${t}%`).limit(50).then(r => r.data || []),
+    supabase.from('contractors').select('id').ilike('name', `%${t}%`).limit(30).then(r => r.data || []),
+    supabase.from('products').select('id').ilike('name', `%${t}%`).limit(50).then(r => r.data || []),
+  ])
+  const ctrDocs = byCtr.length ? await fetchAllIn(() => qc('documents').select('id').eq('direction', 'payable'), 'contractor_id', byCtr.map(c => c.id)).catch(() => []) : []
+  const docIds = [...new Set([...byNo, ...ctrDocs].map(d => d.id))]
+  const cols = 'id, product_id, quantity, price, cost_price, date, document_id, company_id, created_at'
+  const sel = async (col, ids) => {
+    try { return await fetchAllIn(() => qc('stock_movements').select(cols + ', doc_line').eq('type', 'in'), col, ids) } catch { return fetchAllIn(() => qc('stock_movements').select(cols).eq('type', 'in'), col, ids) }
+  }
+  const ms = [...(docIds.length ? await sel('document_id', docIds) : []), ...(byProd.length ? await sel('product_id', byProd.map(p => p.id)) : [])]
+  const uniq = [...new Map(ms.map(m => [m.id, m])).values()].sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, limit)
+  if (!uniq.length) return []
+  const dIds = [...new Set(uniq.map(m => m.document_id).filter(Boolean))]
+  const pIds = [...new Set(uniq.map(m => m.product_id).filter(Boolean))]
+  const [docs, prods, allocs, docInsAll, comps] = await Promise.all([
+    dIds.length ? fetchAllIn(() => qc('documents').select('id, doc_number, doc_date, created_at, amount, vat_amount, contractors(name)'), 'id', dIds) : [],
+    pIds.length ? fetchAllIn(() => supabase.from('products').select('id, name, sku, unit'), 'id', pIds) : [],
+    fetchAllIn(() => qc('stock_allocations').select('id, in_movement_id, qty'), 'in_movement_id', uniq.map(m => m.id)).catch(() => []),
+    dIds.length ? fetchAllIn(() => qc('stock_movements').select('id, document_id, quantity, price, cost_price').eq('type', 'in'), 'document_id', dIds) : [],
+    supabase.from('companies').select('id, is_vat_payer').then(r => r.data || []),
+  ])
+  const docById = {}; docs.forEach(d => { docById[d.id] = d })
+  const prodById = {}; prods.forEach(p => { prodById[p.id] = p })
+  const used = {}; allocs.forEach(a => { used[a.in_movement_id] = (used[a.in_movement_id] || 0) + (Number(a.qty) || 0) })
+  const docIns = {}; docInsAll.forEach(m => { (docIns[m.document_id] ||= []).push(m) })
+  const payer = {}; comps.forEach(c => { payer[c.id] = c.is_vat_payer !== false })
+  return uniq.map(m => {
+    const d = docById[m.document_id], p = prodById[m.product_id] || {}, u = batchUnit(m, d, docIns[m.document_id], payer[m.company_id] !== false)
+    return {
+      inId: m.id, inDocId: m.document_id || null, inLine: m.doc_line ?? null, inProductId: m.product_id, inProductName: p.name || '', inProductSku: p.sku || '', inUnit: p.unit || '',
+      docNo: d?.doc_number || '—', docDate: d ? debtDate(d) : m.date, whDate: m.date, supplier: d?.contractors?.name || '—',
+      qty: Number(m.quantity) || 0, unit: r2(u.unit), vat: u.vat, free: r2((Number(m.quantity) || 0) - (used[m.id] || 0)),
+    }
+  })
+}
+
+// ───────────────────────── Інбокс проблем (макет «Проблеми звірки») ─────────────────────────
+// Вид проблеми: [мітка, err|warn, ранг]. Один рядок видаткової → одна проблема (найсерйозніша непідтверджена).
+export const PROBLEM_KINDS = {
+  broken: ['Рядок змінився', 'err', 100],
+  none: ['Немає приходу', 'err', 90],
+  nocost: ['Без собівартості', 'err', 85],
+  late: ['Прихід пізніше продажу', 'err', 80],
+  loss: ['Збиток', 'err', 75],
+  eq: ['Собівартість = ціні', 'warn', 60],
+  high: ['Маржа > 60%', 'warn', 55],
+  other: ['Інша картка / назва', 'warn', 50],
+  unit: ['Одиниці', 'warn', 45],
+  vat: ['Розбіжність ПДВ', 'warn', 40],
+  mdate: ['Дата руху ≠ дата видаткової', 'warn', 35],
+  low: ['Маржа < 5%', 'warn', 30],
+}
+// прапорці tableRow → види проблем
+export function rowKinds(x) {
+  const out = []
+  x.flags.forEach(f => {
+    if (f.code === 'marg') out.push(x.marginSum < 0 ? 'loss' : (x.marginPct ?? 0) > 60 ? 'high' : 'low')
+    else if (f.code === 'name') out.push('other')
+    else if (f.code === 'est') { /* оцінка — не окрема проблема (видно в картці) */ }
+    else if (PROBLEM_KINDS[f.code]) out.push(f.code)
+  })
+  return [...new Set(out)]
+}
+const fmtN = (v, dp = 0) => v == null || !isFinite(v) ? '—' : Number(v).toLocaleString('uk-UA', { minimumFractionDigits: dp, maximumFractionDigits: dp })
+// rows — результати tableRow; acks — recon_acks. → [{ id, kind, label, sev, metric, others, row, ackKinds }]
+export function buildProblems(rows, acks = []) {
+  const ackOf = (x) => acks.filter(a => (a.out_movement_id && a.out_movement_id === x.line.outId) ||
+    (!a.out_movement_id || a.out_movement_id !== x.line.outId) && a.out_document_id === x.doc.id && a.out_product_id === x.line.productId && Number(a.out_line) === Number(x.lineNo))
+  const list = []
+  rows.forEach(x => {
+    if (x.service) return
+    const acked = new Set(ackOf(x).map(a => a.kind))
+    const kinds = rowKinds(x).filter(k => !acked.has(k) && !acked.has('all')).sort((a, b) => PROBLEM_KINDS[b][2] - PROBLEM_KINDS[a][2])
+    if (!kinds.length) return
+    const kind = kinds[0]
+    const [label, sev] = PROBLEM_KINDS[kind]
+    const metric = kind === 'late' ? `−${-x.days} дн.` : kind === 'none' ? 'немає приходу' : ['loss', 'high', 'low', 'eq'].includes(kind) ? `${fmtN(x.marginPct, 1)}%`
+      : kind === 'nocost' ? `без собів. ${x.line.missingQty}` : kind === 'unit' ? `${x.saleUnit} ↔ ${x.purUnit || '?'}` : kind === 'mdate' ? dmy(x.line.movDate) : kind === 'other' ? '⧉' : ''
+    list.push({ id: x.line.outId, kind, label, sev, metric, others: kinds.slice(1), row: x })
+  })
+  // спершу помилки, далі за серйозністю, далі новіші видаткові
+  return list.sort((a, b) => (a.sev === 'err' ? 0 : 1) - (b.sev === 'err' ? 0 : 1) || PROBLEM_KINDS[b.kind][2] - PROBLEM_KINDS[a.kind][2]
+    || String(b.row.shipDate || '').localeCompare(String(a.row.shipDate || '')) || a.row.lineNo - b.row.lineNo)
+}
+
+// «Що не так» і «Як виправити» — простими словами з реальними цифрами
+export function explainProblem(p) {
+  const x = p.row, s = x.src
+  const doc = s?.docNo ? `прихідна №${s.docNo}` : 'прихідна'
+  const money2 = (v) => fmtN(v, 2)
+  switch (p.kind) {
+    case 'none': return {
+      explain: `Під цей рядок не знайдено жодної прихідної.${x.costUnit > 0 ? ` Собівартість ${money2(x.costUnit)} — лише оцінка (поточна собівартість), а не реальна закупівля.` : ' Собівартості немає — маржа завищена.'}`,
+      hint: 'Знайдіть прихідну на цей товар і прив\'яжіть її. Якщо прихідної немає — вкажіть собівартість вручну.' }
+    case 'late': return {
+      explain: `Товар продано ${dmy(x.shipDate)}, а ${doc} оприбуткована ${dmy(x.inDate)} — на ${-x.days} дн. пізніше. На дату продажу цього товару ще не було на складі.`,
+      hint: 'Якщо це передпродаж (продали раніше, ніж отримали) — просто підтвердіть. Якщо дата оприбуткування помилкова — виправте її (дата документа постачальника не зміниться).' }
+    case 'loss': return {
+      explain: `Закупили по ${money2(x.costUnit)}, а продали по ${money2(x.salePrice)}. Збиток ${fmtN(-x.marginSum)} грн на цьому рядку. Найімовірніше, помилка в ціні, в одиницях або прив\'язано не ту прихідну.`,
+      hint: `Перевірте ціну в ${doc}. Якщо вона правильна — підтвердіть збиток.` }
+    case 'eq': return {
+      explain: `Продано рівно за ціною закупівлі (${money2(x.salePrice)}) — маржа нуль. Так часто буває, коли собівартість підставилась із ціни продажу.`,
+      hint: `Звірте ціну в ${doc}. Якщо продаж без націнки — так і було задумано, підтвердіть.` }
+    case 'high': return {
+      explain: `Маржа ${fmtN(x.marginPct, 1)}% — підозріло висока: продаж ${money2(x.salePrice)}, собівартість ${money2(x.costUnit)}${x.estimated ? ' (оцінка)' : ''}. Можливо, частина собівартості не врахована, різні одиниці або прив\'язано інший товар.`,
+      hint: 'Вкажіть повну собівартість або прив\'яжіть правильну прихідну. Якщо маржа справді така — підтвердіть.' }
+    case 'low': return {
+      explain: `Маржа лише ${fmtN(x.marginPct, 1)}% (${fmtN(x.marginSum)} грн)${x.days != null && x.days > 0 ? `, товар пролежав на складі ${x.days} дн.` : ''}. Це не обов\'язково помилка, а сигнал перевірити ціну продажу.`,
+      hint: 'Якщо низька націнка погоджена з клієнтом — підтвердіть, і рядок більше не з\'являтиметься.' }
+    case 'other': return {
+      explain: `Прихід є, але записаний на іншу картку товару: «${s?.inProductName || '—'}»${s?.inProductSku ? ` (${s.inProductSku})` : ''} ↔ «${x.saleName}»${x.saleSku ? ` (${x.saleSku})` : ''}.`,
+      hint: 'Порівняйте картки й об\'єднайте, якщо це той самий товар. Якщо це різні товари — прив\'яжіть правильну прихідну або підтвердіть.' }
+    case 'unit': return {
+      explain: `Одиниці різні: продано ${fmtN(x.qty, x.qty % 1 ? 3 : 0)} ${x.saleUnit}, у прихідній — ${x.purQty ?? '—'} ${x.purUnit || ''}${x.purPriceRaw != null ? ` по ${money2(x.purPriceRaw)} за ${x.purUnit || 'од.'}` : ''}.${x.line.unitIssues?.length ? ' ' + x.line.unitIssues.join('; ') + '.' : ''}`,
+      hint: 'Перерахуйте собівартість в одиницю продажу (напр. 1 м = 0,001 км) або виправте одиниці в документі.' }
+    case 'vat': {
+      const v = x.line.vatMismatch
+      return {
+        explain: `У прихідній ${v?.docs?.map(d => `№${d.number} — ${d.vat ? 'з ПДВ' : 'без ПДВ'}`).join(', ') || '—'}, а в платежі ${v?.pays?.filter(q => q.vat !== undefined).map(q => `${dmy(q.date)} «${(q.text || '').slice(0, 60)}»`).join(', ') || '—'}. Собівартість рахується за прихідною.`,
+        hint: 'Перевірте, чи правильно в прихідній вказано ПДВ. Якщо так — підтвердіть.' }
+    }
+    case 'mdate': return {
+      explain: `Дата руху складу ${dmy(x.line.movDate)} не збігається з датою видаткової ${dmy(x.shipDate)}. FIFO рахує на дату руху, тому може взяти не ту партію.`,
+      hint: 'Вирівняйте дати (дата руху стане датою видаткової).' }
+    case 'broken': return {
+      explain: 'Після редагування документа рядок, до якого була ручна прив\'язка, не знайдено — прив\'язка не застосовується.',
+      hint: 'Зніміть прив\'язку і прив\'яжіть рядок заново.' }
+    case 'nocost': return {
+      explain: `${x.line.missingQty} ${x.saleUnit} без собівартості: партії немає і оцінки теж.`,
+      hint: 'Прив\'яжіть прихідну або вкажіть собівартість вручну.' }
+    default: return { explain: '', hint: '' }
+  }
+}
+
+// останні об\'єднання карток (для «Скасувати об\'єднання»)
 export async function loadRecentMerges(limit = 5) {
   const { data, error } = await supabase.from('cost_action_log').select('id, created_at, action, line, before, after').in('action', ['merge', 'unmerge']).order('created_at', { ascending: false }).limit(50)
   if (error) return []
@@ -93,7 +238,7 @@ export async function loadRecentMerges(limit = 5) {
   return (data || []).filter(x => x.action === 'merge' && !undone.has(x.id)).slice(0, limit)
 }
 
-// картка товару для вікна «Порівняти й об'єднати»: приходи, продажі, залишок
+// картка товару для вікна «Порівняти й об\'єднати»: приходи, продажі, залишок
 export async function loadCardStats(productId) {
   const [{ data: p }, mv] = await Promise.all([
     supabase.from('products').select('id, name, sku, unit, status').eq('id', productId).maybeSingle(),
@@ -155,7 +300,7 @@ export async function loadRecon(from, to) {
       dry = { rows: r.data || [], allocs: [] }
     } else dry = data || dry
   }
-  // активні прив'язки, розв'язані до рухів (out_id / in_id; resolved=false — рядок документа змінився)
+  // активні прив\'язки, розв\'язані до рухів (out_id / in_id; resolved=false — рядок документа змінився)
   let links = []
   {
     const { data, error } = await supabase.rpc('shipment_links_resolved_json')
@@ -178,7 +323,7 @@ export async function loadRecon(from, to) {
     try { return await fetchAllIn(() => qc('stock_movements').select(inCols + ', doc_line').eq('type', 'in'), col, ids) } catch { return fetchAllIn(() => qc('stock_movements').select(inCols).eq('type', 'in'), col, ids) }
   }
   const ins = candProdIds.length ? await selIns('product_id', candProdIds) : []
-  // приходи з алокацій (на випадок товару, якого немає серед кандидатів, напр. після об'єднання)
+  // приходи з алокацій (на випадок товару, якого немає серед кандидатів, напр. після об\'єднання)
   const allocInIds = [...new Set(dry.allocs.map(a => a.in_id))].filter(id => !ins.some(m => m.id === id))
   if (allocInIds.length) ins.push(...await selIns('id', allocInIds))
   const inDocIds = [...new Set(ins.map(m => m.document_id).filter(Boolean))]
@@ -204,7 +349,21 @@ export async function loadRecon(from, to) {
   const vatMap = orderIds.length ? await loadSupplierVat(orderIds, oItems).catch(() => ({})) : {}
 
   const docs = computeRecon({ saleDocs, outs, dry, links, prodById, similar, ins, inDocById, docIns, soOrder, payer, orderNo, oItems, vatMap })
-  return { docs, needs076, from, to }
+  // позначки «перевірено» (078); null — таблиці ще немає
+  let acks = null
+  {
+    const { data, error } = await supabase.from('recon_acks').select('id, out_movement_id, out_document_id, out_product_id, out_line, kind, note, created_at').is('removed_at', null)
+    if (!error) acks = data || []
+  }
+  // ручна собівартість рядків (078, таблиця manual_costs): «вручну» на рядку з out_id = id руху
+  let manual = null
+  {
+    const { data, error } = await supabase.rpc('manual_costs_resolved_json')
+    if (!error) manual = data || []
+  }
+  const manualByOut = {}; (manual || []).forEach(m => { if (m.out_id && m.resolved !== false) manualByOut[m.out_id] = m })
+  docs.forEach(d => d.lines.forEach(l => { const m = manualByOut[l.outId]; l.manualUnit = m ? Number(m.unit) : null; l.manualCost = m || null }))
+  return { docs, needs076, needs078: acks === null || manual === null, acks: acks || [], manualCosts: manual || [], from, to }
 }
 
 // ───────────────────────── Розрахунок (чиста функція — для тестів) ─────────────────────────
@@ -338,7 +497,7 @@ export function computeRecon({ saleDocs, outs, dry, links, prodById, similar, in
     return {
       id: d.id, type: d.type, number: d.doc_number || '—', date: docShip, shipDate, contractor: d.contractors?.name || '—', orderId, orderNo: orderId ? orderNo[orderId] || null : null,
       lines, status: docStatus, flags, tip,
-      // прив'язки, чий рядок не знайдено після редагування документа — перевірити / зняти
+      // прив\'язки, чий рядок не знайдено після редагування документа — перевірити / зняти
       brokenLinks: (links || []).filter(l => l.resolved === false && (l.out_document_id === d.id)).map(l => ({ ...l, productName: prodById[l.out_product_id]?.name || '—', inDocNo: inDocById[l.in_document_id]?.doc_number || '—' })),
       cost: r2(lines.reduce((s, l) => s + l.cost, 0)), needsAction: lines.filter(l => l.status !== 'ok').length,
     }
