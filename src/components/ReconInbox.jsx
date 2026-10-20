@@ -36,7 +36,7 @@ const ACTIONS = {
 }
 const NEEDS_INPUT = new Set(['link', 'manual', 'units', 'date'])
 
-export default function ReconInbox({ data, canEdit, reload, onDialog, onDates, onOpenDoc, initialLine = null }) {
+export default function ReconInbox({ data, canEdit, reload, onDialog, onDates, onOpenDoc, onDrawer, initialLine = null }) {
   const [filter, setFilter] = useState('all')
   const [sel, setSel] = useState(initialLine)
   // завдання, створені з проблем звірки (розділ «Задачі», source = 'recon'); рядок — за посиланням у деталях
@@ -169,7 +169,7 @@ export default function ReconInbox({ data, canEdit, reload, onDialog, onDates, o
             <ProblemCard key={cur.id} p={cur} pos={pos} n={visible.length} canEdit={canEdit} busy={busy} err={err} mode={mode}
               tasks={tasks.filter(t => (t.description || '').includes(reconLineToken(cur.row.line.outId)))} onTaskCreated={loadTasks}
               onPrev={() => go(-1)} onNext={() => go(1)} onClose={() => setSel(null)} onAction={doAction} onAck={() => ack(cur.kind, 'Не помилка — позначено перевіреним')}
-              run={run} onOpenDoc={onOpenDoc} />
+              run={run} onOpenDoc={onOpenDoc} onDrawer={onDrawer} />
           ) : (
             <div className="card" style={{ border: '1px dashed var(--border)', textAlign: 'center', padding: '44px 20px' }}>
               <div style={{ fontSize: 18, fontWeight: 600 }}>{!problems.length ? 'Усі проблеми виправлено' : !visible.length ? 'У цьому фільтрі все виправлено' : 'Виберіть проблему зі списку'}</div>
@@ -190,7 +190,7 @@ export default function ReconInbox({ data, canEdit, reload, onDialog, onDates, o
   )
 }
 
-function ProblemCard({ p, pos, n, canEdit, busy, err, mode, onPrev, onNext, onClose, onAction, onAck, run, onOpenDoc, tasks = [], onTaskCreated }) {
+function ProblemCard({ p, pos, n, canEdit, busy, err, mode, onPrev, onNext, onClose, onAction, onAck, run, onOpenDoc, onDrawer, tasks = [], onTaskCreated }) {
   const x = p.row, s = x.src
   const { explain, hint } = explainProblem(p)
   const acts = ACTIONS[p.kind] || []
@@ -199,8 +199,14 @@ function ProblemCard({ p, pos, n, canEdit, busy, err, mode, onPrev, onNext, onCl
   const big = { fontSize: 18, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
   const cell = { padding: '9px 14px' }
   const buyHl = (keys) => keys.includes(p.kind) ? { ...cell, ...hl(p.sev), fontWeight: 600 } : cell
+  const lnk = { background: 'none', border: 0, padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 2 }
+  // перегляд документів: бічна панель «Видаткова / Прихідна / Поруч» (як у таблиці); без неї — картка документа
+  const view = (mode) => {
+    if (onDrawer) onDrawer({ doc: x.doc, mode, line: x.line, src: s || null })
+    else onOpenDoc(mode === 'rec' && s?.inDocId ? s.inDocId : x.doc.id)
+  }
   const rows = [
-    ['Документ', <>{x.doc.number} від {dmy(x.doc.date)}</>, s?.docNo ? <button onClick={() => s.inDocId && onOpenDoc(s.inDocId)} style={{ background: 'none', border: 0, padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', textDecoration: 'underline' }}>№{s.docNo}{!x.fromBatch && ' (кандидат)'}</button> : 'не знайдено', ['none', 'nocost', 'other']],
+    ['Документ', <button onClick={() => view('sale')} style={lnk} title="Переглянути видаткову">{x.doc.number} від {dmy(x.doc.date)}</button>, s?.docNo ? <button onClick={() => s.inDocId && view('rec')} style={lnk} title="Переглянути прихідну">№{s.docNo}{!x.fromBatch && ' (кандидат)'}</button> : 'не знайдено', ['none', 'nocost', 'other']],
     ['Товар', x.saleName, s ? s.inProductName || x.saleName : '—', ['other']],
     ['Контрагент', x.doc.contractor, s?.supplier || '—', []],
     ['Дата', dmy(x.shipDate), s ? `${dmy(x.inDate)}${s.docDate && s.docDate !== x.inDate ? ` (документ ${dmy(s.docDate)})` : ''}` : '—', ['late', 'mdate']],
@@ -222,6 +228,12 @@ function ProblemCard({ p, pos, n, canEdit, busy, err, mode, onPrev, onNext, onCl
           <h2 style={{ margin: 0, fontSize: 21, lineHeight: 1.3 }}>{x.saleName}{x.saleSku && <span style={{ fontSize: 14, color: 'var(--text3)', fontWeight: 400 }}> ({x.saleSku})</span>}</h2>
           <div style={{ fontSize: 14, color: 'var(--text3)' }}>{x.doc.number} від {dmy(x.doc.date)} · рядок {x.lineNo} · {x.doc.contractor}{x.doc.orderNo ? ` · замовлення №${x.doc.orderNo}` : ''}</div>
           {p.others.length > 0 && <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>також: {p.others.map(k => PROBLEM_KINDS[k][0].toLowerCase()).join(', ')}</div>}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+            <button className="btn btn-sm" onClick={() => view('sale')}><i className="ti ti-file-text" /> Видаткова {x.doc.number}</button>
+            {s?.inDocId && <button className="btn btn-sm" onClick={() => view('rec')}><i className="ti ti-file-download" /> Прихідна №{s.docNo}</button>}
+            {s?.inDocId && <button className="btn btn-sm" onClick={() => view('both')}><i className="ti ti-columns" /> Поруч</button>}
+            <button className="btn btn-sm" onClick={() => onOpenDoc(x.doc.id)} title="Відкрити картку видаткової (редагування, скан)"><i className="ti ti-external-link" /> Картка видаткової</button>
+          </div>
         </div>
 
         <div style={{ ...hl(p.sev), display: 'flex', flexDirection: 'column', gap: 5, padding: 14, borderRadius: 12 }}>

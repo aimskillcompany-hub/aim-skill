@@ -167,7 +167,7 @@ export default function ShipmentRecon() {
         ))}
       </div>
       {tab === 'inbox' && (data
-        ? <ReconInbox data={data} initialLine={wantLine} canEdit={canEdit} reload={load} onDialog={setDialog} onDates={() => setDatesDlg(true)} onOpenDoc={openDoc} />
+        ? <ReconInbox data={data} initialLine={wantLine} canEdit={canEdit} reload={load} onDialog={setDialog} onDates={() => setDatesDlg(true)} onOpenDoc={openDoc} onDrawer={setDrawer} />
         : <div className="card" style={{ color: 'var(--text3)' }}>{loading ? 'Рахую сухий прогін FIFO… (до хвилини)' : 'Немає даних.'}</div>)}
       {tab === 'table' && <>
       <div className="compact" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
