@@ -10,7 +10,8 @@ import { fetchAll, fetchAllIn } from './fetchAll'
 import { batchUnit } from './batchPrice'
 
 export async function loadBatches(toDate) {
-  const mv = await fetchAll(() => qc('stock_movements').select('id, product_id, type, quantity, price, cost_price, date, created_at, document_id, company_id').lte('date', toDate))
+  // рух без дати — теж залишок (як у «Складі», в'юха product_stock), інакше «Склад» і «Баланс» розходяться
+  const mv = await fetchAll(() => qc('stock_movements').select('id, product_id, type, quantity, price, cost_price, date, created_at, document_id, company_id').or(`date.lte.${toDate},date.is.null`))
   const ins = mv.filter(m => m.type === 'in')
   // ціна партії без ПДВ (як у FIFO / звірці): за сумою документа з ПДВ і без ПДВ
   const docIds = [...new Set(ins.map(m => m.document_id).filter(Boolean))]
@@ -28,7 +29,8 @@ export async function loadBatches(toDate) {
     mv.forEach(m => {
       if (!m.product_id || (m.date || '') > date) return
       const q = Number(m.quantity) || 0
-      bal[m.product_id] = (bal[m.product_id] || 0) + (m.type === 'in' ? q : -q)
+      // як у «Складі»: прихід +, видаток −, коригування — зі своїм знаком (раніше коригування завжди віднімалось)
+      bal[m.product_id] = (bal[m.product_id] || 0) + (m.type === 'in' ? q : m.type === 'out' ? -q : m.type === 'adjustment' ? q : 0)
     })
     const out = {}
     const need = {}
