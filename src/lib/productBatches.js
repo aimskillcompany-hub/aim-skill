@@ -91,6 +91,8 @@ export async function loadProductBatches(productId, { force = false } = {}) {
   const covered = {}; allocs.forEach(a => { covered[a.out_id] = (covered[a.out_id] || 0) + (Number(a.qty) || 0) })
   const unbatched = outs.map(shipment).map(s => ({ ...s, uncovered: r2(s.qty - (covered[s.outId] || 0)) }))
     .filter(s => s.uncovered > 0.00001).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+    // підказка: партії з залишком, датовані ПІЗНІШЕ відвантаження (найчастіша причина «без партії»)
+    .map(s => ({ ...s, later: batches.filter(b => b.left > 0.00001 && s.date && b.whDate > s.date).map(b => ({ docNo: b.docNo, whDate: b.whDate, left: b.left })) }))
 
   const sales = outs.map(shipment).filter(s => s.isSale)
   const totIn = ins.reduce((s, m) => s + (Number(m.quantity) || 0), 0), totOut = outs.reduce((s, m) => s + (Number(m.quantity) || 0), 0)
