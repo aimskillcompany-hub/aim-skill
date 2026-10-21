@@ -37,6 +37,9 @@ export async function loadProductBatches(productId, { force = false } = {}) {
   const dry = await dryRun(force)
   const outIds = new Set(outs.map(m => m.id)), inIds = new Set(ins.map(m => m.id))
   const allocs = (dry.allocs || []).filter(a => inIds.has(a.in_id) || outIds.has(a.out_id))
+  // ручні прив'язки (076) — щоб можна було зняти / переприв'язати
+  const { data: linksAll } = await supabase.rpc('shipment_links_resolved_json')
+  const links = (Array.isArray(linksAll) ? linksAll : []).filter(l => l.resolved !== false && (outIds.has(l.out_id) || inIds.has(l.in_id)))
   const rowByOut = {}; (dry.rows || []).forEach(r => { if (outIds.has(r.out_id)) rowByOut[r.out_id] = r })
 
   // документи (прихідні й видаткові) з надрукованими датами
@@ -82,12 +85,13 @@ export async function loadProductBatches(productId, { force = false } = {}) {
       const o = outById[a.out_id]
       const s = o ? shipment(o) : { outId: a.out_id, docNo: 'інший товар', date: null, qty: 0, salePrice: 0 }   // рух іншої картки (ручна прив'язка)
       const q = Number(a.qty) || 0, unit = Number(a.unit) || 0
-      return { ...s, takeQty: r2(q), takeUnit: unit, takeCost: r2(q * unit), takeRevenue: r2(q * s.salePrice), how: a.how || 'fifo', days: s.date && wh ? daysBetween(wh, s.date) : null }
+      const link = (a.how === 'manual') ? links.find(l => l.out_id === a.out_id && l.in_id === a.in_id) : null
+      return { ...s, inId: m.id, takeQty: r2(q), takeUnit: unit, takeCost: r2(q * unit), takeRevenue: r2(q * s.salePrice), how: a.how || 'fifo', linkId: link?.id || null, days: s.date && wh ? daysBetween(wh, s.date) : null }
     }).sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
     const revenue = ships.filter(s => s.isSale).reduce((t, s) => t + s.takeRevenue, 0)
     const costSold = ships.filter(s => s.isSale).reduce((t, s) => t + s.takeCost, 0)
     return {
-      inId: m.id, docId: m.document_id || null, docNo: d?.doc_number || (m.source === 'assembly' ? 'збірка' : m.source === 'manual' ? 'ручний прихід' : '—'),
+      inId: m.id, inDocId: m.document_id || null, docId: m.document_id || null, docNo: d?.doc_number || (m.source === 'assembly' ? 'збірка' : m.source === 'manual' ? 'ручний прихід' : '—'),
       docDate: d ? d.print_date : m.date, whDate: wh, supplier: d?.contractors?.name || '', docName: docItemName(m), qty, unit: u.unit, vat: u.vat, basis: u.basis,
       value: r2(qty * u.unit), used: r2(used), left: r2(qty - used), leftValue: r2((qty - used) * u.unit),
       ships, revenue: r2(revenue), costSold: r2(costSold), margin: r2(revenue - costSold), marginPct: revenue > 0 ? (revenue - costSold) / revenue * 100 : null,

@@ -1,7 +1,9 @@
 import { Fragment, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { fmtInt } from '../lib/fmt'
-import { loadProductBatches, dmy } from '../lib/productBatches'
+import { loadProductBatches, dropBatchesCache, dmy } from '../lib/productBatches'
+import { linkAdd, linkRemove, setWarehouseDate } from '../lib/shipmentRecon'
+import { useUser } from '../lib/auth'
 
 // Вкладка «Партії» в картці товару — «прихід ліворуч ↔ вихід праворуч»: кожна партія (прихідна) навпроти
 // відвантажень, що з неї взяли; ціна приходу і ціна виходу в одному рядку; залишок партії; відвантаження без
@@ -45,6 +47,11 @@ export default function ProductBatches({ productId, unit, productName, onOpenDoc
   const [err, setErr] = useState(null)
   const [busy, setBusy] = useState(false)
   const [onlyIssues, setOnlyIssues] = useState(false)
+  const { user } = useUser()
+  const canEdit = ['admin', 'accountant'].includes(user?.role)
+  const [relink, setRelink] = useState(null)   // { s, fromInId } — переприв'язати відвантаження
+  const [toast, setToast] = useState(null)
+  const reload = () => { dropBatchesCache(); return load(true) }
   const load = async (force = false) => {
     setBusy(true); setErr(null)
     try { setData(await loadProductBatches(productId, { force })) } catch (e) { setErr(e.message) } finally { setBusy(false) }
@@ -78,6 +85,7 @@ export default function ProductBatches({ productId, unit, productName, onOpenDoc
       <td style={{ ...td, ...r, ...cell, fontWeight: 600 }}>{m == null ? '—' : <>{num(m, 0)}<div style={{ fontSize: 10.5, fontWeight: 400 }}>{s.salePrice ? num(m / s.salePrice * 100, 1) + '%' : ''} · {money(m * s.takeQty)}</div></>}</td>
       <td style={{ ...td, fontSize: 11.5 }}>
         {iss.map(([lv, tx], i) => <span key={i} className="badge" style={{ ...(lv === 'r' ? RED : AMB), fontWeight: 700, fontSize: 10.5, display: 'inline-block', margin: '0 3px 2px 0', padding: '1px 6px', whiteSpace: 'normal' }}>{tx}</span>)}
+        {canEdit && s.docId && <button style={{ ...lnk, fontSize: 12, marginRight: 8 }} onClick={() => setRelink({ s, fromInId: s.inId })} title="Взяти цей рядок з іншої партії">↔ переприв'язати</button>}
         {s.isSale && <Link to={`/inventory/recon?line=${s.outId}`} style={{ fontSize: 12 }}>звірка</Link>}
       </td>
     </>
@@ -103,13 +111,13 @@ export default function ProductBatches({ productId, unit, productName, onOpenDoc
       <div className="tbl-wrap" style={{ border: 'none', maxHeight: '70vh', overflow: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed', minWidth: 860 }}>
           <colgroup>
-            <col style={{ width: '20%' }} /><col style={{ width: 74 }} /><col style={{ width: 42 }} /><col style={{ width: 86 }} /><col style={{ width: 66 }} />
-            <col style={{ width: 34 }} /><col style={{ width: '20%' }} /><col style={{ width: 74 }} /><col style={{ width: 42 }} /><col style={{ width: 86 }} /><col style={{ width: 82 }} /><col />
+            <col style={{ width: '19%' }} /><col style={{ width: 84 }} /><col style={{ width: 46 }} /><col style={{ width: 88 }} /><col style={{ width: 70 }} />
+            <col style={{ width: 38 }} /><col style={{ width: '19%' }} /><col style={{ width: 84 }} /><col style={{ width: 46 }} /><col style={{ width: 88 }} /><col style={{ width: 86 }} /><col style={{ width: 150 }} />
           </colgroup>
           <thead>
             <tr>
-              <th colSpan={5} style={{ textAlign: 'center', ...sub, fontWeight: 700, textTransform: 'uppercase' }}>Прихід (партія)</th>
-              <th colSpan={7} style={{ textAlign: 'center', ...sub, ...sepL, fontWeight: 700, textTransform: 'uppercase' }}>Вихід (куди відвантажено)</th>
+              <th colSpan={5} style={{ ...TH, textAlign: 'center', fontSize: 11, color: 'var(--text3)', fontWeight: 700 }}>ПРИХІД (ПАРТІЯ)</th>
+              <th colSpan={7} style={{ ...TH, ...sepL, textAlign: 'center', fontSize: 11, color: 'var(--text3)', fontWeight: 700 }}>ВИХІД (КУДИ ВІДВАНТАЖЕНО)</th>
             </tr>
             <tr style={{ fontSize: 11 }}>
               <th style={TH}>Прихідна · постачальник</th><th style={{ ...TH, textAlign: 'right' }}>Дата</th><th style={{ ...TH, textAlign: 'right' }}>К-сть</th>
@@ -156,16 +164,86 @@ export default function ProductBatches({ productId, unit, productName, onOpenDoc
                 <td style={{ ...td, ...r }}>{qtyf(s.uncovered)}</td>
                 <td style={{ ...td, ...r, fontWeight: 600 }}>{s.isSale ? num(s.salePrice) : '—'}</td>
                 <td style={{ ...td, ...r }}>{s.manual ? `вручну ${num(s.costUnit)}` : s.estQty > 0 ? <span style={{ color: 'var(--amber)' }}>⚠ оцінка {num(s.costUnit)}</span> : <span style={{ color: 'var(--red)' }}>без собівартості</span>}</td>
-                <td style={td}>{s.isSale && <Link to={`/inventory/recon?line=${s.outId}`} style={{ fontSize: 12 }}>розібрати у звірці</Link>}</td>
+                <td style={td}>
+                  {canEdit && s.docId && <button className="btn btn-sm" style={{ padding: '1px 8px', fontSize: 12, marginBottom: 3 }} onClick={() => setRelink({ s: { ...s, takeQty: s.uncovered }, fromInId: null })}>Взяти з партії</button>}
+                  {s.isSale && <div><Link to={`/inventory/recon?line=${s.outId}`} style={{ fontSize: 12 }}>у звірці</Link></div>}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {toast && <div style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', background: 'var(--text)', color: 'var(--bg, #fff)', borderRadius: 10, padding: '8px 14px', fontSize: 13, zIndex: 50, display: 'flex', gap: 10 }}>{toast}<button className="btn btn-sm" onClick={() => setToast(null)}>✕</button></div>}
+      {relink && <RelinkDialog s={relink.s} fromInId={relink.fromInId} batches={data.batches} unit={unit} productName={productName}
+        onClose={() => setRelink(null)} onDone={async (text) => { setRelink(null); setToast(text); await reload() }} />}
       <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 8 }}>
         Курсивом «…» — як товар названо в самому документі (якщо назва відрізняється від картки). Ліворуч — партія (прихідна), праворуч — куди її відвантажено, з ціною приходу і ціною виходу в одному рядку. Розподіл — як буде після «Застосувати FIFO»: ручна прив'язка → прихідна того ж замовлення → найстаріші партії на дату оприбуткування.
         Червоне — продано раніше приходу, без партії, збиток, ціна виходу = ціні приходу; жовте — маржа &lt;5% або &gt;60%, оцінка, залишок партії при відвантаженнях без партії.
       </p>
+    </div>
+  )
+}
+
+// ── Переприв'язати рядок видаткової до іншої партії (ручна прив'язка 076: має пріоритет над FIFO) ──
+function RelinkDialog({ s, fromInId, batches, unit, onClose, onDone }) {
+  const cur = fromInId ? batches.find(b => b.inId === fromInId) : null
+  const curShip = cur?.ships.find(x => x.outId === s.outId)
+  const [qty, setQty] = useState(String(s.takeQty || s.qty || 1))
+  const [busy, setBusy] = useState(null)
+  const [err, setErr] = useState(null)
+  const run = async (key, fn, text) => {
+    setBusy(key); setErr(null)
+    try { await fn(); await onDone(text) } catch (e) { setErr(e.message) } finally { setBusy(null) }
+  }
+  // вільно в партії для цього рядка: залишок + те, що цей рядок уже бере з неї
+  const freeFor = (b) => b.left + (b.ships.filter(x => x.outId === s.outId).reduce((t, x) => t + x.takeQty, 0))
+  // ручна прив'язка має пріоритет над FIFO: можна взяти все, крім уже прив'язаного вручну іншими рядками
+  const manualOthers = (b) => b.ships.filter(x => x.how === 'manual' && x.outId !== s.outId).reduce((t, x) => t + x.takeQty, 0)
+  const list = batches.filter(b => b.inDocId && b.inId !== fromInId).map(b => ({ ...b, free: Math.max(freeFor(b), 0), max: Math.max(b.qty - manualOthers(b), 0), late: s.date && b.whDate > s.date }))
+    .sort((a, b) => (b.free > 0) - (a.free > 0) || String(a.whDate).localeCompare(String(b.whDate)))
+  const n = Number(qty) || 0
+  return (
+    <div className="modal-bg" onClick={busy ? undefined : onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 760, width: '96%', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div className="modal-header"><h2 style={{ margin: 0, fontSize: 17 }}>Переприв'язати до партії</h2><button className="btn" onClick={onClose} disabled={!!busy}><i className="ti ti-x" /></button></div>
+        <div style={{ fontSize: 13.5, marginBottom: 10 }}>
+          Видаткова <b>{s.docNo}</b> від {dmy(s.date)} · {s.client} · ціна виходу <b>{num(s.salePrice)}</b>
+          {cur ? <div style={{ color: 'var(--text3)', marginTop: 3 }}>зараз: {num(curShip?.takeQty ?? s.takeQty, 0)} {unit || ''} з партії №{cur.docNo} ({dmy(cur.whDate)}) по {num(cur.unit)} · {HOW[curShip?.how || s.how] || ''}</div>
+            : <div style={{ color: 'var(--red)', marginTop: 3 }}>зараз без партії: {qtyf(s.takeQty)} {unit || ''}</div>}
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, fontSize: 13 }}>
+          <span>Кількість:</span><input className="form-input" type="number" min="0" step="any" value={qty} onChange={e => setQty(e.target.value)} style={{ width: 100 }} />
+          <span style={{ color: 'var(--text3)' }}>{unit || ''} — буде взято з обраної партії вручну (має пріоритет над FIFO)</span>
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead><tr style={{ color: 'var(--text3)', fontSize: 11.5 }}><th style={{ textAlign: 'left' }}>Партія</th><th style={{ textAlign: 'right' }}>Оприбутк.</th><th style={{ textAlign: 'right' }}>Ціна</th><th style={{ textAlign: 'right' }}>Вільно</th><th style={{ textAlign: 'right' }}>Маржа/од.</th><th /></tr></thead>
+          <tbody>{list.map(b => {
+            const m = s.salePrice ? s.salePrice - b.unit : null
+            return (
+              <tr key={b.inId} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={{ padding: '5px 4px' }}>№{b.docNo}<div style={{ fontSize: 11, color: 'var(--text3)' }}>{b.supplier}</div></td>
+                <td style={{ padding: '5px 4px', textAlign: 'right', color: b.late ? 'var(--amber)' : undefined }}>{dmy(b.whDate)}{b.late && <div style={{ fontSize: 11 }}>пізніше відвантаження</div>}</td>
+                <td style={{ padding: '5px 4px', textAlign: 'right' }}>{num(b.unit)}</td>
+                <td style={{ padding: '5px 4px', textAlign: 'right', color: b.free > 0 ? undefined : 'var(--text3)' }} title="вільно за FIFO / максимум для ручної прив'язки">{qtyf(b.free)}{b.max > b.free + 0.00001 && <div style={{ fontSize: 11, color: 'var(--text3)' }}>до {qtyf(b.max)}</div>}</td>
+                <td style={{ padding: '5px 4px', textAlign: 'right', color: m == null ? undefined : m < 0 ? 'var(--red)' : 'var(--green)' }}>{m == null ? '—' : num(m, 0)}</td>
+                <td style={{ padding: '5px 4px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <button className="btn btn-sm btn-primary" disabled={!!busy || !(n > 0) || n > b.max + 0.00001} title={n > b.max ? 'партію вже вручну прив\'язано до інших видаткових' : n > b.free ? 'частину зараз бере інша видаткова за FIFO — її буде перерозподілено' : ''}
+                    onClick={() => (n <= b.free + 0.00001 || window.confirm(`У партії №${b.docNo} вільно ${qtyf(b.free)}, решту зараз бере інша видаткова за FIFO — її буде перерозподілено на інші партії (або вона стане «без партії»). Продовжити?`))
+                      && run('take' + b.inId, () => linkAdd({ outMov: s.outId, inMov: b.inId, qty: n }), `${s.docNo}: ${qtyf(n)} ${unit || ''} взято з партії №${b.docNo}`)}>{busy === 'take' + b.inId ? '…' : 'Взяти звідси'}</button>
+                  {b.late && <button className="btn btn-sm" style={{ marginLeft: 4 }} disabled={!!busy} title="Якщо товар фізично прийшов раніше — дата оприбуткування = дата відвантаження"
+                    onClick={() => window.confirm(`Змінити дату оприбуткування партії №${b.docNo}: ${dmy(b.whDate)} → ${dmy(s.date)}? Дата документа постачальника не змінюється.`) && run('date' + b.inId, () => setWarehouseDate(b.inDocId, s.date, s.docId), `Партія №${b.docNo}: оприбуткування ${dmy(s.date)}`)}>{busy === 'date' + b.inId ? '…' : `Дата → ${dmy(s.date)}`}</button>}
+                </td>
+              </tr>
+            )
+          })}</tbody>
+        </table>
+        {!list.length && <p style={{ color: 'var(--text3)' }}>Інших партій цього товару немає. Якщо прихід записано на іншу картку — «Об'єднати з товаром».</p>}
+        {curShip?.linkId && <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--border)', fontSize: 13 }}>
+          Ця прив'язка зроблена вручну. <button className="btn btn-sm" disabled={!!busy} onClick={() => run('unlink', () => linkRemove(curShip.linkId), `${s.docNo}: ручну прив'язку знято`)}>Зняти ручну прив'язку</button>
+        </div>}
+        {err && <p style={{ color: 'var(--red)' }}>Помилка: {err}</p>}
+        <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 10 }}>«Взяти звідси» — ручна прив'язка рядка видаткової до партії (пріоритет над FIFO, скасовується «Зняти ручну прив'язку»). Інші відвантаження перерозподіляться за FIFO. Змінювати можуть адміністратор і бухгалтер; дія пишеться в журнал.</p>
+      </div>
     </div>
   )
 }
