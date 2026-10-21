@@ -34,7 +34,10 @@ export const dropBatchesCache = () => { dryCache = null }
 export async function loadProductBatches(productId, { force = false } = {}) {
   const movs = await fetchAll(() => qc('stock_movements').select('id, type, quantity, price, cost_price, date, document_id, order_id, company_id, source, created_at, description').eq('product_id', productId))
   const ins = movs.filter(m => m.type === 'in'), outs = movs.filter(m => m.type === 'out')
-  const dry = await dryRun(force)
+  let dry = await dryRun(force)
+  // кеш застарів (рух додано / змінено к-сть після розрахунку) — перерахувати одразу
+  const rowQty = {}; (dry.rows || []).forEach(r => { rowQty[r.out_id] = Number(r.qty) })
+  if (!force && outs.some(m => rowQty[m.id] == null || Math.abs(rowQty[m.id] - (Number(m.quantity) || 0)) > 0.00001)) dry = await dryRun(true)
   const outIds = new Set(outs.map(m => m.id)), inIds = new Set(ins.map(m => m.id))
   const allocs = (dry.allocs || []).filter(a => inIds.has(a.in_id) || outIds.has(a.out_id))
   // ручні прив'язки (076) — щоб можна було зняти / переприв'язати

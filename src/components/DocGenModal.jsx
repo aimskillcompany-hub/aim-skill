@@ -172,6 +172,10 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
           notes, contractNum, contractDate, paymentDue, city,
           invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress,
         })
+        // рухи складу документа — за новими позиціями (к-сть, ціна, товар, дата); раніше лишались старі
+        const { syncStockForGenerated } = await import('../lib/docgen')
+        try { await syncStockForGenerated(editId, docType, items, docDate, userId) }
+        catch (e) { throw new Error('Документ збережено, але склад не оновлено: ' + e.message) }
       } else {
         // Створити новий
         const savedDoc = await saveDoc({

@@ -360,6 +360,81 @@ export async function createStockFromDoc(docId, docType, items, date, userId) {
   return created
 }
 
+// ── Синхронізувати складські рухи відредагованого документа (видаткова / прихідна) ──
+// Рядок документа ↔ рух за номером рядка (doc_line); старі рухи без doc_line — по порядку позицій.
+// Змінені к-сть / ціна / товар / дата → UPDATE руху (рух не перестворюється — прив'язки до партій лишаються),
+// нові позиції → новий рух, вилучені позиції → рух видаляється. Повертає { updated, created, deleted }.
+export async function syncStockForGenerated(genId, docType, items, date, userId) {
+  const dt = getDocType(docType)
+  if (!dt?.stockEffect || !genId) return { skipped: true }
+  const { data: mirror, error: mErr } = await qc('documents').select('id').eq('generated_doc_id', genId).maybeSingle()
+  if (mErr) throw new Error(mErr.message)
+  if (!mirror) return { skipped: true }
+  let existing
+  {
+    const r = await qc('stock_movements').select('id, product_id, quantity, price, date, doc_line, created_at, source').eq('document_id', mirror.id).neq('source', 'assembly')
+    if (r.error && /doc_line/.test(r.error.message || '')) {
+      const r2 = await qc('stock_movements').select('id, product_id, quantity, price, date, created_at, source').eq('document_id', mirror.id).neq('source', 'assembly')
+      if (r2.error) throw new Error(r2.error.message)
+      existing = r2.data || []
+    } else if (r.error) throw new Error(r.error.message)
+    else existing = r.data || []
+  }
+  if (!existing.length) return { skipped: true, noMovements: true }   // рухів не було (списання вимкнено) — нічого не створюємо самовільно
+  const eligible = (items || []).map((it, idx) => ({ it, line: idx + 1, qty: parseFloat(it.quantity) || 0 })).filter(x => x.it?.name?.trim() && x.qty > 0)
+  // відповідність рух ↔ рядок: спершу doc_line, решта (старі рухи) — по порядку
+  const byLine = {}
+  existing.filter(m => m.doc_line).forEach(m => { if (!byLine[m.doc_line]) byLine[m.doc_line] = m })
+  const legacy = existing.filter(m => !m.doc_line || byLine[m.doc_line] !== m).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+  eligible.forEach(x => { if (!byLine[x.line] && legacy.length) byLine[x.line] = legacy.shift() })
+  const used = new Set()
+  const { resolveProduct } = await import('../stockService')
+  let updated = 0, created = 0, deleted = 0
+  for (const x of eligible) {
+    const it = x.it, mv = byLine[x.line]
+    const unitPrice = parseFloat(it.unitPrice) || null
+    const total = parseFloat(it.amount) || x.qty * (unitPrice || 0)
+    let productId = it.productId || null
+    if (!productId && mv) productId = mv.product_id   // назву могли підправити — товар лишаємо той самий
+    if (!productId) {
+      const resolved = await resolveProduct(it.name, it.unit || 'шт', dt.stockEffect === 'in' ? unitPrice : null, userId, it.sku || null)
+      productId = resolved?.productId
+    }
+    if (!productId) continue
+    if (mv) {
+      used.add(mv.id)
+      const patch = {}
+      if (Math.abs((Number(mv.quantity) || 0) - x.qty) > 0.00001) patch.quantity = x.qty
+      if (unitPrice != null && Math.abs((Number(mv.price) || 0) - unitPrice) > 0.004) { patch.price = unitPrice; patch.total = total; if (dt.stockEffect === 'in') patch.cost_price = unitPrice }
+      if (mv.product_id !== productId) patch.product_id = productId
+      if (date && mv.date !== date) patch.date = date
+      if (mv.doc_line !== x.line && 'doc_line' in mv) patch.doc_line = x.line
+      if (Object.keys(patch).length) {
+        const { error } = await qc('stock_movements').update(patch).eq('id', mv.id)
+        if (error) throw new Error('Рух складу «' + it.name + '» не оновлено: ' + cleanErr(error.message))
+        updated++
+      }
+    } else {
+      const row = withCompany({
+        product_id: productId, type: dt.stockEffect, quantity: x.qty, price: unitPrice, total,
+        cost_price: dt.stockEffect === 'in' ? unitPrice : null, document_id: mirror.id, date: date || todayKyiv(),
+        description: `${dt.label}: ${it.name}`, source: 'document', created_by: userId, doc_line: x.line,
+      })
+      let { error } = await qc('stock_movements').insert(row)
+      if (error && /doc_line/.test(error.message || '')) { const { doc_line, ...rest } = row; ({ error } = await qc('stock_movements').insert(rest)) }
+      if (error) throw new Error('Рух складу «' + it.name + '» не створено: ' + cleanErr(error.message))
+      created++
+    }
+  }
+  for (const m of existing) {
+    if (used.has(m.id)) continue
+    const { error } = await qc('stock_movements').delete().eq('id', m.id)
+    if (error) throw new Error('Рух складу вилученої позиції не видалено: ' + cleanErr(error.message))
+    deleted++
+  }
+  return { updated, created, deleted }
+}
+
 // ── Оновити документ ──
 export async function updateDoc(id, { docNumber, docDate, items, subtotal, vatAmount, total, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress }) {
   const base = {
