@@ -40,6 +40,9 @@ export async function loadProductBatches(productId, { force = false } = {}) {
   // ручні прив'язки (076) — щоб можна було зняти / переприв'язати
   const { data: linksAll } = await supabase.rpc('shipment_links_resolved_json')
   const links = (Array.isArray(linksAll) ? linksAll : []).filter(l => l.resolved !== false && (outIds.has(l.out_id) || inIds.has(l.in_id)))
+  // закриті партії (080)
+  const { data: locksAll } = await supabase.rpc('batch_locks_resolved_json')
+  const lockByIn = {}; (Array.isArray(locksAll) ? locksAll : []).forEach(k => { if (k.in_id) lockByIn[k.in_id] = k })
   const rowByOut = {}; (dry.rows || []).forEach(r => { if (outIds.has(r.out_id)) rowByOut[r.out_id] = r })
 
   // документи (прихідні й видаткові) з надрукованими датами
@@ -91,7 +94,7 @@ export async function loadProductBatches(productId, { force = false } = {}) {
     const revenue = ships.filter(s => s.isSale).reduce((t, s) => t + s.takeRevenue, 0)
     const costSold = ships.filter(s => s.isSale).reduce((t, s) => t + s.takeCost, 0)
     return {
-      inId: m.id, inDocId: m.document_id || null, docId: m.document_id || null, docNo: d?.doc_number || (m.source === 'assembly' ? 'збірка' : m.source === 'manual' ? 'ручний прихід' : '—'),
+      inId: m.id, inDocId: m.document_id || null, locked: lockByIn[m.id] || null, docId: m.document_id || null, docNo: d?.doc_number || (m.source === 'assembly' ? 'збірка' : m.source === 'manual' ? 'ручний прихід' : '—'),
       docDate: d ? d.print_date : m.date, whDate: wh, supplier: d?.contractors?.name || '', docName: docItemName(m), qty, unit: u.unit, vat: u.vat, basis: u.basis,
       value: r2(qty * u.unit), used: r2(used), left: r2(qty - used), leftValue: r2((qty - used) * u.unit),
       ships, revenue: r2(revenue), costSold: r2(costSold), margin: r2(revenue - costSold), marginPct: revenue > 0 ? (revenue - costSold) / revenue * 100 : null,

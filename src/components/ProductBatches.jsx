@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { fmtInt } from '../lib/fmt'
 import { loadProductBatches, dropBatchesCache, dmy } from '../lib/productBatches'
-import { linkAdd, linkRemove, setWarehouseDate } from '../lib/shipmentRecon'
+import { linkAdd, linkRemove, setWarehouseDate, batchLock, batchUnlock } from '../lib/shipmentRecon'
 import { useUser } from '../lib/auth'
 
 // Вкладка «Партії» в картці товару — «прихід ліворуч ↔ вихід праворуч»: кожна партія (прихідна) навпроти
@@ -52,6 +52,12 @@ export default function ProductBatches({ productId, unit, productName, onOpenDoc
   const [relink, setRelink] = useState(null)   // { s, fromInId } — переприв'язати відвантаження
   const [toast, setToast] = useState(null)
   const reload = () => { dropBatchesCache(); return load(true) }
+  const [lockBusy, setLockBusy] = useState(null)
+  const lockAct = async (key, question, fn, text) => {
+    if (!window.confirm(question)) return
+    setLockBusy(key)
+    try { await fn(); setToast(text); await reload() } catch (e) { setToast('Помилка: ' + e.message) } finally { setLockBusy(null) }
+  }
   const load = async (force = false) => {
     setBusy(true); setErr(null)
     try { setData(await loadProductBatches(productId, { force })) } catch (e) { setErr(e.message) } finally { setBusy(false) }
@@ -85,7 +91,7 @@ export default function ProductBatches({ productId, unit, productName, onOpenDoc
       <td style={{ ...td, ...r, ...cell, fontWeight: 600 }}>{m == null ? '—' : <>{num(m, 0)}<div style={{ fontSize: 10.5, fontWeight: 400 }}>{s.salePrice ? num(m / s.salePrice * 100, 1) + '%' : ''} · {money(m * s.takeQty)}</div></>}</td>
       <td style={{ ...td, fontSize: 11.5 }}>
         {iss.map(([lv, tx], i) => <span key={i} className="badge" style={{ ...(lv === 'r' ? RED : AMB), fontWeight: 700, fontSize: 10.5, display: 'inline-block', margin: '0 3px 2px 0', padding: '1px 6px', whiteSpace: 'normal' }}>{tx}</span>)}
-        {canEdit && s.docId && <button style={{ ...lnk, fontSize: 12, marginRight: 8 }} onClick={() => setRelink({ s, fromInId: s.inId })} title="Взяти цей рядок з іншої партії">↔ переприв'язати</button>}
+        {canEdit && s.docId && !s.lockedBatch && <button style={{ ...lnk, fontSize: 12, marginRight: 8 }} onClick={() => setRelink({ s, fromInId: s.inId })} title="Взяти цей рядок з іншої партії">↔ переприв'язати</button>}
         {s.isSale && <Link to={`/inventory/recon?line=${s.outId}`} style={{ fontSize: 12 }}>звірка</Link>}
       </td>
     </>
@@ -98,7 +104,7 @@ export default function ProductBatches({ productId, unit, productName, onOpenDoc
         {[['Прийшло / вийшло', `${qtyf(t.in)} / ${qtyf(t.out)} ${unit || ''}`], ['На складі за рухами', `${qtyf(t.onHand)} ${unit || ''}`],
           ['Залишки партій', `${money(t.leftValue)} грн`, hasUnbatched && t.leftValue > 0 ? 'var(--amber)' : undefined],
           ['Сер. ціна приходу / виходу', `${num(t.avgBuy)} / ${num(t.avgSale)}`], ['Маржа продажів', `${money(t.margin)} · ${t.marginPct == null ? '—' : num(t.marginPct, 1) + '%'}`, mColor(t.margin)],
-          ['Розбіжностей', issuesCount, issuesCount ? 'var(--red)' : 'var(--green)']].map(([l, v, c]) => (
+          ['Розбіжностей', issuesCount, issuesCount ? 'var(--red)' : 'var(--green)'], ['Закрито партій', `${data.batches.filter(b => b.locked).length} з ${data.batches.length}`]].map(([l, v, c]) => (
           <div key={l} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '5px 10px' }}>
             <div style={{ fontSize: 11, color: 'var(--text3)' }}>{l}</div><div style={{ fontWeight: 700, fontSize: 14, color: c }}>{v}</div>
           </div>
@@ -135,7 +141,17 @@ export default function ProductBatches({ productId, unit, productName, onOpenDoc
               const span = Math.max(ships.length + (showLeft ? 1 : 0), 1)
               const left = (
                 <>
-                  <td rowSpan={span} style={{ ...td, background: 'var(--surface2)' }}>{docBtn(b.docId, `№${b.docNo}`)}<DocName name={b.docName} card={productName} /><span style={sub} title={b.supplier}>{b.supplier}</span></td>
+                  <td rowSpan={span} style={{ ...td, background: b.locked ? 'var(--green-bg)' : 'var(--surface2)' }}>
+                    {docBtn(b.docId, `№${b.docNo}`)}<DocName name={b.docName} card={productName} /><span style={sub} title={b.supplier}>{b.supplier}</span>
+                    {b.locked ? <div style={{ marginTop: 3, fontSize: 11.5, color: 'var(--green)', fontWeight: 600 }} title={`закрито ${dmy(String(b.locked.created_at || '').slice(0, 10))}${b.locked.note ? ' · ' + b.locked.note : ''}`}>
+                        🔒 закрита{canEdit && <button style={{ ...lnk, fontSize: 11.5, marginLeft: 6, fontWeight: 400 }} disabled={!!lockBusy}
+                          onClick={() => lockAct('u' + b.inId, `Відкрити партію №${b.docNo}? Її відвантаження знову розподілятиме FIFO (можуть змінитися).`, () => batchUnlock(b.locked.id), `Партію №${b.docNo} відкрито`)}>відкрити</button>}
+                      </div>
+                      : canEdit && b.inDocId && b.ships.length > 0 && !leftIssue(b) && !b.ships.some(x => shipIssues(x).length) && <div style={{ marginTop: 3 }}>
+                        <button style={{ ...lnk, fontSize: 11.5 }} disabled={!!lockBusy} title="Зафіксувати розподіл: FIFO більше не змінюватиме відвантаження з цієї партії й нічого нового з неї не братиме"
+                          onClick={() => lockAct('l' + b.inId, `Закрити партію №${b.docNo}? Поточний розподіл (${b.ships.length} відвант.) буде зафіксовано; FIFO більше нічого з неї не братиме${b.left > 0.00001 ? ` — залишок ${qtyf(b.left)} ${unit || ''} теж стане недоступним для відвантажень` : ''}. Відкрити можна будь-коли.`, () => batchLock(b.inId, 'перевірено'), `Партію №${b.docNo} закрито 🔒`)}>{lockBusy === 'l' + b.inId ? '…' : '🔒 закрити'}</button>
+                      </div>}
+                  </td>
                   <td rowSpan={span} style={{ ...td, ...r, background: 'var(--surface2)' }}>{dmy(b.whDate)}{b.whDate !== b.docDate && <div style={{ fontSize: 11, color: 'var(--text3)' }}>док. {dmy(b.docDate)}</div>}</td>
                   <td rowSpan={span} style={{ ...td, ...r, background: 'var(--surface2)' }}>{qtyf(b.qty)}</td>
                   <td rowSpan={span} style={{ ...td, ...r, background: 'var(--surface2)', fontWeight: 600 }} title={`${b.basis}; ПДВ у прихідній: ${b.vat == null ? '—' : b.vat ? 'так' : 'ні'}`}>{num(b.unit)}<div style={{ fontSize: 10.5, color: 'var(--text3)', fontWeight: 400 }}>{b.vat == null ? '' : b.vat ? 'з ПДВ' : 'без ПДВ'}</div></td>
@@ -145,7 +161,7 @@ export default function ProductBatches({ productId, unit, productName, onOpenDoc
               return (
                 <Fragment key={b.inId}>
                   {ships.length ? ships.map((s, i) => (
-                    <tr key={i}>{i === 0 && left}<Right s={s} /></tr>
+                    <tr key={i}>{i === 0 && left}<Right s={{ ...s, lockedBatch: !!b.locked }} /></tr>
                   )) : <tr>{left}{!showLeft && <RightEmpty><span style={sub}>не відвантажувалась</span></RightEmpty>}{showLeft && <RightEmpty style={leftIssue(b) ? AMB : undefined}>на складі {qtyf(b.left)} {unit || ''}{leftIssue(b) ? ' — є вихід без партії (нижче): прихід пізніше?' : ''}</RightEmpty>}</tr>}
                   {ships.length > 0 && showLeft && <tr><RightEmpty style={leftIssue(b) ? AMB : { color: 'var(--text3)' }}>на складі {qtyf(b.left)} {unit || ''}{leftIssue(b) ? ' — є вихід без партії (нижче): прихід пізніше?' : ''}</RightEmpty></tr>}
                 </Fragment>
@@ -200,7 +216,7 @@ function RelinkDialog({ s, fromInId, batches, unit, onClose, onDone }) {
   const freeFor = (b) => b.left + (b.ships.filter(x => x.outId === s.outId).reduce((t, x) => t + x.takeQty, 0))
   // ручна прив'язка має пріоритет над FIFO: можна взяти все, крім уже прив'язаного вручну іншими рядками
   const manualOthers = (b) => b.ships.filter(x => x.how === 'manual' && x.outId !== s.outId).reduce((t, x) => t + x.takeQty, 0)
-  const list = batches.filter(b => b.inDocId && b.inId !== fromInId).map(b => ({ ...b, free: Math.max(freeFor(b), 0), max: Math.max(b.qty - manualOthers(b), 0), late: s.date && b.whDate > s.date }))
+  const list = batches.filter(b => b.inDocId && b.inId !== fromInId).map(b => ({ ...b, free: b.locked ? 0 : Math.max(freeFor(b), 0), max: b.locked ? 0 : Math.max(b.qty - manualOthers(b), 0), late: s.date && b.whDate > s.date }))
     .sort((a, b) => (b.free > 0) - (a.free > 0) || String(a.whDate).localeCompare(String(b.whDate)))
   const qOf = (b) => qtys[b.inId] ?? String(Math.min(need, b.max))
   return (
@@ -220,7 +236,7 @@ function RelinkDialog({ s, fromInId, batches, unit, onClose, onDone }) {
             const n = Number(qOf(b)) || 0
             return (
               <tr key={b.inId} style={{ borderTop: '1px solid var(--border)' }}>
-                <td style={{ padding: '5px 4px' }}>№{b.docNo}<div style={{ fontSize: 11, color: 'var(--text3)' }}>{b.supplier}</div></td>
+                <td style={{ padding: '5px 4px' }}>№{b.docNo}{b.locked && <span style={{ color: 'var(--green)', fontSize: 11.5 }}> 🔒 закрита</span>}<div style={{ fontSize: 11, color: 'var(--text3)' }}>{b.supplier}</div></td>
                 <td style={{ padding: '5px 4px', textAlign: 'right', color: b.late ? 'var(--amber)' : undefined }}>{dmy(b.whDate)}{b.late && <div style={{ fontSize: 11 }}>пізніше відвантаження</div>}</td>
                 <td style={{ padding: '5px 4px', textAlign: 'right' }}>{num(b.unit)}</td>
                 <td style={{ padding: '5px 4px', textAlign: 'right', color: b.free > 0 ? undefined : 'var(--text3)' }} title="вільно за FIFO / максимум для ручної прив'язки">{qtyf(b.free)}{b.max > b.free + 0.00001 && <div style={{ fontSize: 11, color: 'var(--text3)' }}>до {qtyf(b.max)}</div>}</td>

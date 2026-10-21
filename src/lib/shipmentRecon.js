@@ -49,6 +49,8 @@ export function rpcMessage(error) {
   const m = error?.message || String(error || '')
   if (/NO_RIGHTS/.test(m)) return 'Немає прав: змінювати прив\'язки, дати оприбуткування й картки товарів можуть лише адміністратор або бухгалтер.'
   if (/PERIOD_CLOSED/.test(m)) return 'Місяць закрито: ' + (m.replace(/^.*PERIOD_CLOSED:?\s*/, '') || 'дію над документами закритого періоду заборонено') + '. Переоткрийте його в «Закритті періоду».'
+  if (/LOCKED/.test(m)) return m.replace(/^.*LOCKED:\s*/, '🔒 ')
+  if (/PGRST202|could not find the function|does not exist/i.test(m) && /batch_lock|batch_unlock|batch_locks/.test(m)) return 'Спершу застосуйте міграцію 080 («Закрити партію»).'
   if (/TAKEN/.test(m)) return m.replace(/^.*TAKEN:\s*/, 'Партію вже прив\'язано: ')
   if (/SKU_CONFLICT/.test(m)) return m.replace(/^.*SKU_CONFLICT:\s*/, 'Об\'єднання заборонено: ')
   if (/PGRST202|could not find the function|does not exist/i.test(m) && /shipment_link|set_warehouse_date|unmerge_products|fifo_dry_run_detail|shipment_links|warehouse_date|cost_action_log/.test(m))
@@ -68,6 +70,9 @@ export const linkRemove = (linkId) => call('shipment_link_remove', { p_link: lin
 export const setWarehouseDate = (inDoc, date, recalcOutDoc = null) => call('set_warehouse_date', { p_in_doc: inDoc, p_date: date || null, p_recalc_out_doc: recalcOutDoc })
 export const mergeCards = (keepId, dupId) => call('merge_products', { p_keep: keepId, p_dup: dupId })
 export const unmergeCards = (logId) => call('unmerge_products', { p_log: logId })
+// закрити / відкрити партію (080)
+export const batchLock = (inMov, note = null) => call('batch_lock', { p_in_mov: inMov, p_note: note })
+export const batchUnlock = (lockId) => call('batch_unlock', { p_lock: lockId })
 // розбіжності дат (077): дзеркало ≠ генерований документ; дата руху видачі ≠ дата видаткової
 export async function loadDateMismatches() {
   const { data, error } = await supabase.rpc('doc_date_mismatches_json')
