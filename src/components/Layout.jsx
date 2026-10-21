@@ -14,7 +14,6 @@ const NAV = [
   { to: '/inventory',   label: 'Склад',        icon: 'ti-package' },
   { to: '/prices',      label: 'Прайси',       icon: 'ti-tag' },
   { to: '/documents',   label: 'Документи',    icon: 'ti-files' },
-  { to: '/mail',        label: 'Пошта',        icon: 'ti-mail' },
   { to: '/analytics',   label: 'Аналітика',    icon: 'ti-chart-dots-3',   section: 'Аналіз' },
   { to: '/investor',    label: 'Інвестору',    icon: 'ti-diamond',        accent: '#7C3AED' },
   { to: '/finance',     label: 'Фінрезультат проекту', icon: 'ti-chart-pie' },

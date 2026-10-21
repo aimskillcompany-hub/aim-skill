@@ -1,11 +1,22 @@
 {
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
   ],
   "crons": [
-    { "path": "/api/mail-sync", "schedule": "0 7 * * *" },
-    { "path": "/api/brain-sync", "schedule": "0 5 * * *" },
-    { "path": "/api/task-reminders", "schedule": "0 6 * * *" }
+    {
+      "path": "/api/brain-sync",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/task-reminders",
+      "schedule": "0 6 * * *"
+    }
   ]
 }

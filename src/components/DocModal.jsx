@@ -9,7 +9,6 @@ import { resolveProduct, createStockMovement } from '../lib/stockService'
 import { DOCUMENT_TYPES, getDocType } from '../lib/docgen'
 import { fmt } from '../lib/fmt'
 import ContractorSelect from './ui/ContractorSelect'
-import MailSendModal from './MailSendModal'
 import { kyivDateOfTs, todayKyiv } from '../lib/dates'
 
 export const dirFromType = (key) => {
@@ -80,7 +79,6 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
   const [form, setForm] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
   const [previewType, setPreviewType] = useState('image')
-  const [showMail, setShowMail] = useState(false)
   const [stockOn, setStockOn] = useState(false)   // оприбуткувати/списати позиції на склад
   const [stockDir, setStockDir] = useState('in')  // 'in' = прихід, 'out' = видача (FIFO)
   const [verified, setVerified] = useState(!!existingDoc?.is_verified) // документ перевірено (звірка скан↔поля)
@@ -436,7 +434,6 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
 
   return (
     <>
-    {showMail && <MailSendModal document={{ ...existingDoc, type: form?.type || existingDoc?.type, doc_number: form?.doc_number ?? existingDoc?.doc_number }} onClose={() => setShowMail(false)} />}
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: form ? 1080 : 600, width: '95vw' }}>
         <div className="modal-header"><h2>{existingDoc ? (autoOcr ? 'Розпізнати документ' : 'Документ') : (autoOcr ? 'Завантажити документ (OCR)' : 'Завантажити документ')}</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
@@ -688,7 +685,6 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
                     </button>
                   )}
                   {existingDoc && <button className="btn" onClick={del} disabled={busy} style={{ color: 'var(--red)' }}><i className="ti ti-trash" /> Видалити</button>}
-                  {existingDoc && <button className="btn" onClick={() => setShowMail(true)} disabled={busy}><i className="ti ti-send" /> Надіслати email</button>}
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   {existingDoc

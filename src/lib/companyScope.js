@@ -19,7 +19,6 @@ export const SCOPED_TABLES = new Set([
   'period_closings',
   'stock_allocations', // списання з партій (company_id, міграція 071)
   'tasks',
-  'emails',
   'plans',
   'notes',
   'finance_projects', // фінрезультат проекту (company_id, міграція 055)
