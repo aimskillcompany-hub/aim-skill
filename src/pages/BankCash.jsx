@@ -100,7 +100,9 @@ function TransactionsTab({ accounts, onChange }) {
       .eq('is_ignored', status === 'ignored').order('date', { ascending: false }).limit(limit)
     if (status === 'unconfirmed') qb = qb.eq('is_validated', false)
     if (acc !== 'all') qb = qb.eq('account_id', acc)
-    if (art === '__none__') qb = qb.is('article', null)
+    if (art === '__none__') qb = qb.or('article.is.null,article.eq.')          // порожній текст теж «без статті»
+    else if (art === '__nocontractor__') qb = qb.is('contractor_id', null)
+    else if (art === '__nolink__') qb = qb.not('article', 'is', null).neq('article', '').is('article_id', null)   // стаття, якої немає в довіднику
     else if (art !== 'all') qb = qb.eq('article', art)
     const term = q.trim()
     if (term) {
@@ -278,6 +280,8 @@ function TransactionsTab({ accounts, onChange }) {
         <select className="form-input" value={art} onChange={e => setArt(e.target.value)} style={{ width: 200 }}>
           <option value="all">Всі статті</option>
           <option value="__none__">Без статті</option>
+          <option value="__nolink__">Стаття не з довідника</option>
+          <option value="__nocontractor__">Без контрагента</option>
           {Object.entries(grouped).map(([type, arts]) => (
             <optgroup key={type} label={TYPE_LABELS[type] || type}>
               {arts.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}

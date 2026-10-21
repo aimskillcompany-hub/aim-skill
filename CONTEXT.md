@@ -563,6 +563,7 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `087_split_product.sql` | «Розділити картку»: `split_product` / `split_undo` — рухи й синоніми на іншу / нову картку, журнал `cost_action_log` ('split') | ✅ застосовано (2026-10-21) |
 | `088_stock_excel_fixes.sql` | Excel-виправлення складу (ТЗ 21.10): `documents.day_order` (порядок у дні — у FIFO `allocate_out`/`fifo_compute`, основа 080), `assemblies.manual_unit_cost`; RPC `product_fix`, `split_movement`, `doc_fix`, `assembly_fix`, `alias_delete`, `stock_fix_undo` (журнал + скасування). Тести: `tests_088_pglite.mjs`, `tests_js/stock_excel_scenarios.mjs` | ⏳ **на перегляді в користувача** |
 | `089_link_amount_guard.sql` | Тригер на `transaction_documents`: сума прив'язок платежу ≤ суми платежу, документа ≤ суми документа (лише додавання/збільшення; зменшувати/видаляти задвоєні можна). Права не змінює | ⏳ **на перегляді в користувача** |
+| `090_article_sync.sql` | Стаття операції: тригер текст ↔ `article_id` на `bank_transactions`; перейменування / нова стаття → каскад в операції (і в закритих місяцях — лише назва, `aim.article_sync`), `plans`, `contractors.default_article`; заповнення посилань без зміни тексту | ⏳ **на перегляді в користувача** |
 | `validate.mjs` | Перевірка цілісності Фази 1 (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 | `probe.mjs` | Звірка наявності колонок/таблиць усіх міграцій у БД (`SUPABASE_SERVICE_KEY=... node migrations/probe.mjs`) | — |
 
