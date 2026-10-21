@@ -59,6 +59,8 @@ export default function ContractorCard() {
         <Kpi label="Кредиторка (ми винні)" value={bal ? bal.payable : null} negative
           note={bal?.unlinkedOut > 0.5 ? `+ наші оплати без прив'язки до документа: ${fmtInt(bal.unlinkedOut)} грн` : null} />
         <Kpi label="Оборот за рік" value={bal ? bal.turnoverYear : null} />
+        {bal?.loans?.count > 0 && <Kpi label="Позики (ПФД): нам винні − ми винні" value={bal.loans.theyOwe - bal.loans.weOwe}
+          note={`нам винні ${fmtInt(bal.loans.theyOwe)} · ми винні ${fmtInt(bal.loans.weOwe)}${bal.loans.unclassified > 0.5 ? ` · без статті ПФД ${fmtInt(bal.loans.unclassified)}` : ''} — деталі в розділі «Позики»`} />}
       </div>
 
       {/* Tabs */}

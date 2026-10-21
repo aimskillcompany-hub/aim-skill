@@ -15,6 +15,7 @@ import ContractorSelect from '../components/ui/ContractorSelect'
 import DocModal from '../components/DocModal'
 import { useSort, SortTh } from '../components/Sort'
 import { todayKyiv } from '../lib/dates'
+import LinkCheckModal from '../components/LinkCheckModal'
 
 // поля документа для DocModal
 const DOC_FIELDS = 'id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)'
@@ -78,6 +79,7 @@ function TransactionsTab({ accounts, onChange }) {
   const [acc, setAcc] = useState('all')
   const [art, setArt] = useState('all')               // фільтр за статтею
   const [limit, setLimit] = useState(500)             // пагінація «показати ще»
+  const [showCheck, setShowCheck] = useState(false)
   const [q, setQ] = useState('')
   const [linkTx, setLinkTx] = useState(null)
   const [editTx, setEditTx] = useState(null)
@@ -285,8 +287,10 @@ function TransactionsTab({ accounts, onChange }) {
         <button className="btn btn-primary" onClick={() => setShowAdd(true)}><i className="ti ti-plus" /> Додати операцію</button>
         {status === 'unconfirmed' && rows.length > 0 && <button className="btn" onClick={autoFill}><i className="ti ti-wand" /> Авто-класифікація</button>}
         <button className="btn" onClick={autoLink} disabled={linking} title="Прив'язати документи за контрагентом + сумою + датою (±15 днів)"><i className="ti ti-link" /> {linking ? 'Прив\'язую…' : 'Авто-прив\'язка'}</button>
+        <button className="btn" onClick={() => setShowCheck(true)} title="Задвоєні прив'язки оплат і документів, операції не того контрагента — з виправленням"><i className="ti ti-shield-check" /> Перевірка прив'язок</button>
         <span style={{ marginLeft: 'auto', color: 'var(--text3)', fontSize: 13 }}>{rows.length} транзакцій</span>
       </div>
+      {showCheck && <LinkCheckModal onClose={() => setShowCheck(false)} onChanged={() => { load(); onChange() }} />}
       {linkMsg && <div style={{ background: 'var(--green-bg)', color: 'var(--green)', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 13 }}>{linkMsg}</div>}
 
       {sel.size > 0 && (

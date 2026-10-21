@@ -6,6 +6,7 @@ import { qc } from './companyScope'
 import { fetchAll, fetchAllIn } from './fetchAll'
 import { supabase } from './supabase'
 import { kyivDateOfTs, todayKyiv } from './dates'
+import { classifyPfd } from './pfd'
 
 const sum = (arr, f) => (arr || []).reduce((s, x) => s + (Number(f(x)) || 0), 0)
 
@@ -50,7 +51,7 @@ export async function getContractorBalance(contractorId, companyIds = null) {
 
   const [docs, txs] = await Promise.all([
     fetchAll(() => q('documents', 'id, amount, direction, type, doc_date, created_at').eq('contractor_id', contractorId).not('amount', 'is', null)),
-    fetchAll(() => q('bank_transactions', 'id, amount, direction, date').eq('contractor_id', contractorId).eq('is_ignored', false)),
+    fetchAll(() => q('bank_transactions', 'id, amount, direction, date, article').eq('contractor_id', contractorId).eq('is_ignored', false)),
   ])
 
   const debtDocs = (docs || []).filter(d => countsAsDebt(d.type) && (d.direction === 'receivable' || d.direction === 'payable') && debtDate(d) <= today)
@@ -71,18 +72,41 @@ export async function getContractorBalance(contractorId, companyIds = null) {
     tds.forEach(t => { linked[t.transaction_id] = (linked[t.transaction_id] || 0) + Math.abs(Number(t.amount) || 0) })
   }
   const free = (t) => Math.max(0, Math.abs(Number(t.amount) || 0) - (linked[t.id] || 0))
-  const unlinkedIn = sum((txs || []).filter(t => t.direction === 'Доходи'), free)
-  const unlinkedOut = sum((txs || []).filter(t => t.direction === 'Витрати'), free)
+  // позики (ПФД) — не оплати за документами: рахуються окремо, у «без прив'язки» не потрапляють
+  const loanTx = (txs || []).filter(isLoanTx)
+  const plain = (txs || []).filter(t => !isLoanTx(t))
+  const unlinkedIn = sum(plain.filter(t => t.direction === 'Доходи'), free)
+  const unlinkedOut = sum(plain.filter(t => t.direction === 'Витрати'), free)
+  const loans = loanBalance(loanTx)
 
   return {
     receivable,                       // = сума цього контрагента у звіті «Дебіторка»
     payable,                          // кредиторка за тим самим правилом
     unlinkedIn: unlinkedIn + overpaidIn,     // оплати від клієнта без документа / понад документ (аванс або не прив'язано)
     unlinkedOut: unlinkedOut + overpaidOut,  // наші оплати без документа / понад документ
+    loans,                            // { theyOwe, weOwe, unclassified, count } — позики з цим контрагентом
     turnoverYear: sum((txs || []).filter(t => (t.date || '') >= sinceStr), t => Math.abs(t.amount)),
     income: sum((txs || []).filter(t => t.direction === 'Доходи'), t => Math.abs(t.amount)),
     expense: sum((txs || []).filter(t => t.direction === 'Витрати'), t => Math.abs(t.amount)),
   }
+}
+
+// Позика (поворотна фінансова допомога): напрям «ПФД» або стаття про позику / фін. допомогу
+export const isLoanTx = (t) => t.direction === 'ПФД' || /пфд|позик|фінансов\S*\s+допомог|поворотн/i.test(t.article || '')
+
+// Сальдо позик з контрагентом за статтями (як у розділі «Позики»): нам винні / ми винні
+export function loanBalance(txs) {
+  let theyOwe = 0, weOwe = 0, unclassified = 0
+  for (const t of txs || []) {
+    const a = Math.abs(Number(t.amount) || 0)
+    const signed = t.direction === 'Витрати' ? -a : t.direction === 'Доходи' ? a : Number(t.amount) || 0
+    const c = classifyPfd(t.article, signed)
+    if (c.ledger === 'lender') theyOwe += c.kind === 'principal' ? a : -a        // ми надали / нам повернули
+    else if (c.ledger === 'borrower') weOwe += c.kind === 'principal' ? a : -a    // ми отримали / ми повернули
+    else unclassified += a
+  }
+  const r = (n) => Math.round(n * 100) / 100
+  return { theyOwe: r(theyOwe), weOwe: r(weOwe), unclassified: r(unclassified), count: (txs || []).length }
 }
 
 // Обороти контрагентів для списку — рахуються з банківських операцій щоразу (2026-10-22).
