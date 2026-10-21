@@ -13,10 +13,13 @@ const qtyf = (v) => num(v, v % 1 ? 3 : 0)
 const HOW = { manual: 'вручну', order: 'те саме замовлення', fifo: 'FIFO' }
 const RED = { background: 'var(--red-bg)', color: 'var(--red)' }
 const AMB = { background: 'var(--amber-bg)', color: 'var(--amber)' }
-const td = { padding: '7px 9px', borderBottom: '1px solid var(--border)', fontSize: 13, verticalAlign: 'top' }
+const td = { padding: '5px 6px', borderBottom: '1px solid var(--border)', fontSize: 12.5, verticalAlign: 'top', overflow: 'hidden' }
+// один рядок з «…», повний текст — у підказці
+const ell = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }
 const r = { textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }
-const sub = { fontSize: 11.5, color: 'var(--text3)' }
+const sub = { fontSize: 11, color: 'var(--text3)', ...{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' } }
 const sepL = { borderLeft: '2px solid var(--border)' }
+const TH = { padding: '6px 6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
 const lnk = { background: 'none', border: 0, padding: 0, font: 'inherit', color: 'var(--blue)', cursor: 'pointer', textAlign: 'left' }
 
 // розбіжності рядка «партія → відвантаження»
@@ -35,7 +38,7 @@ function shipIssues(s) {
 
 // назва в документі — показуємо, якщо відрізняється від назви картки
 const DocName = ({ name, card }) => name && name.trim().toLowerCase() !== String(card || '').trim().toLowerCase()
-  ? <div style={{ fontSize: 12, color: 'var(--text2)', fontStyle: 'italic', marginTop: 1 }} title="Як товар називається в цьому документі">«{name}»</div> : null
+  ? <div style={{ fontSize: 11.5, color: 'var(--text2)', fontStyle: 'italic', ...ell }} title={`Як товар називається в цьому документі: ${name}`}>«{name}»</div> : null
 
 export default function ProductBatches({ productId, unit, productName, onOpenDoc }) {
   const [data, setData] = useState(null)
@@ -67,14 +70,14 @@ export default function ProductBatches({ productId, unit, productName, onOpenDoc
     const m = s.isSale ? s.salePrice - s.takeUnit : null
     const cell = red ? RED : amb ? AMB : {}
     return <>
-      <td style={{ ...td, ...sepL, textAlign: 'center', ...r, ...(s.days != null && s.days < 0 ? RED : {}) }} title="днів на складі">{s.days == null ? '→' : <>→<div style={{ fontSize: 11 }}>{s.days} дн.</div></>}</td>
-      <td style={td}>{docBtn(s.docId, s.docNo)}<DocName name={s.docName} card={productName} /><div style={sub}>{s.client || (s.isSale ? '' : 'не продаж')}{` · ${HOW[s.how] || s.how}`}</div></td>
+      <td style={{ ...td, ...sepL, textAlign: 'center', ...r, ...(s.days != null && s.days < 0 ? RED : {}) }} title="днів на складі">{s.days == null ? '→' : <>{s.days}<div style={{ fontSize: 10 }}>дн.</div></>}</td>
+      <td style={td}>{docBtn(s.docId, s.docNo)}<DocName name={s.docName} card={productName} /><span style={sub} title={`${s.client || ''} · ${HOW[s.how] || s.how}`}>{s.client || (s.isSale ? '' : 'не продаж')}{` · ${HOW[s.how] || s.how}`}</span></td>
       <td style={{ ...td, ...r }}>{dmy(s.date)}</td>
       <td style={{ ...td, ...r }}>{qtyf(s.takeQty)}</td>
       <td style={{ ...td, ...r, fontWeight: 600 }}>{s.isSale ? num(s.salePrice) : '—'}</td>
-      <td style={{ ...td, ...r, ...cell, fontWeight: 600 }}>{m == null ? '—' : <>{num(m)}<div style={{ fontSize: 11, fontWeight: 400 }}>{s.salePrice ? num(m / s.salePrice * 100, 1) + '%' : ''} · {money(m * s.takeQty)}</div></>}</td>
-      <td style={{ ...td, fontSize: 12 }}>
-        {iss.map(([lv, tx], i) => <span key={i} className="badge" style={{ ...(lv === 'r' ? RED : AMB), fontWeight: 700, fontSize: 11, display: 'inline-block', margin: '0 3px 3px 0' }}>{tx}</span>)}
+      <td style={{ ...td, ...r, ...cell, fontWeight: 600 }}>{m == null ? '—' : <>{num(m, 0)}<div style={{ fontSize: 10.5, fontWeight: 400 }}>{s.salePrice ? num(m / s.salePrice * 100, 1) + '%' : ''} · {money(m * s.takeQty)}</div></>}</td>
+      <td style={{ ...td, fontSize: 11.5 }}>
+        {iss.map(([lv, tx], i) => <span key={i} className="badge" style={{ ...(lv === 'r' ? RED : AMB), fontWeight: 700, fontSize: 10.5, display: 'inline-block', margin: '0 3px 2px 0', padding: '1px 6px', whiteSpace: 'normal' }}>{tx}</span>)}
         {s.isSale && <Link to={`/inventory/recon?line=${s.outId}`} style={{ fontSize: 12 }}>звірка</Link>}
       </td>
     </>
@@ -88,28 +91,32 @@ export default function ProductBatches({ productId, unit, productName, onOpenDoc
           ['Залишки партій', `${money(t.leftValue)} грн`, hasUnbatched && t.leftValue > 0 ? 'var(--amber)' : undefined],
           ['Сер. ціна приходу / виходу', `${num(t.avgBuy)} / ${num(t.avgSale)}`], ['Маржа продажів', `${money(t.margin)} · ${t.marginPct == null ? '—' : num(t.marginPct, 1) + '%'}`, mColor(t.margin)],
           ['Розбіжностей', issuesCount, issuesCount ? 'var(--red)' : 'var(--green)']].map(([l, v, c]) => (
-          <div key={l} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '7px 12px' }}>
-            <div style={{ fontSize: 11.5, color: 'var(--text3)' }}>{l}</div><div style={{ fontWeight: 700, color: c }}>{v}</div>
+          <div key={l} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '5px 10px' }}>
+            <div style={{ fontSize: 11, color: 'var(--text3)' }}>{l}</div><div style={{ fontWeight: 700, fontSize: 14, color: c }}>{v}</div>
           </div>
         ))}
         <span style={{ flex: 1 }} />
         <label style={{ fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={onlyIssues} onChange={e => setOnlyIssues(e.target.checked)} /> лише розбіжності</label>
-        <button className="btn btn-sm" onClick={() => load(true)} disabled={busy}><i className="ti ti-refresh" /> {busy ? 'Рахую…' : 'Перерахувати'}</button>
+        <button className="btn btn-sm" onClick={() => load(true)} disabled={busy} title="Перерахувати"><i className="ti ti-refresh" />{busy ? ' …' : ''}</button>
       </div>
 
       <div className="tbl-wrap" style={{ border: 'none', maxHeight: '70vh', overflow: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: 1150 }}>
+        <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed', minWidth: 860 }}>
+          <colgroup>
+            <col style={{ width: '20%' }} /><col style={{ width: 74 }} /><col style={{ width: 42 }} /><col style={{ width: 86 }} /><col style={{ width: 66 }} />
+            <col style={{ width: 34 }} /><col style={{ width: '20%' }} /><col style={{ width: 74 }} /><col style={{ width: 42 }} /><col style={{ width: 86 }} /><col style={{ width: 82 }} /><col />
+          </colgroup>
           <thead>
             <tr>
               <th colSpan={5} style={{ textAlign: 'center', ...sub, fontWeight: 700, textTransform: 'uppercase' }}>Прихід (партія)</th>
               <th colSpan={7} style={{ textAlign: 'center', ...sub, ...sepL, fontWeight: 700, textTransform: 'uppercase' }}>Вихід (куди відвантажено)</th>
             </tr>
-            <tr>
-              <th>Прихідна · постачальник</th><th style={{ textAlign: 'right' }}>Дата</th><th style={{ textAlign: 'right' }}>К-сть</th>
-              <th style={{ textAlign: 'right' }}>Ціна приходу<div style={{ fontWeight: 400, textTransform: 'none' }}>без ПДВ</div></th><th style={{ textAlign: 'right' }}>Залишок</th>
-              <th style={sepL} /><th>Видаткова · клієнт</th><th style={{ textAlign: 'right' }}>Дата</th><th style={{ textAlign: 'right' }}>К-сть</th>
-              <th style={{ textAlign: 'right' }}>Ціна виходу<div style={{ fontWeight: 400, textTransform: 'none' }}>без ПДВ</div></th>
-              <th style={{ textAlign: 'right' }}>Маржа / од.<div style={{ fontWeight: 400, textTransform: 'none' }}>% · сума</div></th><th>Розбіжності</th>
+            <tr style={{ fontSize: 11 }}>
+              <th style={TH}>Прихідна · постачальник</th><th style={{ ...TH, textAlign: 'right' }}>Дата</th><th style={{ ...TH, textAlign: 'right' }}>К-сть</th>
+              <th style={{ ...TH, textAlign: 'right' }} title="без ПДВ">Ціна прих.</th><th style={{ ...TH, textAlign: 'right' }}>Залиш.</th>
+              <th style={{ ...TH, ...sepL }} title="днів на складі">дн.</th><th style={TH}>Видаткова · клієнт</th><th style={{ ...TH, textAlign: 'right' }}>Дата</th><th style={{ ...TH, textAlign: 'right' }}>К-сть</th>
+              <th style={{ ...TH, textAlign: 'right' }} title="без ПДВ">Ціна вих.</th>
+              <th style={{ ...TH, textAlign: 'right' }} title="маржа на одиницю · % · сума">Маржа / од.</th><th style={TH}>Розбіжності</th>
             </tr>
           </thead>
           <tbody>
@@ -120,10 +127,10 @@ export default function ProductBatches({ productId, unit, productName, onOpenDoc
               const span = Math.max(ships.length + (showLeft ? 1 : 0), 1)
               const left = (
                 <>
-                  <td rowSpan={span} style={{ ...td, background: 'var(--surface2)' }}>{docBtn(b.docId, `№${b.docNo}`)}<DocName name={b.docName} card={productName} /><div style={sub}>{b.supplier}</div></td>
+                  <td rowSpan={span} style={{ ...td, background: 'var(--surface2)' }}>{docBtn(b.docId, `№${b.docNo}`)}<DocName name={b.docName} card={productName} /><span style={sub} title={b.supplier}>{b.supplier}</span></td>
                   <td rowSpan={span} style={{ ...td, ...r, background: 'var(--surface2)' }}>{dmy(b.whDate)}{b.whDate !== b.docDate && <div style={{ fontSize: 11, color: 'var(--text3)' }}>док. {dmy(b.docDate)}</div>}</td>
                   <td rowSpan={span} style={{ ...td, ...r, background: 'var(--surface2)' }}>{qtyf(b.qty)}</td>
-                  <td rowSpan={span} style={{ ...td, ...r, background: 'var(--surface2)', fontWeight: 600 }} title={b.basis}>{num(b.unit)}<div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 400 }}>ПДВ {b.vat == null ? '—' : b.vat ? 'так' : 'ні'}</div></td>
+                  <td rowSpan={span} style={{ ...td, ...r, background: 'var(--surface2)', fontWeight: 600 }} title={`${b.basis}; ПДВ у прихідній: ${b.vat == null ? '—' : b.vat ? 'так' : 'ні'}`}>{num(b.unit)}<div style={{ fontSize: 10.5, color: 'var(--text3)', fontWeight: 400 }}>{b.vat == null ? '' : b.vat ? 'з ПДВ' : 'без ПДВ'}</div></td>
                   <td rowSpan={span} style={{ ...td, ...r, background: 'var(--surface2)', ...(leftIssue(b) ? AMB : {}) }}>{showLeft ? <>{qtyf(b.left)}<div style={{ fontSize: 11 }}>{money(b.leftValue)}</div></> : <span style={{ color: 'var(--text3)' }}>0</span>}</td>
                 </>
               )
@@ -131,8 +138,8 @@ export default function ProductBatches({ productId, unit, productName, onOpenDoc
                 <Fragment key={b.inId}>
                   {ships.length ? ships.map((s, i) => (
                     <tr key={i}>{i === 0 && left}<Right s={s} /></tr>
-                  )) : <tr>{left}{!showLeft && <RightEmpty><span style={sub}>не відвантажувалась</span></RightEmpty>}{showLeft && <RightEmpty style={leftIssue(b) ? AMB : undefined}>на складі {qtyf(b.left)} {unit || ''}{leftIssue(b) ? ' — а є відвантаження без партії (нижче): можливо, прихід датовано пізніше або партія не та' : ''}</RightEmpty>}</tr>}
-                  {ships.length > 0 && showLeft && <tr><RightEmpty style={leftIssue(b) ? AMB : { color: 'var(--text3)' }}>на складі {qtyf(b.left)} {unit || ''}{leftIssue(b) ? ' — а є відвантаження без партії (нижче)' : ''}</RightEmpty></tr>}
+                  )) : <tr>{left}{!showLeft && <RightEmpty><span style={sub}>не відвантажувалась</span></RightEmpty>}{showLeft && <RightEmpty style={leftIssue(b) ? AMB : undefined}>на складі {qtyf(b.left)} {unit || ''}{leftIssue(b) ? ' — є вихід без партії (нижче): прихід пізніше?' : ''}</RightEmpty>}</tr>}
+                  {ships.length > 0 && showLeft && <tr><RightEmpty style={leftIssue(b) ? AMB : { color: 'var(--text3)' }}>на складі {qtyf(b.left)} {unit || ''}{leftIssue(b) ? ' — є вихід без партії (нижче): прихід пізніше?' : ''}</RightEmpty></tr>}
                 </Fragment>
               )
             })}
@@ -144,7 +151,7 @@ export default function ProductBatches({ productId, unit, productName, onOpenDoc
                   {s.later?.length > 0 && <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>є пізніші партії з залишком: {s.later.map(l => `№${l.docNo} від ${dmy(l.whDate)} (${qtyf(l.left)})`).join(', ')} — «Виправити дату оприбуткування» або «Взяти з цієї прихідної» у звірці</div>}
                 </td>
                 <td style={{ ...td, ...sepL, textAlign: 'center' }}>→</td>
-                <td style={td}>{docBtn(s.docId, s.docNo)}<DocName name={s.docName} card={productName} /><div style={sub}>{s.client}</div></td>
+                <td style={td}>{docBtn(s.docId, s.docNo)}<DocName name={s.docName} card={productName} /><span style={sub} title={s.client}>{s.client}</span></td>
                 <td style={{ ...td, ...r }}>{dmy(s.date)}</td>
                 <td style={{ ...td, ...r }}>{qtyf(s.uncovered)}</td>
                 <td style={{ ...td, ...r, fontWeight: 600 }}>{s.isSale ? num(s.salePrice) : '—'}</td>
