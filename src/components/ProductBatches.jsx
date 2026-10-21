@@ -188,7 +188,8 @@ export default function ProductBatches({ productId, unit, productName, onOpenDoc
 function RelinkDialog({ s, fromInId, batches, unit, onClose, onDone }) {
   const cur = fromInId ? batches.find(b => b.inId === fromInId) : null
   const curShip = cur?.ships.find(x => x.outId === s.outId)
-  const [qty, setQty] = useState(String(s.takeQty || s.qty || 1))
+  const need = Number(s.takeQty || s.qty || 1)
+  const [qtys, setQtys] = useState({})   // к-сть окремо для кожної партії (за замовчуванням — скільки в ній можна взяти)
   const [busy, setBusy] = useState(null)
   const [err, setErr] = useState(null)
   const run = async (key, fn, text) => {
@@ -201,7 +202,7 @@ function RelinkDialog({ s, fromInId, batches, unit, onClose, onDone }) {
   const manualOthers = (b) => b.ships.filter(x => x.how === 'manual' && x.outId !== s.outId).reduce((t, x) => t + x.takeQty, 0)
   const list = batches.filter(b => b.inDocId && b.inId !== fromInId).map(b => ({ ...b, free: Math.max(freeFor(b), 0), max: Math.max(b.qty - manualOthers(b), 0), late: s.date && b.whDate > s.date }))
     .sort((a, b) => (b.free > 0) - (a.free > 0) || String(a.whDate).localeCompare(String(b.whDate)))
-  const n = Number(qty) || 0
+  const qOf = (b) => qtys[b.inId] ?? String(Math.min(need, b.max))
   return (
     <div className="modal-bg" onClick={busy ? undefined : onClose}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 760, width: '96%', maxHeight: '90vh', overflowY: 'auto' }}>
@@ -211,14 +212,12 @@ function RelinkDialog({ s, fromInId, batches, unit, onClose, onDone }) {
           {cur ? <div style={{ color: 'var(--text3)', marginTop: 3 }}>зараз: {num(curShip?.takeQty ?? s.takeQty, 0)} {unit || ''} з партії №{cur.docNo} ({dmy(cur.whDate)}) по {num(cur.unit)} · {HOW[curShip?.how || s.how] || ''}</div>
             : <div style={{ color: 'var(--red)', marginTop: 3 }}>зараз без партії: {qtyf(s.takeQty)} {unit || ''}</div>}
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, fontSize: 13 }}>
-          <span>Кількість:</span><input className="form-input" type="number" min="0" step="any" value={qty} onChange={e => setQty(e.target.value)} style={{ width: 100 }} />
-          <span style={{ color: 'var(--text3)' }}>{unit || ''} — буде взято з обраної партії вручну (має пріоритет над FIFO)</span>
-        </div>
+        <div style={{ fontSize: 12.5, color: 'var(--text3)', marginBottom: 8 }}>Потрібно {qtyf(need)} {unit || ''}. Можна брати з кількох партій — кожну окремо. Ручна прив'язка має пріоритет над FIFO: можна забрати й ту частину партії, яку FIFO зараз віддав іншій (пізнішій) видатковій — ту буде перерозподілено.</div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr style={{ color: 'var(--text3)', fontSize: 11.5 }}><th style={{ textAlign: 'left' }}>Партія</th><th style={{ textAlign: 'right' }}>Оприбутк.</th><th style={{ textAlign: 'right' }}>Ціна</th><th style={{ textAlign: 'right' }}>Вільно</th><th style={{ textAlign: 'right' }}>Маржа/од.</th><th /></tr></thead>
+          <thead><tr style={{ color: 'var(--text3)', fontSize: 11.5 }}><th style={{ textAlign: 'left' }}>Партія</th><th style={{ textAlign: 'right' }}>Оприбутк.</th><th style={{ textAlign: 'right' }}>Ціна</th><th style={{ textAlign: 'right' }}>Вільно</th><th style={{ textAlign: 'right' }}>Маржа/од.</th><th style={{ textAlign: 'right' }}>Взяти</th><th /></tr></thead>
           <tbody>{list.map(b => {
             const m = s.salePrice ? s.salePrice - b.unit : null
+            const n = Number(qOf(b)) || 0
             return (
               <tr key={b.inId} style={{ borderTop: '1px solid var(--border)' }}>
                 <td style={{ padding: '5px 4px' }}>№{b.docNo}<div style={{ fontSize: 11, color: 'var(--text3)' }}>{b.supplier}</div></td>
@@ -226,6 +225,7 @@ function RelinkDialog({ s, fromInId, batches, unit, onClose, onDone }) {
                 <td style={{ padding: '5px 4px', textAlign: 'right' }}>{num(b.unit)}</td>
                 <td style={{ padding: '5px 4px', textAlign: 'right', color: b.free > 0 ? undefined : 'var(--text3)' }} title="вільно за FIFO / максимум для ручної прив'язки">{qtyf(b.free)}{b.max > b.free + 0.00001 && <div style={{ fontSize: 11, color: 'var(--text3)' }}>до {qtyf(b.max)}</div>}</td>
                 <td style={{ padding: '5px 4px', textAlign: 'right', color: m == null ? undefined : m < 0 ? 'var(--red)' : 'var(--green)' }}>{m == null ? '—' : num(m, 0)}</td>
+                <td style={{ padding: '5px 4px', textAlign: 'right' }}><input className="form-input" type="number" min="0" step="any" value={qOf(b)} onChange={e => setQtys(x => ({ ...x, [b.inId]: e.target.value }))} style={{ width: 72, height: 30, padding: '2px 6px' }} disabled={!(b.max > 0)} /></td>
                 <td style={{ padding: '5px 4px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                   <button className="btn btn-sm btn-primary" disabled={!!busy || !(n > 0) || n > b.max + 0.00001} title={n > b.max ? 'партію вже вручну прив\'язано до інших видаткових' : n > b.free ? 'частину зараз бере інша видаткова за FIFO — її буде перерозподілено' : ''}
                     onClick={() => (n <= b.free + 0.00001 || window.confirm(`У партії №${b.docNo} вільно ${qtyf(b.free)}, решту зараз бере інша видаткова за FIFO — її буде перерозподілено на інші партії (або вона стане «без партії»). Продовжити?`))
