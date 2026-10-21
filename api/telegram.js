@@ -362,7 +362,10 @@ export default async function handler(req, res) {
     }
     if (s?.flow === 'op' && s.step === 'op_desc') {
       const signed = s.kind === 'in' ? Math.abs(s.amount) : -Math.abs(s.amount)
+      // юрособа — як у рахунку (без company_id операція не видна в «Банк/Каса» жодної юрособи)
+      const { data: acc } = await admin.from('accounts').select('company_id, name').eq('id', s.account_id).maybeSingle()
       const { error } = await admin.from('bank_transactions').insert({
+        company_id: acc?.company_id || null, counterparty: 'Операція з Telegram',
         account_id: s.account_id, date: kyivToday(), amount: signed,
         direction: s.kind === 'in' ? 'Доходи' : 'Витрати', description: text === '-' ? null : text,
         is_validated: true, is_ignored: false,

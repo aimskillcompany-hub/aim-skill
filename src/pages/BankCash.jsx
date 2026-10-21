@@ -114,6 +114,16 @@ function TransactionsTab({ accounts, onChange }) {
     }
     const { data } = await qb
     const list = data || []
+    // назва прив'язаного контрагента — коли в самій виписці назви немає
+    const cIds = [...new Set(list.map(r => r.contractor_id).filter(Boolean))]
+    if (cIds.length) {
+      const names = {}
+      for (let i = 0; i < cIds.length; i += 200) {
+        const { data: cs } = await supabase.from('contractors').select('id, name').in('id', cIds.slice(i, i + 200))
+        ;(cs || []).forEach(c => { names[c.id] = c.name })
+      }
+      list.forEach(r => { if (r.contractor_id && names[r.contractor_id]) r.contractors = { name: names[r.contractor_id] } })
+    }
     // Авто-матч контрагента для непідтверджених без прив'язки (при відкритті списку)
     const matcher = await getContractorMatcher()
     list.forEach(r => {
@@ -323,7 +333,10 @@ function TransactionsTab({ accounts, onChange }) {
                   <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}><input type="checkbox" checked={sel.has(r.id)} onChange={() => toggleSel(r.id)} style={{ cursor: 'pointer' }} /></td>
                   <td style={{ fontSize: 12, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{r.date}</td>
                   <td>
-                    <div className="trunc" style={{ fontWeight: 500 }}>{r.counterparty || '—'}</div>
+                    {/* контрагент: з виписки → з картки контрагента → переказ між рахунками */}
+                    <div className="trunc" style={{ fontWeight: 500 }}>{r.counterparty || r.contractors?.name
+                      || (/^Переказ (на|з) /.test(r.description || '') ? <span style={{ color: 'var(--text3)', fontWeight: 400 }}><i className="ti ti-arrows-exchange" /> внутрішній переказ</span>
+                        : <span style={{ color: 'var(--text3)', fontWeight: 400 }} title="У виписці немає назви платника/отримувача і контрагента не прив'язано">— контрагент не вказано</span>)}</div>
                     {r.description && <div className="trunc" style={{ fontSize: 11, color: 'var(--text3)' }}>{r.description}</div>}
                   </td>
                   <td className={r.amount >= 0 ? 'amt-pos' : 'amt-neg'} style={{ textAlign: 'right', fontWeight: 600 }}>{r.amount >= 0 ? '+' : ''}{fmt(r.amount)}</td>
