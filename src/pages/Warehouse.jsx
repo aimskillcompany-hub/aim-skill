@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { qc, withCompany } from '../lib/companyScope'
 import { fetchAll, fetchAllData, fetchAllIn } from '../lib/fetchAll'
 import { useUser } from '../lib/auth'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { fmt, fmtInt } from '../lib/fmt'
 import { assembleProduct, getAssembly, deleteAssembly, editAssembly, mergeProducts } from '../lib/stockService'
 import { exportAssemblyAct } from '../lib/assemblyAct'
@@ -23,7 +23,9 @@ const SRC_LABEL = { document: 'з документа', manual: 'вручну', a
 const srcLabel = (s) => SRC_LABEL[s] || s || '—'
 
 export default function Warehouse() {
-  const [tab, setTab] = useState('goods')
+  const [params, setParams] = useSearchParams()
+  const [tab, setTabState] = useState(() => params.get('tab') || 'goods')
+  const setTab = (t) => { setTabState(t); setParams(t === 'goods' ? {} : { tab: t }, { replace: true }) }
   const [recalc, setRecalc] = useState(false)
   const [diag, setDiag] = useState(false)
   return (
@@ -63,7 +65,7 @@ function StockTab() {
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
   const [onlyStock, setOnlyStock] = useState(false)
-  const [detail, setDetail] = useState(null)
+  const openProduct = useOpenProduct()
   const [cat, setCat] = useState('')        // фільтр за категорією ('' = всі, '__none__' = без категорії)
   const [grouped, setGrouped] = useState(false)
   const [sel, setSel] = useState(() => new Set()) // обрані товари для масового присвоєння
@@ -148,7 +150,7 @@ function StockTab() {
     const stock = Number(r.computed_stock) || 0
     const stockColor = stock > 0 ? 'var(--green)' : stock < 0 ? 'var(--red)' : 'var(--text3)'
     return (
-      <tr key={r.id} style={{ cursor: 'pointer', background: sel.has(r.id) ? 'var(--surface2)' : undefined }} onClick={() => setDetail(r)}>
+      <tr key={r.id} style={{ cursor: 'pointer', background: sel.has(r.id) ? 'var(--surface2)' : undefined }} onClick={() => openProduct(r, 'goods')}>
         <td style={{ width: 34 }} onClick={e => { e.stopPropagation(); toggleSel(r.id) }}>
           <input type="checkbox" checked={sel.has(r.id)} onChange={() => {}} style={{ display: 'block' }} />
         </td>
@@ -213,7 +215,6 @@ function StockTab() {
           </table>
         </div>
       </div>
-      {detail && <ProductModal product={detail} onClose={() => { setDetail(null); load() }} />}
     </div>
   )
 }
@@ -222,7 +223,7 @@ function StockTab() {
 function ServicesTab() {
   const [rows, setRows] = useState(null)
   const [q, setQ] = useState('')
-  const [detail, setDetail] = useState(null)
+  const openProduct = useOpenProduct()
   const [showArchived, setShowArchived] = useState(false)
 
   const load = async () => {
@@ -259,7 +260,7 @@ function ServicesTab() {
             <thead><tr><th>Послуга</th><th style={{ textAlign: 'right' }}>К-сть</th><th style={{ textAlign: 'right' }}>Загальна вартість</th></tr></thead>
             <tbody>
               {list.map(r => (
-                <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setDetail(r)}>
+                <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => openProduct(r, 'services')}>
                   <td><div className="trunc" style={{ fontWeight: 500 }}>{r.name}{r.status === 'archived' && <span style={{ fontSize: 10, color: 'var(--text3)', border: '1px solid var(--border)', borderRadius: 4, padding: '0 4px', marginLeft: 6 }}>архів</span>}</div>{r.category && <div style={{ fontSize: 11, color: 'var(--text3)' }}>{r.category}</div>}</td>
                   <td style={{ textAlign: 'right' }}>{fmt(r[qtyKey])}</td>
                   <td style={{ textAlign: 'right', fontWeight: 600, color }}>{fmtInt(r[valKey])}</td>
@@ -284,11 +285,10 @@ function ServicesTab() {
         <div className="card">
           <div className="card-title">Без операцій ({both.length})</div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {both.map(r => <span key={r.id} onClick={() => setDetail(r)} style={{ background: 'var(--surface2)', borderRadius: 6, padding: '2px 8px', fontSize: 12, cursor: 'pointer' }}>{r.name}</span>)}
+            {both.map(r => <span key={r.id} onClick={() => openProduct(r, 'services')} style={{ background: 'var(--surface2)', borderRadius: 6, padding: '2px 8px', fontSize: 12, cursor: 'pointer' }}>{r.name}</span>)}
           </div>
         </div>
       )}
-      {detail && <ProductModal product={detail} onClose={() => { setDetail(null); load() }} />}
     </div>
   )
 }
@@ -299,7 +299,7 @@ function ConsumablesTab() {
   const [rows, setRows] = useState(null)
   const [q, setQ] = useState('')
   const [consume, setConsume] = useState(null)
-  const [detail, setDetail] = useState(null)
+  const openProduct = useOpenProduct()
   const [showArchived, setShowArchived] = useState(false)
 
   const load = async () => {
@@ -330,7 +330,7 @@ function ConsumablesTab() {
                 const c = bal > 0 ? 'var(--green)' : bal < 0 ? 'var(--red)' : 'var(--text3)'
                 return (
                   <tr key={r.id}>
-                    <td onClick={() => setDetail(r)} style={{ cursor: 'pointer' }}><div className="trunc" style={{ fontWeight: 500, color: 'var(--blue)' }}>{r.name}{r.status === 'archived' && <span style={{ fontSize: 10, color: 'var(--text3)', border: '1px solid var(--border)', borderRadius: 4, padding: '0 4px', marginLeft: 6 }}>архів</span>}</div></td>
+                    <td onClick={() => openProduct(r, 'consumables')} style={{ cursor: 'pointer' }}><div className="trunc" style={{ fontWeight: 500, color: 'var(--blue)' }}>{r.name}{r.status === 'archived' && <span style={{ fontSize: 10, color: 'var(--text3)', border: '1px solid var(--border)', borderRadius: 4, padding: '0 4px', marginLeft: 6 }}>архів</span>}</div></td>
                     <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{fmt(r.total_in)}</td>
                     <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{fmt(r.total_out)}</td>
                     <td style={{ textAlign: 'right', color: c, fontWeight: 600 }}>{fmt(bal)} {r.unit}</td>
@@ -344,7 +344,6 @@ function ConsumablesTab() {
         </div>
       </div>
       {consume && <ConsumeModal product={consume} user={user} onClose={() => setConsume(null)} onDone={() => { setConsume(null); load() }} />}
-      {detail && <ProductModal product={detail} onClose={() => { setDetail(null); load() }} />}
     </div>
   )
 }
@@ -391,7 +390,28 @@ function ConsumeModal({ product, user, onClose, onDone }) {
 
 const PRODUCT_TYPES = [['goods', 'Товар'], ['service', 'Послуга'], ['expense', 'Розхідний матеріал']]
 
-function ProductModal({ product, onClose }) {
+// картка товару відкривається окремою сторінкою /inventory/product/:id (з поверненням на ту саму вкладку складу)
+function useOpenProduct() {
+  const navigate = useNavigate()
+  return (r, tab = 'goods') => navigate(`/inventory/product/${r.id}${tab !== 'goods' ? `?from=${tab}` : ''}`)
+}
+export function ProductPage() {
+  const { id } = useParams()
+  const [params] = useSearchParams()
+  const navigate = useNavigate()
+  const from = params.get('from')
+  const back = `/inventory${from ? `?tab=${from}` : ''}`
+  const [product, setProduct] = useState(null)
+  const [missing, setMissing] = useState(false)
+  useEffect(() => {
+    supabase.from('products').select('id, name').eq('id', id).maybeSingle().then(({ data }) => { if (data) setProduct(data); else setMissing(true) })
+  }, [id])
+  if (missing) return <div><Link to={back}>← Склад</Link><p style={{ color: 'var(--text3)' }}>Товар не знайдено.</p></div>
+  if (!product) return <div><Link to={back}>← Склад</Link><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
+  return <ProductModal product={product} asPage backTo={back} onClose={() => navigate(back)} />
+}
+
+function ProductModal({ product, onClose, asPage = false, backTo = '/inventory' }) {
   const { user } = useUser()
   const [aliases, setAliases] = useState([])
   const [movs, setMovs] = useState([])
@@ -472,9 +492,15 @@ function ProductModal({ product, onClose }) {
   }
 
   return (
-    <div className="modal-bg" onClick={onClose}>
-      <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
-        <div className="modal-header"><h2>{form?.name || product.name}</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
+    <div className={asPage ? undefined : 'modal-bg'} onClick={asPage ? undefined : onClose}>
+      <div className={asPage ? undefined : 'modal modal-lg'} onClick={e => e.stopPropagation()}>
+        {asPage ? (
+          <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <Link to={backTo} className="btn btn-sm"><i className="ti ti-arrow-left" /> Склад</Link>
+            <h1 style={{ margin: 0, flex: 1, minWidth: 200 }}>{form?.name || product.name}</h1>
+            {form?.sku && <span style={{ color: 'var(--text3)', fontSize: 14 }}>{form.sku}</span>}
+          </div>
+        ) : <div className="modal-header"><h2>{form?.name || product.name}</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>}
         <div className="kpi-grid" style={{ marginBottom: 16 }}>
           {(form?.product_type || stock?.product_type) === 'service'
             ? <div className="kpi"><div className="kpi-label">Послуга</div><div className="kpi-value" style={{ fontSize: 16 }}>без залишку</div></div>
@@ -528,7 +554,7 @@ function ProductModal({ product, onClose }) {
           ))}
         </div>
         {view === 'batches' && <ProductBatches productId={product.id} unit={form?.unit || stock?.unit} onOpenDoc={openAnyDoc} />}
-        {view === 'movs' && <div className="tbl-wrap" style={{ border: 'none', maxHeight: 280, overflowY: 'auto' }}>
+        {view === 'movs' && <div className="tbl-wrap" style={{ border: 'none', maxHeight: asPage ? '70vh' : 280, overflowY: 'auto' }}>
           <table><thead><tr><th>Дата</th><th>Тип</th><th style={{ textAlign: 'right' }}>К-сть</th><th style={{ textAlign: 'right' }}>Собівартість</th><th>Опис</th><th>Документ</th><th /></tr></thead>
             <tbody>{movs.map(m => <tr key={m.id}><td style={{ fontSize: 12 }}>{m.date}</td><td>{m.type === 'in' ? 'Прихід' : m.type === 'out' ? 'Видаток' : m.type}</td><td style={{ textAlign: 'right' }}>{fmt(m.quantity)}</td><td style={{ textAlign: 'right' }}>{m.cost_price ? fmt(m.cost_price) : '—'}</td><td><div className="trunc">{m.description}</div></td>
               <td>{m.documents

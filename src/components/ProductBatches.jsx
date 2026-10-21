@@ -43,7 +43,7 @@ export default function ProductBatches({ productId, unit, onOpenDoc }) {
         <button className="btn btn-sm" onClick={() => load(true)} disabled={busy} style={{ alignSelf: 'center' }}><i className="ti ti-refresh" /> {busy ? 'Рахую…' : 'Перерахувати'}</button>
       </div>
 
-      <div className="tbl-wrap" style={{ border: 'none', maxHeight: 420, overflowY: 'auto' }}>
+      <div className="tbl-wrap" style={{ border: 'none', maxHeight: '65vh', overflowY: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead><tr>
             <th /><th>Партія (прихідна)</th><th>Оприбутк.</th><th style={{ textAlign: 'right' }}>К-сть</th><th style={{ textAlign: 'right' }}>Ціна закуп. без ПДВ</th><th>ПДВ</th>
