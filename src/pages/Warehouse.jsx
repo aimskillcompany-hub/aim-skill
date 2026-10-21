@@ -11,6 +11,8 @@ import { getDocType } from '../lib/docgen'
 import DocModal from '../components/DocModal'
 import RecalcCostModal from '../components/RecalcCostModal'
 import CostDiagnosticsModal from '../components/CostDiagnosticsModal'
+import ProductBatches from '../components/ProductBatches'
+import { loadDocFull } from '../lib/shipmentRecon'
 import GeneratedDocModal from '../components/GeneratedDocModal'
 import { useSort, SortTh } from '../components/Sort'
 import { todayKyiv } from '../lib/dates'
@@ -404,6 +406,8 @@ function ProductModal({ product, onClose }) {
   const [err, setErr] = useState(null)
   const [showMove, setShowMove] = useState(false)
   const [showMerge, setShowMerge] = useState(false)
+  const [view, setView] = useState('batches')   // «Партії» | «Рухи»
+  const openAnyDoc = (id) => loadDocFull(id).then(d => d && (d.source === 'generated' ? setGenDoc(d) : setOpenDoc(d)))
   const loadStock = () => qc('product_stock').select('computed_stock, total_in, total_out, unit, product_type').eq('id', product.id).maybeSingle().then(({ data }) => setStock(data))
   const loadMovs = () => qc('stock_movements').select(`id, type, quantity, cost_price, date, description, source, document_id, ${DOC_EMBED}`).eq('product_id', product.id).order('date', { ascending: false }).limit(50).then(({ data }) => setMovs(data || []))
   useEffect(() => {
@@ -518,8 +522,13 @@ function ProductModal({ product, onClose }) {
           <button className="btn" onClick={() => setShowMove(true)}><i className="ti ti-plus" /> Ручний рух</button>
           <button className="btn" onClick={() => setShowMerge(true)}><i className="ti ti-arrows-join" /> Об'єднати з товаром</button>
         </div>
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 6 }}>Рухи</div>
-        <div className="tbl-wrap" style={{ border: 'none', maxHeight: 280, overflowY: 'auto' }}>
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 10 }}>
+          {[['batches', 'Партії', 'ti-stack-2'], ['movs', 'Рухи', 'ti-arrows-up-down']].map(([k, l, ic]) => (
+            <button key={k} onClick={() => setView(k)} style={{ background: 'none', border: 0, borderBottom: '2px solid ' + (view === k ? 'var(--text)' : 'transparent'), padding: '6px 12px', font: 'inherit', fontWeight: view === k ? 700 : 500, color: view === k ? 'var(--text)' : 'var(--text3)', cursor: 'pointer', display: 'flex', gap: 6, alignItems: 'center' }}><i className={`ti ${ic}`} />{l}</button>
+          ))}
+        </div>
+        {view === 'batches' && <ProductBatches productId={product.id} unit={form?.unit || stock?.unit} onOpenDoc={openAnyDoc} />}
+        {view === 'movs' && <div className="tbl-wrap" style={{ border: 'none', maxHeight: 280, overflowY: 'auto' }}>
           <table><thead><tr><th>Дата</th><th>Тип</th><th style={{ textAlign: 'right' }}>К-сть</th><th style={{ textAlign: 'right' }}>Собівартість</th><th>Опис</th><th>Документ</th><th /></tr></thead>
             <tbody>{movs.map(m => <tr key={m.id}><td style={{ fontSize: 12 }}>{m.date}</td><td>{m.type === 'in' ? 'Прихід' : m.type === 'out' ? 'Видаток' : m.type}</td><td style={{ textAlign: 'right' }}>{fmt(m.quantity)}</td><td style={{ textAlign: 'right' }}>{m.cost_price ? fmt(m.cost_price) : '—'}</td><td><div className="trunc">{m.description}</div></td>
               <td>{m.documents
@@ -527,7 +536,7 @@ function ProductModal({ product, onClose }) {
                 : <span style={{ color: 'var(--text3)', fontSize: 12 }}>{srcLabel(m.source)} <button className="btn" onClick={() => setLinkMov(m)} title="Прив'язати документ" style={{ padding: '0 6px' }}><i className="ti ti-link" /></button></span>}</td>
               <td style={{ textAlign: 'right' }}><button className="btn" onClick={() => delMov(m)} title="Видалити рух" style={{ padding: '0 6px', color: 'var(--red)' }}><i className="ti ti-trash" /></button></td></tr>)}</tbody>
           </table>
-        </div>
+        </div>}
       </div>
       {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />}
       {genDoc && <GeneratedDocModal doc={genDoc} onClose={() => setGenDoc(null)} />}
