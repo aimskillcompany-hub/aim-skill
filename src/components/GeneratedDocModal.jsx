@@ -130,7 +130,7 @@ export default function GeneratedDocModal({ doc, onClose, onDeleted, onScanUploa
                         <tr key={i}>
                           <td style={{ fontSize: 12 }}><div className="trunc" title={it.name}>{it.name}</div></td>
                           <td style={{ textAlign: 'right', fontSize: 12, whiteSpace: 'nowrap' }}>{it.quantity ?? it.qty} {it.unit || 'шт'}</td>
-                          <td style={{ textAlign: 'right', fontSize: 12 }}>{fmt(Number(it.amount) || 0)}</td>
+                          <td style={{ textAlign: 'right', fontSize: 12 }}>{fmt(Number(it.amount) || (Number(it.quantity ?? it.qty) || 0) * (Number(it.unitPrice ?? it.unit_price ?? it.price) || 0))}</td>
                         </tr>
                       ))}
                     </tbody>
