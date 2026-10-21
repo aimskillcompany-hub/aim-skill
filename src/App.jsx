@@ -34,6 +34,7 @@ const ProductPage = lazyPage(() => import('./pages/Warehouse').then(m => ({ defa
 const ShipmentRecon = lazyPage(() => import('./pages/ShipmentRecon'))
 const PriceLists = lazyPage(() => import('./pages/PriceLists'))
 const Documents = lazyPage(() => import('./pages/Documents'))
+const DocGenRecon = lazyPage(() => import('./pages/DocGenRecon'))
 const Mail = lazyPage(() => import('./pages/Mail'))
 const Analytics = lazyPage(() => import('./pages/Analytics'))
 const Investor = lazyPage(() => import('./pages/Investor'))
@@ -83,6 +84,7 @@ export default function App() {
               <Route path="/inventory/recon" element={<Gate section="inventory"><ShipmentRecon /></Gate>} />
               <Route path="/prices" element={<Gate section="prices"><PriceLists /></Gate>} />
               <Route path="/documents" element={<Gate section="documents"><Documents /></Gate>} />
+              <Route path="/documents/gen-recon" element={<Gate section="documents"><DocGenRecon /></Gate>} />
               <Route path="/mail" element={<Gate section="mail"><Mail /></Gate>} />
               <Route path="/analytics" element={<Gate section="analytics"><Analytics /></Gate>} />
               <Route path="/investor" element={<Gate section="investor"><Investor /></Gate>} />

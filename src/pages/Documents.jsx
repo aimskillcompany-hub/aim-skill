@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { qc } from '../lib/companyScope'
 import { useUser } from '../lib/auth'
@@ -91,6 +92,7 @@ export default function Documents() {
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <h1>Документи</h1>
         <div style={{ display: 'flex', gap: 8 }}>
+          <Link to="/documents/gen-recon" className="btn" title="Де картка документа і PDF розходяться (етап 1 об'єднання документів)"><i className="ti ti-arrows-diff" /> Звірка з PDF</Link>
           <button className="btn" onClick={() => setShowOcr(true)}><i className="ti ti-scan" /> Завантажити скан (OCR)</button>
           <button className="btn" onClick={() => setShowBatch(true)}><i className="ti ti-stack-2" /> Масове завантаження</button>
           <button className="btn btn-primary" onClick={() => setPickGen(true)}><i className="ti ti-file-plus" /> Згенерувати</button>
