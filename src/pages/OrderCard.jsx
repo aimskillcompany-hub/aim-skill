@@ -1101,9 +1101,10 @@ function DocumentsTab({ o }) {
   const unlink = async (d) => { await qc('documents').update({ order_id: null }).eq('id', d.id); load() }
   const delGen = async (d) => {
     const label = getDocType(d.doc_type)?.label || 'документ'
-    if (!confirm(`Видалити «${label}${d.doc_number ? ' №' + d.doc_number : ''}»?\nРазом із ним буде видалено запис у Документах, прив'язки оплат і складські рухи цього документа.`)) return
+    const { deleteGeneratedDoc, describeDeletion } = await import('../lib/docgen')
+    const extra = await describeDeletion(d.id)
+    if (!confirm(`Видалити «${label}${d.doc_number ? ' №' + d.doc_number : ''}»?\nРазом із ним буде видалено запис у Документах, прив'язки оплат і складські рухи цього документа.${extra}`)) return
     try {
-      const { deleteGeneratedDoc } = await import('../lib/docgen')
       await deleteGeneratedDoc(d.id)
     } catch (e) { alert('Не вдалося видалити: ' + e.message) }
     loadGen()

@@ -216,7 +216,7 @@ function isMissingRefsColumn(msg = '') {
   return /invoice_ref|delivery_basis|delivery_address/.test(msg)
 }
 
-const cleanErr = (m) => /PERIOD_CLOSED/.test(m || '') ? String(m).replace(/^.*PERIOD_CLOSED:\s*/, '') : m
+const cleanErr = (m) => /PERIOD_CLOSED/.test(m || '') ? String(m).replace(/^.*PERIOD_CLOSED:\s*/, '') : String(m || '').replace(/^NO_RIGHTS:\s*/, '')
 
 // ── Зберегти документ в БД ──
 // Етап 3 об'єднання документів: документ — ОДИН рядок у documents (дані для PDF — items, print_data тощо).
@@ -465,14 +465,37 @@ export async function deleteGeneratedDoc(anyId) {
   const { error } = await supabase.rpc('delete_document_full', { p_doc: d.id })
   if (!error) return
   if (!(error.code === 'PGRST202' || /delete_document_full/.test(error.message || ''))) throw new Error(cleanErr(error.message))
-  // до 086 — покроково
+  // до 086 — покроково; якщо правила доступу «сховали» рухи (не видалились) — документ НЕ видаляємо (без рухів-сиріт)
   const { error: sErr } = await qc('stock_movements').delete().eq('document_id', d.id).neq('source', 'assembly')
   if (sErr) throw new Error(cleanErr(sErr.message))
+  const { count: left } = await qc('stock_movements').select('id', { count: 'exact', head: true }).eq('document_id', d.id).neq('source', 'assembly')
+  if (left > 0) throw new Error(`Недостатньо прав, щоб видалити складські рухи документа (${left}). Документ не видалено — видалити може адміністратор.`)
   const { error: dErr } = await qc('documents').delete().eq('id', d.id)
   if (dErr) throw new Error(cleanErr(dErr.message))
   if (d.generated_doc_id) await qc('generated_docs').delete().eq('id', d.generated_doc_id)
 }
 export const deleteDocument = deleteGeneratedDoc
+
+// Що зникне / зміниться разом із документом — текст для підтвердження видалення (086: delete_document_preview).
+// Без міграції або при помилці — порожній рядок (підтвердження без подробиць).
+export async function describeDeletion(anyId) {
+  try {
+    const d = await resolveDocRow(anyId, 'id')
+    if (!d) return ''
+    const { data: p, error } = await supabase.rpc('delete_document_preview', { p_doc: d.id })
+    if (error || !p) return ''
+    const fmt = (n) => Number(n || 0).toLocaleString('uk-UA', { maximumFractionDigits: 2 })
+    const lines = []
+    if (p.movements) lines.push(`• складські рухи: ${p.movements} (склад відкотиться)`)
+    if (p.payments?.count) lines.push(`• прив'язки оплат: ${p.payments.count} на ${fmt(p.payments.amount)} грн — платежі стануть «без прив'язки»`)
+    if (Number(p.sold_from_batches?.qty) > 0) lines.push(`• з партій цієї прихідної вже продано ${fmt(p.sold_from_batches.qty)} шт (${(p.sold_from_batches.docs || []).join(', ')}) — собівартість цих продажів доведеться перерахувати (FIFO)`)
+    if (p.manual) lines.push(`• ручні дані звірки (прив'язки партій, ручна собівартість, закриті партії): ${p.manual}`)
+    if (p.recon_acks) lines.push(`• позначки «перевірено» у звірці: ${p.recon_acks}`)
+    if (p.agent_commission) lines.push('• агентська комісія документа')
+    if (p.children) lines.push(`• пов'язані («дочірні») документи: ${p.children} — посилання на цей документ буде прибрано`)
+    return lines.length ? '\n\nРазом із документом зникне:\n' + lines.join('\n') : ''
+  } catch { return '' }
+}
 
 // ── Оновити статус ──
 export async function updateDocStatus(id, status, bankTransactionId) {

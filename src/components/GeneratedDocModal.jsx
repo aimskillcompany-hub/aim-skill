@@ -61,7 +61,9 @@ export default function GeneratedDocModal({ doc, onClose, onDeleted, onScanUploa
   }
 
   const deleteDoc = async () => {
-    if (!confirm(`Видалити «${label}${gd?.doc_number ? ' №' + gd.doc_number : ''}»?\nЦе прибере і згенерований документ, і його запис у Документах, і пов'язані складські рухи.`)) return
+    const { describeDeletion } = await import('../lib/docgen')
+    const extra = await describeDeletion(doc.id || doc.generated_doc_id)
+    if (!confirm(`Видалити «${label}${gd?.doc_number ? ' №' + gd.doc_number : ''}»?\nЦе прибере і згенерований документ, і його запис у Документах, і пов'язані складські рухи.${extra}`)) return
     setBusy(true); setErr(null)
     try {
       const { deleteGeneratedDoc } = await import('../lib/docgen')
