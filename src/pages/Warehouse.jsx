@@ -12,7 +12,9 @@ import DocModal from '../components/DocModal'
 import RecalcCostModal from '../components/RecalcCostModal'
 import CostDiagnosticsModal from '../components/CostDiagnosticsModal'
 import ProductBatches from '../components/ProductBatches'
-import { loadDocFull } from '../lib/shipmentRecon'
+import { loadDocFull, dmy } from '../lib/shipmentRecon'
+import { loadPurchaseSummary } from '../lib/productBatches'
+import { loadBatches } from '../lib/batches'
 import GeneratedDocModal from '../components/GeneratedDocModal'
 import { useSort, SortTh } from '../components/Sort'
 import { todayKyiv } from '../lib/dates'
@@ -84,6 +86,11 @@ function StockTab() {
     setLoading(false)
   }
   useEffect(() => { load() }, [showArchived])
+  // ціна по залишку = вартість партій, що лишились (найпізніші приходи), / к-сть — замість одного «buy_price»
+  const [stockAt, setStockAt] = useState(null)
+  useEffect(() => { const d = todayKyiv(); loadBatches(d).then(b => setStockAt(b.at(d))).catch(() => setStockAt(null)) }, [])
+  const unitPrice = (r) => { const x = stockAt?.[r.id]; return x?.qty > 0 ? x.value / x.qty : Number(r.buy_price) || 0 }
+  const valueOf = (r) => stockAt ? (stockAt[r.id]?.value || 0) : (Number(r.computed_stock) || 0) * (Number(r.buy_price) || 0)
 
   const categories = useMemo(() => {
     const set = new Set()
@@ -102,11 +109,11 @@ function StockTab() {
     })
   }, [rows, q, onlyStock, cat])
 
-  const totalValue = useMemo(() => filtered.reduce((s, r) => s + (Number(r.computed_stock) || 0) * (Number(r.buy_price) || 0), 0), [filtered])
+  const totalValue = useMemo(() => filtered.reduce((s, r) => s + valueOf(r), 0), [filtered, stockAt])
   const { sort, onSort, sorted } = useSort('name', 'asc')
   const view = sorted(filtered, {
     computed_stock: r => Number(r.computed_stock) || 0,
-    buy_price: r => Number(r.buy_price) || 0,
+    buy_price: r => unitPrice(r),
     sell_price: r => Number(r.sell_price) || 0,
   })
 
@@ -123,11 +130,11 @@ function StockTab() {
       key,
       label: key === '__none__' ? 'Без категорії' : key,
       items,
-      value: items.reduce((s, r) => s + (Number(r.computed_stock) || 0) * (Number(r.buy_price) || 0), 0),
+      value: items.reduce((s, r) => s + valueOf(r), 0),
     }))
     arr.sort((a, b) => a.key === '__none__' ? 1 : b.key === '__none__' ? -1 : a.label.localeCompare(b.label, 'uk'))
     return arr
-  }, [grouped, view])
+  }, [grouped, view, stockAt])
 
   const toggleSel = (id) => setSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
   const allVisibleSelected = view.length > 0 && view.every(r => sel.has(r.id))
@@ -157,7 +164,7 @@ function StockTab() {
         <td><div className="trunc" style={{ fontWeight: 500 }}>{r.name}{r.status === 'archived' && <span style={{ fontSize: 10, color: 'var(--text3)', border: '1px solid var(--border)', borderRadius: 4, padding: '0 4px', marginLeft: 6 }}>архів</span>}</div></td>
         <td style={{ color: 'var(--text2)', fontSize: 12 }}>{r.sku || '—'}</td>
         <td style={{ textAlign: 'right', color: stockColor, fontWeight: stock !== 0 ? 600 : 400 }}>{fmt(stock)} {r.unit}</td>
-        <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{r.buy_price ? fmt(r.buy_price) : '—'}</td>
+        <td style={{ textAlign: 'right', color: 'var(--text2)' }} title="Середня ціна партій, що лишились на складі (без ПДВ)">{unitPrice(r) ? fmt(unitPrice(r)) : '—'}</td>
         <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{r.sell_price ? fmt(r.sell_price) : '—'}</td>
       </tr>
     )
@@ -196,7 +203,7 @@ function StockTab() {
               <SortTh label="Товар" k="name" sort={sort} onSort={onSort} />
               <SortTh label="Артикул" k="sku" sort={sort} onSort={onSort} />
               <SortTh label="Залишок" k="computed_stock" sort={sort} onSort={onSort} align="right" />
-              <SortTh label="Закупівля" k="buy_price" sort={sort} onSort={onSort} align="right" />
+               <SortTh label="Ціна по залишку" k="buy_price" sort={sort} onSort={onSort} align="right" />
               <SortTh label="Продаж" k="sell_price" sort={sort} onSort={onSort} align="right" />
             </tr></thead>
             <tbody>
@@ -427,6 +434,8 @@ function ProductModal({ product, onClose, asPage = false, backTo = '/inventory' 
   const [showMove, setShowMove] = useState(false)
   const [showMerge, setShowMerge] = useState(false)
   const [view, setView] = useState('batches')   // «Партії» | «Рухи»
+  const [pur, setPur] = useState(null)          // ціни закупівлі за партіями
+  useEffect(() => { loadPurchaseSummary(product.id).then(setPur).catch(() => setPur(null)) }, [product.id])
   const openAnyDoc = (id) => loadDocFull(id).then(d => d && (d.source === 'generated' ? setGenDoc(d) : setOpenDoc(d)))
   const loadStock = () => qc('product_stock').select('computed_stock, total_in, total_out, unit, product_type').eq('id', product.id).maybeSingle().then(({ data }) => setStock(data))
   const loadMovs = () => qc('stock_movements').select(`id, type, quantity, cost_price, date, description, source, document_id, ${DOC_EMBED}`).eq('product_id', product.id).order('date', { ascending: false }).limit(50).then(({ data }) => setMovs(data || []))
@@ -451,7 +460,7 @@ function ProductModal({ product, onClose, asPage = false, backTo = '/inventory' 
     const { error } = await supabase.from('products').update({
       name: form.name.trim(), sku: form.sku?.trim() || null, unit: form.unit?.trim() || 'шт',
       category: form.category?.trim() || null, product_type: form.product_type,
-      buy_price: form.buy_price === '' ? null : Number(form.buy_price), sell_price: form.sell_price === '' ? null : Number(form.sell_price),
+      sell_price: form.sell_price === '' ? null : Number(form.sell_price),   // закупівля — лише з партій (не вводиться)
       min_stock: form.min_stock === '' ? null : Number(form.min_stock),
     }).eq('id', product.id)
     setBusy(false)
@@ -523,7 +532,15 @@ function ProductModal({ product, onClose, asPage = false, backTo = '/inventory' 
               <datalist id="wh-categories">{allCats.map(c => <option key={c} value={c} />)}</datalist>
             </div>
             <div className="form-group"><label>Одиниця</label><input className="form-input" value={form.unit || ''} onChange={e => setF('unit', e.target.value)} /></div>
-            <div className="form-group"><label>Ціна закупівлі</label><input className="form-input" type="number" step="any" value={form.buy_price ?? ''} onChange={e => setF('buy_price', e.target.value)} /></div>
+            <div className="form-group"><label>Закупівля (за партіями, без ПДВ)</label>
+              <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', fontSize: 13, background: 'var(--surface2)', minHeight: 44 }}>
+                {!pur ? <span style={{ color: 'var(--text3)' }}>…</span> : !pur.last ? <span style={{ color: 'var(--text3)' }}>приходів немає</span> : <>
+                  <div>остання: <b>{fmt(pur.last.unit)}</b> <span style={{ color: 'var(--text3)' }}>({pur.last.docNo ? `№${pur.last.docNo}, ` : ''}{dmy(pur.last.date)}{pur.last.supplier ? `, ${pur.last.supplier}` : ''})</span></div>
+                  {pur.stockAvg != null && <div>по залишку {fmt(pur.onHand)}: <b>{fmt(pur.stockAvg)}</b> <span style={{ color: 'var(--text3)' }}>· {fmt(pur.stockValue)} грн</span></div>}
+                  {pur.lots.length > 1 && <div style={{ color: 'var(--text3)' }}>партій {pur.lots.length}: від {fmt(pur.min)} до {fmt(pur.max)}, середня {fmt(pur.avg)}</div>}
+                </>}
+              </div>
+            </div>
             <div className="form-group"><label>Ціна продажу</label><input className="form-input" type="number" step="any" value={form.sell_price ?? ''} onChange={e => setF('sell_price', e.target.value)} /></div>
             <div className="form-group"><label>Мін. залишок</label><input className="form-input" type="number" step="any" value={form.min_stock ?? ''} onChange={e => setF('min_stock', e.target.value)} /></div>
           </div>
@@ -555,8 +572,8 @@ function ProductModal({ product, onClose, asPage = false, backTo = '/inventory' 
         </div>
         {view === 'batches' && <ProductBatches productId={product.id} unit={form?.unit || stock?.unit} onOpenDoc={openAnyDoc} />}
         {view === 'movs' && <div className="tbl-wrap" style={{ border: 'none', maxHeight: asPage ? '70vh' : 280, overflowY: 'auto' }}>
-          <table><thead><tr><th>Дата</th><th>Тип</th><th style={{ textAlign: 'right' }}>К-сть</th><th style={{ textAlign: 'right' }}>Собівартість</th><th>Опис</th><th>Документ</th><th /></tr></thead>
-            <tbody>{movs.map(m => <tr key={m.id}><td style={{ fontSize: 12 }}>{m.date}</td><td>{m.type === 'in' ? 'Прихід' : m.type === 'out' ? 'Видаток' : m.type}</td><td style={{ textAlign: 'right' }}>{fmt(m.quantity)}</td><td style={{ textAlign: 'right' }}>{m.cost_price ? fmt(m.cost_price) : '—'}</td><td><div className="trunc">{m.description}</div></td>
+          <table><thead><tr><th>Дата</th><th>Тип</th><th style={{ textAlign: 'right' }}>К-сть</th><th style={{ textAlign: 'right' }} title="Прихід — ціна партії без ПДВ; видаток — собівартість">Ціна / собівартість</th><th>Опис</th><th>Документ</th><th /></tr></thead>
+            <tbody>{movs.map(m => <tr key={m.id}><td style={{ fontSize: 12 }}>{m.date}</td><td>{m.type === 'in' ? 'Прихід' : m.type === 'out' ? 'Видаток' : m.type}</td><td style={{ textAlign: 'right' }}>{fmt(m.quantity)}</td><td style={{ textAlign: 'right' }}>{m.type === 'in' ? (pur?.units[m.id]?.unit ? <span title={pur.units[m.id].basis}>{fmt(pur.units[m.id].unit)}</span> : '—') : m.cost_price ? fmt(m.cost_price) : '—'}</td><td><div className="trunc">{m.description}</div></td>
               <td>{m.documents
                 ? <a onClick={() => m.documents.source === 'generated' ? setGenDoc(m.documents) : setOpenDoc(m.documents)} style={{ color: 'var(--blue)', cursor: 'pointer', fontSize: 12 }}><i className="ti ti-file" /> {getDocType(m.documents.type)?.label || 'документ'}</a>
                 : <span style={{ color: 'var(--text3)', fontSize: 12 }}>{srcLabel(m.source)} <button className="btn" onClick={() => setLinkMov(m)} title="Прив'язати документ" style={{ padding: '0 6px' }}><i className="ti ti-link" /></button></span>}</td>

@@ -7,7 +7,8 @@ import { qc } from './companyScope'
 import { fetchAll, fetchAllIn } from './fetchAll'
 import { debtDate } from './debts'
 import { loadPrintDates } from './accrual'
-import { batchUnit, dmy } from './shipmentRecon'
+import { dmy } from './shipmentRecon'
+import { batchUnit } from './batchPrice'
 import { daysBetween } from './dates'
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100
@@ -107,3 +108,37 @@ export async function loadProductBatches(productId, { force = false } = {}) {
   }
 }
 export { dmy }
+
+// Ціни закупівлі товару за партіями (легко, без FIFO-прогону): ціна кожного приходу без ПДВ, остання закупівля,
+// діапазон, середня ціна ЗАЛИШКУ (залишок покривається найпізнішими партіями — як оцінка складу).
+export async function loadPurchaseSummary(productId) {
+  const movs = await fetchAll(() => qc('stock_movements').select('id, type, quantity, price, cost_price, date, document_id, company_id, created_at').eq('product_id', productId))
+  const ins = movs.filter(m => m.type === 'in')
+  const docIds = [...new Set(ins.map(m => m.document_id).filter(Boolean))]
+  let docs = []
+  if (docIds.length) {
+    try { docs = await fetchAllIn(() => qc('documents').select('id, doc_number, doc_date, created_at, amount, vat_amount, warehouse_date, contractors(name)'), 'id', docIds) } catch { docs = await fetchAllIn(() => qc('documents').select('id, doc_number, doc_date, created_at, amount, vat_amount, contractors(name)'), 'id', docIds) }
+  }
+  const docById = {}; docs.forEach(d => { docById[d.id] = d })
+  const docInsAll = docIds.length ? await fetchAllIn(() => qc('stock_movements').select('id, document_id, quantity, price, cost_price').eq('type', 'in'), 'document_id', docIds) : []
+  const docIns = {}; docInsAll.forEach(m => { (docIns[m.document_id] ||= []).push(m) })
+  const { data: comps } = await supabase.from('companies').select('id, is_vat_payer')
+  const payer = {}; (comps || []).forEach(c => { payer[c.id] = c.is_vat_payer !== false })
+  const units = {}
+  const lots = ins.map(m => {
+    const d = docById[m.document_id], u = batchUnit(m, d, docIns[m.document_id], payer[m.company_id] !== false)
+    units[m.id] = u
+    return { id: m.id, qty: Number(m.quantity) || 0, unit: u.unit, vat: u.vat, date: d?.warehouse_date || m.date, docNo: d?.doc_number || null, supplier: d?.contractors?.name || '', created: m.created_at }
+  }).filter(x => x.unit > 0).sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.created).localeCompare(String(b.created)))
+  const onHand = movs.reduce((s, m) => s + (m.type === 'in' ? 1 : -1) * (Number(m.quantity) || 0), 0)
+  let need = Math.max(onHand, 0), value = 0
+  for (const l of lots.slice().reverse()) { if (need <= 0.00001) break; const t = Math.min(need, l.qty); value += t * l.unit; need -= t }
+  const covered = Math.max(onHand, 0) - Math.max(need, 0)
+  const all = lots.map(l => l.unit)
+  return {
+    units, lots, last: lots[lots.length - 1] || null, onHand: r2(onHand),
+    stockAvg: covered > 0 ? r2(value / covered) : null, stockValue: r2(value),
+    min: all.length ? Math.min(...all) : null, max: all.length ? Math.max(...all) : null,
+    avg: lots.length ? r2(lots.reduce((s, l) => s + l.qty * l.unit, 0) / (lots.reduce((s, l) => s + l.qty, 0) || 1)) : null,
+  }
+}
