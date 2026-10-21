@@ -5,10 +5,13 @@ import { useUser } from '../lib/auth'
 import { fmtInt } from '../lib/fmt'
 import { normalizeName } from '../lib/contractors'
 import { useSort, SortTh } from '../components/Sort'
+import { useCompany } from '../lib/company'
+import { loadContractorTurnover } from '../lib/debts'
 
 export default function Contractors() {
   const { user } = useUser()
   const navigate = useNavigate()
+  const { companies } = useCompany()
   const [list, setList] = useState([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
@@ -17,13 +20,16 @@ export default function Contractors() {
 
   const load = async () => {
     setLoading(true)
-    const { data } = await supabase.from('contractors')
-      .select('id, name, short_name, edrpou, is_client, is_supplier, total_income, total_expense, operations_count, last_operation_date')
-      .order('total_income', { ascending: false })
-    setList(data || [])
+    // обороти — живцем з банку (збережені колонки контрагента застарівали)
+    const [{ data }, turnover] = await Promise.all([
+      supabase.from('contractors').select('id, name, short_name, edrpou, is_client, is_supplier'),
+      loadContractorTurnover(companies.map(x => x.id)).catch(() => ({})),
+    ])
+    const empty = { total_income: 0, total_expense: 0, operations_count: 0, last_operation_date: null }
+    setList((data || []).map(c => ({ ...c, ...empty, ...(turnover[c.id] || {}) })))
     setLoading(false)
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [companies])
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase()

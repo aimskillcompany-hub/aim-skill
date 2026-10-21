@@ -5,6 +5,7 @@ import { qc } from '../lib/companyScope'
 import { useUser } from '../lib/auth'
 import { fmt, fmtInt } from '../lib/fmt'
 import { getContractorBalance } from '../lib/debts'
+import { useCompany } from '../lib/company'
 import { fetchByEdrpou, isVkursiConfigured } from '../lib/vkursi'
 import { extractCompanyExtract } from '../lib/ai'
 import { getDocType } from '../lib/docgen'
@@ -26,12 +27,13 @@ export default function ContractorCard() {
   const navigate = useNavigate()
   const [c, setC] = useState(null)
   const [bal, setBal] = useState(null)
+  const { companies } = useCompany()
   const [tab, setTab] = useState('details')
 
   useEffect(() => {
     supabase.from('contractors').select('*').eq('id', id).single().then(({ data }) => setC(data))
-    getContractorBalance(id).then(setBal)
-  }, [id])
+    getContractorBalance(id, companies.map(x => x.id)).then(setBal)
+  }, [id, companies])
 
   if (!c) return <div className="page-header"><h1>Завантаження…</h1></div>
 
@@ -51,13 +53,11 @@ export default function ContractorCard() {
 
       {/* KPI */}
       <div className="kpi-grid" style={{ marginBottom: 20 }}>
-        {/* Від'ємне сальдо = передоплата: показуємо окремим підписом, а не як борг (раніше знак губився) */}
-        {bal && bal.receivable < -0.5
-          ? <Kpi label="Аванс від клієнта (оплачено наперед)" value={-bal.receivable} />
-          : <Kpi label="Дебіторка (нам винні)" value={bal ? Math.max(0, bal.receivable) : null} positive />}
-        {bal && bal.payable < -0.5
-          ? <Kpi label="Наш аванс постачальнику" value={-bal.payable} />
-          : <Kpi label="Кредиторка (ми винні)" value={bal ? Math.max(0, bal.payable) : null} negative />}
+        {/* Те саме правило, що й звіт «Дебіторка»: документ − прив'язані до нього оплати; оплати без документа — окремо */}
+        <Kpi label="Дебіторка (нам винні)" value={bal ? bal.receivable : null} positive
+          note={bal?.unlinkedIn > 0.5 ? `+ оплати від клієнта без прив'язки до документа: ${fmtInt(bal.unlinkedIn)} грн — у боргу не враховані (аванс або прив'яжіть у «Банк»)` : null} />
+        <Kpi label="Кредиторка (ми винні)" value={bal ? bal.payable : null} negative
+          note={bal?.unlinkedOut > 0.5 ? `+ наші оплати без прив'язки до документа: ${fmtInt(bal.unlinkedOut)} грн` : null} />
         <Kpi label="Оборот за рік" value={bal ? bal.turnoverYear : null} />
       </div>
 
@@ -87,7 +87,7 @@ export default function ContractorCard() {
 
 const tag = (bg, color) => ({ background: bg, color, borderRadius: 6, padding: '2px 10px', fontSize: 12, fontWeight: 600 })
 
-function Kpi({ label, value, positive, negative }) {
+function Kpi({ label, value, positive, negative, note }) {
   const color = value == null ? 'var(--text3)' : positive && value > 0 ? 'var(--green)' : negative && value > 0 ? 'var(--red)' : 'var(--text)'
   return (
     <div className="kpi">
@@ -95,6 +95,7 @@ function Kpi({ label, value, positive, negative }) {
       <div className="kpi-value" style={{ color }}>
         {value == null ? '…' : fmtInt(value)} <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text3)' }}>грн</span>
       </div>
+      {note && <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 4, lineHeight: 1.35 }}>{note}</div>}
     </div>
   )
 }
