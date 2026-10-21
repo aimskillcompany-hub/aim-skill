@@ -11,7 +11,7 @@ import GeneratedDocModal from '../components/GeneratedDocModal'
 
 // Згенерований документ без прикріпленого реального скана → GeneratedDocModal (рендер з даних),
 // інакше DocModal намагається завантажити файл зі Storage і падає «Object not found».
-const isPureGenerated = (d) => d?.source === 'generated' && d?.generated_doc_id && !(d.storage_path && !/^generated\//.test(d.storage_path))
+const isPureGenerated = (d) => (d?.source === 'generated' || d?.generated_doc_id) && !(d.storage_path && !/^generated\//.test(d.storage_path))
 import { CashFlowView, PLView, BalanceView } from './Analytics'
 
 const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД', 'ОЗ']

@@ -154,12 +154,10 @@ export async function runCostDiagnostics(from, to) {
     .filter(d => countsAsDebt(d.type) && d.type !== 'serviceAct')
   const postedDocIds = new Set(payDocs.length ? (await fetchAllIn(() => qc('stock_movements').select('id, document_id').eq('type', 'in'), 'document_id', payDocs.map(d => d.id))).map(m => m.document_id) : [])
   const unposted = payDocs.filter(d => !postedDocIds.has(d.id))
-  const withItems = unposted.length ? await fetchAllIn(() => qc('documents').select('id, ocr_data'), 'id', unposted.map(d => d.id)) : []
-  const ocrById = {}; withItems.forEach(x => { ocrById[x.id] = x.ocr_data })
-  const genIds = unposted.map(d => d.generated_doc_id).filter(Boolean)
-  const gens = genIds.length ? await fetchAllIn(() => qc('generated_docs').select('id, items'), 'id', genIds) : []
-  const genById = {}; gens.forEach(g => { genById[g.id] = g.items })
-  unposted.forEach(d => { d.items = [...parseItems(ocrById[d.id]?.items), ...parseItems(genById[d.generated_doc_id])].filter(i => i?.name) })
+  // позиції: розпізнані (ocr_data) або згенеровані (documents.items, етап 3 об'єднання)
+  const withItems = unposted.length ? await fetchAllIn(() => qc('documents').select('id, ocr_data, items'), 'id', unposted.map(d => d.id)) : []
+  const ocrById = {}, genById = {}; withItems.forEach(x => { ocrById[x.id] = x.ocr_data; genById[x.id] = x.items })
+  unposted.forEach(d => { d.items = [...parseItems(ocrById[d.id]?.items), ...parseItems(genById[d.id])].filter(i => i?.name) })
   // постачальники позицій замовлень (для збігу за постачальником)
   const missOrderIds = [...new Set(missingRows.map(r => r.order_id).filter(Boolean))]
   const oItems = missOrderIds.length ? await fetchAllIn(() => supabase.from('order_items').select('id, order_id, product_id, name, supplier_id, qty, unit, cost_price'), 'order_id', missOrderIds) : []

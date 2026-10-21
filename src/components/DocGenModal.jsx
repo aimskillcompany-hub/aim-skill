@@ -79,9 +79,9 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
         setContractsList(list)
       })
       // Наявні рахунки цього контрагента — щоб у видатковій/акті обрати рахунок, а не вводити вручну
-      qc('generated_docs').select('id, doc_number, doc_date, total')
-        .eq('contractor_id', contractor.id).eq('doc_type', 'invoice').order('doc_date', { ascending: false })
-        .then(({ data }) => setInvoicesList(data || []))
+      qc('documents').select('id, doc_number, doc_date, amount')
+        .eq('contractor_id', contractor.id).eq('type', 'invoice').order('doc_date', { ascending: false })
+        .then(({ data }) => setInvoicesList((data || []).map(d => ({ ...d, total: d.amount }))))
     }
   }, [])
 
@@ -207,7 +207,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
             const path = `incoming/${savedDoc.id}/${Date.now()}.${ext}`
             const { error: upErr } = await supabase.storage.from('documents').upload(path, f, { contentType: f.type })
             if (!upErr) {
-              await qc('generated_docs').update({ file_path: path, file_name: f.name }).eq('id', savedDoc.id)
+              await qc('documents').update({ storage_path: path, file_path: path, file_name: f.name, file_type: f.type }).eq('id', savedDoc.id)
             }
           }
         }

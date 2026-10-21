@@ -196,9 +196,10 @@ export async function getNextDocNumber(docTypeKey) {
   const prefix = dt.prefix
 
   // Нумерація ОКРЕМА на кожну юрособу: qc() скоупить за активною компанією (company_id).
-  const { data } = await qc('generated_docs')
+  // етап 3 об'єднання: усі документи — в documents (і згенеровані, і завантажені з тим самим префіксом)
+  const { data } = await qc('documents')
     .select('doc_number')
-    .eq('doc_type', docTypeKey)
+    .eq('type', docTypeKey)
 
   const re = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-(\\d+)$`)
   let max = 0
@@ -218,66 +219,32 @@ function isMissingRefsColumn(msg = '') {
 const cleanErr = (m) => /PERIOD_CLOSED/.test(m || '') ? String(m).replace(/^.*PERIOD_CLOSED:\s*/, '') : m
 
 // ── Зберегти документ в БД ──
+// Етап 3 об'єднання документів: документ — ОДИН рядок у documents (дані для PDF — items, print_data тощо).
 export async function saveDoc({ docType, docNumber, docDate, contractorId, contractorName, items, subtotal, vatAmount, total, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress, parentDocId, contractId, orderId, userId }) {
-  const base = {
-    doc_type: docType,
-    doc_number: docNumber,
-    doc_date: docDate || null,
-    contractor_id: contractorId,
-    contractor_name: contractorName,
-    items: JSON.stringify(cleanItems(items)),
-    subtotal, vat_amount: vatAmount, total,
-    notes: notes || null,
-    contract_num: contractNum || null,
-    contract_date: contractDate || null,
-    payment_due: paymentDue || null,
-    city: city || null,
-    parent_doc_id: parentDocId || null,
-    contract_id: contractId || null,
-    order_id: orderId || null,
-    created_by: userId,
-  }
-  const refs = {
-    invoice_ref: invoiceRef || null,
-    invoice_ref_date: invoiceRefDate || null,
-    delivery_basis: deliveryBasis || null,
-    delivery_address: deliveryAddress || null,
-  }
-  let { data, error } = await qc('generated_docs').insert(withCompany({ ...base, ...refs })).select('id').single()
-  if (error && isMissingRefsColumn(error.message)) {
-    ;({ data, error } = await qc('generated_docs').insert(withCompany(base)).select('id').single())
-  }
-
-  if (error) throw new Error(error.message)
-
   const dt = getDocType(docType)
+  // той самий тип + номер + контрагент уже є → не створюємо другий (раніше тихо створювався «зайвий» PDF)
+  let dup = qc('documents').select('id').eq('type', docType).eq('doc_number', docNumber)
+  dup = contractorId ? dup.eq('contractor_id', contractorId) : dup.is('contractor_id', null)
+  const { data: existing } = await dup.limit(1)
+  if (existing?.length) throw new Error(`${dt?.label || 'Документ'} № ${docNumber} для цього контрагента вже є — відкрийте його і відредагуйте, або змініть номер.`)
+  const id = (globalThis.crypto?.randomUUID && globalThis.crypto.randomUUID()) || undefined
+  const row = withCompany({
+    ...(id ? { id, file_path: `generated/${id}.pdf` } : {}),
+    type: docType, doc_number: docNumber, doc_date: docDate || null,
+    contractor_id: contractorId || null, order_id: orderId || null,
+    amount: total ?? null, vat_amount: vatAmount ?? null, subtotal: subtotal ?? null,
+    direction: dt?.direction === 'incoming' ? 'payable' : 'receivable',
+    doc_role: dt?.direction === 'incoming' ? 'incoming' : 'outgoing',
+    file_name: `${dt?.label || 'Документ'}_${docNumber}.pdf`,
+    source: 'generated',
+    items: cleanItems(items),
+    parent_doc_id: parentDocId || null, contract_id: contractId || null,
+    print_data: printDataOf({ contractorName, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress }),
+  })
+  const { data, error } = await qc('documents').insert(row).select('id').single()
+  if (error) throw new Error('Документ не збережено: ' + (/items|print_data|subtotal/.test(error.message || '') ? 'спершу застосуйте міграцію 083' : cleanErr(error.message)))
 
-  // Дзеркало в documents (канонічний список: Документи, картка контрагента, борги).
-  // Створюється МИТТЄВО (без рендера PDF). Пропускаємо, якщо документ з таким
-  // же контрагентом+типом+номером уже існує (щоб не задвоювати борг).
-  if (data?.id) {
-    let dup = qc('documents').select('id', { count: 'exact', head: true }).eq('type', docType).eq('doc_number', docNumber)
-    dup = contractorId ? dup.eq('contractor_id', contractorId) : dup.is('contractor_id', null)
-    const { count: existing } = await dup
-    if (existing) return data // вже є такий документ — дзеркало не створюємо
-    const { error: mErr } = await qc('documents').insert(withCompany({
-      type: docType, doc_number: docNumber, doc_date: docDate || null,
-      contractor_id: contractorId || null, order_id: orderId || null,
-      amount: total ?? null, vat_amount: vatAmount ?? null,
-      direction: dt.direction === 'incoming' ? 'payable' : 'receivable',
-      doc_role: dt.direction === 'incoming' ? 'incoming' : 'outgoing',
-      file_name: `${dt.label}_${docNumber}.pdf`, file_path: `generated/${data.id}.pdf`,
-      source: 'generated', generated_doc_id: data.id,
-    }))
-    if (mErr) {
-      // без дзеркала документ не потрапив би в борги/Документи — відкочуємо, щоб не лишати «напівзбережене»
-      await qc('generated_docs').delete().eq('id', data.id)
-      throw new Error('Документ не збережено: ' + cleanErr(mErr.message))
-    }
-  }
-
-  // Автоматичні складські рухи тільки для прихідних (IN)
-  // Для видаткових (OUT) — потрібне підтвердження користувача
+  // Автоматичні складські рухи тільки для прихідних (IN); для видаткових (OUT) — підтвердження користувача
   if (dt?.stockEffect === 'in' && data?.id) {
     try {
       await createStockFromDoc(data.id, docType, cleanItems(items), docDate, userId)
@@ -286,9 +253,49 @@ export async function saveDoc({ docType, docNumber, docDate, contractorId, contr
       throw new Error('Документ не збережено: ' + e.message)
     }
   }
-
   return data
 }
+
+// реквізити лише для друку (documents.print_data)
+function printDataOf({ contractorName, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress }) {
+  const o = { contractor_name: contractorName, notes, contract_num: contractNum, contract_date: contractDate, payment_due: paymentDue, city,
+    invoice_ref: invoiceRef, invoice_ref_date: invoiceRefDate, delivery_basis: deliveryBasis, delivery_address: deliveryAddress }
+  Object.keys(o).forEach(k => { if (o[k] == null || o[k] === '') delete o[k] })
+  return o
+}
+
+// Документ за будь-яким його id: documents.id (нові), старий id згенерованого (legacy_generated_id / generated_doc_id)
+export async function resolveDocRow(anyId, cols = '*') {
+  if (!anyId) return null
+  for (const col of ['id', 'legacy_generated_id', 'generated_doc_id']) {
+    const { data, error } = await qc('documents').select(cols).eq(col, anyId).limit(1)
+    if (error && col !== 'id') continue
+    if (error) throw new Error(error.message)
+    if (data?.length) return data[0]
+  }
+  return null
+}
+
+// Рядок documents → форма «згенерованого документа» для шаблонів PDF і редактора (ті самі назви полів, що були в generated_docs)
+export function docRowToGen(d) {
+  if (!d) return null
+  const p = d.print_data || {}
+  let items = d.items
+  if (typeof items === 'string') { try { items = JSON.parse(items) } catch { items = [] } }
+  return {
+    id: d.id, documentId: d.id, doc_type: d.type, doc_number: d.doc_number, doc_date: d.doc_date,
+    contractor_id: d.contractor_id, contractor_name: p.contractor_name || d.contractors?.name || '',
+    items: Array.isArray(items) ? items : [], subtotal: d.subtotal, vat_amount: d.vat_amount, total: d.amount,
+    notes: p.notes, contract_num: p.contract_num, contract_date: p.contract_date, payment_due: p.payment_due, city: p.city,
+    invoice_ref: p.invoice_ref, invoice_ref_date: p.invoice_ref_date, delivery_basis: p.delivery_basis, delivery_address: p.delivery_address,
+    status: d.gen_status, bank_transaction_id: d.gen_bank_transaction_id, parent_doc_id: d.parent_doc_id, contract_id: d.contract_id,
+    order_id: d.order_id, to_sign: d.to_sign, to_sign_at: d.to_sign_at, created_at: d.created_at,
+    storage_path: d.storage_path, file_path: d.file_path, source: d.source,
+  }
+}
+export async function loadGenDoc(anyId) { return docRowToGen(await resolveDocRow(anyId)) }
+// згенерований документ (без власного скану PDF будується з даних картки)
+export const isGeneratedDoc = (d) => !!d && (d.source === 'generated' || !!d.generated_doc_id)
 
 // ── Створити складські рухи з документа ──
 export async function createStockFromDoc(docId, docType, items, date, userId) {
@@ -297,14 +304,9 @@ export async function createStockFromDoc(docId, docType, items, date, userId) {
 
   const { resolveProduct } = await import('../stockService')
 
-  // docId — це generated_docs.id. Для прив'язки руху до розділу «Документи»
-  // знаходимо дзеркальний рядок у documents (за generated_doc_id).
-  let mirrorId = null
-  if (docId) {
-    const { data: mirror, error: mErr } = await qc('documents').select('id').eq('generated_doc_id', docId).maybeSingle()
-    if (mErr) throw new Error(mErr.message)
-    mirrorId = mirror?.id || null
-  }
+  // docId — documents.id (етап 3); старі виклики могли передати id згенерованого — шукаємо за будь-яким
+  const mirror = docId ? await resolveDocRow(docId, 'id') : null
+  const mirrorId = mirror?.id || null
   const created = [] // id створених рухів — щоб відкотити, якщо наступний не вдасться
   const rollback = async () => { if (created.length) await qc('stock_movements').delete().in('id', created) }
 
@@ -367,8 +369,7 @@ export async function createStockFromDoc(docId, docType, items, date, userId) {
 export async function syncStockForGenerated(genId, docType, items, date, userId) {
   const dt = getDocType(docType)
   if (!dt?.stockEffect || !genId) return { skipped: true }
-  const { data: mirror, error: mErr } = await qc('documents').select('id').eq('generated_doc_id', genId).maybeSingle()
-  if (mErr) throw new Error(mErr.message)
+  const mirror = await resolveDocRow(genId, 'id')
   if (!mirror) return { skipped: true }
   let existing
   {
@@ -435,74 +436,60 @@ export async function syncStockForGenerated(genId, docType, items, date, userId)
   return { updated, created, deleted }
 }
 
-// ── Оновити документ ──
+// ── Оновити документ ── (етап 3: один рядок documents; id — будь-який id документа)
 export async function updateDoc(id, { docNumber, docDate, items, subtotal, vatAmount, total, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress }) {
-  const base = {
-    doc_number: docNumber,
-    doc_date: docDate || null,
-    items: JSON.stringify(cleanItems(items)),
-    subtotal, vat_amount: vatAmount, total,
-    notes: notes || null,
-    contract_num: contractNum || null,
-    contract_date: contractDate || null,
-    payment_due: paymentDue || null,
-    city: city || null,
-  }
-  const refs = {
-    invoice_ref: invoiceRef || null,
-    invoice_ref_date: invoiceRefDate || null,
-    delivery_basis: deliveryBasis || null,
-    delivery_address: deliveryAddress || null,
-  }
-  // Спершу дзеркало в documents (на ньому тригер закритого періоду), потім сам документ —
-  // щоб не вийшло «документ змінено, а борг ні».
-  const { data: prevMirror } = await qc('documents').select('id, doc_number, doc_date, amount, vat_amount').eq('generated_doc_id', id)
-  const { error: mErr } = await qc('documents').update({ doc_number: docNumber, doc_date: docDate || null, amount: total ?? null, vat_amount: vatAmount ?? null }).eq('generated_doc_id', id)
-  if (mErr) throw new Error('Не збережено: ' + cleanErr(mErr.message))
-  let { error } = await qc('generated_docs').update({ ...base, ...refs }).eq('id', id)
-  if (error && isMissingRefsColumn(error.message)) {
-    ;({ error } = await qc('generated_docs').update(base).eq('id', id))
-  }
-  if (error) {
-    for (const m of prevMirror || []) await qc('documents').update({ doc_number: m.doc_number, doc_date: m.doc_date, amount: m.amount, vat_amount: m.vat_amount }).eq('id', m.id)
-    throw new Error(error.message)
-  }
+  const d = await resolveDocRow(id, 'id, print_data, contractors(name)')
+  if (!d) throw new Error('Документ не знайдено')
+  const pd = { ...(d.print_data || {}), ...printDataOf({ contractorName: d.print_data?.contractor_name || d.contractors?.name, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress }) }
+  ;['notes', 'contract_num', 'contract_date', 'payment_due', 'city', 'invoice_ref', 'invoice_ref_date', 'delivery_basis', 'delivery_address'].forEach(k => {
+    const v = { notes, contract_num: contractNum, contract_date: contractDate, payment_due: paymentDue, city, invoice_ref: invoiceRef, invoice_ref_date: invoiceRefDate, delivery_basis: deliveryBasis, delivery_address: deliveryAddress }[k]
+    if (v == null || v === '') delete pd[k]
+  })
+  const { error } = await qc('documents').update({
+    doc_number: docNumber, doc_date: docDate || null, amount: total ?? null, vat_amount: vatAmount ?? null, subtotal: subtotal ?? null,
+    items: cleanItems(items), print_data: pd,
+  }).eq('id', d.id)
+  if (error) throw new Error('Не збережено: ' + cleanErr(error.message))
 }
 
-// ── Видалити згенерований документ разом із дзеркалом у documents і його рухами складу ──
-// Одна транзакція (RPC delete_generated_doc, міграція 070): якщо щось заборонено (закритий період) —
-// не видаляється нічого. До 070 — покроково з перевіркою помилок (рухи → дзеркало → документ).
-export async function deleteGeneratedDoc(id) {
-  const { error } = await supabase.rpc('delete_generated_doc', { p_id: id })
-  if (!error) return
-  if (!(error.code === 'PGRST202' || /delete_generated_doc/.test(error.message || ''))) throw new Error(cleanErr(error.message))
-  const { data: mirrors, error: mErr } = await qc('documents').select('id').eq('generated_doc_id', id)
-  if (mErr) throw new Error(mErr.message)
-  const ids = (mirrors || []).map(m => m.id)
-  if (ids.length) {
-    const { error: sErr } = await qc('stock_movements').delete().in('document_id', ids).neq('source', 'assembly')
-    if (sErr) throw new Error(cleanErr(sErr.message))
-    const { error: dErr } = await qc('documents').delete().in('id', ids)
-    if (dErr) throw new Error(cleanErr(dErr.message))
+// ── Видалити згенерований документ: рухи складу (крім збірок) → картка documents → його архівна версія ──
+// Одна транзакція (RPC delete_document_full, міграція 086): закритий період / права — не видаляється нічого.
+export async function deleteGeneratedDoc(anyId) {
+  const d = await resolveDocRow(anyId, 'id, generated_doc_id')
+  if (!d) {
+    // лише старий згенерований без картки
+    const { error } = await supabase.rpc('delete_generated_doc', { p_id: anyId })
+    if (error) throw new Error(cleanErr(error.message))
+    return
   }
-  const { error: gErr } = await qc('generated_docs').delete().eq('id', id)
-  if (gErr) throw new Error(cleanErr(gErr.message))
+  const { error } = await supabase.rpc('delete_document_full', { p_doc: d.id })
+  if (!error) return
+  if (!(error.code === 'PGRST202' || /delete_document_full/.test(error.message || ''))) throw new Error(cleanErr(error.message))
+  // до 086 — покроково
+  const { error: sErr } = await qc('stock_movements').delete().eq('document_id', d.id).neq('source', 'assembly')
+  if (sErr) throw new Error(cleanErr(sErr.message))
+  const { error: dErr } = await qc('documents').delete().eq('id', d.id)
+  if (dErr) throw new Error(cleanErr(dErr.message))
+  if (d.generated_doc_id) await qc('generated_docs').delete().eq('id', d.generated_doc_id)
 }
+export const deleteDocument = deleteGeneratedDoc
 
 // ── Оновити статус ──
 export async function updateDocStatus(id, status, bankTransactionId) {
-  const upd = { status }
-  if (bankTransactionId) upd.bank_transaction_id = bankTransactionId
-  const { error } = await qc('generated_docs').update(upd).eq('id', id)
+  const d = await resolveDocRow(id, 'id')
+  if (!d) throw new Error('Документ не знайдено')
+  const upd = { gen_status: status }
+  if (bankTransactionId) upd.gen_bank_transaction_id = bankTransactionId
+  const { error } = await qc('documents').update(upd).eq('id', d.id)
   if (error) throw new Error(error.message)
 }
 
 // ── Завантажити документи контрагента ──
 export async function loadContractorDocs(contractorId) {
-  const { data } = await supabase
-    .from('generated_docs')
+  const { data } = await qc('documents')
     .select('*')
     .eq('contractor_id', contractorId)
+    .or('source.eq.generated,generated_doc_id.not.is.null')
     .order('doc_date', { ascending: false })
-  return data || []
+  return (data || []).map(docRowToGen)
 }

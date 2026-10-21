@@ -41,21 +41,17 @@ export async function loadDocItems(docs) {
   const out = {}
   if (!docs?.length) return out
   const ids = docs.map(d => d.docId)
-  const genIds = [...new Set(docs.map(d => d.generated_doc_id).filter(Boolean))]
+  // етап 3 об'єднання: позиції згенерованого — у самій картці documents (items, print_data)
   const ocrById = {}, genById = {}
   for (let i = 0; i < ids.length; i += 100) {
-    const { data } = await supabase.from('documents').select('id, ocr_data').in('id', ids.slice(i, i + 100))
-    ;(data || []).forEach(x => ocrById[x.id] = x.ocr_data)
-  }
-  for (let i = 0; i < genIds.length; i += 100) {
-    const { data } = await supabase.from('generated_docs').select('id, items, contract_num, contract_date').in('id', genIds.slice(i, i + 100))
-    ;(data || []).forEach(x => genById[x.id] = x)
+    const { data } = await supabase.from('documents').select('id, ocr_data, items, print_data').in('id', ids.slice(i, i + 100))
+    ;(data || []).forEach(x => { ocrById[x.id] = x.ocr_data; if (x.items) genById[x.id] = { items: x.items, contract_num: x.print_data?.contract_num, contract_date: x.print_data?.contract_date } })
   }
 
   const needSku = new Set()
   for (const d of docs) {
     const amount = Math.abs(Number(d.amount) || 0)
-    const gen = d.generated_doc_id ? genById[d.generated_doc_id] : null
+    const gen = genById[d.docId] || null
     const genItems = normalize(parseItems(gen?.items))
     const ocrItems = normalize(parseItems(ocrById[d.docId]?.items))
     const src = genItems.length ? genItems : ocrItems

@@ -37,7 +37,7 @@ export default function Documents() {
   // Якщо до нього прикріпили скан (storage_path не з 'generated/') → відкриваємо як звичайний.
   const hasRealScan = (d) => d.storage_path && !/^generated\//.test(d.storage_path)
   const openRow = (d) => {
-    if (d.source === 'generated' && d.generated_doc_id && !hasRealScan(d)) { setGenDoc(d); return }
+    if ((d.source === 'generated' || d.generated_doc_id) && !hasRealScan(d)) { setGenDoc(d); return }
     setOpenDoc({ doc: d, autoOcr: false })
   }
 

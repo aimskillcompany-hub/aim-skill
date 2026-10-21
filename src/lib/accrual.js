@@ -124,13 +124,10 @@ function withSupplierVat(it, v) {
 }
 
 // надруковані дати генерованих документів: { generated_doc_id: doc_date }
-export async function loadPrintDates(docs) {
-  const ids = [...new Set((docs || []).map(d => d.generated_doc_id).filter(Boolean))]
-  if (!ids.length) return {}
-  const rows = await fetchAllIn(() => qc('generated_docs').select('id, doc_date'), 'id', ids).catch(() => [])
-  const m = {}; rows.forEach(g => { if (g.doc_date) m[g.id] = String(g.doc_date).slice(0, 10) })
-  return m
-}
+// етап 3 об'єднання: дата документа одна — documents.doc_date (з PDF синхронізується в обидва боки, 081);
+// окреме читання generated_docs більше не потрібне
+// eslint-disable-next-line no-unused-vars
+export async function loadPrintDates(docs) { return {} }
 
 // OUT-рухи з полями FIFO (071) і оцінки (074), з відступом для старіших схем
 async function loadOutMovs(run, extra = '') {

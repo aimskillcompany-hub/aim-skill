@@ -59,7 +59,9 @@ export default async function handler(req, res) {
 
     const { error: upErr } = await admin.storage.from('documents').upload(path, buf, { contentType: 'application/pdf', upsert: true })
     if (upErr) throw new Error('upload: ' + upErr.message)
-    const { error: updErr } = await admin.from(table).update({ storage_path: path }).eq(col, id)
+    // згенерований документ (етап 3 об'єднання): id — documents.id; старі виклики — id згенерованого (generated_doc_id)
+    let { data: upd, error: updErr } = await admin.from(table).update({ storage_path: path }).eq(kind === 'generated' ? 'id' : col, id).select('id')
+    if (!updErr && kind === 'generated' && !upd?.length) ({ error: updErr } = await admin.from(table).update({ storage_path: path }).eq(col, id))
     if (updErr) throw new Error('update: ' + updErr.message)
     return res.json({ ok: true, path })
   } catch (e) {

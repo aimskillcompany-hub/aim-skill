@@ -1050,10 +1050,10 @@ function DocumentsTab({ o }) {
   const [showUpload, setShowUpload] = useState(false)
   const [gen, setGen] = useState(null) // { contractor, editDoc }
   const load = async () => {
-    const cols = 'id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, source, posted, to_sign, to_sign_at, contractors(name)'
+    const cols = 'id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, source, generated_doc_id, posted, to_sign, to_sign_at, contractors(name)'
     let { data, error } = await qc('documents').select(cols).eq('order_id', o.id).order('created_at', { ascending: false })
     if (error) ({ data } = await qc('documents').select(cols.replace(', posted', '').replace(', to_sign_at', '').replace(', to_sign', '')).eq('order_id', o.id).order('created_at', { ascending: false })) // фолбек, якщо колонок posted/to_sign/to_sign_at ще нема
-    setRows((data || []).filter(d => d.source !== 'generated')) // згенеровані показані окремою секцією
+    setRows((data || []).filter(d => d.source !== 'generated' && !d.generated_doc_id)) // згенеровані показані окремою секцією
   }
   // Провести / зняти з проведення (додати/прибрати з розділу «Документи»)
   const setPosted = async (d, val) => {
@@ -1061,15 +1061,17 @@ function DocumentsTab({ o }) {
     if (error || !data?.length) { alert('Не вдалося: ' + (error?.message || 'запустіть міграцію 038')); return }
     load()
   }
-  const loadGen = () => qc('generated_docs').select('*').eq('order_id', o.id).order('created_at', { ascending: false }).then(({ data }) => setGenDocs(data || []))
+  // згенеровані документи замовлення — картки documents (етап 3 об'єднання), у формі для PDF / редактора
+  const loadGen = () => qc('documents').select('*, contractors(name)').eq('order_id', o.id).or('source.eq.generated,generated_doc_id.not.is.null')
+    .order('created_at', { ascending: false }).then(async ({ data }) => { const { docRowToGen } = await import('../lib/docgen'); setGenDocs((data || []).map(docRowToGen)) })
   useEffect(() => { load(); loadGen() }, [o.id])
   // Помітка «передано клієнту на підпис» на самому документі + дата помітки
   const signUpd = (on) => on ? { to_sign: true, to_sign_at: new Date().toISOString() } : { to_sign: false, to_sign_at: null }
   const toggleSignGen = async (d) => {
     const on = !d.to_sign, u = signUpd(on)
     setGenDocs(gs => gs.map(x => x.id === d.id ? { ...x, ...u } : x))
-    let { error } = await qc('generated_docs').update(u).eq('id', d.id)
-    if (error && /to_sign_at/.test(error.message)) ({ error } = await qc('generated_docs').update({ to_sign: on }).eq('id', d.id)) // ґрейсфул до 054
+    let { error } = await qc('documents').update(u).eq('id', d.id)
+    if (error && /to_sign_at/.test(error.message)) ({ error } = await qc('documents').update({ to_sign: on }).eq('id', d.id)) // ґрейсфул до 054
     if (error) { setGenDocs(gs => gs.map(x => x.id === d.id ? { ...x, to_sign: d.to_sign, to_sign_at: d.to_sign_at } : x)); alert('Не вдалося: ' + (/to_sign\b/.test(error.message) ? 'запустіть міграцію 053' : error.message)) }
   }
   const toggleSignDoc = async (d) => {
@@ -1107,7 +1109,7 @@ function DocumentsTab({ o }) {
     loadGen()
   }
 
-  // Перегляд / завантаження вже згенерованого документа (регенерація з даних generated_docs)
+  // Перегляд / завантаження вже згенерованого документа (регенерація з даних картки documents)
   const genItems = (d) => (typeof d.items === 'string' ? JSON.parse(d.items || '[]') : (d.items || []))
   const genOptions = (d) => ({ docNumber: d.doc_number, docDate: d.doc_date, notes: d.notes, contractNum: d.contract_num, contractDate: d.contract_date, paymentDue: d.payment_due, city: d.city, invoiceRef: d.invoice_ref, invoiceRefDate: d.invoice_ref_date, deliveryBasis: d.delivery_basis, deliveryAddress: d.delivery_address })
   const withContractor = async (d, fn) => {

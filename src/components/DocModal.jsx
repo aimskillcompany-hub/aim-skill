@@ -348,21 +348,6 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
         if (error && /posted/.test(error.message || '')) { const { posted, ...rest } = upd; ({ data, error } = await qc('documents').update(rest).eq('id', existingDoc.id).select('id')) }
         if (error) throw error
         if (!data?.length) throw new Error('Документ не оновлено (немає прав UPDATE). Запусти migrations/004 у Supabase.')
-        // згенерований документ (PDF друкується з generated_docs) — дата й номер мають збігатися з карткою,
-        // інакше PDF / звірка показують одну дату, а «Документи» — іншу
-        {
-          let genId = existingDoc.generated_doc_id
-          if (genId === undefined) { const { data: gd } = await qc('documents').select('generated_doc_id').eq('id', existingDoc.id).maybeSingle(); genId = gd?.generated_doc_id }
-          if (genId) {
-            const patch = {}
-            if ((form.date || null) !== (existingDoc.doc_date || null) && form.date) patch.doc_date = form.date
-            if ((form.doc_number?.trim() || null) !== (existingDoc.doc_number || null) && form.doc_number?.trim()) patch.doc_number = form.doc_number.trim()
-            if (Object.keys(patch).length) {
-              const { error: gErr } = await qc('generated_docs').update(patch).eq('id', genId)
-              if (gErr) throw new Error('Картку збережено, але згенерований документ (PDF) не оновлено: ' + gErr.message)
-            }
-          }
-        }
         // рухи перестворюються лише з галочкою «Рух на складі»; інакше — тільки переносимо їхню дату за документом
         if (stockOn) await syncDocStock(existingDoc.id)
         else if (form.date && form.date !== (existingDoc.doc_date || null)) await syncMovementDates(form.date)

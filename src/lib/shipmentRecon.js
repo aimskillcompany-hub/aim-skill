@@ -245,12 +245,8 @@ export async function loadCardStats(productId) {
 
 // позиції документа «як у документі» (згенерований або розпізнаний), без перерахунку ПДВ
 export async function loadDocLines(docId) {
-  const { data: d } = await supabase.from('documents').select('id, ocr_data, generated_doc_id').eq('id', docId).maybeSingle()
-  let items = []
-  if (d?.generated_doc_id) {
-    const { data: g } = await supabase.from('generated_docs').select('items').eq('id', d.generated_doc_id).maybeSingle()
-    items = parseItems(g?.items)
-  }
+  const { data: d } = await supabase.from('documents').select('id, ocr_data, items').eq('id', docId).maybeSingle()
+  let items = parseItems(d?.items)   // згенерований (етап 3 об'єднання — позиції в картці)
   if (!items.length) items = parseItems(d?.ocr_data?.items)
   return items.filter(i => i?.name).map(i => {
     const qty = Number(i.quantity ?? i.qty) || 0

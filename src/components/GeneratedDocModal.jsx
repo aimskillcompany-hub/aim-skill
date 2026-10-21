@@ -5,7 +5,7 @@ import { fmt } from '../lib/fmt'
 import { getDocType, generatedDocBlob, previewPdf, generatePdf } from '../lib/docgen'
 
 // Перегляд згенерованого документа: зліва прев'ю PDF (регенерація в blob), справа — інформація.
-// Файлу у сховищі немає — PDF будується з даних generated_docs.
+// Файлу у сховищі немає — PDF будується з даних картки documents (items, print_data).
 export default function GeneratedDocModal({ doc, onClose, onDeleted, onScanUploaded }) {
   const [gd, setGd] = useState(null)
   const [contractor, setContractor] = useState(null)
@@ -20,8 +20,10 @@ export default function GeneratedDocModal({ doc, onClose, onDeleted, onScanUploa
   useEffect(() => {
     (async () => {
       try {
-        const { data: g } = await qc('generated_docs').select('*').eq('id', doc.generated_doc_id).maybeSingle()
-        if (!g) throw new Error('Згенерований документ не знайдено')
+        // етап 3 об'єднання: дані для PDF — у самій картці documents (items, print_data)
+        const { loadGenDoc } = await import('../lib/docgen')
+        const g = await loadGenDoc(doc.id || doc.generated_doc_id)
+        if (!g) throw new Error('Документ не знайдено')
         let c = { id: doc.contractor_id, name: doc.contractors?.name }
         if (doc.contractor_id) { const { data } = await supabase.from('contractors').select('*').eq('id', doc.contractor_id).maybeSingle(); if (data) c = data }
         const its = typeof g.items === 'string' ? JSON.parse(g.items || '[]') : (g.items || [])
@@ -32,7 +34,7 @@ export default function GeneratedDocModal({ doc, onClose, onDeleted, onScanUploa
         } catch { setState('fallback') } // getBlob не вдався — покажемо кнопки
       } catch (e) { setErr(e.message); setState('fallback') }
     })()
-  }, [doc.generated_doc_id])
+  }, [doc.id, doc.generated_doc_id])
 
   const optsOf = (g) => ({
     docNumber: g.doc_number, docDate: g.doc_date, notes: g.notes,
@@ -63,7 +65,7 @@ export default function GeneratedDocModal({ doc, onClose, onDeleted, onScanUploa
     setBusy(true); setErr(null)
     try {
       const { deleteGeneratedDoc } = await import('../lib/docgen')
-      await deleteGeneratedDoc(doc.generated_doc_id) // одна транзакція: рухи + дзеркало + документ
+      await deleteGeneratedDoc(doc.id || doc.generated_doc_id) // одна транзакція: рухи + картка (+ архівна версія)
       ;(onDeleted || onClose)()
     } catch (e) {
       const msg = /PERIOD_CLOSED/.test(e.message) ? e.message.replace(/^.*PERIOD_CLOSED:\s*/, '') : e.message

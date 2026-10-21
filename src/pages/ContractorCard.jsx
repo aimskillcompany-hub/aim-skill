@@ -461,7 +461,7 @@ function DocumentsTab({ id }) {
   useEffect(() => { load() }, [id])
 
   const openRow = (d) => {
-    if (d.source === 'generated' && d.generated_doc_id) { setGenDoc(d); return }
+    if (d.source === 'generated' || d.generated_doc_id) { setGenDoc(d); return }
     setOpenDoc(d)
   }
 
