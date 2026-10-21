@@ -13,6 +13,7 @@ import RecalcCostModal from '../components/RecalcCostModal'
 import CostDiagnosticsModal from '../components/CostDiagnosticsModal'
 import ProductBatches from '../components/ProductBatches'
 import SplitProductModal from '../components/SplitProductModal'
+import StockExcelModal from '../components/StockExcelModal'
 import { loadDocFull, dmy } from '../lib/shipmentRecon'
 import { loadPurchaseSummary } from '../lib/productBatches'
 import { loadBatches } from '../lib/batches'
@@ -31,26 +32,31 @@ export default function Warehouse() {
   const setTab = (t) => { setTabState(t); setParams(t === 'goods' ? {} : { tab: t }, { replace: true }) }
   const [recalc, setRecalc] = useState(false)
   const [diag, setDiag] = useState(false)
+  const [xls, setXls] = useState(false)
+  const [rev, setRev] = useState(0)
+  const { user } = useUser()
   return (
     <div>
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <h1>Склад</h1>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Link className="btn" to="/inventory/recon" title="Видаткова → позиції → прихідна, з якої списано; обидва документи поруч; прив'язка, дата оприбуткування, об'єднання карток"><i className="ti ti-arrows-exchange" /> Звірка видаткових</Link>
+          {['admin', 'accountant'].includes(user?.role) && <button className="btn" onClick={() => setXls(true)} title="Вивантажити рухи й картки в Excel, позначити, що куди перенести, і завантажити виправлення (з переглядом перед застосуванням)"><i className="ti ti-file-spreadsheet" /> Excel: вивантажити / виправити</button>}
           <button className="btn" onClick={() => setDiag(true)} title="Звіт зараз vs FIFO, база ПДВ партій, позиції без партій — нічого не змінює"><i className="ti ti-stethoscope" /> Діагностика собівартості</button>
           <button className="btn" onClick={() => setRecalc(true)} title="Заново розподілити відвантаження періоду по партіях (FIFO) і перезаписати собівартість"><i className="ti ti-calculator" /> Перерахувати собівартість за період</button>
         </div>
       </div>
       {recalc && <RecalcCostModal onClose={() => setRecalc(false)} />}
       {diag && <CostDiagnosticsModal onClose={() => setDiag(false)} />}
+      {xls && <StockExcelModal onClose={() => setXls(false)} onDone={() => { setXls(false); setRev(r => r + 1) }} />}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 18, overflowX: 'auto' }}>
         {[['goods', 'Товари', 'ti-package'], ['services', 'Послуги', 'ti-briefcase'], ['consumables', 'Розхідні матеріали', 'ti-paper-bag'], ['movements', 'Рухи', 'ti-arrows-up-down'], ['assemblies', 'Збірки', 'ti-tool']].map(([id, lbl, icon]) => (
           <button key={id} onClick={() => setTab(id)} style={tabStyle(tab === id)}><i className={`ti ${icon}`} style={{ fontSize: 15 }} />{lbl}</button>
         ))}
       </div>
-      {tab === 'goods' && <StockTab />}
-      {tab === 'services' && <ServicesTab />}
-      {tab === 'consumables' && <ConsumablesTab />}
+      {tab === 'goods' && <StockTab key={rev} />}
+      {tab === 'services' && <ServicesTab key={rev} />}
+      {tab === 'consumables' && <ConsumablesTab key={rev} />}
       {tab === 'movements' && <MovementsTab />}
       {tab === 'assemblies' && <AssembliesTab />}
     </div>
