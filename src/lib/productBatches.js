@@ -12,6 +12,13 @@ import { batchUnit } from './batchPrice'
 import { daysBetween } from './dates'
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100
+// назва товару так, як вона записана в документі: опис руху «Прихідна накладна: <назва з документа>»
+export const docItemName = (m) => {
+  const d = String(m?.description || '').trim()
+  if (!d || !m.document_id) return ''   // ручні рухи / збірки — опис не є назвою з документа
+  const i = d.indexOf(': ')
+  return (i >= 0 ? d.slice(i + 2) : d).trim()
+}
 
 // сухий прогін рахується по всій історії — кешуємо на кілька хвилин, щоб картки товарів відкривались швидко
 let dryCache = null
@@ -25,7 +32,7 @@ async function dryRun(force = false) {
 export const dropBatchesCache = () => { dryCache = null }
 
 export async function loadProductBatches(productId, { force = false } = {}) {
-  const movs = await fetchAll(() => qc('stock_movements').select('id, type, quantity, price, cost_price, date, document_id, order_id, company_id, source, created_at').eq('product_id', productId))
+  const movs = await fetchAll(() => qc('stock_movements').select('id, type, quantity, price, cost_price, date, document_id, order_id, company_id, source, created_at, description').eq('product_id', productId))
   const ins = movs.filter(m => m.type === 'in'), outs = movs.filter(m => m.type === 'out')
   const dry = await dryRun(force)
   const outIds = new Set(outs.map(m => m.id)), inIds = new Set(ins.map(m => m.id))
@@ -57,7 +64,7 @@ export async function loadProductBatches(productId, { force = false } = {}) {
       date: d?.print_date || m.date, client: d?.contractors?.name || '', qty, salePrice: Number(m.price) || 0,
       cost: r ? r2(qty * (Number(r.new_unit) || 0)) : null, costUnit: r ? Number(r.new_unit) || 0 : null,
       estQty: Number(r?.est_qty) || 0, missingQty: Number(r?.missing_qty) || 0, manual: /вручну/.test(r?.bases || ''),
-      isSale: !!d && d.direction === 'receivable', source: m.source,
+      isSale: !!d && d.direction === 'receivable', source: m.source, docName: docItemName(m),
     }
   }
 
@@ -81,7 +88,7 @@ export async function loadProductBatches(productId, { force = false } = {}) {
     const costSold = ships.filter(s => s.isSale).reduce((t, s) => t + s.takeCost, 0)
     return {
       inId: m.id, docId: m.document_id || null, docNo: d?.doc_number || (m.source === 'assembly' ? 'збірка' : m.source === 'manual' ? 'ручний прихід' : '—'),
-      docDate: d ? d.print_date : m.date, whDate: wh, supplier: d?.contractors?.name || '', qty, unit: u.unit, vat: u.vat, basis: u.basis,
+      docDate: d ? d.print_date : m.date, whDate: wh, supplier: d?.contractors?.name || '', docName: docItemName(m), qty, unit: u.unit, vat: u.vat, basis: u.basis,
       value: r2(qty * u.unit), used: r2(used), left: r2(qty - used), leftValue: r2((qty - used) * u.unit),
       ships, revenue: r2(revenue), costSold: r2(costSold), margin: r2(revenue - costSold), marginPct: revenue > 0 ? (revenue - costSold) / revenue * 100 : null,
     }

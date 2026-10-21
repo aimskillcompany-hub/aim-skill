@@ -33,7 +33,11 @@ function shipIssues(s) {
   return out
 }
 
-export default function ProductBatches({ productId, unit, onOpenDoc }) {
+// назва в документі — показуємо, якщо відрізняється від назви картки
+const DocName = ({ name, card }) => name && name.trim().toLowerCase() !== String(card || '').trim().toLowerCase()
+  ? <div style={{ fontSize: 12, color: 'var(--text2)', fontStyle: 'italic', marginTop: 1 }} title="Як товар називається в цьому документі">«{name}»</div> : null
+
+export default function ProductBatches({ productId, unit, productName, onOpenDoc }) {
   const [data, setData] = useState(null)
   const [err, setErr] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -64,7 +68,7 @@ export default function ProductBatches({ productId, unit, onOpenDoc }) {
     const cell = red ? RED : amb ? AMB : {}
     return <>
       <td style={{ ...td, ...sepL, textAlign: 'center', ...r, ...(s.days != null && s.days < 0 ? RED : {}) }} title="днів на складі">{s.days == null ? '→' : <>→<div style={{ fontSize: 11 }}>{s.days} дн.</div></>}</td>
-      <td style={td}>{docBtn(s.docId, s.docNo)}<div style={sub}>{s.client || (s.isSale ? '' : 'не продаж')}{` · ${HOW[s.how] || s.how}`}</div></td>
+      <td style={td}>{docBtn(s.docId, s.docNo)}<DocName name={s.docName} card={productName} /><div style={sub}>{s.client || (s.isSale ? '' : 'не продаж')}{` · ${HOW[s.how] || s.how}`}</div></td>
       <td style={{ ...td, ...r }}>{dmy(s.date)}</td>
       <td style={{ ...td, ...r }}>{qtyf(s.takeQty)}</td>
       <td style={{ ...td, ...r, fontWeight: 600 }}>{s.isSale ? num(s.salePrice) : '—'}</td>
@@ -116,7 +120,7 @@ export default function ProductBatches({ productId, unit, onOpenDoc }) {
               const span = Math.max(ships.length + (showLeft ? 1 : 0), 1)
               const left = (
                 <>
-                  <td rowSpan={span} style={{ ...td, background: 'var(--surface2)' }}>{docBtn(b.docId, `№${b.docNo}`)}<div style={sub}>{b.supplier}</div></td>
+                  <td rowSpan={span} style={{ ...td, background: 'var(--surface2)' }}>{docBtn(b.docId, `№${b.docNo}`)}<DocName name={b.docName} card={productName} /><div style={sub}>{b.supplier}</div></td>
                   <td rowSpan={span} style={{ ...td, ...r, background: 'var(--surface2)' }}>{dmy(b.whDate)}{b.whDate !== b.docDate && <div style={{ fontSize: 11, color: 'var(--text3)' }}>док. {dmy(b.docDate)}</div>}</td>
                   <td rowSpan={span} style={{ ...td, ...r, background: 'var(--surface2)' }}>{qtyf(b.qty)}</td>
                   <td rowSpan={span} style={{ ...td, ...r, background: 'var(--surface2)', fontWeight: 600 }} title={b.basis}>{num(b.unit)}<div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 400 }}>ПДВ {b.vat == null ? '—' : b.vat ? 'так' : 'ні'}</div></td>
@@ -140,7 +144,7 @@ export default function ProductBatches({ productId, unit, onOpenDoc }) {
                   {s.later?.length > 0 && <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>є пізніші партії з залишком: {s.later.map(l => `№${l.docNo} від ${dmy(l.whDate)} (${qtyf(l.left)})`).join(', ')} — «Виправити дату оприбуткування» або «Взяти з цієї прихідної» у звірці</div>}
                 </td>
                 <td style={{ ...td, ...sepL, textAlign: 'center' }}>→</td>
-                <td style={td}>{docBtn(s.docId, s.docNo)}<div style={sub}>{s.client}</div></td>
+                <td style={td}>{docBtn(s.docId, s.docNo)}<DocName name={s.docName} card={productName} /><div style={sub}>{s.client}</div></td>
                 <td style={{ ...td, ...r }}>{dmy(s.date)}</td>
                 <td style={{ ...td, ...r }}>{qtyf(s.uncovered)}</td>
                 <td style={{ ...td, ...r, fontWeight: 600 }}>{s.isSale ? num(s.salePrice) : '—'}</td>
@@ -152,7 +156,7 @@ export default function ProductBatches({ productId, unit, onOpenDoc }) {
         </table>
       </div>
       <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 8 }}>
-        Ліворуч — партія (прихідна), праворуч — куди її відвантажено, з ціною приходу і ціною виходу в одному рядку. Розподіл — як буде після «Застосувати FIFO»: ручна прив'язка → прихідна того ж замовлення → найстаріші партії на дату оприбуткування.
+        Курсивом «…» — як товар названо в самому документі (якщо назва відрізняється від картки). Ліворуч — партія (прихідна), праворуч — куди її відвантажено, з ціною приходу і ціною виходу в одному рядку. Розподіл — як буде після «Застосувати FIFO»: ручна прив'язка → прихідна того ж замовлення → найстаріші партії на дату оприбуткування.
         Червоне — продано раніше приходу, без партії, збиток, ціна виходу = ціні приходу; жовте — маржа &lt;5% або &gt;60%, оцінка, залишок партії при відвантаженнях без партії.
       </p>
     </div>

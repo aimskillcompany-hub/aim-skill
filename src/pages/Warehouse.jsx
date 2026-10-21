@@ -570,7 +570,7 @@ function ProductModal({ product, onClose, asPage = false, backTo = '/inventory' 
             <button key={k} onClick={() => setView(k)} style={{ background: 'none', border: 0, borderBottom: '2px solid ' + (view === k ? 'var(--text)' : 'transparent'), padding: '6px 12px', font: 'inherit', fontWeight: view === k ? 700 : 500, color: view === k ? 'var(--text)' : 'var(--text3)', cursor: 'pointer', display: 'flex', gap: 6, alignItems: 'center' }}><i className={`ti ${ic}`} />{l}</button>
           ))}
         </div>
-        {view === 'batches' && <ProductBatches productId={product.id} unit={form?.unit || stock?.unit} onOpenDoc={openAnyDoc} />}
+        {view === 'batches' && <ProductBatches productId={product.id} unit={form?.unit || stock?.unit} productName={form?.name || product.name} onOpenDoc={openAnyDoc} />}
         {view === 'movs' && <div className="tbl-wrap" style={{ border: 'none', maxHeight: asPage ? '70vh' : 280, overflowY: 'auto' }}>
           <table><thead><tr><th>Дата</th><th>Тип</th><th style={{ textAlign: 'right' }}>К-сть</th><th style={{ textAlign: 'right' }} title="Прихід — ціна партії без ПДВ; видаток — собівартість">Ціна / собівартість</th><th>Опис</th><th>Документ</th><th /></tr></thead>
             <tbody>{movs.map(m => <tr key={m.id}><td style={{ fontSize: 12 }}>{m.date}</td><td>{m.type === 'in' ? 'Прихід' : m.type === 'out' ? 'Видаток' : m.type}</td><td style={{ textAlign: 'right' }}>{fmt(m.quantity)}</td><td style={{ textAlign: 'right' }}>{m.type === 'in' ? (pur?.units[m.id]?.unit ? <span title={pur.units[m.id].basis}>{fmt(pur.units[m.id].unit)}</span> : '—') : m.cost_price ? fmt(m.cost_price) : '—'}</td><td><div className="trunc">{m.description}</div></td>
