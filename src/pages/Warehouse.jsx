@@ -12,6 +12,7 @@ import DocModal from '../components/DocModal'
 import RecalcCostModal from '../components/RecalcCostModal'
 import CostDiagnosticsModal from '../components/CostDiagnosticsModal'
 import ProductBatches from '../components/ProductBatches'
+import SplitProductModal from '../components/SplitProductModal'
 import { loadDocFull, dmy } from '../lib/shipmentRecon'
 import { loadPurchaseSummary } from '../lib/productBatches'
 import { loadBatches } from '../lib/batches'
@@ -433,6 +434,7 @@ function ProductModal({ product, onClose, asPage = false, backTo = '/inventory' 
   const [err, setErr] = useState(null)
   const [showMove, setShowMove] = useState(false)
   const [showMerge, setShowMerge] = useState(false)
+  const [showSplit, setShowSplit] = useState(false)
   const [view, setView] = useState('batches')   // «Партії» | «Рухи»
   const [pur, setPur] = useState(null)          // ціни закупівлі за партіями
   useEffect(() => { loadPurchaseSummary(product.id).then(setPur).catch(() => setPur(null)) }, [product.id])
@@ -564,6 +566,7 @@ function ProductModal({ product, onClose, asPage = false, backTo = '/inventory' 
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           <button className="btn" onClick={() => setShowMove(true)}><i className="ti ti-plus" /> Ручний рух</button>
           <button className="btn" onClick={() => setShowMerge(true)}><i className="ti ti-arrows-join" /> Об'єднати з товаром</button>
+          {['admin', 'accountant'].includes(user?.role) && <button className="btn" onClick={() => setShowSplit(true)} title="Перенести рухи іншого товару на окрему картку (виправлення помилкового об'єднання)"><i className="ti ti-arrows-split-2" /> Розділити картку</button>}
         </div>
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 10 }}>
           {[['batches', 'Партії', 'ti-stack-2'], ['movs', 'Рухи', 'ti-arrows-up-down']].map(([k, l, ic]) => (
@@ -585,6 +588,7 @@ function ProductModal({ product, onClose, asPage = false, backTo = '/inventory' 
       {genDoc && <GeneratedDocModal doc={genDoc} onClose={() => setGenDoc(null)} />}
       {linkMov && <DocPickerModal title="Прив'язати документ до руху" match={{ date: linkMov.date }} onClose={() => setLinkMov(null)} onPick={linkDoc} />}
       {showMove && <ManualMoveModal product={product} stock={stock} user={user} onClose={() => setShowMove(false)} onDone={() => { setShowMove(false); loadMovs(); loadStock() }} />}
+      {showSplit && <SplitProductModal product={product} onClose={() => setShowSplit(false)} onDone={() => { setShowSplit(false); loadMovs(); loadStock(); supabase.from('product_aliases').select('alias').eq('product_id', product.id).then(({ data }) => setAliases(data || [])) }} />}
       {showMerge && <MergeProductModal product={product} onClose={() => setShowMerge(false)} onDone={() => { setShowMerge(false); loadMovs(); loadStock() }} />}
     </div>
   )
