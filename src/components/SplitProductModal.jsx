@@ -4,6 +4,7 @@ import { qc } from '../lib/companyScope'
 import { fetchAll } from '../lib/fetchAll'
 import { fmt } from '../lib/fmt'
 import { dmy } from '../lib/shipmentRecon'
+import FixJournal from './FixJournal'
 
 // назва товару так, як вона записана в документі руху («Прихід: …» → «…»)
 const docName = (m) => (m.description || '').replace(/^[^:]*:\s*/, '').trim() || '(без назви)'
@@ -194,13 +195,10 @@ export default function SplitProductModal({ product, onClose, onDone }) {
           Готово: перенесено рухів {done.movements}, синонімів {done.aliases}{done.created ? ', створено нову картку' : ''}; знято розподілів по партіях {done.allocations_removed}.
           <a href={`/inventory/product/${done.target}`} style={{ marginLeft: 8 }}>Відкрити картку →</a>
         </div>}
-        {log.length > 0 && <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text2)' }}>
-          <div style={{ fontWeight: 700, color: 'var(--text3)' }}>РОЗДІЛЕННЯ ЦІЄЇ КАРТКИ</div>
-          {log.map(r => <div key={r.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '2px 0' }}>
-            <span>{dmy(r.created_at?.slice(0, 10))}: {r.before?.src?.id === product.id ? 'перенесено звідси' : `перенесено сюди з «${r.before?.src?.name}»`} — рухів {(r.after?.stock_movements || []).length}, синонімів {(r.after?.product_aliases || []).length}</span>
-            <button className="btn" disabled={busy} onClick={() => undo(r.id)} style={{ padding: '0 8px', fontSize: 12 }}>Скасувати</button>
-          </div>)}
-        </div>}
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', marginBottom: 4 }}>ЖУРНАЛ ВИПРАВЛЕНЬ ЦІЄЇ КАРТКИ (артикул, назва, перенесення, поділ руху, збірки, синоніми)</div>
+          <FixJournal key={done?.log_id || 'j'} productId={product.id} onChanged={() => { setDone(null); load() }} />
+        </div>
         {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 10 }}>{err}</div>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
           <button className="btn" onClick={() => done ? onDone() : onClose()}>{done ? 'Закрити' : 'Скасувати'}</button>

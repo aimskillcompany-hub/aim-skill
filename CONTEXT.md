@@ -557,6 +557,9 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `057_order_transactions.sql` | Замовлення: `order_transactions` (надходження/витрати з банку частками) — вкладка «Прибутковість» | ⏳ **запустити вручну** |
 | `058_orders_procurement_url.sql` | Замовлення: `orders.procurement_url` (посилання на закупівлю) — Деталі + форма Комел B10 | ⏳ **запустити вручну** |
 | `059_orders_procurement_subject.sql` | Замовлення: `orders.procurement_subject` (предмет закупівлі) — Деталі + форма Комел B14 | ⏳ **запустити вручну** |
+| `086_delete_document_full.sql` | Видалення документа однією транзакцією (рухи + картка + архівна версія generated_docs) | ⏳ на перегляді в користувача |
+| `087_split_product.sql` | «Розділити картку»: `split_product` / `split_undo` — рухи й синоніми на іншу / нову картку, журнал `cost_action_log` ('split') | ✅ застосовано (2026-10-21) |
+| `088_stock_excel_fixes.sql` | Excel-виправлення складу (ТЗ 21.10): `documents.day_order` (порядок у дні — у FIFO `allocate_out`/`fifo_compute`, основа 080), `assemblies.manual_unit_cost`; RPC `product_fix`, `split_movement`, `doc_fix`, `assembly_fix`, `alias_delete`, `stock_fix_undo` (журнал + скасування). Тести: `tests_088_pglite.mjs`, `tests_js/stock_excel_scenarios.mjs` | ⏳ **на перегляді в користувача** |
 | `validate.mjs` | Перевірка цілісності Фази 1 (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 | `probe.mjs` | Звірка наявності колонок/таблиць усіх міграцій у БД (`SUPABASE_SERVICE_KEY=... node migrations/probe.mjs`) | — |
 
