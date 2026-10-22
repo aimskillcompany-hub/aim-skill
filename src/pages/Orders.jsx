@@ -225,7 +225,6 @@ export default function Orders() {
                 <SortTh label="Дата" k="created" sort={sort} onSort={onSort} />
                 <SortTh label="Клієнт" k="client" sort={sort} onSort={onSort} />
                 <SortTh label="Менеджер" k="manager" sort={sort} onSort={onSort} />
-                <SortTh label="Тип" k="type" sort={sort} onSort={onSort} />
                 <SortTh label="Статус" k="status" sort={sort} onSort={onSort} />
                 <SortTh label="Сума з ПДВ" k="total" sort={sort} onSort={onSort} align="right" />
                 <th style={{ textAlign: 'center', width: 96 }} title="Інвестор · Прогноз · Комісію сплачено">Позначки</th>
@@ -243,7 +242,6 @@ export default function Orders() {
                     <td style={{ fontSize: 13, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{o.created_at ? o.created_at.slice(0, 10).split('-').reverse().join('.') : '—'}</td>
                     <td><div className="trunc">{o.clientName}</div></td>
                     <td style={{ fontSize: 13, color: o.managerName === '—' ? 'var(--text3)' : 'var(--text2)' }}><div className="trunc">{o.managerName}</div></td>
-                    <td><span style={{ color: TYPE_COLORS[o.type], fontSize: 12, fontWeight: 600 }}>{ORDER_TYPES[o.type]}</span></td>
                     <td style={{ fontSize: 13 }}>
                       {statusAccent(o.status)
                         ? <span style={{ background: statusAccent(o.status), color: '#fff', borderRadius: 6, padding: '2px 9px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>{statusLabel(o)}</span>
@@ -273,7 +271,7 @@ export default function Orders() {
                     </td>
                   </tr>
                 ))}
-                {sortedOrders.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 28 }}>Замовлень немає</td></tr>}
+                {sortedOrders.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 28 }}>Замовлень немає</td></tr>}
               </tbody>
             </table>
           </div>
