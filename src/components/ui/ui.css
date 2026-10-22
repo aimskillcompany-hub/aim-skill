@@ -94,3 +94,4 @@
 @keyframes skel { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
 @media (prefers-reduced-motion: reduce) { .ui-skel-bar, .ui-spinner, .ui-toast { animation: none; } }
 .form-group > .ui-segmented { align-self: flex-start; }
+[data-ui="new"] .ui-segmented { background: var(--seg-track); }

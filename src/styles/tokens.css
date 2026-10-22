@@ -68,3 +68,46 @@
   /* шрифт */
   --font: 'Onest', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
+
+/* ── Токени ТЗ редизайну (design-tokens.css з пакета, 23.10.2026) ──
+   Доступні завжди; розміри й вигляд кнопок перемикаються лише під прапорцем «Новий інтерфейс» (html[data-ui="new"]). */
+:root {
+  --font-sans: var(--font);
+  --ink: #0F1A14;
+  --ground: #F4F5F2;
+  --surface-sunken: #F7F8F6;          /* заголовки таблиць, рядки підсумків */
+  --divider: #EEF0EC;
+  --muted: #5B655F;
+  --muted-2: #7A847E;                 /* лише для підписів ≥ 13 px на білому */
+  --seg-track: #E9ECE7;
+  --brand: #0E7C5A;
+  --brand-dark: #0B5E45;
+  --brand-soft: #E3F4EC;
+  --on-dark-pos: #5EE0A8;
+  --on-dark-neg: #FFB37A;
+  --on-dark-muted: #A9B3AD;
+  --warn-bg: #FBF0D9;    --warn-fg: #7A4F00;
+  --expense-bg: #FDEBDD; --expense-fg: #9A3412; --expense-chart: #F07F3C;
+  --danger-soft-bg: #FDE8E6; --danger-fg: #B42318;
+  --info-bg: #E8EEF6;    --info-fg: #1E4E8C;
+  --group-bg: #EFE9FB;   --group-fg: #5B3FA8;
+  --entity-aimskill: #0E7C5A; --entity-shust: #3B74C4; --entity-bitgroup: #7B5CD6;
+  --r-card: 24px; --r-card-mobile: 20px; --r-inner: 14px; --r-control: 12px; --r-pill: 999px;
+  --gap-cards: 16px; --pad-card: 22px;
+  --sidebar-w: 248px; --sidebar-w-collapsed: 72px;
+  --bottom-nav-h: 68px;
+  --shadow-float: 0 6px 24px rgba(15, 26, 20, .08);
+  --shadow-pop: 0 10px 40px rgba(15, 26, 20, .12);
+}
+
+/* Новий інтерфейс: розміри й радіуси за ТЗ (картка 24, поле й кнопка 42 / 12) */
+:root[data-ui="new"] {
+  --radius-md: 12px;
+  --radius-xl: 24px;
+  --radius-2xl: 24px;
+  --h-control: 42px;
+  --h-control-sm: 34px;
+  --danger-bg: #FDE8E6;
+  --danger: #B42318;
+}
+@media (max-width: 768px) { :root[data-ui="new"] { --radius-xl: 20px; --radius-2xl: 20px; } }

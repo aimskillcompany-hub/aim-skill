@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { myTaskBadge } from '../lib/tasks'
 import QuickTaskFab from './QuickTaskFab'
+import NewUiToggle from './NewUiToggle'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { CompanySwitcher, useCompany } from '../lib/company'
@@ -88,6 +89,7 @@ export default function Layout() {
     <div className="sidebar-footer">
       <div className="ellip" title={user?.email} style={{ marginBottom: 6, color: 'var(--text2)', fontSize: 13 }}>{user?.email}</div>
       <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10, letterSpacing: '.3px', fontWeight: 500 }}>{ROLE_LABELS[role] || role}</div>
+      <div style={{ marginBottom: 6 }}><NewUiToggle /></div>
       <span style={{ cursor: 'pointer', color: 'var(--text2)', fontSize: 13, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6, padding: '8px 0' }} onClick={handleLogout}>
         <i className="ti ti-logout" style={{ fontSize: 16 }} />Вийти
       </span>

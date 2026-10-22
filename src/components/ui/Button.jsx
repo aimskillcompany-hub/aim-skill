@@ -1,9 +1,9 @@
 import { forwardRef } from 'react'
 
-const VARIANT = { primary: 'btn-primary', dark: 'btn-dark', secondary: 'btn-secondary', ghost: 'btn-ghost', danger: 'btn-danger' }
+const VARIANT = { primary: 'btn-primary', brand: 'btn-brand', dark: 'btn-dark', secondary: 'btn-secondary', ghost: 'btn-ghost', danger: 'btn-danger' }
 
 // Кнопка дизайн-системи (класи .btn у base.css).
-//   variant: primary (синя — одна головна дія екрана) | dark (підтвердження у формах) | secondary | ghost | danger
+//   variant: primary (головна дія; у новому інтерфейсі — ink) | brand (зелена) | dark (підтвердження у формах) | secondary | ghost | danger
 //   size: md (38 px) | sm (32 px); на дотикових екранах — не менше 44 px
 //   icon — клас Tabler ('ti-plus'); iconOnly — лише іконка (тоді обов'язковий aria-label); loading — спінер і disabled
 const Button = forwardRef(function Button(

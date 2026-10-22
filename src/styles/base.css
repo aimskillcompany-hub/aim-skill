@@ -158,6 +158,13 @@ textarea.form-input { height: auto; min-height: var(--h-control); padding: 8px 1
 .btn > .ti { font-size: 16px; }
 .btn-primary { background: var(--blue); color: #fff; border-color: var(--blue); }
 .btn-primary:hover:not(:disabled) { background: var(--blue-hover); border-color: var(--blue-hover); }
+/* brand — зелена (позитивна дія: «Розподілити», «Підтвердити»); у новому інтерфейсі primary — ink (ТЗ, розділ 2) */
+.btn-brand { background: var(--brand); color: #fff; border-color: var(--brand); }
+.btn-brand:hover:not(:disabled) { background: var(--brand-dark); border-color: var(--brand-dark); }
+[data-ui="new"] .btn-primary { background: var(--ink); border-color: var(--ink); }
+[data-ui="new"] .btn-primary:hover:not(:disabled) { background: var(--dark-hover); border-color: var(--dark-hover); }
+[data-ui="new"] .btn:focus-visible { outline-color: var(--brand); }
+[data-ui="new"] .tbl-wrap thead th { background: var(--surface-sunken); }
 .btn-dark { background: var(--dark); color: #fff; border-color: var(--dark); }
 .btn-dark:hover:not(:disabled) { background: var(--dark-hover); border-color: var(--dark-hover); }
 .btn-secondary { background: var(--surface); color: var(--text); border-color: var(--border-strong); }
