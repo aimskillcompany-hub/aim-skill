@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { extractTenderDoc } from '../lib/ai'
 import { todayKyiv } from '../lib/dates'
+import { Button, Switch, ConfirmDialog, EmptyState, TableSkeleton } from './ui'
 
 // Вкладка «Тендерна документація» — файли зберігаються ЛИШЕ в замовленні (не в загальних Документах),
 // з прив'язкою до ідентифікатора закупівлі. Авто-нумерація: останні 6 цифр закупівлі/N.
@@ -17,6 +18,7 @@ const procBase = (pid) => {
 
 export default function TenderDocsTab({ o }) {
   const { user } = useUser()
+  const [askDel, setAskDel] = useState(null)
   const [rows, setRows] = useState(null)
   const [form, setForm] = useState({ name: '', out_number: '', doc_date: todayKyiv() })
   const [file, setFile] = useState(null)
@@ -120,7 +122,7 @@ export default function TenderDocsTab({ o }) {
   }
 
   const del = async (r) => {
-    if (!confirm(`Видалити «${r.name}» (${r.doc_number})?`)) return
+    setAskDel(null)
     await supabase.storage.from('documents').remove([r.storage_path]).catch(() => {})
     await supabase.from('tender_documents').delete().eq('id', r.id)
     load()
@@ -162,35 +164,28 @@ export default function TenderDocsTab({ o }) {
   return (
     <div className="card">
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 15, fontWeight: 600 }}>Тендерна документація</div>
+        <h2 className="section-title" style={{ margin: 0 }}>Тендерна документація</h2>
         {o.procurement_id
           ? <span style={{ fontSize: 12.5, color: 'var(--text2)' }}>Закупівля: <b>{o.procurement_id}</b>{base && <> · нумерація <b>{base}/N</b></>}</span>
-          : <span style={{ fontSize: 12.5, color: 'var(--amber, #b45309)' }}>Вкажіть «Ідентифікатор закупівлі» у вкладці «Деталі» — нумерація буде за ним.</span>}
+          : <span style={{ fontSize: 12.5, color: '#92400e' }}>Вкажіть «Ідентифікатор закупівлі» у вкладці «Деталі» — нумерація буде за ним.</span>}
         {rows?.length > 0 && (
-          <button className="btn" onClick={downloadZip} disabled={zipping} style={{ marginLeft: 'auto' }}>
-            <i className="ti ti-file-zip" /> {zipping ? 'Архівування…' : 'Завантажити архів (.zip)'}
-          </button>
+          <span style={{ marginLeft: 'auto' }}><Button variant="secondary" icon="ti-file-zip" onClick={downloadZip} loading={zipping}>{zipping ? 'Архівування…' : 'Завантажити архів (.zip)'}</Button></span>
         )}
       </div>
-      <p style={{ fontSize: 12, color: 'var(--text3)', margin: '0 0 14px' }}>Документи зберігаються лише в цьому замовленні й не потрапляють у загальні «Документи».</p>
+      <p style={{ fontSize: 12, color: 'var(--text2)', margin: '0 0 14px' }}>Документи зберігаються лише в цьому замовленні й не потрапляють у загальні «Документи».</p>
 
       {/* Масове завантаження */}
       <div style={{ background: 'var(--surface2)', borderRadius: 12, padding: 14, marginBottom: 12, border: '1px dashed var(--border)' }}>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}><i className="ti ti-stack-2" /> Масове завантаження</div>
-        <input ref={bulkRef} className="form-input" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+        <div id="tender-bulk-title" style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}><i className="ti ti-stack-2" aria-hidden="true" /> Масове завантаження</div>
+        <input ref={bulkRef} className="form-input" type="file" aria-labelledby="tender-bulk-title" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
           onChange={e => setBulkFiles(Array.from(e.target.files || []))} disabled={bulkBusy} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-            <input type="checkbox" checked={autoOcr} onChange={e => setAutoOcr(e.target.checked)} disabled={bulkBusy} />
-            Авто-розпізнавання найменування/дати (повільніше)
-          </label>
-          <button className="btn btn-primary" onClick={bulkUpload} disabled={bulkBusy || !bulkFiles.length} style={{ marginLeft: 'auto' }}>
-            {bulkBusy
-              ? <><i className="ti ti-loader-2" style={{ animation: 'spin 1s linear infinite' }} /> Завантаження {bulkDone}/{bulkFiles.length}…</>
-              : <><i className="ti ti-upload" /> Завантажити {bulkFiles.length ? `(${bulkFiles.length})` : 'усі'}</>}
-          </button>
+          <Switch checked={autoOcr} onChange={setAutoOcr} disabled={bulkBusy} label="Розпізнавати найменування й дату" description="Повільніше, але менше ручного введення" />
+          <span style={{ marginLeft: 'auto' }}><Button variant="secondary" icon="ti-upload" onClick={bulkUpload} loading={bulkBusy} disabled={!bulkFiles.length}>
+            {bulkBusy ? `Завантаження ${bulkDone}/${bulkFiles.length}…` : `Завантажити ${bulkFiles.length ? `(${bulkFiles.length})` : 'усі'}`}
+          </Button></span>
         </div>
-        <p style={{ fontSize: 11, color: 'var(--text3)', margin: '8px 0 0' }}>
+        <p style={{ fontSize: 12, color: 'var(--text2)', margin: '8px 0 0' }}>
           Оберіть одразу кілька файлів — кожен отримає свій номер {base ? `(${base}/N)` : '(N)'} у порядку вибору. Найменування — з розпізнавання або з імені файлу.
         </p>
       </div>
@@ -212,15 +207,15 @@ export default function TenderDocsTab({ o }) {
             <span style={{ fontSize: 11, color: 'var(--text3)' }}>Після вибору файлу система спробує сама заповнити найменування, вихідний номер і дату — перевірте.</span>
           </div>
         </div>
-        {msg && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 8 }}><i className="ti ti-alert-circle" /> {msg}</div>}
+        {msg && <div role="alert" style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}><i className="ti ti-alert-circle" aria-hidden="true" /> {msg}</div>}
         <div style={{ marginTop: 12 }}>
-          <button className="btn btn-primary" onClick={upload} disabled={busy || recognizing}>{busy ? 'Завантаження…' : <><i className="ti ti-upload" /> Додати документ</>}</button>
+          <Button variant="primary" icon="ti-upload" onClick={upload} loading={busy} disabled={recognizing}>{busy ? 'Завантаження…' : 'Додати документ'}</Button>
         </div>
       </div>
 
       {/* Список */}
-      {rows == null ? <p style={{ color: 'var(--text3)' }}>Завантаження…</p>
-        : rows.length === 0 ? <p style={{ color: 'var(--text3)', fontSize: 13 }}>Документів ще немає.</p>
+      {rows == null ? <TableSkeleton rows={3} cols={5} label="Завантаження документів…" />
+        : rows.length === 0 ? <EmptyState icon="ti-files" title="Документів ще немає" text="Додайте файли вище — кожен отримає свій номер." />
         : (
           <div className="tbl-wrap" style={{ border: 'none' }}>
             <table><thead><tr>
@@ -232,13 +227,15 @@ export default function TenderDocsTab({ o }) {
                   <td>{r.name}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{r.out_number || '—'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{fmtDate(r.doc_date)}</td>
-                  <td><a onClick={() => open(r)} style={{ color: 'var(--blue)', cursor: 'pointer' }} className="trunc"><i className="ti ti-file" /> {r.file_name || 'відкрити'}</a></td>
-                  <td style={{ textAlign: 'right' }}><button className="btn" onClick={() => del(r)} style={{ color: 'var(--red)', padding: '2px 8px' }}><i className="ti ti-trash" /></button></td>
+                  <td><button type="button" onClick={() => open(r)} className="trunc" style={{ color: 'var(--blue)', cursor: 'pointer', background: 'none', border: 'none', padding: 0, textAlign: 'left' }}><i className="ti ti-file" aria-hidden="true" /> {r.file_name || 'відкрити'}</button></td>
+                  <td style={{ textAlign: 'right' }}><Button size="sm" variant="ghost" iconOnly icon="ti-trash" aria-label={`Видалити «${r.name}»`} onClick={() => setAskDel(r)} /></td>
                 </tr>
               ))}</tbody>
             </table>
           </div>
         )}
+      <ConfirmDialog open={!!askDel} danger title={askDel ? `Видалити «${askDel.name}» (${askDel.doc_number})?` : ''} text="Файл буде видалено зі сховища." confirmLabel="Видалити"
+        onCancel={() => setAskDel(null)} onConfirm={() => del(askDel)} />
     </div>
   )
 }
