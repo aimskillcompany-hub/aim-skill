@@ -282,6 +282,8 @@ function TransactionsTab({ accounts, onChange, newUi = false, addSignal = 0 }) {
   // «Оплатити» з кредиторки: /bank?pay=<документ>&amount=…&contractor=…&cname=…&label=…
   const [params, setParams] = useSearchParams()
   const [payPreset, setPayPreset] = useState(null)
+  // «Розподілити» з Аналітики: /bank?article=__none__ — відкрити з фільтром «Без статті»
+  useEffect(() => { const a = params.get('article'); if (a) { setArt(a); setParams({}, { replace: true }) } }, [params])
   useEffect(() => {
     const docId = params.get('pay')
     if (!docId) return

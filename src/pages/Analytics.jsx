@@ -12,10 +12,11 @@ import { getDocType } from '../lib/docgen'
 import { supabase } from '../lib/supabase'
 import DocModal from '../components/DocModal'
 import { useUser } from '../lib/auth'
-import { useTabParam } from '../components/ui'
+import { useTabParam, Tabs, Button } from '../components/ui'
 import { useNewUi } from '../lib/uiPrefs'
 import { canAccess } from '../lib/permissions'
 import CashflowReport from '../components/CashflowReport'
+import { CashFlowNew, PeriodChips } from './AnalyticsNew'
 
 const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД', 'ОЗ']
 
@@ -43,6 +44,22 @@ export default function Analytics() {
     ...(newUi && canAccess(user?.role, 'cashflow') ? [['cashflow-report', 'Звіт по статтях', 'ti-table']] : [])]
   // активна вкладка — в адресі (?tab=…), щоб посилання й «назад» вели на неї
   const [tab, setTab] = useTabParam('cashflow', TABS.map(t => t[0]))
+  const body = <>
+    {tab === 'cashflow' && <CashFlowView />}
+    {tab === 'pl' && <PLView />}
+    {tab === 'balance' && <BalanceView />}
+    {tab === 'margins' && <OrderMarginsReport />}
+    {tab === 'cashflow-report' && <CashflowReport />}
+  </>
+  if (newUi) return (
+    <div className="an-page">
+      <div className="an-head">
+        <h1>Аналітика</h1>
+        <Tabs ariaLabel="Розділи аналітики" idPrefix="an" value={tab} onChange={setTab} tabs={TABS.map(([id, label, icon]) => ({ id, label, icon }))} />
+      </div>
+      {body}
+    </div>
+  )
   return (
     <div>
       <div className="page-header"><h1>Аналітика</h1></div>
@@ -82,6 +99,7 @@ function PeriodPicker({ year, setYear, month, setMonth }) {
 // fixedYear/fixedMonth — коли задані (напр. у «Закритті періоду»), період фіксований і селектор ховається.
 export function CashFlowView({ fixedYear = null, fixedMonth = null } = {}) {
   const locked = fixedYear != null
+  const newUi = useNewUi()
   const [year, setYear] = useState(fixedYear ?? NOW.getFullYear())
   const [month, setMonth] = useState(fixedMonth ?? 0)
   useEffect(() => { if (locked) { setYear(fixedYear); setMonth(fixedMonth) } }, [fixedYear, fixedMonth])
@@ -117,6 +135,22 @@ export function CashFlowView({ fixedYear = null, fixedMonth = null } = {}) {
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Cash Flow')
     XLSX.writeFile(wb, `CashFlow_${year}${month ? '-' + String(month).padStart(2, '0') : ''}.xlsx`)
   }
+
+  const modals = <>
+    {drill && <CashFlowDrillModal drill={drill} onClose={() => setDrill(null)} onSaved={() => { setDrill(null); reload() }} />}
+    {aging && <AgingModal title={aging.title} data={aging.data} color={aging.color} onClose={() => setAging(null)} />}
+  </>
+  // Новий інтерфейс (ТЗ 5.1): у «Закритті періоду» (locked) лишається звичний вигляд
+  if (newUi && !locked) return (
+    <>
+      <div className="an-toolbar">
+        <PeriodChips year={year} setYear={setYear} month={month} setMonth={setMonth} years={YEARS} />
+        <Button variant="primary" icon="ti-download" onClick={exportXlsx} disabled={!d}>Експорт Excel</Button>
+      </div>
+      <CashFlowNew d={d} debt={debt} year={year} month={month} setMonth={setMonth} openDrill={openDrill} />
+      {modals}
+    </>
+  )
 
   return (
     <div>
