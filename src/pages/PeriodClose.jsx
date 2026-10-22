@@ -8,6 +8,8 @@ import { listClosings, periodStatus, runChecklist, closePeriod, reopenPeriod, co
 import { getDocType } from '../lib/docgen'
 import DocModal from '../components/DocModal'
 import GeneratedDocModal from '../components/GeneratedDocModal'
+import { useNewUi } from '../lib/uiPrefs'
+import PeriodCloseNew from './PeriodCloseNew'
 
 // Згенерований документ без прикріпленого реального скана → GeneratedDocModal (рендер з даних),
 // інакше DocModal намагається завантажити файл зі Storage і падає «Object not found».
@@ -47,6 +49,7 @@ export default function PeriodClose() {
   const [err, setErr] = useState(null)
   const [grouped, setGrouped] = useState({})
   const [openDoc, setOpenDoc] = useState(null) // документ для звірки (DocModal)
+  const newUi = useNewUi()
 
   const load = async () => setClosings(await listClosings())
   const { activeId } = useCompany()
@@ -94,11 +97,31 @@ export default function PeriodClose() {
   }
 
   const doReopen = async () => {
-    if (!confirm(`Переоткрити ${MONTHS[sel - 1]} ${year}? Блокування знімається, дані знову можна редагувати.`)) return
+    const reason = (prompt(`Переоткрити ${MONTHS[sel - 1]} ${year}? Блокування знімається, дані знову можна редагувати.\n\nПричина (обов'язково):`) || '').trim()
+    if (!reason) return
     setBusy('reopen'); setErr(null)
-    try { await reopenPeriod(year, sel, user?.id); await load() } catch (e) { setErr(e.message) }
+    try { await reopenPeriod(year, sel, user?.id, reason); await load() } catch (e) { setErr(e.message) }
     setBusy('')
   }
+
+  const docModal = openDoc && (isPureGenerated(openDoc)
+    ? <GeneratedDocModal doc={openDoc} onClose={() => setOpenDoc(null)} onDeleted={() => { setOpenDoc(null); doCheck() }} />
+    : <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => { setOpenDoc(null); doCheck() }} />)
+  if (newUi) return (
+    <>
+      <PeriodCloseNew year={year} setYear={(y) => { setYear(y); setSel(null) }} sel={sel} openMonth={openMonth}
+        statusOf={(m) => periodStatus(closings, year, m)} rowFor={rowFor} check={check} comp={comp} busy={busy} err={err} isAdmin={isAdmin}
+        onClose={async () => { if (!canClose) return; setBusy('close'); setErr(null); try { await closePeriod(year, sel, user?.id); await load() } catch (e) { setErr(e.message) } setBusy('') }}
+        onReopen={async (reason) => { setBusy('reopen'); setErr(null); try { await reopenPeriod(year, sel, user?.id, reason); await load(); await reloadGates(sel) } catch (e) { setErr(e.message) } setBusy('') }}
+        renderChecklist={() => <Checklist check={check} grouped={grouped} onClassified={doCheck} onOpenDoc={setOpenDoc} />}
+        renderCompleteness={() => <CompletenessPanel comp={comp} grouped={grouped} onChanged={doCheck} />}
+        renderReport={(k) => k === 'cashflow' ? <CashFlowView key={refreshKey} fixedYear={year} fixedMonth={sel} />
+          : k === 'pl' ? <PLView key={refreshKey} fixedYear={year} fixedMonth={sel} />
+          : k === 'balance' ? <BalanceView key={refreshKey} fixedYear={year} fixedMonth={sel} />
+          : <GoodsReportView key={refreshKey} year={year} month={sel} />} />
+      {docModal}
+    </>
+  )
 
   return (
     <div>

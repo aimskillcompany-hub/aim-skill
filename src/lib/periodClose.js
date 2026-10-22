@@ -383,11 +383,25 @@ export async function closePeriod(year, month, userId, { notes, reportsConfirmed
 }
 
 // ── Переоткрити період ──
-export async function reopenPeriod(year, month, userId) {
-  const { error } = await supabase.from('period_closings')
-    .update({ status: 'reopened', reopened_at: new Date().toISOString(), reopened_by: userId || null })
+// reason — обов'язкова з міграції 100 (переоткриває лише адміністратор; перевіряє сервер, пише журнал)
+export async function reopenPeriod(year, month, userId, reason = null) {
+  const q = (patch) => supabase.from('period_closings').update(patch)
     .eq('company_id', getActiveCompanyId()).eq('period_year', year).eq('period_month', month)
-  if (error) throw new Error(error.message)
+  const base = { status: 'reopened', reopened_at: new Date().toISOString(), reopened_by: userId || null }
+  let { error } = await q(reason ? { ...base, reopen_reason: reason } : base)
+  if (error && /reopen_reason/.test(error.message || '')) ({ error } = await q(base))   // до міграції 100
+  if (error) throw new Error(/PERIOD_REOPEN_ADMIN/.test(error.message) ? 'Переоткрити закритий місяць може лише адміністратор.'
+    : /PERIOD_REOPEN_REASON/.test(error.message) ? 'Вкажіть причину переоткриття.' : error.message)
+}
+
+// Журнал закриттів / переоткриттів місяця (міграція 100); до міграції — порожньо
+export async function listCloseLog(year, month) {
+  const { data, error } = await qc('period_close_log').select('action, reason, user_id, at').eq('period_year', year).eq('period_month', month).order('at', { ascending: false })
+  if (error) return []
+  const ids = [...new Set((data || []).map(x => x.user_id).filter(Boolean))]
+  const names = {}
+  if (ids.length) { const { data: ps } = await supabase.from('profiles').select('id, full_name').in('id', ids); (ps || []).forEach(p => names[p.id] = p.full_name) }
+  return (data || []).map(x => ({ ...x, who: names[x.user_id] || '—' }))
 }
 
 // ── Чи закрито період для дати (для м'якого блокування в UI) ──
