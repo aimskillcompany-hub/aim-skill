@@ -259,7 +259,7 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
       {/* атрибути */}
       <div style={{ display: 'grid', gridTemplateColumns: '120px minmax(0, 1fr)', gap: '9px 12px', alignItems: 'center', fontSize: 13 }}>
         <span style={{ color: 'var(--text3)' }}>Відповідальний</span>
-        <select className="form-input" disabled={!canEdit || busy} value={t.assignee_id || ''} style={{ height: 34 }}
+        <select className="form-input" disabled={!canEdit || busy} value={t.assignee_id || ''} style={{ padding: '6px 10px', fontSize: 13, lineHeight: 1.4 }}
           onChange={e => run(() => updateTask(t.id, { assignee_id: e.target.value || null }), `Призначено: ${personName(P(e.target.value))}`)}>
           {!t.assignee_id && <option value="">—</option>}
           {people.map(p => <option key={p.id} value={p.id}>{personName(p)}</option>)}
@@ -269,7 +269,7 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
         <span style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
           {t.watchers.map(w => <span key={w} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><Avatar person={P(w)} id={w} size={26} />
             {canEdit && <button className="btn btn-sm" title="Прибрати" style={{ padding: '0 4px', fontSize: 11 }} onClick={() => run(() => removeWatcher(t.id, w))}>×</button>}</span>)}
-          {addW ? <select className="form-input" style={{ height: 30, width: 160 }} autoFocus onBlur={() => setAddW(false)}
+          {addW ? <select className="form-input" style={{ padding: '4px 8px', fontSize: 13, lineHeight: 1.4, width: 170 }} autoFocus onBlur={() => setAddW(false)}
               onChange={e => { setAddW(false); e.target.value && run(() => addWatcher(t.id, e.target.value)) }}>
               <option value="">обрати…</option>
               {people.filter(p => !t.watchers.includes(p.id)).map(p => <option key={p.id} value={p.id}>{personName(p)}</option>)}
@@ -278,7 +278,7 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
         </span>
         <span style={{ color: 'var(--text3)' }}>Термін</span><span style={d.style}>{d.label}</span>
         <span style={{ color: 'var(--text3)' }}>Пріоритет</span>
-        <select className="form-input" disabled={!canEdit || busy} value={t.priority || 'normal'} style={{ height: 34 }}
+        <select className="form-input" disabled={!canEdit || busy} value={t.priority || 'normal'} style={{ padding: '6px 10px', fontSize: 13, lineHeight: 1.4 }}
           onChange={e => run(() => updateTask(t.id, { priority: e.target.value }))}>
           {Object.entries(PRIORITY).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
         </select>
@@ -293,7 +293,7 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
         <div style={{ fontWeight: 600, fontSize: 13 }}>Коментарі та історія</div>
         <div style={{ display: 'flex', gap: 6 }}>
-          <input className="form-input" value={cmt} onChange={e => setCmt(e.target.value)} placeholder="Написати коментар…" style={{ height: 36 }}
+          <input className="form-input" value={cmt} onChange={e => setCmt(e.target.value)} placeholder="Написати коментар…" style={{ padding: '7px 10px', fontSize: 13 }}
             onKeyDown={e => { if (e.key === 'Enter' && cmt.trim()) run(() => addComment(t.id, cmt.trim())).then(ok => ok && setCmt('')) }} />
           <button className="btn" disabled={!cmt.trim() || busy} onClick={() => run(() => addComment(t.id, cmt.trim())).then(ok => ok && setCmt(''))}>Надіслати</button>
         </div>
