@@ -235,6 +235,7 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
   const [addW, setAddW] = useState(false)
   const P = (id) => people.find(p => p.id === id)
   const loadF = () => loadFeed(t.id).then(setFeed).catch(() => setFeed([]))
+  useEffect(() => { const h = (e) => { if (e.key === 'Escape' && !document.querySelector('.modal-bg')) onClose() }; window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h) }, [onClose])
   useEffect(() => { loadF() }, [t.id, t.status, t.assignee_id, t.due_at, t.comments])
 
   const run = async (fn, msg) => {
@@ -266,8 +267,14 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
   const btn = (bg, fg = '#fff', border = 'none') => ({ height: 38, padding: '0 14px', borderRadius: 8, border, background: bg, color: fg, fontWeight: 600, cursor: 'pointer', font: 'inherit' })
 
   return (
-    <aside aria-label="Картка задачі" style={{ flex: '1 1 360px', maxWidth: 480, minWidth: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 14, position: 'sticky', top: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+    <>
+    {/* панель на половину екрана справа; клік по затемненню або Esc — закрити */}
+    <style>{`.task-drawer{position:fixed;top:0;right:0;bottom:0;width:50vw;min-width:520px;max-width:960px;z-index:180;animation:taskIn .2s ease}
+      @keyframes taskIn{from{transform:translateX(40px);opacity:.6}to{transform:none;opacity:1}}
+      @media (max-width:900px){.task-drawer{width:100vw;min-width:0;max-width:none}}`}</style>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,.25)', zIndex: 179 }} />
+    <aside aria-label="Картка задачі" className="task-drawer" style={{ background: 'var(--surface)', borderLeft: '1px solid var(--border)', boxShadow: '-12px 0 32px rgba(17,24,39,.15)', padding: '18px 24px 32px', display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, position: 'sticky', top: -18, margin: '-18px -24px 0', padding: '14px 24px 10px', background: 'var(--surface)', zIndex: 1, borderBottom: '1px solid var(--border)' }}>
         <span style={pill(s)}>{s.label}</span>
         <span style={{ display: 'flex', gap: 4 }}>
           {canEdit && <button className="btn btn-sm" onClick={onEdit} title="Редагувати"><i className="ti ti-pencil" /></button>}
@@ -275,7 +282,7 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
         </span>
       </div>
       <div>
-        <h2 style={{ margin: 0, fontSize: 18, lineHeight: 1.3 }}>{t.title}</h2>
+        <h2 style={{ margin: 0, fontSize: 21, lineHeight: 1.3 }}>{t.title}</h2>
         {desc && <p style={{ margin: '8px 0 0', color: 'var(--text2)', fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-line' }}>{desc}</p>}
         {recon && <Link to={recon} style={{ fontSize: 13, display: 'inline-block', marginTop: 6 }}><i className="ti ti-arrows-exchange" /> Відкрити в звірці</Link>}
         {t.entity_type === 'order' && t.entity_id && <Link to={`/orders/${t.entity_id}`} style={{ fontSize: 13, display: 'inline-block', marginTop: 6 }}>
@@ -324,7 +331,7 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
       <Subtasks t={t} people={people} canEdit={canEdit || (t.subAssignees || []).includes(me)} onChanged={onChanged} />
 
       {/* атрибути */}
-      <div style={{ display: 'grid', gridTemplateColumns: '120px minmax(0, 1fr)', gap: '9px 12px', alignItems: 'center', fontSize: 13 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '130px minmax(0, 1fr)', gap: '10px 14px', alignItems: 'center', fontSize: 13, maxWidth: 640 }}>
         <span style={{ color: 'var(--text3)' }}>Відповідальний</span>
         <select className="form-input" disabled={!canEdit || busy} value={t.assignee_id || ''} style={{ padding: '6px 10px', fontSize: 13, lineHeight: 1.4 }}
           onChange={e => run(() => updateTask(t.id, { assignee_id: e.target.value || null }), `Призначено: ${personName(P(e.target.value))}`)}>
@@ -367,7 +374,7 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
             onKeyDown={e => { if (e.key === 'Enter' && cmt.trim()) run(() => addComment(t.id, cmt.trim())).then(ok => ok && setCmt('')) }} />
           <button className="btn" disabled={!cmt.trim() || busy} onClick={() => run(() => addComment(t.id, cmt.trim())).then(ok => ok && setCmt(''))}>Надіслати</button>
         </div>
-        <div style={{ maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {feed.map(f => <div key={f.kind + f.id} style={{ fontSize: 12.5, lineHeight: 1.45, color: 'var(--text2)', ...(f.kind === 'comment' ? { background: 'var(--surface2)', borderRadius: 8, padding: '6px 8px' } : {}) }}>
             <b style={{ color: 'var(--text)' }}>{f.who ? personName(P(f.who)) : 'Система'}</b>{' '}
             {f.kind === 'comment' ? <span style={{ whiteSpace: 'pre-line', color: 'var(--text)' }}>{f.body}</span> : describeActivity(f, people)}
@@ -378,6 +385,7 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
       {(isCreator || isAdmin) && <button className="btn btn-sm" style={{ color: 'var(--red)', alignSelf: 'flex-start' }}
         onClick={() => confirm('Видалити задачу назавжди? Краще «Скасувати» — тоді лишиться історія.') && run(async () => { await deleteTask(t.id); onClose() }, 'Задачу видалено')}><i className="ti ti-trash" /> Видалити</button>}
     </aside>
+    </>
   )
 }
 
