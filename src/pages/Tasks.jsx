@@ -234,6 +234,8 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
   const [busy, setBusy] = useState(false)
   const [addW, setAddW] = useState(false)
   const P = (id) => people.find(p => p.id === id)
+  const [full, setFull] = useState(() => { try { return localStorage.getItem('tasks.fullCard') === '1' } catch { return false } })
+  useEffect(() => { try { localStorage.setItem('tasks.fullCard', full ? '1' : '0') } catch {} }, [full])
   const loadF = () => loadFeed(t.id).then(setFeed).catch(() => setFeed([]))
   useEffect(() => { const h = (e) => { if (e.key === 'Escape' && !document.querySelector('.modal-bg')) onClose() }; window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h) }, [onClose])
   useEffect(() => { loadF() }, [t.id, t.status, t.assignee_id, t.due_at, t.comments])
@@ -271,12 +273,14 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
     {/* панель на половину екрана справа; клік по затемненню або Esc — закрити */}
     <style>{`.task-drawer{position:fixed;top:0;right:0;bottom:0;width:50vw;min-width:520px;max-width:960px;z-index:180;animation:taskIn .2s ease}
       @keyframes taskIn{from{transform:translateX(40px);opacity:.6}to{transform:none;opacity:1}}
+      .task-drawer.full{width:100vw;min-width:0;max-width:none;padding-left:max(24px,calc((100vw - 980px)/2))!important;padding-right:max(24px,calc((100vw - 980px)/2))!important}
       @media (max-width:900px){.task-drawer{width:100vw;min-width:0;max-width:none}}`}</style>
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,.25)', zIndex: 179 }} />
-    <aside aria-label="Картка задачі" className="task-drawer" style={{ background: 'var(--surface)', borderLeft: '1px solid var(--border)', boxShadow: '-12px 0 32px rgba(17,24,39,.15)', padding: '18px 24px 32px', display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, position: 'sticky', top: -18, margin: '-18px -24px 0', padding: '14px 24px 10px', background: 'var(--surface)', zIndex: 1, borderBottom: '1px solid var(--border)' }}>
+    <aside aria-label="Картка задачі" className={`task-drawer${full ? ' full' : ''}`} style={{ background: 'var(--surface)', borderLeft: '1px solid var(--border)', boxShadow: '-12px 0 32px rgba(17,24,39,.15)', padding: '18px 24px 32px', display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, position: 'sticky', top: -18, margin: full ? '-18px 0 0' : '-18px -24px 0', padding: full ? '14px 0 10px' : '14px 24px 10px', background: 'var(--surface)', zIndex: 1, borderBottom: '1px solid var(--border)' }}>
         <span style={pill(s)}>{s.label}</span>
         <span style={{ display: 'flex', gap: 4 }}>
+          <button className="btn btn-sm" onClick={() => setFull(v => !v)} title={full ? 'Половина екрана' : 'На весь екран'}><i className={`ti ti-${full ? 'arrows-minimize' : 'arrows-maximize'}`} /></button>
           {canEdit && <button className="btn btn-sm" onClick={onEdit} title="Редагувати"><i className="ti ti-pencil" /></button>}
           <button className="btn btn-sm" onClick={onClose} aria-label="Закрити картку"><i className="ti ti-x" /></button>
         </span>
