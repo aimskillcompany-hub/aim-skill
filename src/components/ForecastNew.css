@@ -1,0 +1,58 @@
+/* «Прогноз» — новий інтерфейс. Лише токени. */
+.fcn h2 { margin: 0; font-size: 17px; font-weight: 700; }
+.fcn-hero { background: var(--ink); color: var(--surface); border-radius: var(--r-card); padding: 22px 26px; display: flex; flex-direction: column; gap: 16px; }
+.fcn-eq { display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
+.fcn-eq > div { display: flex; flex-direction: column; gap: 3px; flex: 1 1 150px; min-width: 0; }
+.fcn-eq span { font-size: 13px; color: var(--on-dark-muted); }
+.fcn-eq b { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.fcn-eq b.is-in { color: var(--on-dark-pos); } .fcn-eq b.is-out, .fcn-eq b.is-neg { color: var(--on-dark-neg); }
+.fcn-eq .is-res b { font-size: 36px; }
+.fcn-eq > i { font-style: normal; font-size: 20px; color: var(--on-dark-muted); padding-bottom: 6px; }
+.fcn-gap { display: flex; gap: 10px; align-items: flex-start; padding: 12px 16px; border-radius: 14px; background: var(--ink-field); color: var(--on-dark-neg); font-size: 13px; line-height: 1.45; }
+.fcn-gap span { color: var(--surface); } .fcn-gap b { color: var(--on-dark-neg); }
+.fcn-gap.is-bad { box-shadow: inset 0 0 0 1px var(--on-dark-neg); }
+.fcn-mid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; }
+.fcn-chart { display: flex; flex-direction: column; gap: 10px; }
+.fcn-cols { display: flex; height: 260px; position: relative; margin: 6px 0 26px; }
+.fcn-line-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; z-index: 1; pointer-events: none; }
+.fcn-line-svg polyline { fill: none; stroke: var(--ink); stroke-width: 2; }
+.fcn-cols::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid var(--divider); }
+.fcn-col { flex: 1 1 0; min-width: 0; position: relative; display: flex; justify-content: center; }
+.fcn-bar { position: absolute; width: min(44px, 40%); border-radius: 6px; }
+.fcn-bar.is-in { bottom: 50%; left: calc(50% - min(44px, 40%)); background: var(--brand); border-radius: 6px 6px 0 0; }
+.fcn-bar.is-out { top: 50%; left: 50%; background: var(--expense-chart); border-radius: 0 0 6px 6px; }
+.fcn-bar small { position: absolute; left: 50%; transform: translateX(-50%); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.fcn-bar.is-in small { bottom: calc(100% + 2px); color: var(--brand-dark); } .fcn-bar.is-out small { top: calc(100% + 2px); color: var(--money-out); }
+.fcn-dot { position: absolute; left: calc(50% - 5px); width: 10px; height: 10px; border-radius: 50%; background: var(--ink); z-index: 2; }
+.fcn-dot.is-neg { background: var(--danger-fg); }
+.fcn-bal { position: absolute; left: 50%; transform: translate(-50%, -8px); font-size: 12px; font-weight: 700; white-space: nowrap; z-index: 3; background: var(--surface); padding: 0 3px; border-radius: 4px; }
+.fcn-bal.is-neg { color: var(--danger-fg); }
+.fcn-col-l { position: absolute; bottom: -24px; font-size: 11px; color: var(--muted); text-align: center; white-space: nowrap; }
+.fcn-l-in { background: var(--brand); } .fcn-l-out { background: var(--expense-chart); } .fcn-l-bal { height: 3px !important; background: var(--ink); }
+.fcn-src { display: flex; flex-direction: column; gap: 10px; font-size: 13px; }
+.fcn-src ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; line-height: 1.45; }
+.fcn-src p { margin: 0; } .fcn-src a { color: var(--brand-dark); }
+.fcn-num { font-weight: 700; color: var(--brand-dark); text-decoration: none; }
+.fcn-table .c-name small { display: block; font-size: 12px; }
+.fcn-in { color: var(--brand); } .fcn-out { color: var(--money-out); }
+.fcn-pill { display: inline-block; padding: 2px 9px; border-radius: var(--r-pill); font-size: 11.5px; font-weight: 600; background: var(--warn-bg); color: var(--warn-fg); white-space: nowrap; }
+.fcn-pill.is-ok { background: var(--brand-soft); color: var(--brand-dark); } .fcn-pill.is-bad { background: var(--danger-soft-bg); color: var(--danger-fg); }
+.fcn-lines { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin: 4px 0 8px; }
+.fcn-line { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.fcn-line span { font-size: 12px; color: var(--muted); } .fcn-line b { font-size: 19px; font-variant-numeric: tabular-nums; } .fcn-line small { font-size: 11px; color: var(--muted); }
+.fcn-line.is-late { border-color: var(--danger-fg); } .fcn-line.is-late small { color: var(--danger-fg); }
+.fcn-sched a { color: var(--brand-dark); }
+.fcn-manual-h { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.fcn-mlist { list-style: none; margin: 0; padding: 0; }
+.fcn-mlist li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto auto auto; gap: 12px; align-items: center; min-height: 44px; border-top: 1px solid var(--divider); font-size: 14px; }
+.fcn-mlist b { font-variant-numeric: tabular-nums; }
+@media (max-width: 1023px) { .fcn-mid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 767px) {
+  .fcn-hero { padding: 18px; } .fcn-eq > i { display: none; } .fcn-eq > div { flex: 1 1 40%; } .fcn-eq .is-res { flex-basis: 100%; } .fcn-eq b { font-size: 22px; } .fcn-eq .is-res b { font-size: 30px; }
+  .fcn-cols { height: 220px; } .fcn-col-l { font-size: 10px; white-space: normal; max-width: 70px; }
+  .fcn-table tbody tr.is-click { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name net" "client client"; padding: 12px; }
+  .fcn-table tbody tr.is-click td:not(.c-name):not(.c-net):not(.c-client) { display: none; }
+  .fcn-table .c-name { grid-area: name; } .fcn-table .c-net { grid-area: net; } .fcn-table .c-client { grid-area: client; font-size: 13px; color: var(--muted); }
+  .fcn-table tr.rpt-sub { display: block; padding: 8px 12px; } .fcn-table tr.rpt-sub > td { display: block !important; }
+  .fcn-mlist li { grid-template-columns: 24px minmax(0, 1fr) auto auto; } .fcn-mlist li > span:nth-child(3) { display: none; }
+}

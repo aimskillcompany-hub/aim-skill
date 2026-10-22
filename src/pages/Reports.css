@@ -155,3 +155,4 @@
   .prf-table tfoot td:first-child, .prf-table tfoot td:last-child { display: block; }
 }
 .rpt-group { display: flex; justify-content: flex-end; }
+.fcn-badge { display: inline-flex; align-items: center; gap: 5px; margin-left: 10px; padding: 3px 10px; border-radius: var(--r-pill); background: var(--seg-track); font-size: 12px; font-weight: 600; letter-spacing: 0; vertical-align: middle; color: var(--text); }
