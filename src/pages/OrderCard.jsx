@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { qc, withCompany } from '../lib/companyScope'
 import { useCompany } from '../lib/company'
@@ -50,7 +50,8 @@ export default function OrderCard() {
   const [o, setO] = useState(null)
   const [lastSent, setLastSent] = useState(null)
   const [payment, setPayment] = useState(null) // прив'язана оплата клієнта (bank_transaction)
-  const [tab, setTab] = useState('details')
+  const [qs] = useSearchParams()
+  const [tab, setTab] = useState(() => qs.get('tab') || 'details')
   const [busy, setBusy] = useState('')
   const [confirmDel, setConfirmDel] = useState(false)
   const [msg, setMsg] = useState(null)

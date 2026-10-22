@@ -51,11 +51,24 @@ export default function Orders() {
       ;(ptx || []).forEach(t => { payMap[t.id] = t })
     }
 
+    // невиконані задачі, прив'язані до замовлень (планер): кількість, прострочені, перша задача
+    const tasksByOrder = {}
+    {
+      const { data: tk } = await supabase.from('tasks').select('id, title, entity_id, due_at, status')
+        .eq('entity_type', 'order').in('status', ['new', 'in_progress', 'review', 'on_hold'])
+      const now = Date.now()
+      ;(tk || []).forEach(t => {
+        const g = (tasksByOrder[t.entity_id] ||= { n: 0, late: 0, first: null })
+        g.n++; if (t.status !== 'on_hold' && t.due_at && new Date(t.due_at).getTime() < now) g.late++
+        if (!g.first || (t.due_at || '9') < (g.first.due_at || '9')) g.first = t
+      })
+    }
     const enriched = (ords || []).map(o => ({
       ...o,
       clientName: o.contractors?.name || '—',
       managerName: o.manager_id ? (userMap[o.manager_id] || '—') : '—',
       payment: o.paid_transaction_id ? (payMap[o.paid_transaction_id] || null) : null,
+      tasks: tasksByOrder[o.id] || null,
       overdue: proposalOverdue(o, lastSent[o.id]) || paymentOverdue(subsByOrder[o.id]),
     }))
     setOrders(enriched)
@@ -215,14 +228,18 @@ export default function Orders() {
                 <SortTh label="Тип" k="type" sort={sort} onSort={onSort} />
                 <SortTh label="Статус" k="status" sort={sort} onSort={onSort} />
                 <SortTh label="Сума з ПДВ" k="total" sort={sort} onSort={onSort} align="right" />
-                <SortTh label="Інвестор" k="investor" sort={sort} onSort={onSort} align="center" />
-                <SortTh label="Прогноз" k="forecast" sort={sort} onSort={onSort} align="center" />
-                <SortTh label="Комісія" k="commission" sort={sort} onSort={onSort} align="center" />
+                <th style={{ textAlign: 'center', width: 96 }} title="Інвестор · Прогноз · Комісію сплачено">Позначки</th>
               </tr></thead>
               <tbody>
                 {sortedOrders.map(o => (
                   <tr key={o.id} style={{ cursor: 'pointer', background: o.overdue ? 'var(--red-bg)' : undefined }} onClick={() => navigate(`/orders/${o.id}`)}>
-                    <td style={{ fontWeight: 500 }}>{o.order_number || o.id.slice(0, 6)}</td>
+                    <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{o.order_number || o.id.slice(0, 6)}
+                      {o.tasks && <button onClick={e => { e.stopPropagation(); navigate(o.tasks.n === 1 ? `/tasks?task=${o.tasks.first.id}` : `/orders/${o.id}?tab=tasks`) }}
+                        title={o.tasks.n === 1 ? `Задача: ${o.tasks.first.title}` : `Невиконаних задач: ${o.tasks.n}${o.tasks.late ? `, прострочено: ${o.tasks.late}` : ''}`}
+                        style={{ marginLeft: 6, border: 'none', cursor: 'pointer', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
+                          background: o.tasks.late ? '#fee2e2' : '#eef2ff', color: o.tasks.late ? '#b91c1c' : '#3730a3', display: 'inline-flex', alignItems: 'center', gap: 2, verticalAlign: 'middle' }}>
+                        <i className="ti ti-checklist" style={{ fontSize: 13 }} />{o.tasks.n}</button>}
+                    </td>
                     <td style={{ fontSize: 13, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{o.created_at ? o.created_at.slice(0, 10).split('-').reverse().join('.') : '—'}</td>
                     <td><div className="trunc">{o.clientName}</div></td>
                     <td style={{ fontSize: 13, color: o.managerName === '—' ? 'var(--text3)' : 'var(--text2)' }}><div className="trunc">{o.managerName}</div></td>
@@ -244,24 +261,19 @@ export default function Orders() {
                       )}
                     </td>
                     <td style={{ textAlign: 'right' }}>{fmt(o.total)}</td>
-                    <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                      <button onClick={() => toggleInvestor(o)} title={o.in_investor ? 'Враховується в розрахунку інвестора' : 'Додати в розрахунок інвестора'}
-                        style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, lineHeight: 0 }}>
-                        <i className="ti ti-diamond-filled" style={{ fontSize: 18, color: o.in_investor ? '#7C3AED' : 'var(--border)' }} />
-                      </button>
-                    </td>
-                    <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                      <button onClick={() => toggleForecast(o)} title={o.in_forecast ? 'У прогнозі (Інвестору → Прогноз)' : 'Додати в прогноз'}
-                        style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, lineHeight: 0 }}>
-                        <i className="ti ti-trending-up" style={{ fontSize: 18, color: o.in_forecast ? '#2563EB' : 'var(--border)' }} />
-                      </button>
-                    </td>
-                    <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                      <input type="checkbox" checked={!!o.commission_paid} onChange={() => toggleCommission(o)} style={{ width: 16, height: 16, cursor: 'pointer' }} title="Комісійні сплачені" />
+                    <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+                      <span style={{ display: 'inline-flex', gap: 2, alignItems: 'center' }}>
+                        <button onClick={() => toggleInvestor(o)} title={o.in_investor ? 'Інвестор: враховується в розрахунку' : 'Інвестор: додати в розрахунок'} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 3, lineHeight: 0 }}>
+                          <i className="ti ti-diamond-filled" style={{ fontSize: 16, color: o.in_investor ? '#7C3AED' : 'var(--border)' }} /></button>
+                        <button onClick={() => toggleForecast(o)} title={o.in_forecast ? 'Прогноз: у прогнозі' : 'Прогноз: додати'} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 3, lineHeight: 0 }}>
+                          <i className="ti ti-trending-up" style={{ fontSize: 16, color: o.in_forecast ? '#2563EB' : 'var(--border)' }} /></button>
+                        <button onClick={() => toggleCommission(o)} title={o.commission_paid ? 'Комісію сплачено' : 'Комісію не сплачено'} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 3, lineHeight: 0 }}>
+                          <i className={`ti ${o.commission_paid ? 'ti-square-check-filled' : 'ti-square'}`} style={{ fontSize: 17, color: o.commission_paid ? '#16a34a' : 'var(--border)' }} /></button>
+                      </span>
                     </td>
                   </tr>
                 ))}
-                {sortedOrders.length === 0 && <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--text3)', padding: 28 }}>Замовлень немає</td></tr>}
+                {sortedOrders.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text3)', padding: 28 }}>Замовлень немає</td></tr>}
               </tbody>
             </table>
           </div>
