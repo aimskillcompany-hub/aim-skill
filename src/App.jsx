@@ -1,6 +1,5 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { css, mobileCss } from './lib/styles'
 import { AuthProvider, RequireAuth, useUser } from './lib/auth'
 import { CompanyProvider } from './lib/company'
 import { canAccess, firstSection } from './lib/permissions'
@@ -66,7 +65,6 @@ export default function App() {
   return (
     <AuthProvider>
       <CompanyProvider>
-      <style>{css}{mobileCss}</style>
       <ErrorBoundary>
         <Suspense fallback={<Loading />}>
           <Routes>
