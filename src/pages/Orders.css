@@ -1,0 +1,32 @@
+/* Сторінка «Замовлення» (на компонентах src/components/ui) */
+.orders-toolbar { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+.orders-search { flex: 1 1 240px; max-width: 360px; }
+.orders-views { margin-left: auto; }
+.orders-summary { font-size: 13px; color: var(--text2); margin: -4px 0 14px; }
+
+.orders-row { cursor: pointer; }
+.orders-row.is-overdue { background: var(--danger-bg); }
+.orders-row.is-overdue:hover td { background: #fecaca; }
+.orders-muted { font-size: 13px; color: var(--text2); }
+.orders-pills { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+
+.orders-task-badge { margin-left: 6px; border: none; cursor: pointer; border-radius: var(--radius-sm); padding: 1px 6px; font-size: 11px; font-weight: 700;
+  background: var(--blue-soft); color: #3730a3; display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; }
+.orders-task-badge .ti { font-size: 13px; }
+.orders-task-badge.is-late { background: var(--danger-bg); color: var(--danger); }
+.orders-task-badge:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+
+.orders-flags { display: inline-flex; gap: 2px; align-items: center; }
+.orders-flags button { border: none; background: none; cursor: pointer; padding: 3px; line-height: 0; border-radius: var(--radius-sm); }
+.orders-flags button:hover { background: var(--surface2); }
+.orders-flags button:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.orders-flags .ti { font-size: 16px; color: var(--border-strong); }
+
+@media (max-width: 768px) {
+  /* таблиця прокручується вбік, а не стискає назви клієнтів до стовпчика літер */
+  .orders-table { min-width: 860px; }
+  .orders-table td .trunc { min-width: 180px; }
+  .orders-search { max-width: none; flex-basis: 100%; }
+  .orders-views { margin-left: 0; }
+  .orders-flags button { min-width: var(--h-touch); min-height: var(--h-touch); line-height: 1; }
+}
