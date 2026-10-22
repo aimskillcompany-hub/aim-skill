@@ -33,6 +33,7 @@ export default function PeriodCloseNew({ year, setYear, sel, openMonth, statusOf
     ['Некласифіковані транзакції', check.unclassifiedTx],
     ['Накладні без руху складу', (check.unpostedStock || []).length, true],
   ] : []
+  const presold = check?.presoldStock || []
   const passed = checks.filter(c => !c[1]).length
   const ready = check && check.blockers === 0
   const R = 30, C = 2 * Math.PI * R
@@ -77,7 +78,8 @@ export default function PeriodCloseNew({ year, setYear, sel, openMonth, statusOf
           <section className="cfn-card pcn-step" aria-label="Крок 1">
             <div className="pcn-step-h"><span className="pcn-n">1</span><div><h2>Перевірки</h2><small className="rpt-muted">Натисніть рядок — відкриються конкретні записи, які треба виправити.</small></div></div>
             {check ? <>
-              <ul className="pcn-checks">{checks.map(([l, n, warn]) => <li key={l} className={n ? (warn ? 'is-warn' : 'is-bad') : 'is-ok'}><i className={`ti ${n ? 'ti-alert-circle' : 'ti-circle-check'}`} aria-hidden="true" />{l}<b>{n ? `${n}${warn ? ' · не блокує' : ''}` : 'усе гаразд'}</b></li>)}</ul>
+              <ul className="pcn-checks">{checks.map(([l, n, warn]) => <li key={l} className={n ? (warn ? 'is-warn' : 'is-bad') : 'is-ok'}><i className={`ti ${n ? 'ti-alert-circle' : 'ti-circle-check'}`} aria-hidden="true" />{l}<b>{n ? `${n}${warn ? ' · не блокує' : ''}` : 'усе гаразд'}</b></li>)}
+                {presold.length > 0 && <li className="is-warn"><i className="ti ti-info-circle" aria-hidden="true" />Продано під замовлення — мінус покрито пізнішим приходом<b>{presold.length} · не блокує</b></li>}</ul>
               <details className="pcn-details"><summary>Розкрити записи</summary>{renderChecklist()}</details>
             </> : <TableSkeleton rows={4} cols={2} label="Перевіряю…" />}
           </section>

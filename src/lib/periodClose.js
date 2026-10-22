@@ -33,6 +33,15 @@ export async function runChecklist(year, month) {
     const pm = {}; (prods || []).forEach(p => pm[p.id] = p)
     negativeStock = negIds.filter(id => (pm[id]?.product_type || 'goods') === 'goods').map(id => ({ id, name: pm[id]?.name || id, qty: bal[id] }))
   }
+  // ТЗ 6.6, помилка 9 (рішення власника 23.10.2026): продаж «під замовлення» — продано раніше, ніж датовано прихід.
+  // Мінус на кінець місяця, який пізніше покрито приходом, — попередження, не блокер; непокритий мінус блокує, як і раніше.
+  let presoldStock = []
+  if (negativeStock.length) {
+    const later = await fetchAll('stock_movements', 'product_id, quantity, date', q => q.gt('date', to).eq('type', 'in').in('product_id', negativeStock.map(n => n.id))).catch(() => [])
+    const inAfter = {}; later.forEach(m => { inAfter[m.product_id] = (inAfter[m.product_id] || 0) + (Number(m.quantity) || 0); if (!inAfter['d' + m.product_id] || m.date < inAfter['d' + m.product_id]) inAfter['d' + m.product_id] = m.date })
+    presoldStock = negativeStock.filter(n => (inAfter[n.id] || 0) >= -n.qty - 0.0001).map(n => ({ ...n, coveredOn: inAfter['d' + n.id] }))
+    negativeStock = negativeStock.filter(n => !presoldStock.some(p => p.id === n.id))
+  }
 
   // 2. Документи періоду без суми
   const { data: docsNoAmount } = await qc('documents')
@@ -82,7 +91,7 @@ export async function runChecklist(year, month) {
   const unclassifiedTx = (unclassifiedList || []).length
   const blockers = negativeStock.length + (docsNoAmount?.length || 0) + unverifiedList.length + unclassifiedTx
   return {
-    negativeStock, docsNoAmount: docsNoAmount || [],
+    negativeStock, presoldStock, docsNoAmount: docsNoAmount || [],
     unclassifiedTx, unclassifiedList: unclassifiedList || [],
     unverifiedDocs: unverifiedList.length, unverifiedList,
     unpostedStock,

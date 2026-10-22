@@ -341,6 +341,15 @@ function Checklist({ check, grouped, onClassified, onOpenDoc }) {
       {check.negativeStock.slice(0, 8).map(n => (
         <div key={n.id} style={{ fontSize: 12, color: 'var(--red)', marginLeft: 24 }}>• {n.name?.slice(0, 55)} = {n.qty}</div>
       ))}
+      {(check.presoldStock || []).length > 0 && <>
+        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13 }}>
+          <span><i className="ti ti-info-circle" style={{ color: 'var(--amber, #d97706)', marginRight: 6 }} />Продано під замовлення (мінус покрито пізнішим приходом — не блокує)</span>
+          <b style={{ color: 'var(--amber, #d97706)' }}>{check.presoldStock.length} товар(ів)</b>
+        </div>
+        {check.presoldStock.slice(0, 8).map(n => (
+          <div key={n.id} style={{ fontSize: 12, color: 'var(--text2)', marginLeft: 24 }}>• {n.name?.slice(0, 55)} = {n.qty} на кінець місяця · прихід {n.coveredOn ? n.coveredOn.split('-').reverse().join('.') : 'пізніше'}</div>
+        ))}
+      </>}
       <Row bad={check.docsNoAmount.length > 0} label="Документи без суми"
         val={check.docsNoAmount.length ? `${check.docsNoAmount.length} шт` : 'немає'} />
 
