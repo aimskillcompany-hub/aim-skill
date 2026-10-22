@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatMoney, formatDate } from './format'
+import { formatMoney, formatAmount, formatDate, MINUS, NNBSP } from './format'
 
 // нерозривні пробіли uk-UA (U+00A0 / U+202F) → звичайні, щоб порівнювати з текстом ТЗ
 const plain = (s) => s.replace(/[  ]/g, ' ')
@@ -13,13 +13,29 @@ describe('formatMoney', () => {
   it('рядок-число, нуль, від’ємні', () => {
     expect(plain(formatMoney('13200'))).toBe('13 200,00')
     expect(formatMoney(0)).toBe('0,00')
-    expect(plain(formatMoney(-1500.456))).toMatch(/^-1 500,46$/)
+    expect(plain(formatMoney(-1500.456))).toBe('\u22121 500,46')
   })
   it('порожнє → «—»', () => {
     expect(formatMoney(null)).toBe('—')
     expect(formatMoney(undefined)).toBe('—')
     expect(formatMoney('')).toBe('—')
     expect(formatMoney('abc')).toBe('—')
+  })
+})
+
+describe('formatAmount (ТЗ: «−» і вузький пробіл)', () => {
+  it('роздільник тисяч — U+202F, мінус — U+2212', () => {
+    expect(formatAmount(-1307205, { decimals: 0 })).toBe(`${MINUS}1${NNBSP}307${NNBSP}205`)
+    expect(formatAmount(2218346, { decimals: 0, currency: true })).toBe(`2${NNBSP}218${NNBSP}346${NNBSP}₴`)
+  })
+  it('знак «+» на вимогу; нуль без знака', () => {
+    expect(formatAmount(911141, { decimals: 0, sign: 'always' })).toBe(`+911${NNBSP}141`)
+    expect(formatAmount(-0.001)).toBe('0,00')
+    expect(formatAmount(0, { sign: 'always' })).toBe('0,00')
+  })
+  it('без звичайного дефіса й звичайних пробілів', () => {
+    const s = formatAmount(-24887553.5)
+    expect(s).not.toMatch(/[- \u00A0]/)
   })
 })
 
