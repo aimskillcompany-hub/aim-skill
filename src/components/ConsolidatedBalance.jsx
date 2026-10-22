@@ -3,6 +3,8 @@ import { useCompany } from '../lib/company'
 import { computeConsolidated } from '../lib/consolidated'
 import { forecastNetByDate } from '../lib/forecast'
 import { exportConsolidatedPdf } from '../lib/consolidatedPdf'
+import { useNewUi } from '../lib/uiPrefs'
+import ConsolidatedNew from './ConsolidatedNew'
 
 // Зведений баланс групи — один звіт: рівняння Активи=Зобов'язання+Капітал, три картки, об'єднана
 // таблиця «факт + прогноз» по юрособах. Дані/розрахунки — ті самі (computeConsolidated + forecast).
@@ -63,6 +65,9 @@ export default function ConsolidatedBalance() {
   }, [year, month, companies])
 
   const years = [2025, 2026, 2027].filter(y => y <= now.getFullYear() + 1)
+  const newUi = useNewUi()
+  if (newUi) return <ConsolidatedNew data={data} forecast={forecast} loading={loading} err={err} year={year} month={month} setYear={setYear} setMonth={setMonth} years={years}
+    onPdf={() => data && exportConsolidatedPdf({ rows: data.rows, total: data.total, forecast, year, month })} />
 
   // Похідні
   const t = data?.total
