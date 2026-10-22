@@ -24,7 +24,7 @@ const YEARS = [NOW.getFullYear(), NOW.getFullYear() - 1, NOW.getFullYear() - 2]
 const MONTHS = ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Лип', 'Сер', 'Вер', 'Жов', 'Лис', 'Гру']
 
 const GREEN = '#15803D', RED = '#DC2626', AMBER = '#B45309'
-const si = (v) => (v < 0 ? '−' : '') + fmtInt(v)          // ціле зі знаком (fmtInt віддає abs)
+const si = (v) => (v < 0 ? '−' : '') + fmtInt(v)          // ціле зі знаком (fmtInt віддає abs) — ТЗ 6.6, помилка 1: від'ємні завжди з «−»
 const signColor = (v) => (v >= 0 ? GREEN : RED)
 
 const INCOME_LEVELS = new Set(['revenue', 'other_income'])
@@ -500,9 +500,9 @@ export function PLView({ fixedYear = null, fixedMonth = null } = {}) {
                   return (
                     <tr key={i} style={style}>
                       <td style={{ paddingLeft: r.header || r.subtotal ? 12 : 28 }}>{r.label}</td>
-                      {(mode === 'fact' || mode === 'compare') && <td style={{ textAlign: 'right', color: factColor }}>{fmtInt(r.fact)}</td>}
-                      {(mode === 'plan' || mode === 'compare') && <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{fmtInt(r.plan)}</td>}
-                      {mode === 'compare' && <td style={{ textAlign: 'right', color: dev >= 0 ? 'var(--green)' : 'var(--red)' }}>{dev >= 0 ? '+' : ''}{fmtInt(dev)}</td>}
+                      {(mode === 'fact' || mode === 'compare') && <td style={{ textAlign: 'right', color: factColor }}>{si(r.fact)}</td>}
+                      {(mode === 'plan' || mode === 'compare') && <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{si(r.plan)}</td>}
+                      {mode === 'compare' && <td style={{ textAlign: 'right', color: dev >= 0 ? 'var(--green)' : 'var(--red)' }}>{dev >= 0 ? '+' : ''}{si(dev)}</td>}
                       {mode === 'compare' && <td style={{ textAlign: 'right', color: 'var(--text3)', fontSize: 12 }}>{pct == null ? '—' : pct + '%'}</td>}
                     </tr>
                   )
@@ -697,13 +697,13 @@ function Cell({ r, v, pv, bucketKey, colLabel, setDrill, showPending, bold }) {
       <span
         onClick={clickable ? () => setDrill({ articles: r.articles, bucketKey, title: `${r.label} · ${colLabel}`, validated: true }) : undefined}
         style={{ color: plColor(r, v), fontWeight: bold ? 700 : undefined, cursor: clickable ? 'pointer' : 'default', textDecoration: clickable ? 'underline dotted' : 'none', textUnderlineOffset: 3 }}>
-        {v ? fmtInt(v) : '·'}
+        {v ? si(v) : '·'}
       </span>
       {showPending && pv ? (
         <div title="Непідтверджені (не входять у підсумок)"
           onClick={r.articles ? () => setDrill({ articles: r.articles, bucketKey, title: `${r.label} · ${colLabel} (непідтверджені)`, validated: false }) : undefined}
           style={{ fontSize: 10, color: AMBER, cursor: r.articles ? 'pointer' : 'default', marginTop: 1 }}>
-          ~{fmtInt(pv)}
+          ~{si(pv)}
         </div>
       ) : null}
     </>
@@ -721,7 +721,7 @@ function ForecastCard({ year, month, accrualNet = null }) {
   const line = (label, val, hint, color) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0' }}>
       <span style={{ color: 'var(--text2)', fontSize: 13 }}>{label}{hint && <span style={{ color: 'var(--text3)', fontSize: 11, marginLeft: 6 }}>{hint}</span>}</span>
-      <span style={{ fontWeight: 600, color: color || signColor(val), fontVariantNumeric: 'tabular-nums' }}>{val >= 0 ? '+' : ''}{fmtInt(val)}</span>
+      <span style={{ fontWeight: 600, color: color || signColor(val), fontVariantNumeric: 'tabular-nums' }}>{val >= 0 ? '+' : ''}{si(val)}</span>
     </div>
   )
   return (
@@ -732,13 +732,13 @@ function ForecastCard({ year, month, accrualNet = null }) {
       <div style={{ maxWidth: 520 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0' }}>
           <span style={{ color: 'var(--text2)', fontSize: 13 }}>Фактичний результат (Net{isAcc ? ', за нарахуванням' : ''})</span>
-          <span style={{ fontWeight: 600, color: signColor(f.factNet), fontVariantNumeric: 'tabular-nums' }}>{fmtInt(f.factNet)}</span>
+          <span style={{ fontWeight: 600, color: signColor(f.factNet), fontVariantNumeric: 'tabular-nums' }}>{si(f.factNet)}</span>
         </div>
         {!isAcc && line('Дебіторка — виписано, чекає оплати', f.receivable, null, AMBER)}
         {line('Очікувана маржа з відкритих замовлень', f.pipelineMargin, `${f.pipelineCount} зам.`)}
         <div style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <span style={{ fontWeight: 700 }}>≈ Очікуваний результат</span>
-          <span style={{ fontWeight: 700, fontSize: 18, color: signColor(f.expected), fontVariantNumeric: 'tabular-nums' }}>{fmtInt(f.expected)} грн</span>
+          <span style={{ fontWeight: 700, fontSize: 18, color: signColor(f.expected), fontVariantNumeric: 'tabular-nums' }}>{si(f.expected)} грн</span>
         </div>
       </div>
       <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 10, marginBottom: 0 }}>
@@ -931,9 +931,9 @@ function BalanceTrend({ trend }) {
       <td style={td}>
         {value ? (
           <span onClick={() => !busy && openCell(r, type)} style={{ cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: 3, opacity: busy ? 0.5 : 1 }}>
-            {fmtInt(value)}{busy ? '…' : ''}
+            {si(value)}{busy ? '…' : ''}
           </span>
-        ) : fmtInt(value)}
+        ) : si(value)}
       </td>
     )
   }
@@ -1059,8 +1059,8 @@ function BalanceDrillModal({ drill, snap, onClose }) {
           {items.map(it => (
             <tr key={it.product_id} style={{ textAlign: 'right' }}>
               <td style={{ textAlign: 'left' }}>{it.name?.slice(0, 50)}</td>
-              <td style={{ color: it.qty < 0 ? RED : 'inherit' }}>{fmtInt(it.qty)}</td>
-              <td>{fmtInt(it.unit_cost)}</td><td>{fmtInt(it.value)}</td>
+              <td style={{ color: it.qty < 0 ? RED : 'inherit' }}>{si(it.qty)}</td>
+              <td>{si(it.unit_cost)}</td><td>{si(it.value)}</td>
             </tr>
           ))}
           {items.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text3)', padding: 20 }}>Немає залишків</td></tr>}
