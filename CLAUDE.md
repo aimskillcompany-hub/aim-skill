@@ -17,9 +17,10 @@ npm install        # install dependencies
 npm run dev        # start Vite dev server
 npm run build      # production build
 npm run preview    # preview production build
+npm test           # Vitest (src/utils/format.test.js)
 ```
 
-No test framework is configured. No linter is configured.
+No linter is configured.
 
 ## Architecture
 
@@ -27,7 +28,7 @@ No test framework is configured. No linter is configured.
 
 **Key architectural patterns:**
 
-- **No CSS framework** — all styles are defined as JS template literals in `src/lib/styles.js` (exported as `css` and `mobileCss`), injected via `<style>` tags in App.jsx. Tabler Icons loaded from CDN via webfont.
+- **No CSS framework** — global styles live in `src/styles/tokens.css` + `src/styles/base.css` (imported in `main.jsx`); design-system components in `src/components/ui/` with `ui.css` (demo page `#/ui`). Tabler Icons loaded from CDN via webfont.
 - **Flat component structure** — all pages are direct children of `App.jsx` via a `pages` object mapping page IDs to components. `Layout.jsx` provides the sidebar/mobile nav shell.
 - **Role-based access** — four roles (`admin`, `accountant`, `manager`, `viewer`) enforced both in UI (component-level checks on `user.role`) and in Supabase RLS policies defined in `supabase_schema.sql`.
 - **AI document extraction** — `src/lib/ai.js` sends document images/PDFs directly to Anthropic's Messages API from the browser (using `anthropic-dangerous-direct-browser-access` header). It extracts structured JSON from Ukrainian accounting documents.
