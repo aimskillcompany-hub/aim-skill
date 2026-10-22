@@ -159,12 +159,6 @@ export default function Orders() {
         <button className="btn btn-primary" onClick={() => setShowNew(true)}><i className="ti ti-plus" /> Нове замовлення</button>
       </div>
 
-      <div className="kpi-grid" style={{ marginBottom: 18 }}>
-        <Kpi label="Активних" value={kpi.active} />
-        <Kpi label="Прострочено" value={kpi.overdue} accent={kpi.overdue > 0 ? 'var(--red)' : undefined} />
-        <Kpi label="Сума в роботі" value={fmtInt(kpi.sum)} suffix="грн" />
-      </div>
-
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         {view !== 'report' && <>
           <input className="form-input" placeholder="Пошук за клієнтом або номером…" value={q} onChange={e => setQ(e.target.value)} style={{ flex: '1 1 240px', maxWidth: 360 }} />
