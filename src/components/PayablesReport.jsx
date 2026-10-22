@@ -41,7 +41,7 @@ export default function PayablesReport() {
   const overdue = data.docs.filter(d => d.overdueDays > 0).reduce((a, d) => a + d.outstanding, 0)
   const prepaid = (data.overpaid || []).reduce((a, x) => a + x.over, 0)
   const toggle = (id) => setOpen(o => { const n = new Set(o); n.has(id) ? n.delete(id) : n.add(id); return n })
-  const pay = (d) => navigate(`/bank?pay=${d.docId}&amount=${d.outstanding}&contractor=${d.contractorId}&label=${encodeURIComponent(`${getDocType(d.type)?.label || 'документ'} № ${d.doc_number}`)}`)
+  const pay = (d, name) => navigate(`/bank?pay=${d.docId}&amount=${d.outstanding}&contractor=${d.contractorId}&cname=${encodeURIComponent(name || '')}&label=${encodeURIComponent(`${getDocType(d.type)?.label || 'документ'} № ${d.doc_number}`)}`)
 
   return (
     <div className="rpt">
@@ -82,7 +82,7 @@ export default function PayablesReport() {
                         <td />
                         <td className="r rpt-num">{formatAmount(d.outstanding)}</td>
                         <td>{dmy(d.dueDate)}{d.overdueDays > 0 && <span className="rpt-late"> · {d.overdueDays} дн.</span>}</td>
-                        <td className="r"><Button size="sm" variant="brand" onClick={() => pay(d)}>Оплатити</Button></td>
+                        <td className="r"><Button size="sm" variant="brand" onClick={() => pay(d, c.name)}>Оплатити</Button></td>
                       </tr>
                     ))}
                   </Fragment>

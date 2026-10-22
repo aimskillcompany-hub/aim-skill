@@ -279,7 +279,7 @@ function TransactionsTab({ accounts, onChange, newUi = false, addSignal = 0 }) {
 
   // ── Новий інтерфейс: правка в рядку і масові дії зі «Скасувати» ──
   useEffect(() => { if (addSignal) setShowAdd(true) }, [addSignal])
-  // «Оплатити» з кредиторки: /bank?pay=<документ>&amount=…&contractor=…&label=…
+  // «Оплатити» з кредиторки: /bank?pay=<документ>&amount=…&contractor=…&cname=…&label=…
   const [params, setParams] = useSearchParams()
   const [payPreset, setPayPreset] = useState(null)
   useEffect(() => {
@@ -292,7 +292,8 @@ function TransactionsTab({ accounts, onChange, newUi = false, addSignal = 0 }) {
       setShowAdd(true)
       setParams({}, { replace: true })
     }
-    if (cid && cid !== 'unknown') supabase.from('contractors').select('name').eq('id', cid).maybeSingle().then(({ data }) => go(data?.name))
+    if (params.get('cname')) go(params.get('cname'))
+    else if (cid && cid !== 'unknown') supabase.from('contractors').select('name').eq('id', cid).maybeSingle().then(({ data }) => go(data?.name))
     else go('')
   }, [params])
   const withArticleId = (upd) => 'article' in upd ? { ...upd, article_id: upd.article ? (articles.find(a => a.name === upd.article)?.id || null) : null } : upd
@@ -516,6 +517,8 @@ function AddTxModal({ accounts, grouped, onClose, onSaved, preset = null }) {
     direction: 'Доходи', article: '', contractor_id: null, cname: '', description: '',
     ...(preset ? Object.fromEntries(Object.entries(preset).filter(([k]) => k !== 'docId')) : {}),
   }))
+  // рахунки можуть довантажитися вже після відкриття (прямий перехід з «Оплатити») — тоді беремо перший
+  useEffect(() => { if (!f.account_id && accounts[0]?.id) setF(s => s.account_id ? s : { ...s, account_id: accounts[0].id }) }, [accounts])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
