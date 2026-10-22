@@ -20,7 +20,7 @@ import TenderDocsTab from '../components/TenderDocsTab'
 import OrderFinanceTab from '../components/OrderFinanceTab'
 import OrderTasksTab from '../components/OrderTasksTab'
 import { unlinkOrderPayment } from '../lib/orderPayments'
-import { PageHeader, StatusPill, Button, ConfirmDialog, useToast } from '../components/ui'
+import { PageHeader, StatusPill, Button, ConfirmDialog, TableSkeleton, EmptyState, Modal, useToast } from '../components/ui'
 import { formatMoney } from '../utils/format'
 import './OrderCard.css'
 import {
@@ -317,6 +317,7 @@ function StatusStepper({ o, onChange }) {
 
 // ───────── Деталі ─────────
 function DetailsTab({ o, onSaved }) {
+  const toast = useToast()
   const { companies, activeId, setActiveCompany } = useCompany()
   const [form, setForm] = useState({
     description: o.description || '',
@@ -388,7 +389,7 @@ function DetailsTab({ o, onSaved }) {
       if (m && m[1] in payload) { delete payload[m[1]]; continue }
       break
     }
-    if (error) { alert('Помилка збереження: ' + error.message); return }
+    if (error) { toast('Помилка збереження: ' + error.message, { type: 'error' }); return }
     // Зміна компанії — перенос + слідування (перемкнути активну компанію, щоб замовлення лишилось видимим)
     const newCid = form.company_id || null
     if (newCid && newCid !== (o.company_id || null)) {
@@ -501,6 +502,7 @@ const _toCostBasis = (price, supInclVat, rowInclVat, vatRate) => {
 // Необов'язкові позиції замовлення. product_id прив'язує до довідника
 // (переюз у КП/документах/складі); name — знімок назви.
 function ItemsTab({ o, onChange, onDirty }) {
+  const toast = useToast()
   const { user } = useUser()
   const { active } = useCompany()
   const vatOn = active?.is_vat_payer !== false   // неплатник ПДВ → увесь ПДВ-функціонал вимкнено
@@ -648,7 +650,7 @@ function ItemsTab({ o, onChange, onDirty }) {
       const name = (window.prompt('Назва нового постачальника') || '').trim()
       if (!name) return
       const { data, error } = await supabase.from('contractors').insert({ name, is_supplier: true }).select('id, name').single()
-      if (error || !data) { alert('Не вдалося створити постачальника: ' + (error?.message || '')); return }
+      if (error || !data) { toast('Не вдалося створити постачальника: ' + (error?.message || ''), { type: 'error' }); return }
       setSuppliers(s => [...s, data].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'uk')))
       setRow(i, { supplier_id: data.id, supplier_name: data.name })
     } else {
@@ -924,6 +926,7 @@ function ItemsTab({ o, onChange, onDirty }) {
 
 // ───────── КП ─────────
 function ProposalsTab({ o, onChange }) {
+  const toast = useToast()
   const { active } = useCompany()
   const vatOn = active?.is_vat_payer !== false   // неплатник ПДВ (ФОП) → жодного ПДВ у КП
   const [rows, setRows] = useState([])
@@ -986,7 +989,7 @@ function ProposalsTab({ o, onChange }) {
       const today = todayKyiv()
       const opts = { docNumber: `КП-${o.order_number || o.id.slice(0, 6)}`, docDate: today, withStamp: stampCP, vatPayer: vatOn }
       await previewPdf('commercialProposal', c || { name: o.contractors?.name }, items, opts)
-    } catch (e) { alert('Помилка формування: ' + e.message) }
+    } catch (e) { toast('Помилка формування: ' + e.message, { type: 'error' }) }
     setGenId(null)
   }
 
@@ -1062,6 +1065,8 @@ const PROP_STATUS = { draft: 'Чернетка', sent: 'Надіслано', acc
 
 // ───────── Документи ─────────
 function DocumentsTab({ o }) {
+  const toast = useToast()
+  const [askDel, setAskDel] = useState(null) // { d, title, text }
   const { user } = useUser()
   const { active } = useCompany()
   const vatOn = active?.is_vat_payer !== false   // неплатник ПДВ (ФОП) → без ПДВ у документах
@@ -1080,7 +1085,7 @@ function DocumentsTab({ o }) {
   // Провести / зняти з проведення (додати/прибрати з розділу «Документи»)
   const setPosted = async (d, val) => {
     const { data, error } = await qc('documents').update({ posted: val }).eq('id', d.id).select('id')
-    if (error || !data?.length) { alert('Не вдалося: ' + (error?.message || 'запустіть міграцію 038')); return }
+    if (error || !data?.length) { toast('Не вдалося: ' + (error?.message || 'запустіть міграцію 038'), { type: 'error' }); return }
     load()
   }
   // згенеровані документи замовлення — картки documents (етап 3 об'єднання), у формі для PDF / редактора
@@ -1094,14 +1099,14 @@ function DocumentsTab({ o }) {
     setGenDocs(gs => gs.map(x => x.id === d.id ? { ...x, ...u } : x))
     let { error } = await qc('documents').update(u).eq('id', d.id)
     if (error && /to_sign_at/.test(error.message)) ({ error } = await qc('documents').update({ to_sign: on }).eq('id', d.id)) // ґрейсфул до 054
-    if (error) { setGenDocs(gs => gs.map(x => x.id === d.id ? { ...x, to_sign: d.to_sign, to_sign_at: d.to_sign_at } : x)); alert('Не вдалося: ' + (/to_sign\b/.test(error.message) ? 'запустіть міграцію 053' : error.message)) }
+    if (error) { setGenDocs(gs => gs.map(x => x.id === d.id ? { ...x, to_sign: d.to_sign, to_sign_at: d.to_sign_at } : x)); toast('Не вдалося: ' + (/to_sign\b/.test(error.message) ? 'запустіть міграцію 053' : error.message), { type: 'error' }) }
   }
   const toggleSignDoc = async (d) => {
     const on = !d.to_sign, u = signUpd(on)
     setRows(rs => rs.map(x => x.id === d.id ? { ...x, ...u } : x))
     let { error } = await qc('documents').update(u).eq('id', d.id)
     if (error && /to_sign_at/.test(error.message)) ({ error } = await qc('documents').update({ to_sign: on }).eq('id', d.id)) // ґрейсфул до 054
-    if (error) { setRows(rs => rs.map(x => x.id === d.id ? { ...x, to_sign: d.to_sign, to_sign_at: d.to_sign_at } : x)); alert('Не вдалося: ' + (/to_sign\b/.test(error.message) ? 'запустіть міграцію 053' : error.message)) }
+    if (error) { setRows(rs => rs.map(x => x.id === d.id ? { ...x, to_sign: d.to_sign, to_sign_at: d.to_sign_at } : x)); toast('Не вдалося: ' + (/to_sign\b/.test(error.message) ? 'запустіть міграцію 053' : error.message), { type: 'error' }) }
   }
   // Яскрава кнопка-перемикач «На підпис» + дата помітки
   const SignToggle = ({ d, onClick }) => {
@@ -1125,11 +1130,13 @@ function DocumentsTab({ o }) {
     const label = getDocType(d.doc_type)?.label || 'документ'
     const { deleteGeneratedDoc, describeDeletion } = await import('../lib/docgen')
     const extra = await describeDeletion(d.id)
-    if (!confirm(`Видалити «${label}${d.doc_number ? ' №' + d.doc_number : ''}»?\nРазом із ним буде видалено запис у Документах, прив'язки оплат і складські рухи цього документа.${extra}`)) return
-    try {
-      await deleteGeneratedDoc(d.id)
-    } catch (e) { alert('Не вдалося видалити: ' + e.message) }
-    loadGen()
+    setAskDel({ d, title: `Видалити «${label}${d.doc_number ? ' №' + d.doc_number : ''}»?`,
+      text: `Разом із ним буде видалено запис у Документах, прив'язки оплат і складські рухи цього документа.${extra}`,
+      run: async () => {
+        try { await deleteGeneratedDoc(d.id); toast('Документ видалено') }
+        catch (e) { toast('Не вдалося видалити: ' + e.message, { type: 'error' }) }
+        loadGen()
+      } })
   }
 
   // Перегляд / завантаження вже згенерованого документа (регенерація з даних картки documents)
@@ -1137,7 +1144,7 @@ function DocumentsTab({ o }) {
   const genOptions = (d) => ({ docNumber: d.doc_number, docDate: d.doc_date, notes: d.notes, contractNum: d.contract_num, contractDate: d.contract_date, paymentDue: d.payment_due, city: d.city, invoiceRef: d.invoice_ref, invoiceRefDate: d.invoice_ref_date, deliveryBasis: d.delivery_basis, deliveryAddress: d.delivery_address })
   const withContractor = async (d, fn) => {
     const { data: c } = await supabase.from('contractors').select('*').eq('id', d.contractor_id).single()
-    try { await fn(d.doc_type, c || { name: d.contractor_name }, genItems(d), genOptions(d)) } catch (e) { alert('Помилка: ' + e.message) }
+    try { await fn(d.doc_type, c || { name: d.contractor_name }, genItems(d), genOptions(d)) } catch (e) { toast('Помилка: ' + e.message, { type: 'error' }) }
   }
   const viewGen = (d) => withContractor(d, previewPdf)
   const downloadGen = (d) => withContractor(d, generatePdf)
@@ -1170,6 +1177,8 @@ function DocumentsTab({ o }) {
   if (rows == null) return <Loading />
   return (
     <div className="card">
+      <ConfirmDialog open={!!askDel} danger title={askDel?.title} text={askDel?.text} confirmLabel="Видалити"
+        onCancel={() => setAskDel(null)} onConfirm={() => { const a = askDel; setAskDel(null); a?.run() }} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
         <div className="card-title" style={{ marginBottom: 0 }}>Документи замовлення</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -1272,10 +1281,9 @@ function AttachDocsModal({ o, onClose, onAttached }) {
   const attach = async (d) => { await qc('documents').update({ order_id: o.id }).eq('id', d.id); onAttached() }
 
   return (
-    <div className="modal-bg" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 720 }}>
-        <div className="modal-header"><h2 style={{ fontSize: 16 }}>Прив'язати документ</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
-        <input className="form-input" autoFocus placeholder="Пошук за № або назвою файлу… (порожньо — документи клієнта)" value={q} onChange={e => setQ(e.target.value)} style={{ marginBottom: 12 }} />
+    <Modal open onClose={onClose} title="Прив'язати документ" size="lg">
+      <div>
+        <input className="form-input" type="search" aria-label="Пошук документа" placeholder="Пошук за № або назвою файлу… (порожньо — документи клієнта)" value={q} onChange={e => setQ(e.target.value)} style={{ marginBottom: 12, width: '100%' }} />
         <div className="tbl-wrap" style={{ border: 'none', maxHeight: 420, overflow: 'auto' }}>
           <table>
             <thead><tr><th>Тип</th><th>№</th><th>Контрагент</th><th style={{ textAlign: 'right' }}>Сума</th><th>Дата</th><th /></tr></thead>
@@ -1283,21 +1291,22 @@ function AttachDocsModal({ o, onClose, onAttached }) {
               {rows == null && <tr><td colSpan={6} style={{ color: 'var(--text3)', padding: 14 }}>Завантаження…</td></tr>}
               {rows && rows.length === 0 && <tr><td colSpan={6} style={{ color: 'var(--text3)', textAlign: 'center', padding: 14 }}>Нічого не знайдено.</td></tr>}
               {rows && rows.map(d => (
-                <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => attach(d)}>
+                <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => attach(d)} tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); attach(d) } }}>
                   <td>{getDocType(d.type)?.label || d.type || '—'}</td>
                   <td style={{ fontSize: 12, color: 'var(--text2)' }}>{d.doc_number || '—'}</td>
                   <td style={{ fontSize: 12 }}><div className="trunc">{d.contractors?.name || '—'}</div></td>
                   <td style={{ textAlign: 'right' }}>{d.amount ? fmt(d.amount) : '—'}</td>
                   <td style={{ fontSize: 12 }}>{(d.doc_date || d.created_at || '').slice(0, 10)}</td>
-                  <td style={{ textAlign: 'right' }}>{d.order_id ? <span style={{ fontSize: 11, color: 'var(--amber)' }}>в ін. замов.</span> : <i className="ti ti-plus" style={{ color: 'var(--blue)' }} />}</td>
+                  <td style={{ textAlign: 'right' }}>{d.order_id ? <span style={{ fontSize: 11, color: '#92400e' }}>в ін. замов.</span> : <i className="ti ti-plus" aria-hidden="true" style={{ color: 'var(--blue)' }} />}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 8 }}>Клік по документу прив'язує його до цього замовлення. Документ «в ін. замов.» буде перепризначено.</p>
+        <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>Клік по документу прив'язує його до цього замовлення. Документ «в ін. замов.» буде перепризначено.</p>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -1580,7 +1589,7 @@ function StockTab({ o }) {
       .then(({ data }) => setRows(data || []))
   }, [o.id])
   if (rows == null) return <Loading />
-  if (!rows.length) return <Empty text="Складських рухів за замовленням немає. Списання/оприбуткування — Фаза 6." />
+  if (!rows.length) return <Empty text="Складських рухів за замовленням немає" hint="Тут з'являться прихід і відвантаження товарів цього замовлення." />
   return <Table head={['Товар', 'Тип', 'К-сть', 'Собівартість', 'Дата']}>
     {rows.map(m => <tr key={m.id}><td><div className="trunc">{m.products?.name}</div></td><td>{m.type === 'in' ? 'Прихід' : 'Видаток'}</td><td style={{ textAlign: 'right' }}>{m.quantity}</td><td style={{ textAlign: 'right' }}>{fmt(m.cost_price || m.total)}</td><td>{m.date}</td></tr>)}
   </Table>
@@ -1607,8 +1616,8 @@ const Metric = ({ label, value, strong, color }) => (
     <div style={{ fontSize: strong ? 16 : 14, fontWeight: strong ? 700 : 500, whiteSpace: 'nowrap', color: color || 'var(--text)' }}>{value}</div>
   </div>
 )
-const Loading = () => <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
-const Empty = ({ text }) => <div className="card"><p style={{ color: 'var(--text3)', fontSize: 13, textAlign: 'center', padding: 16 }}>{text}</p></div>
+const Loading = () => <TableSkeleton rows={4} cols={5} />
+const Empty = ({ text, hint, icon = 'ti-package' }) => <div className="card"><EmptyState icon={icon} title={text} text={hint} /></div>
 const Table = ({ head, children }) => (
   <div className="card"><div className="tbl-wrap" style={{ border: 'none' }}>
     <table><thead><tr>{head.map((h, i) => <th key={i}>{h}</th>)}</tr></thead><tbody>{children}</tbody></table>
