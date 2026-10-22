@@ -5,6 +5,7 @@ import { CompanyProvider } from './lib/company'
 import { canAccess, firstSection } from './lib/permissions'
 import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/Layout'
+import AppShell, { MorePage } from './components/AppShell'
 import Login from './pages/Login'
 import { useNewUi } from './lib/uiPrefs'
 
@@ -65,6 +66,8 @@ function AdminOnly({ children }) {
 }
 // Прапорець «Новий інтерфейс» → html[data-ui="new"] (див. lib/uiPrefs)
 function UiFlag() { useNewUi(); return null }
+// Каркас: новий (AppShell) — з прапорцем, інакше старий Layout
+function Shell() { return useNewUi() ? <AppShell /> : <Layout /> }
 
 // Стартовий розділ за роллю
 function Home() {
@@ -82,7 +85,7 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             {import.meta.env.DEV && <Route path="/ui-dev" element={<div style={{ padding: "24px 16px 120px", background: "var(--bg)", minHeight: "100vh" }}><UiKit /></div>} />}
-            <Route element={<RequireAuth><Layout /></RequireAuth>}>
+            <Route element={<RequireAuth><Shell /></RequireAuth>}>
               <Route index element={<Home />} />
               <Route path="/orders" element={<Gate section="orders"><Orders /></Gate>} />
               <Route path="/orders/:id" element={<Gate section="orders"><OrderCard /></Gate>} />
@@ -108,6 +111,7 @@ export default function App() {
               <Route path="/tasks" element={<Gate section="tasks"><Tasks /></Gate>} />
               <Route path="/settings" element={<Gate section="settings"><Settings /></Gate>} />
               <Route path="/ui" element={<AdminOnly><UiKit /></AdminOnly>} />
+              <Route path="/more" element={<MorePage />} />
               <Route path="*" element={<Home />} />
             </Route>
           </Routes>

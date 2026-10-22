@@ -1,0 +1,127 @@
+/* Каркас нового інтерфейсу (AppShell) — ТЗ редизайну, розділ 3. Лише токени, без hex. */
+.shell { min-height: 100vh; background: var(--ground); display: flex; }
+.shell-skip { position: absolute; left: -9999px; top: 8px; z-index: 400; background: var(--ink); color: #fff; padding: 8px 12px; border-radius: 8px; }
+.shell-skip:focus { left: 8px; }
+
+/* ── бокове меню ── */
+.shell-side { position: sticky; top: 0; height: 100vh; width: var(--sidebar-w); flex: 0 0 auto; background: var(--surface); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; padding: 18px 12px 12px; box-sizing: border-box; transition: width .2s ease, padding .2s ease; z-index: 120; }
+.shell.is-collapsed .shell-side { width: var(--sidebar-w-collapsed); padding: 18px 12px 12px; }
+.shell.no-motion .shell-side { transition: none; }
+.shell-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 6px 14px; }
+.shell.is-collapsed .shell-top { flex-direction: column; padding: 0 0 10px; }
+.shell-logo { display: flex; flex-direction: column; text-decoration: none; color: var(--ink); line-height: 1; }
+.shell-logo-word { font-weight: 700; font-size: 19px; letter-spacing: -.03em; color: var(--ink); }
+.shell-logo-word span { color: var(--brand); }
+.shell-logo-sub { font-size: 10px; letter-spacing: .14em; color: var(--muted); margin-top: 3px; }
+.shell-logo-mini { width: 36px; height: 36px; border-radius: 10px; background: var(--ink); color: var(--on-dark-pos); display: grid; place-items: center; font-weight: 700; font-size: 15px; }
+.shell-icon-btn { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text-strong2); display: grid; place-items: center; cursor: pointer; flex: 0 0 auto; }
+.shell-icon-btn .ti { font-size: 18px; }
+.shell-icon-btn:hover { background: var(--surface2); }
+.shell-icon-btn:focus-visible, .shell-link:focus-visible, .shell-collapse:focus-visible, .shell-company:focus-visible, .shell-tab:focus-visible, .more-item:focus-visible, .more-chip:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+.shell-company-wrap { padding-bottom: 6px; }
+.shell-company-wrap .ui-menu-wrap { display: flex; }
+.shell-company { width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: var(--r-control); border: 1px solid var(--border); background: var(--surface); cursor: pointer; text-align: left; color: var(--text); }
+.shell-company:hover { background: var(--surface2); }
+.shell-company.is-mini { width: 44px; height: 44px; padding: 0; justify-content: center; border: 0; margin: 0 auto; }
+.shell-company .ti { margin-left: auto; color: var(--muted); }
+.shell-company-text { display: flex; flex-direction: column; min-width: 0; }
+.shell-company-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shell-company-sub { font-size: 11px; color: var(--muted); }
+.shell-avatar { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; font-size: 11px; font-weight: 700; flex: 0 0 auto; }
+.shell-avatar.is-brand { background: var(--brand-soft); color: var(--brand-dark); }
+.shell-avatar.is-ink { background: var(--ink); color: #fff; border-radius: 999px; }
+.shell-avatar.is-lg { width: 44px; height: 44px; font-size: 14px; }
+
+.shell-nav { flex: 1; overflow-y: auto; overflow-x: hidden; margin: 0 -4px; padding: 0 4px; scrollbar-width: thin; }
+.shell-group { display: flex; flex-direction: column; gap: 2px; }
+.shell-group-title { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 14px 12px 6px; }
+.shell-sep { border: 0; border-top: 1px solid var(--border); margin: 10px 6px; }
+.shell-link { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 10px; border-radius: var(--r-control); text-decoration: none; color: var(--text-strong2); font-size: 14px; font-weight: 500; }
+.shell-link:hover { background: var(--surface2); color: var(--text); }
+.shell-link.is-active { background: var(--brand-soft); color: var(--brand-dark); font-weight: 600; }
+.shell-link-icon { position: relative; display: grid; place-items: center; width: 20px; flex: 0 0 auto; }
+.shell-link-icon .ti { font-size: 20px; }
+.shell-link-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shell-badge { margin-left: auto; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 999px; background: var(--expense-bg); color: var(--expense-fg); font-size: 12px; font-weight: 700; display: inline-grid; place-items: center; font-variant-numeric: tabular-nums; }
+.shell-dot { position: absolute; top: -3px; right: -4px; width: 8px; height: 8px; border-radius: 50%; background: var(--expense-chart); border: 2px solid var(--surface); }
+.shell.is-collapsed .shell-link { width: 44px; height: 40px; padding: 0; justify-content: center; margin: 0 auto; }
+.shell.is-collapsed .shell-link-label, .shell.is-collapsed .shell-link .shell-badge { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+.shell-foot { border-top: 1px solid var(--border); padding-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.shell-user { display: flex; align-items: center; gap: 10px; padding: 4px 6px; }
+.shell.is-collapsed .shell-user { justify-content: center; padding: 4px 0; }
+.shell-user-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.shell-user-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shell-user-role { font-size: 11px; color: var(--muted); }
+.shell-flag { padding: 0 6px; }
+.shell-collapse { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 10px; border: 0; background: none; border-radius: 10px; color: var(--muted); font-size: 13px; cursor: pointer; }
+.shell-collapse:hover { background: var(--surface2); color: var(--text); }
+.shell-collapse kbd { margin-left: auto; font: inherit; font-size: 11px; color: var(--muted-2); }
+.shell.is-collapsed .shell-collapse { justify-content: center; padding: 0; }
+.shell-tip { position: fixed; left: calc(var(--sidebar-w-collapsed) + 6px); transform: translateY(-50%); background: var(--ink); color: #fff; font-size: 13px; font-weight: 500; padding: 6px 10px; border-radius: 8px; box-shadow: var(--shadow-pop); pointer-events: none; z-index: 300; white-space: nowrap; }
+
+/* ── вміст ── */
+.shell-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.shell-main .page-inner { padding: 28px 32px 48px; max-width: 1400px; width: 100%; margin: 0 auto; box-sizing: border-box; }
+.shell-bar { display: none; }
+.shell-bottom { display: none; }
+.shell-scrim { display: none; }
+
+/* 768–1023: меню — шторка зліва, зверху смужка з кнопкою меню */
+@media (max-width: 1023px) {
+  .shell-side { position: fixed; left: 0; top: 0; bottom: 0; height: auto; transform: translateX(-100%); transition: transform .2s ease; box-shadow: var(--shadow-pop); z-index: 320; width: 280px; }
+  .shell.is-drawer-open .shell-side { transform: none; }
+  .shell-scrim { display: block; position: fixed; inset: 0; background: rgba(15, 26, 20, .32); z-index: 310; }
+  .shell-bar { display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 110; background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 8px max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left)); padding-top: calc(8px + env(safe-area-inset-top)); }
+  .shell-bar-spacer { flex: 1; }
+  .shell-logo-word.is-bar { font-size: 17px; }
+  .shell-main .page-inner { padding: 20px 24px 40px; }
+  .shell-bar-task { display: none; }
+}
+
+/* < 768: нижня плаваюча панель, без бургер-меню (решта розділів — у «Ще»), «+ Задача» — у шапці */
+@media (max-width: 767px) {
+  .shell-burger { display: none; }
+  .shell-bar-task { display: inline-flex; }
+  .shell-fab-wrap { display: none; }
+  .shell-main .page-inner { padding: 16px 16px calc(var(--bottom-nav-h) + 40px + env(safe-area-inset-bottom)); }
+  .shell-bottom { display: flex; position: fixed; left: 12px; right: 12px; bottom: calc(14px + env(safe-area-inset-bottom)); height: var(--bottom-nav-h);
+    background: var(--surface); border: 1px solid var(--border); border-radius: 24px; box-shadow: var(--shadow-float); z-index: 200; padding: 0 4px; }
+  .shell-tab { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-decoration: none; color: var(--muted); font-size: 11px; font-weight: 500; border-radius: 18px; }
+  .shell-tab-icon { position: relative; display: grid; place-items: center; height: 28px; padding: 0 14px; border-radius: 999px; }
+  .shell-tab-icon .ti { font-size: 22px; }
+  .shell-tab.is-active { color: var(--ink); font-weight: 700; }
+  .shell-tab.is-active .shell-tab-icon { background: var(--brand-soft); color: var(--brand-dark); }
+  .shell-tab .shell-dot { top: 0; right: 8px; }
+}
+.shell-task-btn { position: relative; }
+.shell-task-plus { position: absolute; right: 4px; top: 2px; font-size: 12px; font-weight: 700; color: var(--brand); }
+.shell-task-done { position: fixed; left: 16px; right: 16px; top: calc(64px + env(safe-area-inset-top)); z-index: 300; background: var(--ink); color: #fff; border-radius: 12px; padding: 10px 14px; font-size: 14px; }
+.shell-task-done a { color: var(--on-dark-pos); }
+
+/* ── екран «Ще» ── */
+.more { display: flex; flex-direction: column; gap: 18px; max-width: 640px; margin: 0 auto; }
+.more-title { font-size: 28px; font-weight: 700; letter-spacing: -.03em; margin: 4px 0 0; }
+.more-company { background: var(--ink); border-radius: var(--r-card-mobile); padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.more-company-label { font-size: 13px; color: var(--on-dark-muted); }
+.more-chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.more-chip { flex: 0 0 auto; min-height: var(--h-touch); padding: 0 16px; border-radius: 14px; border: 0; background: rgba(255, 255, 255, .1); color: #fff; font-weight: 600; font-size: 14px; cursor: pointer; white-space: nowrap; }
+.more-chip[aria-pressed="true"] { background: var(--on-dark-pos); color: var(--ink); }
+.more-group-title { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px 4px; }
+.more-list { background: var(--surface); border-radius: var(--r-card-mobile); border: 1px solid var(--border); overflow: hidden; }
+.more-item { display: flex; align-items: center; gap: 14px; padding: 12px 16px; min-height: 60px; text-decoration: none; color: var(--text); border-top: 1px solid var(--divider); }
+.more-item:first-child { border-top: 0; }
+.more-item:hover { background: var(--surface-sunken); }
+.more-icon { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--info-bg); color: var(--info-fg); flex: 0 0 auto; }
+.more-icon.is-brand { background: var(--brand-soft); color: var(--brand-dark); }
+.more-icon.is-plain { background: var(--surface2); color: var(--text-strong2); }
+.more-icon .ti { font-size: 20px; }
+.more-item-text, .more-profile-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.more-item-name { font-size: 16px; font-weight: 600; }
+.more-item-desc { font-size: 13px; color: var(--muted); }
+.more-chev { color: var(--muted-2); font-size: 18px; }
+.more-item .shell-badge { margin-left: 0; }
+.more-profile { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card-mobile); padding: 16px; }

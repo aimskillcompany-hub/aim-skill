@@ -14,13 +14,26 @@ function contextOf(path) {
   return null
 }
 
-export default function QuickTaskFab() {
+// variant: 'fab' — плаваюча кнопка (комп'ютер); 'header' — кнопка-іконка в шапці (телефон, новий інтерфейс:
+// плаваюча «+ Задача» перекривала контент — ТЗ, розділ 3)
+export default function QuickTaskFab({ variant = 'fab' }) {
   const { user } = useUser()
   const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
   const [done, setDone] = useState(null)
   if (!user || pathname.startsWith('/tasks')) return null
   const ctx = contextOf(pathname)
+  const form = open && <TaskForm task={{ priority: 'normal', assignee_id: user.id, ...(ctx ? { entity_type: ctx.entity_type, entity_id: ctx.entity_id, entity_ref: ctx.entity_ref } : {}) }}
+    me={user.id} lockOrder={ctx?.entity_type === 'order'}
+    onClose={() => setOpen(false)} onSaved={(id) => { setOpen(false); setDone(id); setTimeout(() => setDone(d => d === id ? null : d), 8000) }} />
+  if (variant === 'header') return (
+    <>
+      <button type="button" className="btn btn-secondary btn-icon shell-task-btn" onClick={() => { setDone(null); setOpen(true) }}
+        aria-label={ctx ? `Нова задача ${ctx.label}` : 'Нова задача'} title="Нова задача"><i className="ti ti-checkbox" aria-hidden="true" /><span className="shell-task-plus" aria-hidden="true">+</span></button>
+      {done && <div role="status" className="shell-task-done">Задачу створено · <Link to={`/tasks?task=${done}`} onClick={() => setDone(null)}>Відкрити</Link></div>}
+      {form}
+    </>
+  )
   return (
     <>
       <style>{`.task-fab{position:fixed;right:24px;bottom:24px;z-index:190}
@@ -36,9 +49,7 @@ export default function QuickTaskFab() {
           <i className="ti ti-plus" style={{ fontSize: 20 }} /><span className="lbl">Задача</span>
         </button>
       </div>
-      {open && <TaskForm task={{ priority: 'normal', assignee_id: user.id, ...(ctx ? { entity_type: ctx.entity_type, entity_id: ctx.entity_id, entity_ref: ctx.entity_ref } : {}) }}
-        me={user.id} lockOrder={ctx?.entity_type === 'order'}
-        onClose={() => setOpen(false)} onSaved={(id) => { setOpen(false); setDone(id); setTimeout(() => setDone(d => d === id ? null : d), 8000) }} />}
+      {form}
     </>
   )
 }
