@@ -2,6 +2,7 @@
 // Дані (довідник, обороти з банку) — з Contractors.jsx. «Нам винні» — той самий розрахунок, що у звіті
 // «Дебіторка» (lib/receivables), станом на сьогодні. Лише читання.
 import { useEffect, useMemo, useState } from 'react'
+import { useGroupContractors } from '../lib/group'
 import { Segmented, Button, KpiTile, EmptyState, TableSkeleton } from '../components/ui'
 import { formatAmount, plural } from '../utils/format'
 import { todayKyiv } from '../lib/dates'
@@ -24,6 +25,7 @@ function ago(iso) {
 const typeOf = (c) => c.is_client && c.is_supplier ? 'both' : c.is_client ? 'client' : c.is_supplier ? 'supplier' : 'none'
 
 export default function ContractorsNew({ list, loading, q, setQ, filter, setFilter, companies, onNew, navigate }) {
+  const grp = useGroupContractors()
   const [sortKey, setSortKey] = useState('turnover')
   const [shown, setShown] = useState(PAGE)
   const [debt, setDebt] = useState(null)   // { total, byId }
@@ -126,7 +128,7 @@ export default function ContractorsNew({ list, loading, q, setQ, filter, setFilt
                     return (
                       <tr key={c.id} onClick={() => navigate(`/contractors/${c.id}`)} tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') navigate(`/contractors/${c.id}`) }}>
                         <td><span className="ctn-name"><span className={`ctn-av is-${typeOf(c)}`} aria-hidden="true">{initials(c.short_name || c.name)}</span>
-                          <span className="ctn-name-text"><b>{c.name}</b>{edr(c)}</span></span></td>
+                          <span className="ctn-name-text"><b>{c.name}{grp.has(c.id) && <span className="grp-chip">група</span>}</b>{edr(c)}</span></span></td>
                         <td>{typeChip(c)}</td>
                         <td className="r ctn-in">{Number(c.total_income) > 0 ? formatAmount(c.total_income, { decimals: 0 }) : <span className="ctn-dash">—</span>}</td>
                         <td className="r ctn-out">{Number(c.total_expense) > 0 ? formatAmount(c.total_expense, { decimals: 0 }) : <span className="ctn-dash">—</span>}</td>
@@ -142,7 +144,7 @@ export default function ContractorsNew({ list, loading, q, setQ, filter, setFilt
               {view.map(c => (
                 <li key={c.id}><button type="button" className="ctn-mcard" onClick={() => navigate(`/contractors/${c.id}`)}>
                   <span className={`ctn-av is-${typeOf(c)}`} aria-hidden="true">{initials(c.short_name || c.name)}</span>
-                  <span className="ctn-mcard-body"><b>{c.name}</b>{edr(c)}
+                  <span className="ctn-mcard-body"><b>{c.name}{grp.has(c.id) && <span className="grp-chip">група</span>}</b>{edr(c)}
                     <span className="ctn-mcard-foot">{typeChip(c)}
                       {Number(c.total_income) > 0 && <span className="ctn-in">+{formatAmount(c.total_income, { decimals: 0 })}</span>}
                       {Number(c.total_expense) > 0 && <span className="ctn-out">−{formatAmount(c.total_expense, { decimals: 0 })}</span>}

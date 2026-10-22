@@ -203,3 +203,6 @@
   .ui-dt td.ui-dt-x, .ui-dt .ui-dt-hm { display: none; }
   .ui-dt tr.ui-dt-sub td::before, .ui-dt-empty::before { content: none; }
 }
+
+/* Позначка «група» — контрагент є нашою компанією (ТЗ 6.4) */
+.grp-chip { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; margin-left: 6px; border-radius: var(--r-pill, 999px); background: var(--group-bg); color: var(--group-fg); font-size: 11px; font-weight: 600; vertical-align: middle; white-space: nowrap; }

@@ -1,7 +1,8 @@
 // «Прибутковість реалізації» — новий інтерфейс (ТЗ редизайну 5.4; макет ReportsProfit). Дані — computeProfitability,
 // агентські зберігаються тим самим saveAgent, що й раніше; тут лише показ.
 import { Fragment, useState } from 'react'
-import { saveAgent } from '../lib/profitability'
+import { saveAgent, computeTotals } from '../lib/profitability'
+import { useGroupContractors } from '../lib/group'
 import { formatAmount } from '../utils/format'
 import { TableSkeleton, EmptyState, Callout, useToast } from './ui'
 import '../pages/AnalyticsNew.css'
@@ -10,9 +11,12 @@ const n0 = (v) => formatAmount(v, { decimals: 0 })
 const pct = (f) => f == null ? '—' : `${f < 0 ? '−' : ''}${Math.abs(f * 100).toFixed(1).replace('.', ',')}%`
 const d2 = (s) => s ? String(s).slice(8, 10) + '.' + String(s).slice(5, 7) : ''
 
-export default function ProfitabilityNew({ data, loading, err, from, to, setFrom, setTo, companies, companyId, setCompanyId, userId, onChanged }) {
-  const t = data?.totals
-  const invoices = data ? [...data.invoices].sort((a, b) => b.profit - a.profit) : []
+export default function ProfitabilityNew({ data, loading, err, from, to, setFrom, setTo, companies, companyId, setCompanyId, userId, onChanged, showGroup = true }) {
+  const grp = useGroupContractors()
+  // ТЗ 6.4: без продажів нашим компаніям — підсумки перераховуються тим самим computeTotals
+  const all = data ? (showGroup ? data.invoices : data.invoices.filter(i => !grp.has(i.contractorId))) : []
+  const t = data ? (showGroup ? data.totals : computeTotals(all)) : null
+  const invoices = [...all].sort((a, b) => b.profit - a.profit)
   const noAgents = t && t.count > 0 && invoices.every(i => !(Number(i.percent) > 0))
   return (
     <div className="rpt">
@@ -53,7 +57,7 @@ export default function ProfitabilityNew({ data, loading, err, from, to, setFrom
               <div className="cfn-report-head"><h2 className="rpt-h3">Видаткові накладні · від найприбутковішої</h2><span className="rpt-muted rpt-note">усі суми без ПДВ</span></div>
               <div className="tbl-wrap rpt-table prf-table"><table>
                 <thead><tr><th>Накладна</th><th>Клієнт</th><th className="r">Реалізація</th><th className="r">Прибуток</th><th className="c-scale">Маржа</th><th className="r">ПДВ до сплати</th><th className="r">Агент, %</th><th className="r">Чистий</th></tr></thead>
-                <tbody>{invoices.map(inv => <Row key={inv.id} inv={inv} userId={userId} onChanged={onChanged} />)}</tbody>
+                <tbody>{invoices.map(inv => <Row key={inv.id} inv={inv} group={grp.has(inv.contractorId)} userId={userId} onChanged={onChanged} />)}</tbody>
                 <tfoot><tr><td>Разом · {t.count} накл.</td><td /><td className="r rpt-num">{n0(t.sellSum)}</td><td className="r rpt-num">{n0(t.profit)}</td><td className="c-scale r">{pct(t.margin)}</td><td className="r rpt-num">{n0(t.vatToPay)}</td><td className="r rpt-num">{t.commission ? `−${n0(t.commission)}` : ''}</td><td className="r rpt-num prf-net">{n0(t.net)}</td></tr></tfoot>
               </table></div>
               <p className="rpt-muted rpt-note prf-note">Прибуток = реалізація − закупка (FIFO). Маржа = прибуток ÷ реалізація. Агентські = прибуток × % (при збитку не нараховуються). ПДВ до сплати = ПДВ з реалізації − вхідний ПДВ (кредит лише по закупках у платника ПДВ). Клік по накладній — товари.</p>
@@ -64,7 +68,7 @@ export default function ProfitabilityNew({ data, loading, err, from, to, setFrom
   )
 }
 
-function Row({ inv, userId, onChanged }) {
+function Row({ inv, group, userId, onChanged }) {
   const toast = useToast()
   const [open, setOpen] = useState(false)
   const [pctVal, setPctVal] = useState(inv.percent ? String(inv.percent) : '')
@@ -86,7 +90,7 @@ function Row({ inv, userId, onChanged }) {
     <>
       <tr className="is-click" onClick={() => setOpen(o => !o)}>
         <td className="c-name"><b className="prf-doc">{inv.doc_number}</b><small className="rpt-muted">{d2(inv.doc_date)}</small></td>
-        <td className="c-client">{inv.client}</td>
+        <td className="c-client">{inv.client}{group && <span className="grp-chip">група</span>}</td>
         <td className="r rpt-num c-real">{n0(inv.sellSum)}</td>
         <td className={`r rpt-num c-profit${inv.profit < 0 ? ' rpt-late' : ''}`}><b>{n0(inv.profit)}</b></td>
         <td className="c-scale"><span className="mgn-scale"><span className={`mgn-track prf-track ${tone}`}><i style={{ width: `${m == null ? 0 : Math.max(2, Math.min(1, Math.abs(m) / 0.35) * 100)}%` }} /></span><b className={tone ? 'is-warn' : ''}>{pct(m)}</b></span></td>

@@ -3,6 +3,7 @@
 // Дані й фільтри — з Documents.jsx. Позначки «Перевірено» / «Підписано» — ті самі поля й правила, що у вікні.
 // Проблеми видно в рядку: «номер двічі» (помилка 4 ТЗ 6.6), «ПДВ у договорі позики» (помилка 5).
 import { useEffect, useMemo, useState } from 'react'
+import { useGroupContractors } from '../lib/group'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { qc } from '../lib/companyScope'
@@ -33,6 +34,7 @@ function periodRange(k) {
 
 export default function DocumentsNew({ rows, loading, q, setQ, typeFilter, setTypeFilter, signedFilter, setSignedFilter, verFilter, setVerFilter,
   dateFrom, dateTo, setDateFrom, setDateTo, filtered, onOpen, onUploadScan, onUploadBatch, onCreate, onRecognize, reload }) {
+  const grp = useGroupContractors()
   const [period, setPeriod] = useState(() => dateFrom || dateTo ? 'custom' : 'all')
   const [selId, setSelId] = useState(null)
   const [shown, setShown] = useState(60)
@@ -110,7 +112,7 @@ export default function DocumentsNew({ rows, loading, q, setQ, typeFilter, setTy
                         <span className={`dcn-ico is-${TYPE_TONE[d.type] || 'neutral'}`} aria-hidden="true">{t?.prefix || 'ДОК'}</span>
                         <span className="dcn-row-main">
                           <span className="dcn-row-title"><b>{d.doc_number || 'без номера'}</b><span>{t?.label || 'Документ'}</span></span>
-                          <span className="dcn-row-cp">{d.contractors?.name || <i>контрагент не вказано</i>}</span>
+                          <span className="dcn-row-cp">{d.contractors?.name || <i>контрагент не вказано</i>}{d.contractor_id && grp.has(d.contractor_id) && <span className="grp-chip">група</span>}</span>
                           <span className="dcn-tags">
                             {isIncoming(d) ? <span className="dcn-tag">вхідний</span> : !d.is_signed && <span className="dcn-tag is-warn">не підписано</span>}
                             {d.is_verified ? <span className="dcn-tag is-ok">перевірено</span> : <span className="dcn-tag">не перевірено</span>}
