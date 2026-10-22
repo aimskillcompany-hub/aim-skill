@@ -20,6 +20,9 @@ import TenderDocsTab from '../components/TenderDocsTab'
 import OrderFinanceTab from '../components/OrderFinanceTab'
 import OrderTasksTab from '../components/OrderTasksTab'
 import { unlinkOrderPayment } from '../lib/orderPayments'
+import { PageHeader, StatusPill, Button, ConfirmDialog, useToast } from '../components/ui'
+import { formatMoney } from '../utils/format'
+import './OrderCard.css'
 import {
   ORDER_TYPES, TYPE_COLORS, OUTCOME, flowFor, proposalOverdue,
 } from '../lib/orders'
@@ -57,6 +60,8 @@ export default function OrderCard() {
   const [confirmDel, setConfirmDel] = useState(false)
   const [msg, setMsg] = useState(null)
   const [itemsDirty, setItemsDirty] = useState(false)
+  const [askUnlink, setAskUnlink] = useState(false)
+  const toast = useToast()
 
   const UNSAVED_MSG = 'У вкладці «Товари» є незбережені зміни. Якщо піти — вони втратяться. Продовжити?'
   const guardLeave = () => !itemsDirty || window.confirm(UNSAVED_MSG)
@@ -76,8 +81,10 @@ export default function OrderCard() {
     } else setPayment(null)
   }
   useEffect(() => { load() }, [id])
+  const tabsRef = useRef(null)
+  useEffect(() => { centerActive(tabsRef.current, '[aria-selected="true"]') }, [tab, !!o])
 
-  if (!o) return <div className="page-header"><h1>Завантаження…</h1></div>
+  if (!o) return <div className="page-header"><h1 aria-busy="true">Завантаження…</h1></div>
 
   // Завершити замовлення з результатом (won=виконано / lost=програно). Повернути в роботу — unarchive.
   const archive = async (outcome) => {
@@ -143,8 +150,9 @@ export default function OrderCard() {
   const del = async () => {
     setBusy('del'); setMsg(null)
     const { count } = await qc('documents').select('id', { count: 'exact', head: true }).eq('order_id', id)
+    setConfirmDel(false)
     if (count > 0) {
-      setBusy(''); setConfirmDel(false)
+      setBusy('')
       setMsg(`Не можна видалити: до замовлення прив'язано ${count} документ(ів). Заархівуйте його замість видалення.`)
       return
     }
@@ -156,151 +164,154 @@ export default function OrderCard() {
 
   const overdue = proposalOverdue(o, lastSent)
 
+  // «Це не наша оплата» — відв'язати (096 запам'ятовує відмову для автопідбору)
+  const doUnlink = async () => {
+    setAskUnlink(false)
+    try {
+      const r = await unlinkOrderPayment(o)
+      toast(r.remembered ? 'Оплату відв\'язано' : 'Оплату відв\'язано. Щоб вона не підтягнулась знову, застосуйте міграцію 096.')
+      load()
+    } catch (e) { toast('Не вдалося відв\'язати: ' + e.message, { type: 'error' }) }
+  }
+
+  const leaveCrumb = (e) => { if (!guardLeave()) e.preventDefault(); else setItemsDirty(false) }
+  const tabs = TABS.filter(t => !t.tenderOnly || o.procurement_type === 'tender')
+  const onTabKey = (e) => {
+    const i = tabs.findIndex(t => t.id === tab)
+    const go = (j) => { e.preventDefault(); const t = tabs[(j + tabs.length) % tabs.length]; switchTab(t.id); document.getElementById(`oc-tab-${t.id}`)?.focus() }
+    if (e.key === 'ArrowRight') go(i + 1)
+    else if (e.key === 'ArrowLeft') go(i - 1)
+    else if (e.key === 'Home') go(0)
+    else if (e.key === 'End') go(tabs.length - 1)
+  }
+
   return (
     <div>
-      <div className="page-header" style={{ marginBottom: 12 }}>
-        <button className="btn" onClick={goBack} style={{ marginBottom: 10 }}><i className="ti ti-arrow-left" /> До реєстру</button>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <h1 style={{ marginBottom: 6 }}>Замовлення {o.order_number || o.id.slice(0, 6)}</h1>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <span style={{ color: TYPE_COLORS[o.type], fontWeight: 600, fontSize: 13 }}>{ORDER_TYPES[o.type]}</span>
-              <span style={{ color: 'var(--text2)', fontSize: 13 }}>{o.contractors?.name}</span>
-              <span style={{ color: 'var(--text2)', fontSize: 13 }}>{fmt(o.total)} грн</span>
-              {OUTCOME[o.outcome] && (
-                <span style={{ background: OUTCOME[o.outcome].bg, color: OUTCOME[o.outcome].color, borderRadius: 6, padding: '2px 10px', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  <i className={`ti ${OUTCOME[o.outcome].icon}`} /> {OUTCOME[o.outcome].label}
-                </span>
-              )}
-              {o.paid_transaction_id && payment && (
-                <button title={`${payment.description || ''}\n\nНатисніть, щоб відв'язати, якщо це не оплата цього замовлення`}
-                  onClick={async () => {
-                    if (!confirm(`Відв'язати оплату ${fmtDate(payment.date)} · ${fmt(Math.abs(payment.amount))} грн від замовлення ${o.order_number || ''}?\n\n${payment.description || ''}\n\nЦе не наша оплата — «Підтягнути оплати» більше не пропонуватиме її цьому замовленню.`)) return
-                    try { const r = await unlinkOrderPayment(o); if (!r.remembered) alert('Оплату відв\'язано. Щоб вона не підтягнулась знову, застосуйте міграцію 096.'); load() }
-                    catch (e) { alert('Не вдалося відв\'язати: ' + e.message) }
-                  }}
-                  style={{ background: 'var(--green-bg, #e7f7ec)', color: 'var(--green)', borderRadius: 6, padding: '2px 10px', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                  <i className="ti ti-cash" /> Оплачено клієнтом · {fmtDate(payment.date)} · {fmt(Math.abs(payment.amount))} грн <i className="ti ti-x" style={{ opacity: .6 }} />
-                </button>
-              )}
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button className="btn" onClick={copyOrder} disabled={!!busy} title="Створити копію замовлення з тими самими товарами">
-              <i className="ti ti-copy" /> {busy === 'copy' ? '…' : 'Копіювати'}
+      <PageHeader
+        crumbs={[{ label: 'Замовлення', to: '/orders', onClick: leaveCrumb }, { label: o.order_number || o.id.slice(0, 6) }]}
+        title={`Замовлення ${o.order_number || o.id.slice(0, 6)}`}
+        subtitle={<>
+          <span className="oc-type" style={{ color: TYPE_COLORS[o.type] }}>{ORDER_TYPES[o.type]}</span>
+          {o.contractors?.name && <span className="oc-client">{o.contractors.name}</span>}
+          <span className="oc-total">{formatMoney(o.total)} грн</span>
+          {OUTCOME[o.outcome] && <StatusPill status={o.outcome} kind="order" />}
+          {o.paid_transaction_id && payment && (
+            <button type="button" className="oc-paid" onClick={() => setAskUnlink(true)}
+              title={`${payment.description || ''}\n\nНатисніть, щоб відв'язати, якщо це не оплата цього замовлення`}>
+              <i className="ti ti-cash" aria-hidden="true" /> Оплачено клієнтом · {fmtDate(payment.date)} · {fmt(Math.abs(payment.amount))} грн
+              <i className="ti ti-x" aria-hidden="true" style={{ opacity: .6 }} />
             </button>
-            {o.archived_at ? (
-              <button className="btn" onClick={unarchive} disabled={!!busy}>
-                <i className="ti ti-rotate-2" /> {busy === 'archive' ? '…' : 'Повернути в роботу'}
-              </button>
-            ) : (
-              <>
-                <button className="btn" onClick={() => archive('won')} disabled={busy === 'archive'} style={{ color: 'var(--green)' }} title="Замовлення виконано">
-                  <i className="ti ti-circle-check" /> Виконано
-                </button>
-                <button className="btn" onClick={() => archive('lost')} disabled={busy === 'archive'} style={{ color: 'var(--red)' }} title="Замовлення програно">
-                  <i className="ti ti-mood-sad" /> Програно
-                </button>
-              </>
-            )}
-            {!confirmDel ? (
-              <button className="btn" onClick={() => { setMsg(null); setConfirmDel(true) }} disabled={!!busy} style={{ color: 'var(--red)' }}>
-                <i className="ti ti-trash" /> Видалити
-              </button>
-            ) : (
-              <>
-                <button className="btn" onClick={del} disabled={busy === 'del'} style={{ background: 'var(--red)', color: '#fff' }}>{busy === 'del' ? '…' : 'Підтвердити видалення'}</button>
-                <button className="btn" onClick={() => setConfirmDel(false)} disabled={busy === 'del'}>Скасувати</button>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
+          )}
+        </>}
+        secondary={o.archived_at
+          ? { label: 'Повернути в роботу', icon: 'ti-rotate-2', onClick: unarchive, loading: busy === 'archive' }
+          : { label: 'Виконано', icon: 'ti-circle-check', onClick: () => archive('won'), loading: busy === 'archive' }}
+        menu={[
+          { label: 'Копіювати замовлення', icon: 'ti-copy', disabled: !!busy, onClick: copyOrder },
+          ...(!o.archived_at ? [{ label: 'Програно', icon: 'ti-mood-sad', disabled: busy === 'archive', onClick: () => archive('lost') }] : []),
+          { divider: true },
+          { label: 'Видалити замовлення', icon: 'ti-trash', danger: true, disabled: !!busy, onClick: () => { setMsg(null); setConfirmDel(true) } },
+        ]} />
 
       <StatusStepper o={o} onChange={setStatus} />
 
+      {busy === 'copy' && <p className="oc-note" role="status">Копіювання…</p>}
+
       {msg && (
-        <div style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 10, padding: '10px 16px', marginBottom: 14, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <i className="ti ti-alert-circle" /> {msg}
+        <div className="oc-banner is-danger" role="alert">
+          <i className="ti ti-alert-circle" aria-hidden="true" /> {msg}
         </div>
       )}
 
       {o.archived_at && (() => {
         const lost = o.outcome === 'lost'
         return (
-        <div style={{ background: lost ? 'var(--red-bg)' : 'var(--green-bg, #e7f7ec)', color: lost ? 'var(--red)' : 'var(--green)', borderRadius: 10, padding: '10px 16px', marginBottom: 14, fontSize: 13, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ fontWeight: 600 }}><i className={`ti ${lost ? 'ti-mood-sad' : 'ti-circle-check'}`} /> {lost ? 'Програно' : 'Виконано'} (з {o.archived_at.slice(0, 10)})</span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
-            <button className="btn" onClick={() => setOutcome('won')} disabled={o.outcome === 'won' || o.outcome == null} style={{ fontSize: 12, padding: '3px 10px', color: 'var(--green)' }}><i className="ti ti-circle-check" /> Виконано</button>
-            <button className="btn" onClick={() => setOutcome('lost')} disabled={o.outcome === 'lost'} style={{ fontSize: 12, padding: '3px 10px', color: 'var(--red)' }}><i className="ti ti-mood-sad" /> Програно</button>
-            <button className="btn" onClick={unarchive} style={{ fontSize: 12, padding: '3px 10px' }}><i className="ti ti-rotate-2" /> В роботу</button>
+        <div className={`oc-banner ${lost ? 'is-danger' : 'is-success'}`}>
+          <span style={{ fontWeight: 600 }}><i className={`ti ${lost ? 'ti-mood-sad' : 'ti-circle-check'}`} aria-hidden="true" /> {lost ? 'Програно' : 'Виконано'} (з {fmtDate(o.archived_at)})</span>
+          <span className="oc-banner-actions">
+            <Button size="sm" variant="secondary" icon="ti-circle-check" onClick={() => setOutcome('won')} disabled={o.outcome === 'won' || o.outcome == null}>Виконано</Button>
+            <Button size="sm" variant="secondary" icon="ti-mood-sad" onClick={() => setOutcome('lost')} disabled={o.outcome === 'lost'}>Програно</Button>
+            <Button size="sm" variant="secondary" icon="ti-rotate-2" onClick={unarchive}>В роботу</Button>
           </span>
         </div>
         )
       })()}
 
       {overdue && (
-        <div style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <i className="ti ti-alert-triangle" /> Минуло понад 48 год від надсилання КП без відповіді клієнта.
+        <div className="oc-banner is-danger" role="status">
+          <i className="ti ti-alert-triangle" aria-hidden="true" /> Минуло понад 48 год від надсилання КП без відповіді клієнта.
         </div>
       )}
 
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 18, overflowX: 'auto' }}>
-        {TABS.filter(t => !t.tenderOnly || o.procurement_type === 'tender').map(t => (
-          <button key={t.id} onClick={() => switchTab(t.id)} style={{
-            padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
-            fontSize: 13, fontWeight: 500, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6,
-            borderBottom: tab === t.id ? '2px solid var(--blue)' : '2px solid transparent',
-            color: tab === t.id ? 'var(--blue)' : 'var(--text2)',
-          }}><i className={`ti ${t.icon}`} style={{ fontSize: 15 }} />{t.label}</button>
+      <div className="oc-tabs" ref={tabsRef} role="tablist" aria-label="Розділи замовлення" onKeyDown={onTabKey}>
+        {tabs.map(t => (
+          <button key={t.id} id={`oc-tab-${t.id}`} type="button" role="tab" aria-selected={tab === t.id} tabIndex={tab === t.id ? 0 : -1}
+            aria-controls="oc-tabpanel" className="oc-tab" onClick={() => switchTab(t.id)}>
+            <i className={`ti ${t.icon}`} aria-hidden="true" />{t.label}
+          </button>
         ))}
       </div>
 
-      {tab === 'details' && <DetailsTab key={`${o.status}|${o.closed_at || ''}`} o={o} onSaved={load} />}
-      {tab === 'items' && <ItemsTab o={o} onChange={load} onDirty={setItemsDirty} />}
-      {tab === 'proposals' && <ProposalsTab o={o} onChange={load} />}
-      {tab === 'documents' && <DocumentsTab o={o} />}
-      {tab === 'suppliers' && <SuppliersTab o={o} />}
-      {tab === 'vendorreg' && <VendorRegTab o={o} />}
-      {tab === 'tender' && o.procurement_type === 'tender' && <TenderDocsTab o={o} />}
-      {tab === 'finance' && <OrderFinanceTab o={o} onOrderChange={load} />}
-      {tab === 'stock' && <StockTab o={o} />}
-      {tab === 'tasks' && <OrderTasksTab o={o} />}
+      <div id="oc-tabpanel" role="tabpanel" aria-labelledby={`oc-tab-${tab}`}>
+        {tab === 'details' && <DetailsTab key={`${o.status}|${o.closed_at || ''}`} o={o} onSaved={load} />}
+        {tab === 'items' && <ItemsTab o={o} onChange={load} onDirty={setItemsDirty} />}
+        {tab === 'proposals' && <ProposalsTab o={o} onChange={load} />}
+        {tab === 'documents' && <DocumentsTab o={o} />}
+        {tab === 'suppliers' && <SuppliersTab o={o} />}
+        {tab === 'vendorreg' && <VendorRegTab o={o} />}
+        {tab === 'tender' && o.procurement_type === 'tender' && <TenderDocsTab o={o} />}
+        {tab === 'finance' && <OrderFinanceTab o={o} onOrderChange={load} />}
+        {tab === 'stock' && <StockTab o={o} />}
+        {tab === 'tasks' && <OrderTasksTab o={o} />}
+      </div>
+
+      <ConfirmDialog open={askUnlink} danger title="Відв'язати оплату?" confirmLabel="Відв'язати"
+        text={payment ? `${fmtDate(payment.date)} · ${fmt(Math.abs(payment.amount))} грн від замовлення ${o.order_number || ''}.\n\n${payment.description || ''}\n\nЦе не наша оплата — «Підтягнути оплати» більше не пропонуватиме її цьому замовленню.` : ''}
+        onCancel={() => setAskUnlink(false)} onConfirm={doUnlink} />
+      <ConfirmDialog open={confirmDel} danger title={`Видалити замовлення ${o.order_number || ''}?`} confirmLabel="Видалити" loading={busy === 'del'}
+        text="Замовлення можна видалити, лише якщо до нього не прив'язано документів. Інакше — завершіть його («Виконано» / «Програно»)."
+        onCancel={() => setConfirmDel(false)} onConfirm={del} />
     </div>
   )
 }
 
-// ───────── Степер статусів (у шапці, єдиний контрол стану) ─────────
+// Прокрутити смугу (етапи / вкладки) так, щоб активний елемент був видимий — на телефоні він часто за краєм
+// (повтор після завантаження шрифту — ширина підписів змінюється)
+function centerActive(box, sel) {
+  scrollToActive(box, sel)
+  document.fonts?.ready?.then(() => scrollToActive(box, sel))
+}
+function scrollToActive(box, sel) {
+  const el = box?.querySelector(sel)
+  if (!el || box.scrollWidth <= box.clientWidth) return
+  const b = box.getBoundingClientRect(), r = el.getBoundingClientRect()
+  box.scrollLeft += (r.left - b.left) - (b.width - r.width) / 2
+}
+
+// ───────── Степер статусів (у шапці, єдиний контрол стану; клік — одразу змінює етап) ─────────
+// Етап, що потребує дії (accent у lib/orders), — бурштиновий, як тон attention у StatusPill.
 function StatusStepper({ o, onChange }) {
   const steps = flowFor(o.type)
   let cur = steps.findIndex(x => x.s === o.status)
   if (cur < 0) cur = 0
+  const ref = useRef(null)
+  useEffect(() => { centerActive(ref.current, '[aria-current="step"]') }, [cur])
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', overflowX: 'auto', marginBottom: 16, padding: '4px 2px' }}>
+    <nav className="oc-stepper" aria-label="Етапи замовлення" ref={ref}>
       {steps.map((st, i) => {
         const done = i < cur, active = i === cur
-        const accent = st.accent // яскравий статус (напр. «Потребує оплати»)
-        const activeBg = accent || 'var(--blue)'
-        const labelColor = active ? activeBg : accent ? accent : done ? 'var(--text)' : 'var(--text3)'
+        const cls = ['oc-step', done && 'is-done', active && 'is-active', st.accent && 'is-attention'].filter(Boolean).join(' ')
         return (
           <Fragment key={st.s}>
-            {i > 0 && <div style={{ flex: '1 1 16px', minWidth: 12, height: 2, background: i <= cur ? 'var(--green)' : 'var(--border)', marginTop: 14 }} />}
-            <button onClick={() => onChange(st.s)} title={`Перевести в «${st.label}»`}
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: 0, flex: '0 0 auto' }}>
-              <span style={{
-                width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 13, fontWeight: 700,
-                background: active ? activeBg : done ? 'var(--green)' : accent ? accent : 'var(--surface2)',
-                color: active || done || accent ? '#fff' : 'var(--text3)',
-                boxShadow: accent && !done ? `0 0 0 3px ${accent}33` : 'none',
-              }}>{done ? <i className="ti ti-check" /> : i + 1}</span>
-              <span style={{ fontSize: 11, textAlign: 'center', lineHeight: 1.2, maxWidth: 92,
-                color: labelColor, fontWeight: active || accent ? 600 : 400 }}>{st.label}</span>
+            {i > 0 && <div className={`oc-step-line${i <= cur ? ' is-done' : ''}`} aria-hidden="true" />}
+            <button type="button" className={cls} onClick={() => onChange(st.s)} title={`Перевести в «${st.label}»`} aria-current={active ? 'step' : undefined}>
+              <span className="oc-step-dot">{done ? <i className="ti ti-check" aria-hidden="true" /> : i + 1}</span>
+              <span className="oc-step-label">{st.label}</span>
             </button>
           </Fragment>
         )
       })}
-    </div>
+    </nav>
   )
 }
 

@@ -21,6 +21,7 @@
 .ui-page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
 .ui-ph-left { min-width: 0; flex: 1 1 260px; }
 .ui-ph-left p { font-size: 14px; color: var(--text2); margin-top: 6px; }
+.ui-ph-sub { display: flex; gap: 8px 12px; align-items: center; flex-wrap: wrap; margin-top: 8px; font-size: 14px; color: var(--text2); }
 .ui-ph-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
 @media (max-width: 768px) {
   .ui-ph-actions { width: 100%; flex-shrink: 1; flex-wrap: wrap; }
