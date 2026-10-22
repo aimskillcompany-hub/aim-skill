@@ -12,11 +12,11 @@ import { getDocType } from '../lib/docgen'
 import { supabase } from '../lib/supabase'
 import DocModal from '../components/DocModal'
 import { useUser } from '../lib/auth'
-import { useTabParam, Tabs, Button } from '../components/ui'
+import { useTabParam, Tabs, Button, Segmented, Switch } from '../components/ui'
 import { useNewUi } from '../lib/uiPrefs'
 import { canAccess } from '../lib/permissions'
 import CashflowReport from '../components/CashflowReport'
-import { CashFlowNew, PeriodChips } from './AnalyticsNew'
+import { CashFlowNew, PeriodChips, PLNew, ForecastHero } from './AnalyticsNew'
 
 const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД', 'ОЗ']
 
@@ -419,6 +419,9 @@ export function PLView({ fixedYear = null, fixedMonth = null } = {}) {
   const [drill, setDrill] = useState(null)
   const [showPending, setShowPending] = useState(false)
   const accrual = basis === 'accrual'
+  const newUi = useNewUi()
+  const [fc, setFc] = useState(null)   // прогноз для темної картки нового інтерфейсу
+  useEffect(() => { if (newUi && !locked) { setFc(null); computeForecast(year, month || null).then(setFc) } }, [year, month, newUi, locked])
 
   useEffect(() => {
     let cancelled = false
@@ -452,6 +455,30 @@ export function PLView({ fixedYear = null, fixedMonth = null } = {}) {
     })
     return out
   }, [data])
+
+  // Новий інтерфейс (ТЗ 5.1): у «Закритті періоду» (locked) лишається звичний вигляд
+  if (newUi && !locked) return (
+    <>
+      <div className="an-toolbar">
+        <PeriodChips year={year} setYear={setYear} month={month} setMonth={setMonth} years={YEARS} />
+      </div>
+      <div className="an-toolbar pln-switches">
+        <Segmented ariaLabel="Метод" value={basis} onChange={k => { setBasis(k); if (k === 'accrual') setMode('fact') }}
+          options={[{ value: 'accrual', label: 'Нарахування' }, { value: 'cash', label: 'Касовий' }]} />
+        {!accrual && <Segmented ariaLabel="Факт чи план" value={mode} onChange={setMode}
+          options={[{ value: 'fact', label: 'Факт' }, { value: 'plan', label: 'План' }, { value: 'compare', label: 'План vs факт' }]} />}
+        {!accrual && mode === 'fact' && <Switch checked={showPending} onChange={setShowPending} label="Показати непідтверджені" />}
+        <span className="cfn-muted cfn-sm">{accrual ? 'Виручка й собівартість — за датою документа. План — у касовому методі.' : 'Лише підтверджені оплати, за датою оплати.'}</span>
+      </div>
+      <PLNew bd={bd} acc={acc} recon={recon} plErr={plErr} year={year} month={month} setMonth={setMonth} accrual={accrual} mode={mode}
+        planRows={data ? rows : null} setDrill={setDrill}
+        forecast={<ForecastHero f0={fc} accrualNet={accrual ? (acc ? acc.netTotal : undefined) : null} />}>
+        {accrual && acc?.missing?.length > 0 && <div id="pl-missing"><MissingCostCard missing={acc.missing} /></div>}
+        {accrual && (acc?.estimated?.length > 0 || acc?.writeoffs?.length > 0) && <EstimateWriteoffCard estimated={acc.estimated || []} writeoffs={acc.writeoffs || []} />}
+      </PLNew>
+      {drill && <DrillModal drill={drill} year={year} month={month || null} onClose={() => setDrill(null)} />}
+    </>
+  )
 
   return (
     <div>

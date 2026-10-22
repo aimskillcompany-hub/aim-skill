@@ -225,3 +225,219 @@ function Num({ v, onClick, sign, strong, heat, style }) {
     </td>
   )
 }
+
+// ───────── P&L (ТЗ 5.1; макет PnL) ─────────
+// Рядки bd — ті самі, що в старому вигляді (computeAccrualPL / computePLBreakdown): витрати (cogs, opex, below_line)
+// там додатні — для показу ставимо «−». Підсумки йдуть у порядку: валовий, EBIT, до податків, чистий.
+const COST_LEVELS = new Set(['cogs', 'opex', 'below_line'])
+const dispSign = (r) => (r.type !== 'subtotal' && COST_LEVELS.has(r.level) ? -1 : 1)
+const short = (v) => { const a = Math.abs(v); const s = a >= 1e6 ? (a / 1e6).toFixed(1).replace('.', ',') + ' млн' : a >= 1e3 ? Math.round(a / 1e3) + 'к' : String(Math.round(a)); return (v < 0 ? '−' : '') + s }
+
+function plSummary(bd) {
+  const head = (lvl) => bd.rows.find(r => r.type === 'header' && r.level === lvl)
+  const subs = bd.rows.filter(r => r.type === 'subtotal')
+  const t = (r) => r?.total || 0
+  return { rev: t(head('revenue')), cogs: t(head('cogs')), gp: t(subs[0]), opex: t(head('opex')), ebit: t(subs[1]), oth: t(head('other_income')), np: t(subs[2]), below: t(head('below_line')), net: t(subs[3]), subs }
+}
+
+export function PLNew({ bd, acc, recon, plErr, year, month, setMonth, accrual, mode, planRows, setDrill, forecast, children }) {
+  const [open, setOpen] = useState(() => new Set(['revenue']))
+  const cols = useMemo(() => {
+    if (!bd) return []
+    if (month || year !== NOW.getFullYear()) return bd.cols
+    return bd.cols.filter(c => Number(c.key) <= NOW.getMonth() + 1)
+  }, [bd, year, month])
+  if (plErr) return <div className="cfn-card cfn-err">Не вдалося порахувати P&L: {plErr}</div>
+  if (mode !== 'fact' && !accrual) return <PlanTable rows={planRows} mode={mode} />
+  if (!bd) return <TableSkeleton rows={10} cols={6} label="Рахую прибуток…" />
+
+  const s = plSummary(bd)
+  const steps = [
+    ['Виручка', 0, s.rev, 'total'], ['Собівартість', s.gp, s.rev, 'cost', -s.cogs], ['Валовий прибуток', 0, s.gp, 'total'],
+    ['Операційні витрати', s.ebit, s.gp, 'cost', -s.opex], ['Операційний прибуток', 0, s.ebit, 'total'],
+    ['Інші доходи / витрати', s.ebit, s.np, s.oth >= 0 ? 'gain' : 'cost', s.oth], ['Податки', s.net, s.np, 'cost', -s.below], ['Чистий прибуток', 0, s.net, 'net'],
+  ].filter(x => x[3] === 'total' || x[3] === 'net' || Math.abs(x[4]) >= 1)
+  const ends = steps.flatMap(x => [x[1], x[2]]), lo = Math.min(0, ...ends), hi = Math.max(1, ...ends), span = hi - lo || 1
+  const pos = (a, b) => ({ left: `${((Math.min(a, b) - lo) / span) * 100}%`, width: `${Math.max(0.4, (Math.abs(b - a) / span) * 100)}%` })
+  const pct = (v) => s.rev ? `${((v / s.rev) * 100).toFixed(1).replace('.', ',')}%` : '—'
+
+  const monthly = !month && cols.length > 1
+  const revRow = bd.rows.find(r => r.type === 'header' && r.level === 'revenue')
+  const mMax = Math.max(1, ...cols.map(c => Math.max(revRow?.cells[c.key] || 0, s.subs[0]?.cells[c.key] || 0)))
+
+  // таблиця: заголовки груп згортаються
+  const vis = []; let cur = null
+  bd.rows.forEach(r => { if (r.type === 'header') cur = r.level; else if (r.type === 'subtotal') cur = null; if (r.type === 'row' && !open.has(cur)) return; vis.push(r) })
+  const toggle = (lvl) => setOpen(o => { const n = new Set(o); n.has(lvl) ? n.delete(lvl) : n.add(lvl); return n })
+  const drill = (r, key, label) => r.articles && setDrill({ articles: r.articles, bucketKey: key, title: `${r.label} · ${label}`, validated: true })
+
+  return (
+    <div className="pln">
+      <div className="pln-top">
+        <section className="cfn-card pln-wf" aria-label="Від виручки до чистого прибутку">
+          <div className="pln-wf-head">
+            <div><span className="cfn-muted cfn-sm">Чистий прибуток · {periodLabel(year, month)}</span>
+              <div className={`pln-big${s.net < 0 ? ' is-neg' : ''}`}>{formatAmount(s.net, { decimals: 0 })} <small>₴</small></div></div>
+            <dl className="pln-marg"><div><dt>Валова маржа</dt><dd>{pct(s.gp)}</dd></div><div><dt>Чиста маржа</dt><dd>{pct(s.net)}</dd></div></dl>
+          </div>
+          <ul className="pln-wf-list">
+            {steps.map(([label, a, b, kind, shown]) => (
+              <li key={label} className={`is-${kind}`}>
+                <span className="pln-wf-l">{label}</span>
+                <span className="pln-wf-track"><span className="pln-wf-bar" style={pos(a, b)} /></span>
+                <span className={`pln-wf-v${(shown ?? b) < 0 ? ' is-neg' : ''}`}>{formatAmount(shown ?? b, { decimals: 0 })}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+        <div className="pln-side">
+          {forecast}
+          {accrual && acc?.missing?.length > 0 && (() => { const n = acc.missing.reduce((a, m) => a + m.items.length, 0); return (
+            <a className="cfn-card pln-warn" href="#pl-missing">
+              <i className="ti ti-alert-triangle" aria-hidden="true" />
+              <span><b>{n} {n === 1 ? 'позиція' : n < 5 ? 'позиції' : 'позицій'} без собівартості</b>
+                <span className="cfn-sm">у {acc.missing.length} док. — прибуток завищено. Відкрити й виправити →</span></span>
+            </a>) })()}
+        </div>
+      </div>
+
+      {monthly && (
+        <section className="cfn-card pln-months" aria-label="По місяцях">
+          <div className="pln-months-head"><h2>По місяцях</h2>
+            <div className="pln-legend"><span><i className="is-rev" />Виручка</span><span><i className="is-gp" />Валовий прибуток</span><span><i className="is-net" />Чистий прибуток</span></div></div>
+          <div className="pln-mbars">
+            {cols.map(c => {
+              const rv = revRow?.cells[c.key] || 0, gp = s.subs[0]?.cells[c.key] || 0, nt = s.subs[3]?.cells[c.key] || 0
+              return (
+                <button key={c.key} type="button" className="pln-mbar" onClick={() => setMonth(Number(c.key))} aria-label={`${c.label}: виручка ${plain(rv)}, валовий ${formatAmount(gp, { decimals: 0 })}, чистий ${formatAmount(nt, { decimals: 0 })}`}>
+                  <span className="pln-mbar-area">
+                    {(rv || nt) ? <span className={`pln-mbar-net${nt < 0 ? ' is-neg' : ''}`}>{short(nt)}</span> : null}
+                    <span className="pln-mbar-rev" style={{ height: `${(Math.max(0, rv) / mMax) * 100}%` }}>
+                      <span className="pln-mbar-gp" style={{ height: rv > 0 ? `${Math.max(0, Math.min(1, gp / rv)) * 100}%` : 0 }} />
+                    </span>
+                  </span>
+                  <span className="pln-mbar-lbl">{c.label}</span>
+                </button>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
+      <section className="cfn-card cfn-report" aria-label="Звіт про прибутки та збитки">
+        <div className="cfn-report-head"><h2>Звіт про прибутки та збитки</h2><span className="cfn-muted cfn-sm">від'ємні значення — зі знаком «−» · натисніть на цифру, щоб побачити операції</span></div>
+        <div className="cfn-tbl pln-tbl">
+          <table>
+            <thead><tr><th scope="col">Стаття</th>{cols.map(c => <th key={c.key} scope="col">{c.label}</th>)}<th scope="col">Разом</th></tr></thead>
+            <tbody>
+              {vis.map((r, i) => {
+                const k = dispSign(r), last = r.type === 'subtotal' && r === s.subs[3]
+                return (
+                  <tr key={i} className={`pln-${r.type}${last ? ' is-net' : ''}`}>
+                    <th scope="row">{r.type === 'header' && bd.rows.some(x => x.type === 'row' && x.level === r.level)
+                      ? <button type="button" aria-expanded={open.has(r.level)} onClick={() => toggle(r.level)}><i className={`ti ${open.has(r.level) ? 'ti-chevron-down' : 'ti-chevron-right'}`} aria-hidden="true" />{r.label}</button>
+                      : r.label}</th>
+                    {cols.map(c => <PlNum key={c.key} v={k * (r.cells[c.key] || 0)} onClick={r.articles ? () => drill(r, c.key, `${c.label} ${year}`) : null} />)}
+                    <PlNum v={k * r.total} strong onClick={r.articles ? () => drill(r, 'total', `Разом ${year}`) : null} />
+                  </tr>
+                )
+              })}
+              {bd.rows.length === 0 && <tr><td colSpan={cols.length + 2} className="pln-empty">Немає даних за період</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        <p className="cfn-muted cfn-sm cfn-foot">{accrual
+          ? <>Нарахування: виручка — видаткові й акти за датою документа, без ПДВ; собівартість — відвантажених позицій. Закупівлі до відвантаження — запас, не витрата. Операційні витрати — підтверджені оплати за датою оплати{acc?.excludedVat?.length ? `; ПДВ (${acc.excludedVat.map(x => `${x.label} ${plain(x.total)} ₴`).join(', ')}) — не витрата` : ''}.</>
+          : <>Касовий: лише підтверджені транзакції за датою оплати.</>}</p>
+      </section>
+
+      {accrual && <ReconBridge recon={recon} />}
+      {children}
+    </div>
+  )
+}
+
+function PlNum({ v, onClick, strong }) {
+  if (!v) return <td className="cfn-zero">–</td>
+  const txt = formatAmount(v, { decimals: 0 })
+  return <td className={`${v < 0 ? 'is-neg' : ''}${strong ? ' is-strong' : ''}`}>{onClick ? <button type="button" onClick={onClick}>{txt}</button> : txt}</td>
+}
+
+// План / порівняння (касовий режим) — та сама логіка, що раніше
+function PlanTable({ rows, mode }) {
+  if (!rows) return <TableSkeleton rows={10} cols={4} label="Рахую план…" />
+  return (
+    <section className="cfn-card cfn-report">
+      <div className="cfn-tbl pln-tbl"><table>
+        <thead><tr><th scope="col">Стаття</th>{mode === 'compare' && <th scope="col">Факт</th>}<th scope="col">План</th>{mode === 'compare' && <><th scope="col">Відхилення</th><th scope="col">%</th></>}</tr></thead>
+        <tbody>{rows.map((r, i) => {
+          // витрати (sign < 0) показуємо з «−»; відхилення — «краще / гірше плану» для прибутку
+          const k = !r.subtotal && r.sign < 0 ? -1 : 1
+          const dev = k * ((r.fact || 0) - (r.plan || 0)), pct = r.plan ? Math.round((r.fact / r.plan) * 100) : null
+          return (
+            <tr key={i} className={r.subtotal ? 'pln-subtotal' : r.header ? 'pln-header' : 'pln-row'}>
+              <th scope="row">{r.label}</th>
+              {mode === 'compare' && <PlNum v={k * (r.fact || 0)} />}
+              <PlNum v={k * (r.plan || 0)} />
+              {mode === 'compare' && <><td className={dev < 0 ? 'is-neg' : 'is-pos'}>{formatAmount(dev, { decimals: 0, sign: 'always' })}</td><td className="cfn-muted">{pct == null ? '—' : `${pct}%`}</td></>}
+            </tr>
+          )
+        })}
+        {rows.length === 0 && <tr><td colSpan={5} className="pln-empty">Немає даних за період</td></tr>}</tbody>
+      </table></div>
+    </section>
+  )
+}
+
+// «Чому прибуток X, а грошей Y» — той самий розрахунок accrualReconciliation, що в старій «Звірці»
+function ReconBridge({ recon: r }) {
+  if (!r) return <TableSkeleton rows={6} cols={2} label="Звіряю з грошима…" />
+  const ex = r.explained
+  const known = ex.loans + ex.fixedAssets + ex.vat + ex.withdrawals + ex.other + ex.noArticle + ex.unvalidated + (ex.vatInDocs || 0)
+  const lines = [
+    ['Прибуток за нарахуванням', r.netProfit, 'total'],
+    ['− дебіторка: виписано, ще не оплачено', -r.dAR], ['+ кредиторка: отримано, ще не оплачено', r.dAP], ['− запаси: куплено, ще не продано', -r.dInv],
+    ['= Розрахунковий грошовий потік', r.estimated, 'total'],
+    ['ПДВ у документах (у боргах, не в прибутку)', ex.vatInDocs || 0], ['ПДВ, сплачений до бюджету', ex.vat], ['Позики (ПФД)', ex.loans], ['Основні засоби', ex.fixedAssets],
+    ['Вивід коштів', ex.withdrawals], ['Інше поза P&L', ex.other], ['Без статті', ex.noArticle], ['Непідтверджені транзакції', ex.unvalidated],
+    ['Решта: оцінка складу, оплати без документів, аванси', r.diff - known],
+    ['= Фактичний грошовий потік (банк + каса)', r.cashFlow, 'final'],
+  ].filter(([, v, k]) => k || Math.abs(v) >= 1)
+  const max = Math.max(1, ...lines.map(l => Math.abs(l[1])))
+  return (
+    <section className="cfn-card pln-bridge" aria-label="Звірка прибутку з грошима">
+      <h2>Чому прибуток {short(r.netProfit)}, а грошей {short(r.cashFlow)}</h2>
+      <p className="cfn-muted cfn-sm">Звірка прибутку за нарахуванням із фактичним рухом грошей</p>
+      <ul>
+        {lines.map(([label, v, k]) => (
+          <li key={label} className={k ? `is-${k}` : ''}>
+            <span className="pln-br-l">{label}</span>
+            <span className="pln-br-track"><span className={`pln-br-bar${v < 0 ? ' is-neg' : ''}`} style={{ width: `${(Math.abs(v) / max) * 50}%` }} /></span>
+            <span className={`pln-br-v${v < 0 ? ' is-neg' : k ? '' : ' is-pos'}`}>{formatAmount(v, { decimals: 0, sign: k ? 'auto' : 'always' })}</span>
+          </li>
+        ))}
+      </ul>
+      {r.opening && <p className="cfn-muted cfn-sm">На початок ({r.opening.date.split('-').reverse().join('.')}): дебіторка {plain(r.opening.receivable)}, кредиторка {plain(r.opening.payable)}, запаси {plain(r.opening.inventory)} ₴. Борги — з ПДВ, прибуток — без ПДВ, тому різниця на суму ПДВ очікувана.</p>}
+    </section>
+  )
+}
+
+// Темна картка «Очікуваний результат» (дані — computeForecast, як у старій ForecastCard)
+export function ForecastHero({ f0, accrualNet }) {
+  if (!f0 || accrualNet === undefined) return <div className="pln-fc is-loading" aria-hidden="true" />
+  const isAcc = accrualNet !== null
+  const fact = isAcc ? accrualNet : f0.factNet, recv = isAcc ? 0 : f0.receivable
+  const expected = isAcc ? accrualNet + (f0.pipelineMargin || 0) : f0.expected
+  return (
+    <section className="pln-fc" aria-label="Очікуваний результат">
+      <span className="pln-fc-t">Очікуваний результат · оцінка</span>
+      <b className={`pln-fc-v${expected < 0 ? ' is-neg' : ''}`}>≈ {formatAmount(expected, { decimals: 0 })} ₴</b>
+      <dl>
+        <div><dt>Фактичний результат{isAcc ? ' (нарахування)' : ''}</dt><dd>{formatAmount(fact, { decimals: 0 })}</dd></div>
+        {!isAcc && <div><dt>+ дебіторка, чекає оплати</dt><dd className="is-warn">{formatAmount(recv, { decimals: 0, sign: 'always' })}</dd></div>}
+        <div><dt>+ маржа {f0.pipelineCount} відкритих замовлень</dt><dd className="is-pos">{formatAmount(f0.pipelineMargin || 0, { decimals: 0, sign: 'always' })}</dd></div>
+      </dl>
+      <span className="pln-fc-note">Не факт: {isAcc ? 'додано' : 'додано виписані, але не оплачені документи й'} очікувану маржу замовлень без видаткової.{f0.pipelineNoItems > 0 ? ` У ${f0.pipelineNoItems} зам. немає позицій — їхня маржа не врахована.` : ''}</span>
+    </section>
+  )
+}
