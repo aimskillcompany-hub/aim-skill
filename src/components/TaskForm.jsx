@@ -45,7 +45,10 @@ export default function TaskForm({ task, people: peopleIn, me, onClose, onSaved,
       else {
         const id = await createTask(row)
         const subs = f.subtasks.split('\n').map(x => x.trim()).filter(Boolean)
-        if (subs.length) await addSubtasks(id, subs).catch(e => setErr('Задачу створено, але підзадачі не збережено: ' + errText(e)))
+        if (subs.length) {
+          try { await addSubtasks(id, subs) }
+          catch (e) { alert('Задачу створено, але підзадачі не збережено: ' + errText(e)) }   // не губити помилку разом із формою
+        }
         onSaved(id)
       }
     } catch (e) { setErr(errText(e)) }

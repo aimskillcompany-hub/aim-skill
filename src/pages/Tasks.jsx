@@ -321,7 +321,7 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
         <div style={{ fontSize: 13, lineHeight: 1.5, marginTop: 4, whiteSpace: 'pre-line' }}>{t.result_text}</div>
       </div>}
 
-      <Subtasks t={t} people={people} canEdit={canEdit || (t.subAssignees || []).includes(me)} onChanged={onChanged} flash={flash} />
+      <Subtasks t={t} people={people} canEdit={canEdit || (t.subAssignees || []).includes(me)} onChanged={onChanged} />
 
       {/* атрибути */}
       <div style={{ display: 'grid', gridTemplateColumns: '120px minmax(0, 1fr)', gap: '9px 12px', alignItems: 'center', fontSize: 13 }}>
@@ -454,17 +454,24 @@ function NotifySettings({ me, onClose }) {
 }
 
 // ── Підзадачі: пункти з галочкою, за потреби — виконавець і термін ──
-function Subtasks({ t, people, canEdit, onChanged, flash }) {
+function Subtasks({ t, people, canEdit, onChanged }) {
   const [items, setItems] = useState(null)
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
-  const load = () => loadSubtasks(t.id).then(setItems).catch(() => setItems([]))
+  const [err, setErr] = useState(null)
+  const load = () => loadSubtasks(t.id).then(x => { setItems(x); setErr(null) }).catch(e => { setItems([]); setErr(errText(e)) })
   useEffect(() => { load() }, [t.id])
-  const act = async (fn) => { setBusy(true); try { await fn(); await load(); onChanged() } catch (e) { flash(errText(e)) } setBusy(false) }
-  const add = () => {
-    const lines = text.split('\n').map(x => x.trim()).filter(Boolean)
+  const act = async (fn) => {
+    setBusy(true); setErr(null)
+    let ok = false
+    try { await fn(); ok = true; await load(); onChanged() } catch (e) { setErr(errText(e)) }
+    setBusy(false)
+    return ok
+  }
+  const addLines = (raw) => {
+    const lines = String(raw).split('\n').map(x => x.trim()).filter(Boolean)
     if (!lines.length) return
-    act(() => addSubtasks(t.id, lines, (items || []).length)).then(() => setText(''))
+    act(() => addSubtasks(t.id, lines, (items || []).length)).then(ok => ok && setText(''))
   }
   if (items == null) return null
   const done = items.filter(x => x.done).length
@@ -480,27 +487,35 @@ function Subtasks({ t, people, canEdit, onChanged, flash }) {
       </div>
       {items.map(x => {
         const late = !x.done && x.due_date && x.due_date < today
+        const who = people.find(p => p.id === x.assignee_id)
         return (
-          <div key={x.id} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', fontSize: 13, padding: '2px 0' }}>
-            <input type="checkbox" checked={x.done} disabled={!canEdit || busy} onChange={() => act(() => updateSubtask(x.id, { done: !x.done }))} style={{ width: 17, height: 17 }} />
-            <span style={{ flex: '1 1 160px', minWidth: 0, textDecoration: x.done ? 'line-through' : 'none', color: x.done ? 'var(--text3)' : 'var(--text)' }}>{x.text}</span>
-            {canEdit ? <>
-              <select value={x.assignee_id || ''} disabled={busy} title="Виконавець" onChange={e => act(() => updateSubtask(x.id, { assignee_id: e.target.value || null }))} style={{ ...small, maxWidth: 120 }}>
+          <div key={x.id} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 8, background: x.done ? 'var(--surface2)' : 'var(--surface)' }}>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, cursor: canEdit ? 'pointer' : 'default' }}>
+              <input type="checkbox" checked={x.done} disabled={!canEdit || busy} onChange={() => act(() => updateSubtask(x.id, { done: !x.done }))} style={{ width: 17, height: 17, marginTop: 1, flex: '0 0 auto' }} />
+              <span style={{ flex: 1, minWidth: 0, textDecoration: x.done ? 'line-through' : 'none', color: x.done ? 'var(--text3)' : 'var(--text)', lineHeight: 1.4 }}>{x.text}</span>
+              {canEdit && <button className="btn btn-sm" disabled={busy} title="Видалити підзадачу" onClick={e => { e.preventDefault(); act(() => deleteSubtask(x.id)) }} style={{ padding: '0 6px', flex: '0 0 auto' }}>×</button>}
+            </label>
+            {canEdit ? <div style={{ display: 'flex', gap: 6, paddingLeft: 25, flexWrap: 'wrap' }}>
+              <select value={x.assignee_id || ''} disabled={busy} title="Виконавець" onChange={e => act(() => updateSubtask(x.id, { assignee_id: e.target.value || null }))} style={{ ...small, maxWidth: 160 }}>
                 <option value="">виконавець…</option>
                 {people.map(p => <option key={p.id} value={p.id}>{personName(p)}</option>)}
               </select>
               <input type="date" value={x.due_date || ''} disabled={busy} title="Термін підзадачі" onChange={e => act(() => updateSubtask(x.id, { due_date: e.target.value || null }))}
-                style={{ ...small, width: 128, color: late ? '#b91c1c' : 'var(--text)' }} />
-              <button className="btn btn-sm" disabled={busy} title="Видалити" onClick={() => act(() => deleteSubtask(x.id))} style={{ padding: '0 6px' }}>×</button>
-            </> : <span style={{ fontSize: 12, color: late ? '#b91c1c' : 'var(--text3)' }}>{personName(people.find(p => p.id === x.assignee_id)) !== '—' ? personName(people.find(p => p.id === x.assignee_id)) : ''}{x.due_date ? ` · ${shortDate(x.due_date)}` : ''}</span>}
+                style={{ ...small, width: 130, color: late ? '#b91c1c' : 'var(--text)' }} />
+            </div> : (who || x.due_date) && <div style={{ paddingLeft: 25, fontSize: 12, color: late ? '#b91c1c' : 'var(--text3)' }}>{who ? personName(who) : ''}{x.due_date ? ` · ${shortDate(x.due_date)}` : ''}</div>}
           </div>
         )
       })}
-      {canEdit && <div style={{ display: 'flex', gap: 6 }}>
-        <textarea className="form-input" rows={1} value={text} onChange={e => setText(e.target.value)} placeholder="Додати підзадачу (кілька — кожна з нового рядка)"
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); add() } }} style={{ padding: '7px 10px', fontSize: 13, height: 'auto', minHeight: 36, resize: 'vertical' }} />
-        <button className="btn" disabled={!text.trim() || busy} onClick={add}>Додати</button>
+      {canEdit && <div style={{ position: 'relative' }}>
+        <i className="ti ti-plus" style={{ position: 'absolute', left: 10, top: 10, color: 'var(--text3)' }} />
+        <input className="form-input" value={text} disabled={busy} onChange={e => setText(e.target.value)}
+          placeholder="Додати підзадачу і натиснути Enter"
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addLines(text) } }}
+          onPaste={e => { const v = e.clipboardData.getData('text'); if (v.includes('\n')) { e.preventDefault(); addLines(v) } }}
+          style={{ padding: '8px 10px 8px 30px', fontSize: 13, height: 38, width: '100%' }} />
+        <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 3 }}>Можна вставити список — кожен рядок стане підзадачею.</div>
       </div>}
+      {err && <div style={{ color: 'var(--red)', fontSize: 12.5 }}>{err}</div>}
     </div>
   )
 }
