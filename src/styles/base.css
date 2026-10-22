@@ -6,15 +6,15 @@ html { overflow-x: hidden; max-width: 100vw; }
 /* кнопки й поля успадковують шрифт сторінки (браузер сам не передає розмір і гарнітуру) */
 button, input, textarea, select { font: inherit; }
 body {
-  font-family: -apple-system, 'Inter', sans-serif;
+  font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif;
   background: var(--bg);
   color: var(--text);
-  font-size: 16px;
+  font-size: 14px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden; max-width: 100vw;
 }
-input, select, textarea, button { font-family: -apple-system, 'Inter', sans-serif; font-size: 16px; max-width: 100%; }
+input, select, textarea, button { max-width: 100%; }
 textarea { resize: vertical; }
 html, body { height: 100%; }
 #root { height: 100%; overflow-x: hidden; }
@@ -57,20 +57,22 @@ html, body { height: 100%; }
 .nav-item {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 12px; border-radius: var(--radius-md); cursor: pointer;
-  color: var(--text2); font-size: 14px; font-weight: 500;
+  color: var(--text-strong2); font-size: 14px; font-weight: 500;
   transition: all .15s ease; margin: 2px 0; user-select: none; text-decoration: none;
 }
-.nav-item:hover { background: var(--bg); color: var(--text); }
-.nav-item.active { background: rgba(37,99,235,.10); color: var(--text); font-weight: 600; box-shadow: inset 3px 0 0 #2563eb; }
-.nav-item.active i { color: #2563eb; }
+.nav-item:hover { background: var(--surface2); color: var(--text); }
+.nav-item.active { background: var(--blue-soft); color: var(--blue-hover); font-weight: 600; box-shadow: inset 3px 0 0 var(--blue); }
+.nav-item.active i { color: var(--blue); }
 .nav-item i { font-size: 18px; width: 20px; text-align: center; }
 .sidebar-footer { padding: 16px 20px; border-top: 1px solid var(--border); }
 
 /* ═══ MAIN ═══ */
-.main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+.main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; padding-bottom: 88px; }   /* місце під «+ Задача» */
 .page-inner { padding: 32px; flex: 1; max-width: 1400px; width: 100%; margin: 0 auto; }
 .page-header { margin-bottom: 28px; }
-.page-header h1 { font-size: 22px; font-weight: 600; color: var(--text); letter-spacing: -.3px; }
+.page-header h1 { font-size: 28px; font-weight: 700; color: var(--text); letter-spacing: -.01em; line-height: 1.2; }
+/* H2 секцій сторінки */
+.section-title, .card > h2 { font-size: 15px; font-weight: 600; color: var(--text); }
 .page-header p { font-size: 14px; color: var(--text2); margin-top: 6px; }
 
 /* ═══ CARDS ═══ */
@@ -113,15 +115,15 @@ html, body { height: 100%; }
 .form-group.full { grid-column: 1 / -1; }
 .form-group label { font-size: 13px; font-weight: 600; color: var(--text2); }
 .form-input {
-  padding: 12px 14px; height: 48px;
-  border: 1px solid var(--border); border-radius: var(--radius-md);
+  padding: 0 12px; height: var(--h-control);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-md);
   background: var(--surface); color: var(--text);
-  outline: none; transition: border-color .15s; font-size: 16px;
+  outline: none; transition: border-color .15s, box-shadow .15s; font-size: 14px;
 }
-.form-input:focus { border-color: var(--text); }
-.form-input:focus-visible { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(37,99,235,.15); }
-.form-input::placeholder { color: var(--text3); }
-textarea.form-input { height: auto; min-height: 48px; }
+.form-input:focus { border-color: var(--blue); box-shadow: var(--focus-ring); }
+.form-input::placeholder { color: var(--text2); }
+.form-input:disabled { background: var(--surface2); color: var(--text2); }
+textarea.form-input { height: auto; min-height: var(--h-control); padding: 8px 12px; line-height: 1.5; }
 
 /* Компактні контроли (напр. таблиця товарів замовлення) */
 .compact .form-input { height: 34px; padding: 6px 10px; font-size: 13px; }
@@ -138,22 +140,43 @@ textarea.form-input { height: auto; min-height: 48px; }
 .cell-name:focus { border-color: var(--blue); background: var(--surface); outline: none; }
 
 /* ═══ BUTTONS ═══ */
+/* Ієрархія: primary (синя) — одна головна дія екрана; dark — підтвердження у формах і модальних вікнах;
+   secondary — біла з рамкою; ghost — без фону; danger — лише в меню «⋯» або діалозі підтвердження.
+   .btn без варіанта виглядає як secondary. */
 .btn {
-  padding: 12px 20px; border-radius: var(--radius-md); border: none;
-  cursor: pointer; font-size: 14px; font-weight: 600;
-  transition: all .15s ease; min-height: 48px;
-  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: var(--h-control); min-height: var(--h-control); padding: 0 14px;
+  border-radius: var(--radius-md); border: 1px solid var(--border-strong);
+  background: var(--surface); color: var(--text);
+  cursor: pointer; font-size: 14px; font-weight: 600; line-height: 1.2;
+  transition: background .15s, border-color .15s, color .15s;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
 }
-.btn:active { transform: scale(.97); }
+.btn:hover:not(:disabled) { background: var(--surface2); }
+.btn:active:not(:disabled) { transform: scale(.98); }
 .btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
-.btn-primary { background: #000; color: #fff; }
-.btn-primary:hover { background: #1a1a1a; }
-.btn-primary:disabled { opacity: .4; cursor: not-allowed; transform: none; background: #999; }
-.btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
-.btn-secondary:hover { background: var(--bg); }
-.btn-danger { background: var(--red-bg); color: var(--red); border: 1px solid var(--border); }
-.btn-danger:hover { background: #EBE0E0; }
-.btn-sm { padding: 8px 14px; font-size: 13px; border-radius: 8px; min-height: 36px; }
+.btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.btn > .ti { font-size: 16px; }
+.btn-primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+.btn-primary:hover:not(:disabled) { background: var(--blue-hover); border-color: var(--blue-hover); }
+.btn-dark { background: var(--dark); color: #fff; border-color: var(--dark); }
+.btn-dark:hover:not(:disabled) { background: var(--dark-hover); border-color: var(--dark-hover); }
+.btn-secondary { background: var(--surface); color: var(--text); border-color: var(--border-strong); }
+.btn-secondary:hover:not(:disabled) { background: var(--surface2); }
+.btn-ghost { background: transparent; color: var(--text-strong2); border-color: transparent; }
+.btn-ghost:hover:not(:disabled) { background: var(--surface2); }
+.btn-danger { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-bg); }
+.btn-danger:hover:not(:disabled) { background: #fecaca; border-color: #fecaca; }
+.btn-sm { height: var(--h-control-sm); min-height: var(--h-control-sm); padding: 0 10px; font-size: 13px; }
+.btn-icon { width: var(--h-control); padding: 0; }
+.btn-sm.btn-icon { width: var(--h-control-sm); }
+/* у формах і модальних вікнах головна кнопка — це підтвердження, тому темна */
+.modal .btn-primary { background: var(--dark); border-color: var(--dark); }
+.modal .btn-primary:hover:not(:disabled) { background: var(--dark-hover); border-color: var(--dark-hover); }
+/* дотикові екрани — область натискання не менше 44 px */
+@media (pointer: coarse) {
+  .btn, .btn-sm { min-height: var(--h-touch); height: auto; }
+  .btn-icon, .btn-sm.btn-icon { min-width: var(--h-touch); }
+}
 .btn-row { display: flex; gap: 8px; margin-top: 20px; flex-wrap: wrap; justify-content: flex-end; }
 
 /* ═══ FILTERS ═══ */
@@ -177,17 +200,17 @@ textarea.form-input { height: auto; min-height: 48px; }
 }
 .tbl-wrap table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tbl-wrap thead th {
-  background: var(--surface2); padding: 14px 16px;
+  background: var(--surface); padding: 10px 12px;
   text-align: left; color: var(--text2);
-  font-weight: 600; font-size: 12px; text-transform: uppercase;
-  letter-spacing: .5px;
+  font-weight: 600; font-size: 12px; text-transform: none;
+  letter-spacing: 0;
   border-bottom: 1px solid var(--border);
   white-space: nowrap; position: sticky; top: 0; z-index: 1;
 }
 .tbl-wrap tbody tr { border-bottom: 1px solid var(--bg); transition: background .1s; }
 .tbl-wrap tbody tr:last-child { border-bottom: none; }
 .tbl-wrap tbody tr:hover { background: var(--bg); }
-.tbl-wrap tbody td { padding: 14px 16px; vertical-align: top; }
+.tbl-wrap tbody td { padding: 12px; vertical-align: top; }
 /* Компактна таблиця (напр. звіт «Інвестору») — щоб уміститись без гориз. скролу */
 .tbl-wrap.compact table { font-size: 12px; }
 .tbl-wrap.compact thead th { padding: 8px 7px; font-size: 10px; letter-spacing: .2px; }
@@ -223,7 +246,7 @@ textarea.form-input { height: auto; min-height: 48px; }
 }
 .pg-btn:hover:not(:disabled) { border-color: var(--text); }
 .pg-btn:disabled { opacity: .3; cursor: default; }
-.pg-btn.active { background: #000; color: #fff; border-color: #000; font-weight: 700; }
+.pg-btn.active { background: var(--dark); color: #fff; border-color: var(--dark); font-weight: 700; }
 
 /* ═══ MODAL ═══ */
 .modal-bg {
@@ -372,7 +395,7 @@ textarea.form-input { height: auto; min-height: 48px; }
 .camera-btn, .file-btn {
   flex: 1; border: 2px dashed var(--border); border-radius: var(--radius-lg);
   padding: 20px 12px; background: var(--surface2); cursor: pointer;
-  text-align: center; color: var(--text); font-family: -apple-system, 'Inter', sans-serif;
+  text-align: center; color: var(--text);
   transition: all .15s; min-width: 0;
 }
 .camera-btn { border-color: var(--text); background: var(--bg); }
@@ -386,7 +409,7 @@ textarea.form-input { height: auto; min-height: 48px; }
   .main { max-width: 100vw; overflow-x: hidden; }
   .app > .sidebar { display: none; }
   .mobile-topbar { display: flex; }
-  .main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
+  .main { padding-bottom: calc(140px + env(safe-area-inset-bottom)); }   /* нижнє меню + «+ Задача» */
   .page-inner { padding: 16px; max-width: 100vw; overflow-x: hidden; }
 
   /* Bottom nav */
@@ -401,32 +424,19 @@ textarea.form-input { height: auto; min-height: 48px; }
   .mobile-nav-item {
     flex: 1; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 3px;
-    background: none; border: none; cursor: pointer; color: var(--text3);
-    padding: 6px 2px; font-family: -apple-system, 'Inter', sans-serif;
+    background: none; border: none; cursor: pointer; color: var(--text2); text-decoration: none;
+    padding: 6px 2px;
     position: relative; -webkit-tap-highlight-color: transparent;
-    transition: color .15s; min-width: 0;
+    transition: color .15s; min-width: 0; min-height: var(--h-touch);
   }
   .mobile-nav-item:active { transform: scale(.92); }
-  .mobile-nav-item.active { color: var(--text); }
-  .mobile-nav-item.active::after {
-    content: ''; position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%);
-    width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
-  }
-  .mobile-nav-item.primary {
-    background: #000; color: #fff;
-    width: 56px; height: 56px; min-width: 56px;
-    border-radius: 50%; margin: 0 4px; flex: none;
-  }
-  .mobile-nav-item.primary .mobile-nav-label { display: none; }
-  .mobile-nav-item.primary .mobile-nav-icon { font-size: 24px; }
-  .mobile-nav-item.primary:active { transform: scale(.92); }
-  .mobile-nav-item.primary.active { background: #1a1a1a; }
-  .mobile-nav-item.primary.active::after { display: none; }
+  /* активний пункт — як у бічному меню: синій значок і підпис */
+  .mobile-nav-item.active { color: var(--blue); }
   .mobile-nav-icon { font-size: 22px; line-height: 1; }
   .mobile-nav-label { font-size: 10px; font-weight: 600; letter-spacing: .2px; }
 
   .page-header { margin-bottom: 16px; }
-  .page-header h1 { font-size: 20px; }
+  .page-header h1 { font-size: 22px; }
   .kpi-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
   .kpi { padding: 16px; min-width: 0; overflow: hidden; }
   .kpi-value { font-size: clamp(18px, 5vw, 24px); word-break: break-word; }
@@ -435,11 +445,13 @@ textarea.form-input { height: auto; min-height: 48px; }
   .form-grid { grid-template-columns: 1fr; gap: 12px; }
   .form-group.full { grid-column: 1; }
 
-  .btn { width: 100%; min-height: 48px; border-radius: var(--radius-lg); font-size: 15px; }
-  .btn-sm { min-height: 44px; width: auto; font-size: 14px; }
+  .btn { width: 100%; min-height: var(--h-touch); }
+  .btn-sm { min-height: var(--h-touch); width: auto; }
   .btn-row { flex-direction: column; gap: 8px; }
 
-  .form-input { font-size: 16px; height: 48px; border-radius: var(--radius-md); padding: 12px 16px; width: 100%; max-width: 100%; }
+  /* 16 px — щоб iOS не збільшував сторінку при фокусі; висота під палець */
+  .form-input { font-size: 16px; height: var(--h-touch); border-radius: var(--radius-md); padding: 0 12px; width: 100%; max-width: 100%; }
+  textarea.form-input { height: auto; padding: 10px 12px; }
   select.form-input {
     appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239A9A9A' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
@@ -510,5 +522,5 @@ textarea.form-input { height: auto; min-height: 48px; }
   .kpi-value { font-size: clamp(16px, 4.5vw, 20px); }
   .mobile-nav-label { font-size: 9px; }
   .mobile-nav-icon { font-size: 20px; }
-  .mobile-nav-item.primary { width: 48px; height: 48px; min-width: 48px; }
+  
 }
