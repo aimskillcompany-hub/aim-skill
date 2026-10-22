@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { todayKyiv } from '../lib/dates'
 import {
-  STATUS, PRIORITY, RESULT, GROUPS, ACTIVE, bucket, isOverdue, shortDate, kyivTime, dueAtFrom, parseQuick,
+  STATUS, PRIORITY, RESULT, GROUPS, ACTIVE, bucket, isOverdue, shortDate, kyivTime, dueAtFrom,
   loadPeople, loadTasks, createTask, updateTask, deleteTask, addWatcher, removeWatcher, addComment, loadFeed,
   describeActivity, personName, initials, avatarColor, errText,
   loadNotifications, markNotificationsRead, subscribeNotifications, NOTIFY_PREFS, loadMyNotifySettings, saveNotifyPrefs,
@@ -37,13 +37,11 @@ export default function Tasks() {
   const [scope, setScope] = useState('mine')          // mine | created | watch | all
   const [view, setView] = useState('list')            // list | board
   const [selId, setSelId] = useState(params.get('task'))
-  const [quick, setQuick] = useState('')
   const [toast, setToast] = useState(null)
   const [err, setErr] = useState(null)
   const [edit, setEdit] = useState(null)
   const [showDone, setShowDone] = useState(() => { try { return localStorage.getItem('tasks.showDone') === '1' } catch { return false } })
   useEffect(() => { try { localStorage.setItem('tasks.showDone', showDone ? '1' : '0') } catch {} }, [showDone])
-  const quickRef = useRef(null)
   const [notifs, setNotifs] = useState([])
   const [bell, setBell] = useState(false)
   const [settings, setSettings] = useState(false)
@@ -70,22 +68,7 @@ export default function Tasks() {
   const active = (tasks || []).filter(ACTIVE)
   const sel = (tasks || []).find(t => t.id === selId)
 
-  const addQuick = async () => {
-    const q = parseQuick(quick, people, me)
-    if (!q.title) { flash('Введіть текст задачі'); return }
-    try {
-      let link = {}
-      if (q.orderNo) {   // «№1234» — прив'язати до замовлення
-        const { data: o } = await supabase.from('orders').select('id').eq('order_number', q.orderNo).limit(1).maybeSingle()
-        if (!o) { flash(`Замовлення №${q.orderNo} не знайдено`); return }
-        link = { entity_type: 'order', entity_id: o.id, entity_ref: `/orders/${o.id}` }
-      }
-      const id = await createTask({ title: q.title.slice(0, 200), assignee_id: q.assignee, due_at: dueAtFrom(q.due, q.time), priority: q.priority,
-        requires_review: q.assignee !== me, ...link })
-      setQuick(''); await reload(); pick(id)
-      if (q.assignee !== me) { setScope('created'); flash(`Призначено: ${personName(P(q.assignee))}. Результат прийматимете ви.`) } else flash('Задачу додано')
-    } catch (e) { flash(errText(e)) }
-  }
+
 
   const Row = ({ t }) => {
     const d = dueView(t), s = STATUS[t.status], on = t.id === selId
@@ -147,16 +130,9 @@ export default function Tasks() {
           </div>}
         </div>
         <button className="btn" onClick={() => setSettings(true)}><i className="ti ti-brand-telegram" /> Сповіщення</button>
-        <button className="btn" onClick={() => setEdit({ priority: 'normal', assignee_id: me })}><i className="ti ti-forms" /> Детальна форма</button>
-        <button className="btn btn-primary" onClick={() => quickRef.current?.focus()}><i className="ti ti-plus" /> Нова задача</button>
+        <button className="btn btn-primary" onClick={() => setEdit({ priority: 'normal', assignee_id: me })}><i className="ti ti-plus" /> Нова задача</button>
       </div>
 
-      <div className="card" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', padding: 10, marginBottom: 14 }}>
-        <input ref={quickRef} className="form-input" value={quick} onChange={e => setQuick(e.target.value)} onKeyDown={e => e.key === 'Enter' && addQuick()}
-          placeholder="Швидко: «Надіслати акт ПРООН завтра 15:00 @Олена !високий №1234»" style={{ flex: '1 1 320px', minWidth: 0, border: 'none' }} />
-        <span style={{ fontSize: 12, color: 'var(--text3)' }}>@ім'я — відповідальний · сьогодні / завтра / 25.10 · 15:00 · !високий / !терміново · №замовлення</span>
-        <button className="btn" onClick={addQuick}>Додати</button>
-      </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div role="tablist" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -194,7 +170,7 @@ export default function Tasks() {
                   </section>
                 )
               })}
-              {!list.length && <div className="card" style={{ color: 'var(--text3)', fontSize: 13 }}>Задач немає. Додайте рядком вище.</div>}
+              {!list.length && <div className="card" style={{ color: 'var(--text3)', fontSize: 13 }}>Задач немає. Додайте кнопкою «Нова задача».</div>}
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(220px, 1fr))', gap: 12, overflowX: 'auto', paddingBottom: 8 }}>
