@@ -15,10 +15,11 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
   const isFromInvoice = !!editDoc?._fromInvoice
   const { active } = useCompany()
   const vatOn = active?.is_vat_payer !== false   // неплатник ПДВ → генерація без ПДВ
-  const defVat = vatOn ? 20 : 0
+  const defVatBase = vatOn ? 20 : 0
   const [parentDocId] = useState(editDoc?._parentDocId || null)
   const [step, setStep] = useState(isEdit || editDoc?.doc_type ? 2 : 1)
   const [docType, setDocType] = useState(editDoc?.doc_type || null)
+  const defVat = docType === 'loanAgreement' ? 0 : defVatBase   // позика ПДВ не обкладається (ТЗ 6.6, помилка 5)
   const [docNumber, setDocNumber] = useState(editDoc?.doc_number || '')
   const [docDate, setDocDate] = useState(editDoc?.doc_date || today())
   const [notes, setNotes] = useState(editDoc?.notes || '')

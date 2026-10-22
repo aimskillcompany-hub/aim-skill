@@ -8,6 +8,9 @@ import { supabase } from '../supabase'
 import { qc, withCompany } from '../companyScope'
 import { todayKyiv } from '../dates'
 
+
+// Типи, на які ПДВ не нараховується: позика (поворотна фінансова допомога) — не постачання (ТЗ 6.6, помилка 5)
+export const noVatType = (t) => t === 'loanAgreement'
 export { DOCUMENT_TYPES, getDocType, getDocLabel, STATUS_LABELS, STATUS_COLORS } from './templates/registry'
 export { calcTotals, amountInWords, formatMoney, formatDate } from './formatUtils'
 
@@ -86,7 +89,7 @@ export async function generateOrderDoc(docTypeKey, contractor, items, options, {
   await qc('documents').delete().eq('order_id', orderId).eq('type', docTypeKey).eq('doc_number', options.docNumber)
   const { error: insErr } = await qc('documents').insert(withCompany({
     type: docTypeKey, order_id: orderId, contractor_id: contractorId || contractor?.id || null,
-    doc_number: options.docNumber, doc_date: options.docDate || null, amount: total || null, vat_amount: vatAmount || null,
+    doc_number: options.docNumber, doc_date: options.docDate || null, amount: total || null, vat_amount: noVatType(docTypeKey) ? 0 : (vatAmount || null),
     file_name: fileName, storage_path: path, direction: dt.direction === 'incoming' ? 'payable' : 'receivable',
   }))
   if (insErr) throw insErr
@@ -216,7 +219,9 @@ function isMissingRefsColumn(msg = '') {
   return /invoice_ref|delivery_basis|delivery_address/.test(msg)
 }
 
-const cleanErr = (m) => /PERIOD_CLOSED/.test(m || '') ? String(m).replace(/^.*PERIOD_CLOSED:\s*/, '') : String(m || '').replace(/^NO_RIGHTS:\s*/, '')
+const cleanErr = (m) => /PERIOD_CLOSED/.test(m || '') ? String(m).replace(/^.*PERIOD_CLOSED:\s*/, '')
+  : /DOC_NUMBER_TAKEN/.test(m || '') ? String(m).replace(/^.*DOC_NUMBER_TAKEN:\s*/, '').replace(/^номер/, 'Номер') + ' — змініть номер (міграція 097)'
+  : String(m || '').replace(/^NO_RIGHTS:\s*/, '')
 
 // ── Зберегти документ в БД ──
 // Етап 3 об'єднання документів: документ — ОДИН рядок у documents (дані для PDF — items, print_data тощо).
@@ -232,7 +237,7 @@ export async function saveDoc({ docType, docNumber, docDate, contractorId, contr
     ...(id ? { id, file_path: `generated/${id}.pdf` } : {}),
     type: docType, doc_number: docNumber, doc_date: docDate || null,
     contractor_id: contractorId || null, order_id: orderId || null,
-    amount: total ?? null, vat_amount: vatAmount ?? null, subtotal: subtotal ?? null,
+    amount: total ?? null, vat_amount: noVatType(docType) ? 0 : (vatAmount ?? null), subtotal: subtotal ?? null,
     direction: dt?.direction === 'incoming' ? 'payable' : 'receivable',
     doc_role: dt?.direction === 'incoming' ? 'incoming' : 'outgoing',
     file_name: `${dt?.label || 'Документ'}_${docNumber}.pdf`,
@@ -438,7 +443,7 @@ export async function syncStockForGenerated(genId, docType, items, date, userId)
 
 // ── Оновити документ ── (етап 3: один рядок documents; id — будь-який id документа)
 export async function updateDoc(id, { docNumber, docDate, items, subtotal, vatAmount, total, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress }) {
-  const d = await resolveDocRow(id, 'id, print_data, contractors(name)')
+  const d = await resolveDocRow(id, 'id, type, print_data, contractors(name)')
   if (!d) throw new Error('Документ не знайдено')
   const pd = { ...(d.print_data || {}), ...printDataOf({ contractorName: d.print_data?.contractor_name || d.contractors?.name, notes, contractNum, contractDate, paymentDue, city, invoiceRef, invoiceRefDate, deliveryBasis, deliveryAddress }) }
   ;['notes', 'contract_num', 'contract_date', 'payment_due', 'city', 'invoice_ref', 'invoice_ref_date', 'delivery_basis', 'delivery_address'].forEach(k => {
@@ -446,7 +451,7 @@ export async function updateDoc(id, { docNumber, docDate, items, subtotal, vatAm
     if (v == null || v === '') delete pd[k]
   })
   const { error } = await qc('documents').update({
-    doc_number: docNumber, doc_date: docDate || null, amount: total ?? null, vat_amount: vatAmount ?? null, subtotal: subtotal ?? null,
+    doc_number: docNumber, doc_date: docDate || null, amount: total ?? null, vat_amount: noVatType(d.type) ? 0 : (vatAmount ?? null), subtotal: subtotal ?? null,
     items: cleanItems(items), print_data: pd,
   }).eq('id', d.id)
   if (error) throw new Error('Не збережено: ' + cleanErr(error.message))

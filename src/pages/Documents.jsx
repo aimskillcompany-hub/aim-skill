@@ -12,6 +12,8 @@ import BatchDocUploadModal from '../components/BatchDocUploadModal'
 import GeneratedDocModal from '../components/GeneratedDocModal'
 import { useSort, SortTh } from '../components/Sort'
 import { kyivDateOfTs } from '../lib/dates'
+import { useNewUi } from '../lib/uiPrefs'
+import DocumentsNew from './DocumentsNew'
 
 // Документ без метаданих — потребує розпізнавання
 const isIncomplete = (d) => !d.type || d.amount == null || !d.contractor_id
@@ -32,6 +34,7 @@ export default function Documents() {
   const [pickGen, setPickGen] = useState(false)
   const [openDoc, setOpenDoc] = useState(null) // { doc, autoOcr }
   const [genDoc, setGenDoc] = useState(null)   // згенерований документ (перегляд)
+  const newUi = useNewUi()
 
   // Генерований документ БЕЗ прикріпленого реального скану → GeneratedDocModal (рендер з даних).
   // Якщо до нього прикріпили скан (storage_path не з 'generated/') → відкриваємо як звичайний.
@@ -74,7 +77,7 @@ export default function Documents() {
         if (dateTo && dstr > dateTo) return false
       }
       if (!term) return true
-      return (d.file_name || '').toLowerCase().includes(term) || (d.contractors?.name || '').toLowerCase().includes(term)
+      return (d.file_name || '').toLowerCase().includes(term) || (d.contractors?.name || '').toLowerCase().includes(term) || (d.doc_number || '').toLowerCase().includes(term)
     })
   }, [rows, q, typeFilter, signedFilter, verFilter, dateFrom, dateTo])
 
@@ -86,6 +89,28 @@ export default function Documents() {
     amount: d => Number(d.amount) || 0,
     vat_amount: d => Number(d.vat_amount) || 0,
   })
+
+  const modals = (
+    <>
+      {showOcr && <DocModal user={user} onClose={() => setShowOcr(false)} onSaved={() => { setShowOcr(false); load() }} />}
+      {showBatch && <BatchDocUploadModal user={user} onClose={() => { setShowBatch(false); load() }} onSaved={() => load()} />}
+      {openDoc && <DocModal user={user} existingDoc={openDoc.doc} autoOcr={openDoc.autoOcr} onClose={() => { setOpenDoc(null); load() }} onSaved={() => { setOpenDoc(null); load() }} />}
+      {genDoc && <GeneratedDocModal doc={genDoc} onClose={() => setGenDoc(null)} onDeleted={() => { setGenDoc(null); load() }}
+        onScanUploaded={(d) => { setGenDoc(null); load(); setOpenDoc({ doc: d, autoOcr: false }) }} />}
+      {pickGen && <PickContractorModal onClose={() => setPickGen(false)} onPick={(c) => { setPickGen(false); setGenContractor(c) }} />}
+      {genContractor && <DocGenModal contractor={genContractor} userId={user?.id} onClose={() => setGenContractor(null)} onSaved={() => { setGenContractor(null); load() }} />}
+    </>
+  )
+  if (newUi) return (
+    <>
+      <DocumentsNew rows={rows} loading={loading} q={q} setQ={setQ} typeFilter={typeFilter} setTypeFilter={setTypeFilter}
+        signedFilter={signedFilter} setSignedFilter={setSignedFilter} verFilter={verFilter} setVerFilter={setVerFilter}
+        dateFrom={dateFrom} dateTo={dateTo} setDateFrom={setDateFrom} setDateTo={setDateTo} filtered={view}
+        onOpen={openRow} onUploadScan={() => setShowOcr(true)} onUploadBatch={() => setShowBatch(true)} onCreate={() => setPickGen(true)}
+        onRecognize={(d) => setOpenDoc({ doc: d, autoOcr: true })} reload={load} />
+      {modals}
+    </>
+  )
 
   return (
     <div>
