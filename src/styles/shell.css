@@ -125,3 +125,6 @@
 .more-chev { color: var(--muted-2); font-size: 18px; }
 .more-item .shell-badge { margin-left: 0; }
 .more-profile { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card-mobile); padding: 16px; }
+
+/* «Звіти» етапу 1: заголовок вкладеного звіту — на рівень нижче за H1 сторінки */
+.reports-panel h1 { font-size: 20px !important; }

@@ -12,6 +12,10 @@ import { getDocType } from '../lib/docgen'
 import { supabase } from '../lib/supabase'
 import DocModal from '../components/DocModal'
 import { useUser } from '../lib/auth'
+import { useTabParam } from '../components/ui'
+import { useNewUi } from '../lib/uiPrefs'
+import { canAccess } from '../lib/permissions'
+import CashflowReport from '../components/CashflowReport'
 
 const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД', 'ОЗ']
 
@@ -32,12 +36,18 @@ function plColor(r, v) {
 
 // ───────── Каркас ─────────
 export default function Analytics() {
-  const [tab, setTab] = useState('cashflow')
+  // Новий інтерфейс: колишній розділ «CashFlow» (звіт по статтях і проєктах) — вкладка тут (ТЗ, розділ 3)
+  const newUi = useNewUi()
+  const { user } = useUser()
+  const TABS = [['cashflow', 'Cash Flow', 'ti-arrows-exchange'], ['pl', 'P&L', 'ti-report-money'], ['balance', 'Баланс', 'ti-scale'], ['margins', 'Маржа по замовленнях', 'ti-percentage'],
+    ...(newUi && canAccess(user?.role, 'cashflow') ? [['cashflow-report', 'Звіт по статтях', 'ti-table']] : [])]
+  // активна вкладка — в адресі (?tab=…), щоб посилання й «назад» вели на неї
+  const [tab, setTab] = useTabParam('cashflow', TABS.map(t => t[0]))
   return (
     <div>
       <div className="page-header"><h1>Аналітика</h1></div>
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 18, overflowX: 'auto' }}>
-        {[['cashflow', 'Cash Flow', 'ti-arrows-exchange'], ['pl', 'P&L', 'ti-report-money'], ['balance', 'Баланс', 'ti-scale'], ['margins', 'Маржа по замовленнях', 'ti-percentage']].map(([id, lbl, icon]) => (
+        {TABS.map(([id, lbl, icon]) => (
           <button key={id} onClick={() => setTab(id)} style={tabStyle(tab === id)}><i className={`ti ${icon}`} style={{ fontSize: 15 }} />{lbl}</button>
         ))}
       </div>
@@ -45,6 +55,7 @@ export default function Analytics() {
       {tab === 'pl' && <PLView />}
       {tab === 'balance' && <BalanceView />}
       {tab === 'margins' && <OrderMarginsReport />}
+      {tab === 'cashflow-report' && <CashflowReport />}
     </div>
   )
 }

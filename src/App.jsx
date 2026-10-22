@@ -49,6 +49,7 @@ const Settings = lazyPage(() => import('./pages/Settings'))
 const PeriodClose = lazyPage(() => import('./pages/PeriodClose'))
 const Tasks = lazyPage(() => import('./pages/Tasks'))
 const UiKit = lazyPage(() => import('./pages/UiKit'))
+const Reports = lazyPage(() => import('./pages/Reports'))
 
 const Loading = () => <div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Завантаження…</div>
 
@@ -69,6 +70,11 @@ function UiFlag() { useNewUi(); return null }
 // Каркас: новий (AppShell) — з прапорцем, інакше старий Layout
 function Shell() { return useNewUi() ? <AppShell /> : <Layout /> }
 
+// Старі адреси звітів: у новому інтерфейсі — переадресація на вкладку («закладки не ламаються», ТЗ розділ 3),
+// у старому — сторінка як була
+function Legacy({ to, children }) {
+  return useNewUi() ? <Navigate to={to} replace /> : children
+}
 // Стартовий розділ за роллю
 function Home() {
   const { user } = useUser()
@@ -103,15 +109,16 @@ export default function App() {
               <Route path="/finance" element={<Gate section="finance"><FinanceProjects /></Gate>} />
               <Route path="/loans" element={<Gate section="loans"><Loans /></Gate>} />
               <Route path="/forecast" element={<Gate section="forecast"><Forecast /></Gate>} />
-              <Route path="/receivables" element={<Gate section="receivables"><Receivables /></Gate>} />
-              <Route path="/cashflow" element={<Gate section="cashflow"><Cashflow /></Gate>} />
-              <Route path="/accountant" element={<Gate section="accountant"><AccountantReport /></Gate>} />
-              <Route path="/profitability" element={<Gate section="profitability"><Profitability /></Gate>} />
+              <Route path="/receivables" element={<Legacy to="/reports?tab=receivables"><Gate section="receivables"><Receivables /></Gate></Legacy>} />
+              <Route path="/cashflow" element={<Legacy to="/analytics?tab=cashflow-report"><Gate section="cashflow"><Cashflow /></Gate></Legacy>} />
+              <Route path="/accountant" element={<Legacy to="/reports?tab=accountant"><Gate section="accountant"><AccountantReport /></Gate></Legacy>} />
+              <Route path="/profitability" element={<Legacy to="/reports?tab=profit"><Gate section="profitability"><Profitability /></Gate></Legacy>} />
               <Route path="/period-close" element={<Gate section="period-close"><PeriodClose /></Gate>} />
               <Route path="/tasks" element={<Gate section="tasks"><Tasks /></Gate>} />
               <Route path="/settings" element={<Gate section="settings"><Settings /></Gate>} />
               <Route path="/ui" element={<AdminOnly><UiKit /></AdminOnly>} />
               <Route path="/more" element={<MorePage />} />
+              <Route path="/reports" element={<Gate section="reports"><Reports /></Gate>} />
               <Route path="*" element={<Home />} />
             </Route>
           </Routes>
