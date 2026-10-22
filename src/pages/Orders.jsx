@@ -161,7 +161,7 @@ export default function Orders() {
   })
 
   const FILTERS = [
-    ['all', 'Всі'], ['mine', 'Мої'],
+    ['all', 'Усі'], ['mine', 'Мої'],
     ['done', 'Виконані'], ['lost', 'Програні'],
   ]
 

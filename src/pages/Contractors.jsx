@@ -73,7 +73,7 @@ export default function Contractors() {
           style={{ flex: '1 1 280px', maxWidth: 420 }}
         />
         <div style={{ display: 'flex', gap: 6 }}>
-          {[['all', 'Всі'], ['client', 'Клієнти'], ['supplier', 'Постачальники']].map(([k, lbl]) => (
+          {[['all', 'Усі'], ['client', 'Клієнти'], ['supplier', 'Постачальники']].map(([k, lbl]) => (
             <button key={k} onClick={() => setFilter(k)} className="btn"
               style={{ background: filter === k ? 'var(--blue)' : 'var(--surface)', color: filter === k ? '#fff' : 'var(--text2)', border: '1px solid var(--border)' }}>
               {lbl} <span style={{ opacity: .7 }}>{counts[k]}</span>

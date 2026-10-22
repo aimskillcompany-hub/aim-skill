@@ -37,7 +37,7 @@ export default function FinanceProjects() {
     <div>
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <i className="ti ti-chart-pie" style={{ fontSize: 22 }} />
-        <h1 style={{ margin: 0 }}>Фінрезультат проекту</h1>
+        <h1 style={{ margin: 0 }}>Фінрезультат проєкту</h1>
       </div>
       <p style={{ fontSize: 13, color: 'var(--text2)', margin: '0 0 16px' }}>
         Реальний прибуток за фактичними грошима: оберіть проект, додайте банківські транзакції надходжень і витрат.
