@@ -9,7 +9,7 @@ import {
   loadPeople, loadTasks, createTask, updateTask, deleteTask, addWatcher, removeWatcher, addComment, loadFeed,
   describeActivity, personName, initials, avatarColor, errText,
   loadNotifications, markNotificationsRead, subscribeNotifications, NOTIFY_PREFS, loadMyNotifySettings, saveNotifyPrefs,
-  telegramLinkUrl, telegramUnlink, remindMe,
+  telegramLinkUrl, telegramUnlink, remindMe, loadSubtasks, addSubtasks, updateSubtask, deleteSubtask,
 } from '../lib/tasks'
 
 // Планер задач (ТЗ 22.10.2026, етап 1): відповідальний, спостерігачі, статуси з перевіркою, результат, коментарі, історія.
@@ -59,12 +59,13 @@ export default function Tasks() {
   const pick = (id) => { setSelId(id); setParams(id ? { task: id } : {}, { replace: true }) }
   const P = (id) => people.find(p => p.id === id)
 
-  const inScope = (t) => scope === 'mine' ? t.assignee_id === me
+  const mineOf = (t) => t.assignee_id === me || (t.subAssignees || []).includes(me)
+  const inScope = (t) => scope === 'mine' ? mineOf(t)
     : scope === 'created' ? t.created_by === me && t.assignee_id !== me
     : scope === 'watch' ? t.watchers.includes(me) : true
   const list = useMemo(() => (tasks || []).filter(inScope), [tasks, scope, me])
   const counts = useMemo(() => Object.fromEntries(['mine', 'created', 'watch', 'all'].map(s => [s, (tasks || []).filter(t => ACTIVE(t) && (
-    s === 'mine' ? t.assignee_id === me : s === 'created' ? t.created_by === me && t.assignee_id !== me : s === 'watch' ? t.watchers.includes(me) : true)).length])), [tasks, me])
+    s === 'mine' ? mineOf(t) : s === 'created' ? t.created_by === me && t.assignee_id !== me : s === 'watch' ? t.watchers.includes(me) : true)).length])), [tasks, me])
   const active = (tasks || []).filter(ACTIVE)
   const sel = (tasks || []).find(t => t.id === selId)
 
@@ -99,6 +100,8 @@ export default function Tasks() {
             {t.entity_type === 'order' && <span style={{ background: '#ecfdf5', color: '#065f46', borderRadius: 6, padding: '1px 6px' }}><i className="ti ti-shopping-cart" /> №{t.order?.order_number || '…'}</span>}
             {t.entity_type === 'counterparty' && <span style={{ background: '#fdf4ff', color: '#86198f', borderRadius: 6, padding: '1px 6px' }}><i className="ti ti-users" /> {t.counterparty?.name || 'контрагент'}</span>}
             {t.source === 'bot' && <span><i className="ti ti-brand-telegram" /> з бота</span>}
+            {t.subTotal > 0 && <span title="Підзадачі" style={{ color: t.subDone === t.subTotal ? '#166534' : undefined }}><i className="ti ti-list-check" /> {t.subDone}/{t.subTotal}</span>}
+            {t.assignee_id !== me && (t.subAssignees || []).includes(me) && <span style={{ background: '#fef3c7', color: '#92400e', borderRadius: 6, padding: '1px 6px' }}>підзадача для вас</span>}
             {t.requires_review && <span title="Результат приймає постановник">перевірка</span>}
             {t.comments > 0 && <span><i className="ti ti-message" /> {t.comments}</span>}
           </span>
@@ -203,7 +206,8 @@ export default function Tasks() {
                       <button key={t.id} onClick={() => pick(t.id)} style={{ display: 'flex', flexDirection: 'column', gap: 8, textAlign: 'left', background: 'var(--surface)', borderRadius: 10, padding: '10px 12px', cursor: 'pointer', color: 'var(--text)', font: 'inherit', border: t.id === selId ? '2px solid #2563eb' : '1px solid var(--border)' }}>
                         <span style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.35 }}>{t.title}</span>
                         <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6, fontSize: 12 }}><span style={d.style}>{d.label}</span>{t.priority !== 'normal' && <span style={prioStyle(t.priority)}>{PRIORITY[t.priority]?.label}</span>}</span>
-                        <span style={{ display: 'flex', justifyContent: 'flex-end' }}><Avatar person={P(t.assignee_id)} id={t.assignee_id} size={24} /></span>
+                        <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: 'var(--text3)' }}>
+                          <span>{t.subTotal > 0 ? `☑ ${t.subDone}/${t.subTotal}` : ''}</span><Avatar person={P(t.assignee_id)} id={t.assignee_id} size={24} /></span>
                       </button>
                     ) })}
                   </div>
@@ -246,6 +250,8 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
   const s = STATUS[t.status], d = dueView(t)
   const submit = () => {
     if (!draft.trim()) { flash('Опишіть результат — без нього задачу не закрити'); return }
+    const open = (t.subTotal || 0) - (t.subDone || 0)
+    if (open > 0 && !confirm(`Невиконаних підзадач: ${open}. Все одно здати результат?`)) return
     const next = t.requires_review && !isCreator ? 'review' : 'done'
     run(() => updateTask(t.id, { result_text: draft.trim(), result_type: rtype, status: next }),
       next === 'review' ? `Передано на перевірку — ${personName(P(t.created_by))} прийме результат` : 'Задачу закрито з результатом').then(ok => { if (ok) { setForm(null); setDraft('') } })
@@ -314,6 +320,8 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
         </div>
         <div style={{ fontSize: 13, lineHeight: 1.5, marginTop: 4, whiteSpace: 'pre-line' }}>{t.result_text}</div>
       </div>}
+
+      <Subtasks t={t} people={people} canEdit={canEdit || (t.subAssignees || []).includes(me)} onChanged={onChanged} flash={flash} />
 
       {/* атрибути */}
       <div style={{ display: 'grid', gridTemplateColumns: '120px minmax(0, 1fr)', gap: '9px 12px', alignItems: 'center', fontSize: 13 }}>
@@ -441,6 +449,58 @@ function NotifySettings({ me, onClose }) {
           {err && <div style={{ color: 'var(--red)' }}>{err}</div>}
         </div>}
       </div>
+    </div>
+  )
+}
+
+// ── Підзадачі: пункти з галочкою, за потреби — виконавець і термін ──
+function Subtasks({ t, people, canEdit, onChanged, flash }) {
+  const [items, setItems] = useState(null)
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const load = () => loadSubtasks(t.id).then(setItems).catch(() => setItems([]))
+  useEffect(() => { load() }, [t.id])
+  const act = async (fn) => { setBusy(true); try { await fn(); await load(); onChanged() } catch (e) { flash(errText(e)) } setBusy(false) }
+  const add = () => {
+    const lines = text.split('\n').map(x => x.trim()).filter(Boolean)
+    if (!lines.length) return
+    act(() => addSubtasks(t.id, lines, (items || []).length)).then(() => setText(''))
+  }
+  if (items == null) return null
+  const done = items.filter(x => x.done).length
+  const today = todayKyiv()
+  const small = { padding: '2px 6px', fontSize: 12, height: 28, lineHeight: 1.2, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface)', color: 'var(--text)' }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontWeight: 600, fontSize: 13 }}>Підзадачі</span>
+        {items.length > 0 && <span style={{ fontSize: 12, color: 'var(--text3)' }}>{done}/{items.length}</span>}
+        {items.length > 0 && <span style={{ flex: 1, height: 6, background: 'var(--surface2)', borderRadius: 999, overflow: 'hidden' }}>
+          <span style={{ display: 'block', height: '100%', width: `${Math.round(done / items.length * 100)}%`, background: '#16a34a' }} /></span>}
+      </div>
+      {items.map(x => {
+        const late = !x.done && x.due_date && x.due_date < today
+        return (
+          <div key={x.id} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', fontSize: 13, padding: '2px 0' }}>
+            <input type="checkbox" checked={x.done} disabled={!canEdit || busy} onChange={() => act(() => updateSubtask(x.id, { done: !x.done }))} style={{ width: 17, height: 17 }} />
+            <span style={{ flex: '1 1 160px', minWidth: 0, textDecoration: x.done ? 'line-through' : 'none', color: x.done ? 'var(--text3)' : 'var(--text)' }}>{x.text}</span>
+            {canEdit ? <>
+              <select value={x.assignee_id || ''} disabled={busy} title="Виконавець" onChange={e => act(() => updateSubtask(x.id, { assignee_id: e.target.value || null }))} style={{ ...small, maxWidth: 120 }}>
+                <option value="">виконавець…</option>
+                {people.map(p => <option key={p.id} value={p.id}>{personName(p)}</option>)}
+              </select>
+              <input type="date" value={x.due_date || ''} disabled={busy} title="Термін підзадачі" onChange={e => act(() => updateSubtask(x.id, { due_date: e.target.value || null }))}
+                style={{ ...small, width: 128, color: late ? '#b91c1c' : 'var(--text)' }} />
+              <button className="btn btn-sm" disabled={busy} title="Видалити" onClick={() => act(() => deleteSubtask(x.id))} style={{ padding: '0 6px' }}>×</button>
+            </> : <span style={{ fontSize: 12, color: late ? '#b91c1c' : 'var(--text3)' }}>{personName(people.find(p => p.id === x.assignee_id)) !== '—' ? personName(people.find(p => p.id === x.assignee_id)) : ''}{x.due_date ? ` · ${shortDate(x.due_date)}` : ''}</span>}
+          </div>
+        )
+      })}
+      {canEdit && <div style={{ display: 'flex', gap: 6 }}>
+        <textarea className="form-input" rows={1} value={text} onChange={e => setText(e.target.value)} placeholder="Додати підзадачу (кілька — кожна з нового рядка)"
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); add() } }} style={{ padding: '7px 10px', fontSize: 13, height: 'auto', minHeight: 36, resize: 'vertical' }} />
+        <button className="btn" disabled={!text.trim() || busy} onClick={add}>Додати</button>
+      </div>}
     </div>
   )
 }

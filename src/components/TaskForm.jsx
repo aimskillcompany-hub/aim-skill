@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { PRIORITY, kyivTime, dueAtFrom, personName, loadPeople, createTask, updateTask, errText } from '../lib/tasks'
+import { PRIORITY, kyivTime, dueAtFrom, personName, loadPeople, createTask, updateTask, addSubtasks, errText } from '../lib/tasks'
 
 // Створення / редагування задачі. Прив'язка до замовлення: поле «Замовлення» (або передано з картки замовлення).
 //   task: наявна задача або заготовка { entity_type: 'order', entity_id, title, … }
@@ -14,6 +14,7 @@ export default function TaskForm({ task, people: peopleIn, me, onClose, onSaved,
     assignee_id: task.assignee_id || me, due: task.due_date || '', time: tmInit === '18:00' ? '' : tmInit, start_date: task.start_date || '',
     priority: task.priority || 'normal', requires_review: task.requires_review ?? false,
     order_id: task.entity_type === 'order' ? task.entity_id : '',
+    subtasks: '',
   })
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
@@ -40,7 +41,13 @@ export default function TaskForm({ task, people: peopleIn, me, onClose, onSaved,
         : { entity_type: null, entity_id: null, entity_ref: null })
     }
     try {
-      if (isEdit) { await updateTask(task.id, row); onSaved(task.id) } else onSaved(await createTask(row))
+      if (isEdit) { await updateTask(task.id, row); onSaved(task.id) }
+      else {
+        const id = await createTask(row)
+        const subs = f.subtasks.split('\n').map(x => x.trim()).filter(Boolean)
+        if (subs.length) await addSubtasks(id, subs).catch(e => setErr('Задачу створено, але підзадачі не збережено: ' + errText(e)))
+        onSaved(id)
+      }
     } catch (e) { setErr(errText(e)) }
     setBusy(false)
   }
@@ -54,6 +61,9 @@ export default function TaskForm({ task, people: peopleIn, me, onClose, onSaved,
             <input className="form-input" value={f.title} maxLength={200} autoFocus onChange={e => set('title', e.target.value)} /></div>
           <div className="form-group"><label>Опис — постановка, очікуваний результат</label>
             <textarea className="form-input" rows={3} value={f.description} onChange={e => set('description', e.target.value)} style={{ resize: 'vertical', height: 'auto' }} /></div>
+          {!isEdit && <div className="form-group"><label>Підзадачі — кожна з нового рядка (необов'язково)</label>
+            <textarea className="form-input" rows={3} value={f.subtasks} onChange={e => set('subtasks', e.target.value)} placeholder={'Отримати рахунок від постачальника\nОплатити\nВідвантажити клієнту'} style={{ resize: 'vertical', height: 'auto' }} />
+            <span style={{ fontSize: 12, color: 'var(--text3)' }}>Виконавця й термін кожної підзадачі можна задати в картці задачі.</span></div>}
           {task.entity_type === 'counterparty' && <div style={{ fontSize: 13, color: 'var(--text2)' }}><i className="ti ti-users" /> Задача буде прив'язана до цього контрагента</div>}
           {!otherEntity && (lockOrder
             ? <div style={{ fontSize: 13, color: 'var(--text2)' }}><i className="ti ti-shopping-cart" /> Задача буде прив'язана до цього замовлення</div>

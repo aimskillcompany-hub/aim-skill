@@ -85,10 +85,17 @@ export async function loadTasks() {
   if (error) throw new Error(error.message)
   const tasks = data || []
   const ids = tasks.map(t => t.id)
-  const [w, c] = ids.length ? await Promise.all([
+  const [w, c, sb] = ids.length ? await Promise.all([
     supabase.from('task_watchers').select('task_id, user_id'),
     supabase.from('task_comments').select('task_id'),
-  ]) : [{ data: [] }, { data: [] }]
+    supabase.from('task_checklist').select('task_id, done, assignee_id'),   // 094; до міграції — помилка → без підзадач
+  ]) : [{ data: [] }, { data: [] }, { data: [] }]
+  const subs = {}
+  ;(sb?.data || []).forEach(x => {
+    const g = (subs[x.task_id] ||= { total: 0, done: 0, assignees: [] })
+    g.total++; if (x.done) g.done++
+    else if (x.assignee_id && !g.assignees.includes(x.assignee_id)) g.assignees.push(x.assignee_id)
+  })
   const watchers = {}, comments = {}
   ;(w.data || []).forEach(x => { (watchers[x.task_id] ||= []).push(x.user_id) })
   ;(c.data || []).forEach(x => { comments[x.task_id] = (comments[x.task_id] || 0) + 1 })
@@ -106,6 +113,7 @@ export async function loadTasks() {
     ;(cs || []).forEach(c => { cps[c.id] = c })
   }
   return tasks.map(t => ({ ...t, watchers: watchers[t.id] || [], comments: comments[t.id] || 0,
+    subTotal: subs[t.id]?.total || 0, subDone: subs[t.id]?.done || 0, subAssignees: subs[t.id]?.assignees || [],
     order: t.entity_type === 'order' ? orders[t.entity_id] || null : null,
     counterparty: t.entity_type === 'counterparty' ? cps[t.entity_id] || null : null }))
 }
@@ -114,6 +122,7 @@ export const errText = (e) => {
   const m = e?.message || String(e || '')
   if (/tasks_status_check|assignee_id|task_watchers|RESULT_REQUIRED|REVIEW_REQUIRED/.test(m)) return m.replace(/^[A-Z_]+:\s*/, '')
   if (/column .* does not exist|relation .*task_/.test(m)) return 'Застосуйте міграцію 092 (планер задач)'
+  if (/task_checklist/.test(m)) return 'Застосуйте міграцію 094 (підзадачі)'
   if (/notifications|telegram_link_code|set_notify_prefs|task_remind_me|schema cache/.test(m)) return 'Застосуйте міграцію 093 (нагадування)'
   return m
 }
@@ -171,6 +180,9 @@ export function describeActivity(a, people) {
     case 'priority': return `пріоритет: ${PRIORITY[nv]?.label || nv}`
     case 'review': return nv ? 'увімкнув(ла) перевірку результату' : 'вимкнув(ла) перевірку результату'
     case 'result': return `записав(ла) результат${nv?.type ? ` (${RESULT[nv.type]})` : ''}`
+    case 'subtask_add': return `додав(ла) підзадачу «${nv?.text}»`
+    case 'subtask_done': return nv?.done ? `виконав(ла) підзадачу «${nv?.text}»` : `зняв(ла) позначку з підзадачі «${nv?.text}»`
+    case 'subtask_del': return `видалив(ла) підзадачу «${ov?.text}»`
     default: return a.action
   }
 }
@@ -232,5 +244,27 @@ export async function telegramUnlink() {
 }
 export async function remindMe(taskId, isoLocal) {
   const { error } = await supabase.rpc('task_remind_me', { p_task: taskId, p_at: new Date(isoLocal).toISOString(), p_kind: 'custom' })
+  if (error) throw new Error(errText(error))
+}
+
+// ── підзадачі (094) ──
+export async function loadSubtasks(taskId) {
+  const { data, error } = await supabase.from('task_checklist').select('*').eq('task_id', taskId).order('position').order('created_at')
+  if (error) throw new Error(errText(error))
+  return data || []
+}
+export async function addSubtasks(taskId, items, startPos = 0) {
+  const rows = items.map((x, i) => ({ task_id: taskId, position: startPos + i, ...(typeof x === 'string' ? { text: x } : x) }))
+    .filter(r => (r.text || '').trim()).map(r => ({ ...r, text: r.text.trim().slice(0, 300) }))
+  if (!rows.length) return
+  const { error } = await supabase.from('task_checklist').insert(rows)
+  if (error) throw new Error(errText(error))
+}
+export async function updateSubtask(id, patch) {
+  const { error } = await supabase.from('task_checklist').update(patch).eq('id', id)
+  if (error) throw new Error(errText(error))
+}
+export async function deleteSubtask(id) {
+  const { error } = await supabase.from('task_checklist').delete().eq('id', id)
   if (error) throw new Error(errText(error))
 }
