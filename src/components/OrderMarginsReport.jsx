@@ -4,6 +4,8 @@ import { useCompany } from '../lib/company'
 import { fmtInt } from '../lib/fmt'
 import { computeOrderMargins } from '../lib/accrual'
 import { todayKyiv } from '../lib/dates'
+import { useNewUi } from '../lib/uiPrefs'
+import OrderMarginsNew from './OrderMarginsNew'
 
 // «Маржа по замовленнях»: по замовленнях, відвантажених у періоді (дата поставки = остання видаткова/акт):
 // виручка і собівартість відвантаженого (без ПДВ, як у P&L за нарахуванням), маржа, %, дата поставки,
@@ -41,6 +43,9 @@ export default function OrderMarginsReport() {
     s.pct = s.revenue > 0 ? s.margin / s.revenue : null
     return s
   }, [rows])
+
+  const newUi = useNewUi()
+  if (newUi) return <OrderMarginsNew rows={rows} err={err} from={from} to={to} setFrom={setFrom} setTo={setTo} today={t} />
 
   const Th = ({ k, children, right }) => (
     <th onClick={() => setSort(s => ({ key: k, dir: s.key === k ? -s.dir : -1 }))} style={{ textAlign: right ? 'right' : 'left', cursor: 'pointer', whiteSpace: 'nowrap', userSelect: 'none' }}>
