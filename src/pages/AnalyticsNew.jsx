@@ -441,3 +441,163 @@ export function ForecastHero({ f0, accrualNet }) {
     </section>
   )
 }
+
+// ───────── Баланс (ТЗ 5.1; макет Balance) ─────────
+// Цифри — computeSnapshot / computeBalanceTrend, як і раніше. Майбутні місяці не показуються (ТЗ 6.6, помилка 7).
+const monthName = (r) => `${MONTHS_FULL[r.m - 1]} ${r.y}`
+const dmyEnd = (r) => `${String(new Date(r.y, r.m, 0).getDate()).padStart(2, '0')}.${String(r.m).padStart(2, '0')}.${r.y}`
+
+export function BalanceSnapshotNew({ s, asOf, onDrill }) {
+  if (!s) return <TableSkeleton rows={8} cols={2} label="Рахую баланс…" />
+  const cash = s.cashBankTotal || 0, stock = s.stock?.totalValue || 0, recv = s.receivable || 0, pay = s.payable || 0
+  const loans = s.loansNet || 0, fa = s.fixedAssets || 0
+  const assets = cash + stock + recv + fa + (loans < 0 ? -loans : 0)
+  const liab = pay + (loans > 0 ? loans : 0)
+  const equity = cash + stock + recv + fa - pay - loans
+  const accounts = (s.balances || []).filter(b => Math.abs(b.balance) > 0.005)
+  const Line = ({ label, v, drill, sub }) => (
+    <li className={sub ? 'is-sub' : ''}>
+      {drill ? <button type="button" onClick={() => onDrill(drill)}>{label}<i className="ti ti-chevron-right" aria-hidden="true" /></button> : <span>{label}</span>}
+      <b className={v < 0 ? 'is-neg' : ''}>{formatAmount(v, { decimals: 0 })}</b>
+    </li>
+  )
+  return (
+    <div className="bln">
+      <section className="bln-hero" aria-label="Рівняння балансу">
+        <div><span>Активи</span><b>{formatAmount(assets, { decimals: 0 })}</b></div>
+        <i aria-hidden="true">−</i>
+        <div><span>Зобов'язання</span><b>{formatAmount(liab, { decimals: 0 })}</b></div>
+        <i aria-hidden="true">=</i>
+        <div className="is-eq"><span>Власний капітал · {asOf}</span><b className={equity < 0 ? 'is-neg' : ''}>{formatAmount(equity, { decimals: 0 })} ₴</b></div>
+      </section>
+      <div className="bln-cols">
+        <section className="cfn-card bln-list" aria-label="Активи">
+          <h2>Активи <span>{formatAmount(assets, { decimals: 0 })} ₴</span></h2>
+          <ul>
+            <Line label="Гроші на рахунках і в касі" v={cash} />
+            {accounts.map(a => <Line key={a.id} label={a.name} v={a.balance} sub />)}
+            <Line label="Склад (за собівартістю)" v={stock} drill={stock ? { type: 'stock' } : null} />
+            {fa !== 0 && <Line label="Основні засоби" v={fa} drill={{ type: 'fa' }} />}
+            <Line label="Дебіторка — нам винні" v={recv} drill={recv ? { type: 'recv' } : null} />
+            {loans < 0 && <Line label="Позики видані (ПФД) — нам повернуть" v={-loans} drill={{ type: 'loans' }} />}
+          </ul>
+        </section>
+        <section className="cfn-card bln-list" aria-label="Зобов'язання">
+          <h2>Зобов'язання <span>{formatAmount(liab, { decimals: 0 })} ₴</span></h2>
+          <ul>
+            <Line label="Кредиторка — ми винні" v={pay} drill={pay ? { type: 'pay' } : null} />
+            {loans > 0 && <Line label="Позики отримані (ПФД) — до повернення" v={loans} drill={{ type: 'loans' }} />}
+          </ul>
+          <div className="bln-eq"><span>Власний капітал = активи − зобов'язання</span><b className={equity < 0 ? 'is-neg' : ''}>{formatAmount(equity, { decimals: 0 })} ₴</b></div>
+        </section>
+      </div>
+      <p className="cfn-muted cfn-sm">Управлінський баланс: склад — товари за собівартістю; основні засоби — за вартістю купівлі, без амортизації; борги — неоплачені документи з ПДВ. Натисніть на рядок зі стрілкою — побачите склад суми.</p>
+    </div>
+  )
+}
+
+export function BalanceTrendNew({ trend, range, onCell, busyCell }) {
+  const [pick, setPick] = useState(null)
+  if (!trend) return <TableSkeleton rows={10} cols={8} label="Рахую динаміку…" />
+  const all = trend.rows || []
+  if (all.length < 1) return <div className="cfn-card cfn-muted">Немає даних за період</div>
+  const base = all[0], rows = all.slice(1).length ? all.slice(1) : all
+  const last = rows[rows.length - 1]
+  const delta = last.equity - base.equity
+  const pct = base.equity ? (delta / Math.abs(base.equity)) * 100 : null
+  const parts = (a, b) => [
+    ['Гроші', b.cash - a.cash], ['Склад', b.stock - a.stock], ['Основні засоби', (b.fixedAssets || 0) - (a.fixedAssets || 0)],
+    ['Дебіторка', b.receivable - a.receivable], ['Кредиторка', -(b.payable - a.payable)], ['Позики (ПФД)', -(b.loans - a.loans)],
+  ].filter(p => Math.abs(p[1]) > 0.5).sort((x, y) => x[1] - y[1])
+  const sel = pick ? rows.find(r => r.label === pick) : null
+  const selPrev = sel ? all[all.indexOf(sel) - 1] : null
+  const contrib = sel && selPrev ? parts(selPrev, sel) : parts(base, last)
+  const cMax = Math.max(1, Math.abs(sel ? sel.dEquity : delta), ...contrib.map(c => Math.abs(c[1])))
+  const withD = rows.map((r, i) => ({ r, d: r.equity - (i ? rows[i - 1] : base).equity }))
+  const best = withD.reduce((a, x) => (x.d > a.d ? x : a), withD[0]), worst = withD.reduce((a, x) => (x.d < a.d ? x : a), withD[0])
+
+  // стек-стовпці: активи вгору, зобов'язання вниз
+  const up = (r) => [['cash', Math.max(0, r.cash)], ['stock', Math.max(0, r.stock)], ['fa', Math.max(0, r.fixedAssets || 0)], ['recv', Math.max(0, r.receivable)], ['loanOut', Math.max(0, -r.loans)]]
+  const down = (r) => [['pay', Math.max(0, r.payable)], ['loans', Math.max(0, r.loans)], ['cashNeg', Math.max(0, -r.cash)]]
+  const sum = (xs) => xs.reduce((a, x) => a + x[1], 0)
+  const maxUp = Math.max(1, ...rows.map(r => sum(up(r)))), maxDown = Math.max(1, ...rows.map(r => sum(down(r))))
+  const upH = 100 * maxUp / (maxUp + maxDown)
+
+  const cell = (r, v, type, neg) => {
+    const busy = busyCell === `${r.label}:${type}`
+    if (!v) return <td className="cfn-zero">·</td>
+    return <td className={neg ? 'is-neg' : ''}><button type="button" disabled={busy} onClick={() => onCell(r, type)}>{formatAmount(v, { decimals: 0 })}{busy ? '…' : ''}</button></td>
+  }
+
+  return (
+    <div className="bln">
+      <section className="bln-hero is-trend" aria-label="Зміна капіталу">
+        <div><span>Власний капітал · {dmyEnd(base)}</span><b className="is-sm">{formatAmount(base.equity, { decimals: 0 })} ₴</b></div>
+        <i className="ti ti-arrow-right" aria-hidden="true" />
+        <div><span>Власний капітал · {dmyEnd(last)}</span><b>{formatAmount(last.equity, { decimals: 0 })} ₴</b></div>
+        <div className="bln-hero-d"><span>Зміна за період</span><b className={delta < 0 ? 'is-neg' : ''}>{formatAmount(delta, { decimals: 0, sign: 'always' })}</b>
+          {pct != null && <small>{formatAmount(pct, { decimals: 0, sign: 'always' })}% за період</small>}</div>
+      </section>
+
+      <section className="cfn-card" aria-label="Структура балансу по місяцях">
+        <div className="pln-months-head"><h2>Структура балансу по місяцях</h2>
+          <div className="pln-legend bln-legend">{[['cash', 'Гроші'], ['stock', 'Склад'], ['fa', 'Основні засоби'], ['recv', 'Дебіторка'], ['pay', 'Кредиторка'], ['loans', 'Позики (ПФД)']].map(([k, l]) => <span key={k}><i className={`bln-c-${k}`} />{l}</span>)}<span><i className="bln-c-eq" />Капітал</span></div></div>
+        <div className="bln-scroll">
+          <div className="bln-bars" style={{ '--up': `${upH}%` }}>
+            {rows.map(r => (
+              <button key={r.label} type="button" className="bln-bar" aria-pressed={pick === r.label} onClick={() => setPick(p => p === r.label ? null : r.label)}
+                aria-label={`${monthName(r)}: капітал ${formatAmount(r.equity, { decimals: 0 })}`}>
+                <span className={`bln-eqlbl${r.equity < 0 ? ' is-neg' : ''}`}>{short(r.equity)}</span>
+                <span className="bln-up">{up(r).map(([k, v]) => v > 0 && <span key={k} className={`bln-c-${k}`} style={{ height: `${(v / maxUp) * 100}%` }} />)}</span>
+                <span className="bln-down">{down(r).map(([k, v]) => v > 0 && <span key={k} className={`bln-c-${k}`} style={{ height: `${(v / maxDown) * 100}%` }} />)}</span>
+                <span className="bln-mlbl">{String(r.m).padStart(2, '0')}{rows.some(x => x.y !== r.y) && r.m === 1 ? `.${String(r.y).slice(2)}` : ''}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <div className="bln-mid">
+        <section className="cfn-card pln-bridge" aria-label="Що змінило капітал">
+          <h2>{sel ? `Що змінило капітал: ${monthName(sel)}` : `Що змінило капітал ${range === 'ytd' ? 'з початку року' : 'з початку діяльності'}`}</h2>
+          <p className="cfn-muted cfn-sm">Ріст активу або зменшення боргу збільшує капітал, і навпаки{sel ? ' · натисніть місяць ще раз, щоб повернутися до всього періоду' : ' · натисніть на місяць на графіку — покаже саме його'}</p>
+          <ul>
+            {contrib.map(([k, v]) => (
+              <li key={k}><span className="pln-br-l">{k}</span><span className="pln-br-track"><span className={`pln-br-bar${v < 0 ? ' is-neg' : ''}`} style={{ width: `${(Math.abs(v) / cMax) * 50}%` }} /></span>
+                <span className={`pln-br-v ${v < 0 ? 'is-neg' : 'is-pos'}`}>{formatAmount(v, { decimals: 0, sign: 'always' })}</span></li>
+            ))}
+            {(() => { const v = sel ? sel.equity - selPrev.equity : delta; return (
+              <li className="is-total"><span className="pln-br-l">Зміна капіталу</span><span className="pln-br-track"><span className={`pln-br-bar${v < 0 ? ' is-neg' : ''}`} style={{ width: `${(Math.abs(v) / cMax) * 50}%` }} /></span>
+                <span className={`pln-br-v ${v < 0 ? 'is-neg' : 'is-pos'}`}>{formatAmount(v, { decimals: 0, sign: 'always' })}</span></li>) })()}
+          </ul>
+        </section>
+        {rows.length > 1 && (
+          <div className="bln-bw">
+            <div className="cfn-card bln-best"><span>Найкращий місяць</span><b>{formatAmount(best.d, { decimals: 0, sign: 'always' })}</b><small>{monthName(best.r)}</small></div>
+            <div className="cfn-card bln-worst"><span>Найбільше просідання</span><b>{formatAmount(worst.d, { decimals: 0, sign: 'always' })}</b><small>{monthName(worst.r)}</small></div>
+          </div>
+        )}
+      </div>
+
+      <section className="cfn-card cfn-report" aria-label="Баланс по місяцях">
+        <div className="cfn-tbl bln-tbl">
+          <table>
+            <thead><tr><th scope="col">Місяць</th><th scope="col">Гроші</th><th scope="col">Склад</th><th scope="col">ОЗ</th><th scope="col">Дебіторка</th><th scope="col">Кредиторка</th><th scope="col">ПФД</th><th scope="col">Капітал</th><th scope="col">Зміна</th></tr></thead>
+            <tbody>
+              {[...withD].reverse().map(({ r, d }) => (
+                <tr key={r.label} className={pick === r.label ? 'is-picked' : ''}>
+                  <th scope="row"><button type="button" onClick={() => setPick(p => p === r.label ? null : r.label)}>{monthName(r)}</button></th>
+                  {cell(r, r.cash, 'cash', r.cash < 0)}{cell(r, r.stock, 'stock')}{cell(r, r.fixedAssets, 'fa')}{cell(r, r.receivable, 'recv')}
+                  {cell(r, r.payable, 'pay', true)}{cell(r, r.loans, 'loans', r.loans > 0)}
+                  <td className="is-strong">{formatAmount(r.equity, { decimals: 0 })}</td>
+                  <td><span className={`cfn-pill ${d < 0 ? 'is-neg' : 'is-pos'}`}>{formatAmount(d, { decimals: 0, sign: 'always' })}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="cfn-muted cfn-sm cfn-foot">Кожен рядок — стан на кінець місяця. Капітал = гроші + склад + ОЗ + дебіторка − кредиторка − ПФД. Натисніть на цифру — побачите, з чого вона складається; на місяць — що змінило капітал. Майбутні місяці не показуються.</p>
+      </section>
+    </div>
+  )
+}

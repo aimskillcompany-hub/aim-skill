@@ -14,9 +14,10 @@ import DocModal from '../components/DocModal'
 import { useUser } from '../lib/auth'
 import { useTabParam, Tabs, Button, Segmented, Switch } from '../components/ui'
 import { useNewUi } from '../lib/uiPrefs'
+import { todayKyiv } from '../lib/dates'
 import { canAccess } from '../lib/permissions'
 import CashflowReport from '../components/CashflowReport'
-import { CashFlowNew, PeriodChips, PLNew, ForecastHero } from './AnalyticsNew'
+import { CashFlowNew, PeriodChips, PLNew, ForecastHero, BalanceSnapshotNew, BalanceTrendNew } from './AnalyticsNew'
 
 const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД', 'ОЗ']
 
@@ -859,11 +860,48 @@ export function BalanceView({ fixedYear = null, fixedMonth = null } = {}) {
   const [trend, setTrend] = useState(null)
 
   useEffect(() => { setS(null); computeSnapshot(year, month || null).then(setS) }, [year, month])
+  const newUi = useNewUi()
+  const [range, setRange] = useState('ytd') // новий інтерфейс: ytd — з початку року (база — 31.12 попереднього), all — з початку діяльності
+  const [trendDrill, setTrendDrill] = useState(null)
+  const [busyCell, setBusyCell] = useState(null)
   useEffect(() => {
     if (view !== 'trend') return
     setTrend(null)
-    computeBalanceTrend(year, month || 12, { fromY: 2025, fromM: 1 }).then(setTrend)
-  }, [year, month, view])
+    // ТЗ 6.6, помилка 7: майбутні місяці дублювали поточний — динаміка лише до поточного місяця
+    const cur = year === NOW.getFullYear() ? NOW.getMonth() + 1 : 12
+    const toM = Math.min(month || 12, cur)
+    const from = newUi && range === 'ytd' ? { fromY: year - 1, fromM: 12 } : { fromY: 2025, fromM: 1 }
+    computeBalanceTrend(year, toM, from).then(setTrend)
+  }, [year, month, view, range, newUi])
+  const openTrendCell = async (r, type) => {
+    setBusyCell(`${r.label}:${type}`)
+    const snap = await computeSnapshot(r.y, r.m)
+    setBusyCell(null)
+    setTrendDrill({ snap, type, monthLabel: r.label })
+  }
+
+  // Новий інтерфейс (ТЗ 5.1): у «Закритті періоду» (locked) лишається звичний вигляд
+  if (newUi && !locked) {
+    const cur = year === NOW.getFullYear() && (!month || month === NOW.getMonth() + 1)
+    const asOf = cur ? `на ${todayKyiv().split('-').reverse().join('.')}` : `на ${String(new Date(year, month || 12, 0).getDate()).padStart(2, '0')}.${String(month || 12).padStart(2, '0')}.${year}`
+    return (
+      <>
+        <div className="an-toolbar pln-switches">
+          <PeriodChips year={year} setYear={setYear} month={month} setMonth={setMonth} years={YEARS} />
+        </div>
+        <div className="an-toolbar pln-switches">
+          <Segmented ariaLabel="Вигляд балансу" value={view} onChange={setView} options={[{ value: 'snapshot', label: 'Поточний стан' }, { value: 'trend', label: 'Динаміка' }]} />
+          {view === 'trend' && <Segmented ariaLabel="Діапазон" value={range} onChange={setRange} options={[{ value: 'ytd', label: 'З початку року' }, { value: 'all', label: 'З початку діяльності' }]} />}
+          <span className="cfn-muted cfn-sm">{view === 'trend' ? 'Стан на кінець кожного місяця; майбутні місяці не показуються.' : `Станом ${asOf}`}</span>
+        </div>
+        {view === 'trend'
+          ? <BalanceTrendNew trend={trend} range={range} onCell={openTrendCell} busyCell={busyCell} />
+          : <BalanceSnapshotNew s={s} asOf={asOf.replace('на ', '')} onDrill={setDrill} />}
+        {drill && s && <BalanceDrillModal drill={drill} snap={s} onClose={() => setDrill(null)} />}
+        {trendDrill && <BalanceDrillModal drill={{ type: trendDrill.type, monthLabel: trendDrill.monthLabel }} snap={trendDrill.snap} onClose={() => setTrendDrill(null)} />}
+      </>
+    )
+  }
 
   const toggle = (
     <div style={{ display: 'flex', gap: 4, marginLeft: locked ? 0 : 'auto' }}>
