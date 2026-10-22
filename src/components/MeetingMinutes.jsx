@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useUser } from '../lib/auth'
 import { listMinutes, createMinute, updateMinute, deleteMinute } from '../lib/minutes'
 import { todayKyiv } from '../lib/dates'
+import { useNewUi } from '../lib/uiPrefs'
+import MeetingsNew from './MeetingsNew'
 
 // Протоколи нарад: зберігаємо обговорення й ухвалені рішення (відповідальний/строк/статус).
 const today = () => todayKyiv()
@@ -13,6 +15,7 @@ export default function MeetingMinutes() {
   const [list, setList] = useState(null)
   const [err, setErr] = useState(null)
   const [editing, setEditing] = useState(null) // об'єкт протоколу або {new:true}
+  const newUi = useNewUi()
 
   const reload = () => { setErr(null); listMinutes().then(setList).catch(e => setErr(e.message)) }
   useEffect(() => { reload() }, [])
@@ -21,6 +24,8 @@ export default function MeetingMinutes() {
   if (!list) return <p style={{ color: 'var(--text3)' }}>Завантаження…</p>
 
   if (editing) return <Editor rec={editing} userId={user?.id} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload() }} />
+  const newProto = () => setEditing({ new: true, meeting_date: today(), title: '', participants: '', notes: '', decisions: [emptyDecision()] })
+  if (newUi) return <MeetingsNew list={list} onEdit={setEditing} onNew={newProto} />
 
   return (
     <div>

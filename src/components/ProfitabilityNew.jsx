@@ -1,9 +1,10 @@
 // «Прибутковість реалізації» — новий інтерфейс (ТЗ редизайну 5.4; макет ReportsProfit). Дані — computeProfitability,
 // агентські зберігаються тим самим saveAgent, що й раніше; тут лише показ.
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { saveAgent, computeTotals } from '../lib/profitability'
 import { useGroupContractors } from '../lib/group'
-import { formatAmount } from '../utils/format'
+import { listDecisions } from '../lib/decisions'
+import { formatAmount, plural } from '../utils/format'
 import { TableSkeleton, EmptyState, Callout, useToast } from './ui'
 import '../pages/AnalyticsNew.css'
 
@@ -18,6 +19,14 @@ export default function ProfitabilityNew({ data, loading, err, from, to, setFrom
   const t = data ? (showGroup ? data.totals : computeTotals(all)) : null
   const invoices = [...all].sort((a, b) => b.profit - a.profit)
   const noAgents = t && t.count > 0 && invoices.every(i => !(Number(i.percent) > 0))
+  // Помилка 12: агентські, ухвалені в протоколах за цей період (рішення 098; для не-адміна RLS віддає порожньо)
+  const [protoAgent, setProtoAgent] = useState(null)
+  useEffect(() => {
+    listDecisions().then(ds => {
+      const a = ds.filter(d => d.category === 'agent_fee' && d.status !== 'cancelled' && (!d.due_date || (d.due_date >= from && d.due_date <= to)))
+      setProtoAgent(a.length ? { sum: a.reduce((s, d) => s + Number(d.amount || 0), 0), n: a.length } : null)
+    }).catch(() => setProtoAgent(null))
+  }, [from, to])
   return (
     <div className="rpt">
       <div className="rpt-bar">
@@ -50,7 +59,9 @@ export default function ProfitabilityNew({ data, loading, err, from, to, setFrom
             <span>Збиткових: <b className={t.lossCount ? 'is-neg' : ''}>{t.lossCount}{t.lossCount ? ` · ${n0(t.lossSum)} ₴` : ''}</b></span>
           </div>
         </section>
-        {noAgents && <Callout tone="warn" title="Агентські в жодній накладній не вказані" text="— тож чистий прибуток дорівнює валовому. Якщо за цими накладними домовлені агентські (наприклад, рішенням наради), впишіть «Агент, %» у рядку: реальний прибуток буде меншим." />}
+        {noAgents && <Callout tone="warn" title="Агентські в жодній накладній не вказані" text={protoAgent
+          ? `— а в протоколах нарад на цей період ухвалено агентських на ${n0(protoAgent.sum)} ₴ (${protoAgent.n} ${plural(protoAgent.n, ['рішення', 'рішення', 'рішень'])}). Реальний прибуток менший: впишіть «Агент, %» у відповідних накладних.`
+          : '— тож чистий прибуток дорівнює валовому. Якщо за цими накладними домовлені агентські (наприклад, рішенням наради), впишіть «Агент, %» у рядку: реальний прибуток буде меншим.'} />}
         <section className="rpt-card is-flush">
           {invoices.length === 0 ? <EmptyState icon="ti-receipt" title="Немає видаткових за період" text="Змініть період або юрособу." />
             : <>
