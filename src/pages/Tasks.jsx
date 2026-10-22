@@ -276,13 +276,14 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
 
   return (
     <>
-    {/* картка задачі на весь екран: ліворуч — задача, підзадачі, коментарі; праворуч — деталі (як у CRM) */}
-    <style>{`.task-full{position:fixed;inset:0;z-index:180;background:var(--bg, #f5f6f8);overflow-y:auto;animation:taskIn .18s ease}
+    {/* картка задачі на всю робочу область (бокове меню лишається видимим): ліворуч — задача, підзадачі, коментарі; праворуч — деталі (як у CRM) */}
+    <style>{`.task-full{position:fixed;top:0;right:0;bottom:0;left:240px;z-index:180;border-left:1px solid var(--border);background:var(--bg, #f5f6f8);overflow-y:auto;animation:taskIn .18s ease}
       @keyframes taskIn{from{opacity:.4;transform:translateY(8px)}to{opacity:1;transform:none}}
       .task-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;grid-template-areas:"head side" "body side";gap:20px 28px;max-width:1280px;margin:0 auto;padding:20px 28px 48px;align-items:start}
       .task-head{grid-area:head;display:flex;flex-direction:column;gap:14px;min-width:0}
       .task-body{grid-area:body;display:flex;flex-direction:column;gap:20px;min-width:0}
       .task-side{grid-area:side;display:flex;flex-direction:column;gap:14px;position:sticky;top:76px}
+      @media (max-width:768px){.task-full{left:0;border-left:none}}
       @media (max-width:900px){.task-grid{grid-template-columns:minmax(0,1fr);grid-template-areas:"head" "side" "body";padding:14px 16px 90px}.task-side{position:static}}`}</style>
     <div className="task-full" role="dialog" aria-label="Картка задачі">
       <div style={{ position: 'sticky', top: 0, zIndex: 2, background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
