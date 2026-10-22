@@ -6,6 +6,7 @@ import { canAccess, firstSection } from './lib/permissions'
 import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/Layout'
 import Login from './pages/Login'
+import { useNewUi } from './lib/uiPrefs'
 
 // Ліниве завантаження з одноразовим перезавантаженням при застарілому чанку після деплою
 // (стара index.html посилається на видалені хеші → "Failed to fetch dynamically imported module")
@@ -62,6 +63,9 @@ function AdminOnly({ children }) {
   if (user?.role !== 'admin') return <Navigate to={`/${firstSection(user?.role)}`} replace />
   return children
 }
+// Прапорець «Новий інтерфейс» → html[data-ui="new"] (див. lib/uiPrefs)
+function UiFlag() { useNewUi(); return null }
+
 // Стартовий розділ за роллю
 function Home() {
   const { user } = useUser()
@@ -72,6 +76,7 @@ export default function App() {
   return (
     <AuthProvider>
       <CompanyProvider>
+      <UiFlag />
       <ErrorBoundary>
         <Suspense fallback={<Loading />}>
           <Routes>
