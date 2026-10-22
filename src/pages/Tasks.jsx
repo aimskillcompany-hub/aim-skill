@@ -38,6 +38,8 @@ export default function Tasks() {
   const [toast, setToast] = useState(null)
   const [err, setErr] = useState(null)
   const [edit, setEdit] = useState(null)
+  const [showDone, setShowDone] = useState(() => { try { return localStorage.getItem('tasks.showDone') === '1' } catch { return false } })
+  useEffect(() => { try { localStorage.setItem('tasks.showDone', showDone ? '1' : '0') } catch {} }, [showDone])
   const quickRef = useRef(null)
   const [notifs, setNotifs] = useState([])
   const [bell, setBell] = useState(false)
@@ -165,10 +167,16 @@ export default function Tasks() {
               {GROUPS.map(([k, name, color]) => {
                 const items = list.filter(t => bucket(t) === k)
                 if (!items.length) return null
+                const folded = k === 'done' && !showDone      // виконані — згорнуті, відкриваються за потреби
                 return (
                   <section key={k} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-                    <div style={{ padding: '9px 14px', fontWeight: 700, fontSize: 13, background: 'var(--surface2)', color: color || 'var(--text)' }}>{name} <span style={{ color: 'var(--text3)', fontWeight: 500 }}>{items.length}</span></div>
-                    {(k === 'done' ? items.slice(0, 30) : items).map(t => <Row key={t.id} t={t} />)}
+                    {k === 'done'
+                      ? <button onClick={() => setShowDone(v => !v)} aria-expanded={!folded} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', fontWeight: 700, fontSize: 13, background: 'var(--surface2)', color: color, border: 'none', cursor: 'pointer', font: 'inherit', textAlign: 'left' }}>
+                          <i className={`ti ti-chevron-${folded ? 'right' : 'down'}`} />{name} <span style={{ color: 'var(--text3)', fontWeight: 500 }}>{items.length}</span>
+                          <span style={{ marginLeft: 'auto', fontWeight: 500, fontSize: 12, color: 'var(--text3)' }}>{folded ? 'показати' : 'сховати'}</span>
+                        </button>
+                      : <div style={{ padding: '9px 14px', fontWeight: 700, fontSize: 13, background: 'var(--surface2)', color: color || 'var(--text)' }}>{name} <span style={{ color: 'var(--text3)', fontWeight: 500 }}>{items.length}</span></div>}
+                    {!folded && (k === 'done' ? items.slice(0, 50) : items).map(t => <Row key={t.id} t={t} />)}
                   </section>
                 )
               })}
