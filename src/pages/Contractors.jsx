@@ -7,6 +7,8 @@ import { normalizeName } from '../lib/contractors'
 import { useSort, SortTh } from '../components/Sort'
 import { useCompany } from '../lib/company'
 import { loadContractorTurnover } from '../lib/debts'
+import { useNewUi } from '../lib/uiPrefs'
+import ContractorsNew from './ContractorsNew'
 
 export default function Contractors() {
   const { user } = useUser()
@@ -17,6 +19,7 @@ export default function Contractors() {
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState('all') // all | client | supplier
   const [showNew, setShowNew] = useState(false)
+  const newUi = useNewUi()
 
   const load = async () => {
     setLoading(true)
@@ -54,6 +57,14 @@ export default function Contractors() {
     operations_count: c => Number(c.operations_count) || 0,
     last_operation_date: c => c.last_operation_date || '',
   })
+
+  if (newUi) return (
+    <>
+      <ContractorsNew list={list} loading={loading} q={q} setQ={setQ} filter={filter} setFilter={setFilter} companies={companies}
+        onNew={() => setShowNew(true)} navigate={navigate} />
+      {showNew && <NewContractorModal user={user} onClose={() => setShowNew(false)} onCreated={(id) => { setShowNew(false); navigate(`/contractors/${id}`) }} />}
+    </>
+  )
 
   return (
     <div>

@@ -12,6 +12,13 @@ import { getDocType } from '../lib/docgen'
 import { ORDER_TYPES, TYPE_COLORS, statusLabel } from '../lib/orders'
 import DocModal from '../components/DocModal'
 import GeneratedDocModal from '../components/GeneratedDocModal'
+import { useNewUi } from '../lib/uiPrefs'
+import { Tabs, Button, KpiTile, useToast } from '../components/ui'
+import { formatAmount } from '../utils/format'
+import { initials } from '../components/AppShell'
+import { NewOrderModal } from './Orders'
+import TaskForm from '../components/TaskForm'
+import './ContractorCardNew.css'
 
 const TABS = [
   { id: 'details', label: 'Реквізити', icon: 'ti-id-badge-2' },
@@ -29,13 +36,100 @@ export default function ContractorCard() {
   const [bal, setBal] = useState(null)
   const { companies } = useCompany()
   const [tab, setTab] = useState('details')
+  const newUi = useNewUi()
+  const { user } = useUser()
+  const [orders, setOrders] = useState(null)       // замовлення клієнта в роботі (новий інтерфейс)
+  const [newOrder, setNewOrder] = useState(false)
+  const [newTask, setNewTask] = useState(false)
 
   useEffect(() => {
     supabase.from('contractors').select('*').eq('id', id).single().then(({ data }) => setC(data))
     getContractorBalance(id, companies.map(x => x.id)).then(setBal)
   }, [id, companies])
+  useEffect(() => {
+    if (!newUi) return
+    qc('orders').select('id, status, archived_at').eq('client_id', id).is('archived_at', null)
+      .then(({ data }) => setOrders(data || []))
+  }, [id, newUi])
 
   if (!c) return <div className="page-header"><h1>Завантаження…</h1></div>
+
+  if (newUi) {
+    const type = c.is_client && c.is_supplier ? 'Клієнт і постачальник' : c.is_client ? 'Клієнт' : c.is_supplier ? 'Постачальник' : null
+    const waitPay = (orders || []).filter(o => o.status === 'needs_payment').length
+    const waitContract = (orders || []).filter(o => o.status === 'needs_contract').length
+    const copy = async () => { try { await navigator.clipboard.writeText(c.edrpou) } catch {} }
+    return (
+      <div className="ccn">
+        <button type="button" className="ccn-back" onClick={() => navigate('/contractors')}><i className="ti ti-chevron-left" aria-hidden="true" />Контрагенти</button>
+        <section className="ccn-head">
+          <span className="ccn-av" aria-hidden="true">{initials(c.short_name || c.name)}</span>
+          <div className="ccn-head-main">
+            <h1 className="ccn-h1">{c.name}</h1>
+            <div className="ccn-meta">
+              {type ? <span className={`ccn-chip${c.is_client ? ' is-client' : ' is-supplier'}`}>{type}</span> : <span className="ccn-chip is-none">Тип не вказано</span>}
+              {c.edrpou && <span className="ccn-edr">ЄДРПОУ {c.edrpou}<button type="button" className="ccn-copy" onClick={copy} aria-label="Скопіювати ЄДРПОУ" title="Скопіювати"><i className="ti ti-copy" aria-hidden="true" /></button></span>}
+              {c.city && <span>{c.city}</span>}
+              <span>Відстрочка {Number(c.payment_delay_days) || 0} дн.</span>
+            </div>
+          </div>
+          <div className="ccn-actions">
+            <Button variant="secondary" icon="ti-plus" onClick={() => setNewTask(true)}>Задача</Button>
+            <Button variant="secondary" onClick={() => setTab('details')}>Редагувати</Button>
+            {c.is_client && <Button variant="brand" icon="ti-plus" onClick={() => setNewOrder(true)}>Нове замовлення</Button>}
+          </div>
+        </section>
+
+        <div className="ccn-kpis">
+          {(() => {
+            // темна плитка — головний борг: для постачальника (не клієнта) — «Ми винні», інакше — «Нам винні»
+            const supplierOnly = c.is_supplier && !c.is_client
+            const main = supplierOnly
+              ? { label: 'Ми винні', value: bal?.payable, extra: bal?.unlinkedOut, extraText: "наших оплат без прив'язки до документа — не враховані" }
+              : { label: 'Нам винні', value: bal?.receivable, extra: bal?.unlinkedIn, extraText: "оплат без прив'язки до документа — не враховані" }
+            const other = supplierOnly
+              ? { label: 'Нам винні', value: bal?.receivable, hint: bal?.unlinkedIn > 0.5 ? `+ ${formatAmount(bal.unlinkedIn, { decimals: 0 })} ₴ оплат без прив'язки` : 'за документами клієнту' }
+              : { label: 'Ми винні', value: bal?.payable, hint: bal?.unlinkedOut > 0.5 ? `+ ${formatAmount(bal.unlinkedOut, { decimals: 0 })} ₴ наших оплат без прив'язки` : 'за документами постачальника' }
+            return <>
+              <section className={`ccn-owed${supplierOnly ? ' is-payable' : ''}`}>
+                <span className="ccn-owed-label">{main.label}</span>
+                <b className="ccn-owed-value">{bal ? `${formatAmount(main.value, { decimals: 0 })} ₴` : '…'}</b>
+                {main.extra > 0.5 && <span className="ccn-owed-note">+ <b>{formatAmount(main.extra, { decimals: 0 })} ₴</b> {main.extraText}</span>}
+                {main.extra > 0.5 && <button type="button" className="ccn-owed-link" onClick={() => navigate('/bank')}>Прив'язати в «Банку» →</button>}
+              </section>
+              <KpiTile label={other.label} value={bal ? `${formatAmount(other.value, { decimals: 0 })} ₴` : '…'} hint={other.hint} />
+            </>
+          })()}
+          <KpiTile label="Оборот за рік" value={bal ? `${formatAmount(bal.turnoverYear, { decimals: 0 })} ₴` : '…'}
+            hint={bal ? `надійшло ${formatAmount(bal.income, { decimals: 0 })} · сплачено ${formatAmount(bal.expense, { decimals: 0 })}` : null} />
+          {c.is_client
+            ? <KpiTile label="Замовлення в роботі" value={orders ? orders.length : '…'} onClick={() => setTab('orders')}
+                tone={waitPay || waitContract ? 'warn' : 'neutral'}
+                hint={orders && (waitPay || waitContract) ? [waitPay && `${waitPay} чекають оплату`, waitContract && `${waitContract} — договір`].filter(Boolean).join(' · ') : 'відкрити список'} />
+            : bal?.loans?.count > 0 && <KpiTile label="Позики: нам винні − ми винні" value={`${formatAmount(bal.loans.theyOwe - bal.loans.weOwe, { decimals: 0 })} ₴`}
+                hint={`нам винні ${formatAmount(bal.loans.theyOwe, { decimals: 0 })} · ми винні ${formatAmount(bal.loans.weOwe, { decimals: 0 })}`} />}
+        </div>
+        {c.is_client && bal?.loans?.count > 0 && (
+          <p className="ccn-loans">Позики (ПФД) з цим контрагентом: нам винні {formatAmount(bal.loans.theyOwe, { decimals: 0 })} ₴ · ми винні {formatAmount(bal.loans.weOwe, { decimals: 0 })} ₴ — деталі в «Поворотній фін. допомозі».</p>
+        )}
+
+        <section className="ccn-body">
+          <Tabs ariaLabel="Розділи контрагента" idPrefix="ccn-tab" value={tab} onChange={setTab} tabs={TABS.map(t => ({ id: t.id, label: t.label }))} />
+          <div className="ccn-panel" role="tabpanel" aria-labelledby={`ccn-tab-${tab}`}>
+            {tab === 'details' && <DetailsTab c={c} onSaved={setC} />}
+            {tab === 'orders' && <OrdersTab id={id} />}
+            {tab === 'documents' && <DocumentsTab id={id} />}
+            {tab === 'transactions' && <TransactionsTab id={id} />}
+            {tab === 'products' && <ProductsTab id={id} />}
+            {tab === 'notes' && <NotesTab id={id} />}
+          </div>
+        </section>
+        {newOrder && <NewOrderModal presetClientId={c.id} onClose={() => setNewOrder(false)} onCreated={(oid) => { setNewOrder(false); navigate(`/orders/${oid}`) }} />}
+        {newTask && <TaskForm task={{ priority: 'normal', assignee_id: user?.id, entity_type: 'counterparty', entity_id: c.id, entity_ref: `/contractors/${c.id}` }} me={user?.id}
+          onClose={() => setNewTask(false)} onSaved={() => setNewTask(false)} />}
+      </div>
+    )
+  }
 
   return (
     <div>
