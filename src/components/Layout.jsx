@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { myTaskBadge } from '../lib/tasks'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { CompanySwitcher, useCompany } from '../lib/company'
@@ -50,6 +51,11 @@ export default function Layout() {
   const { activeId } = useCompany()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const role = user?.role || 'viewer'
+  // «Задачі N» — мої прострочені + на сьогодні; оновлюється при переходах і щохвилини
+  const loc = useLocation()
+  const [taskBadge, setTaskBadge] = useState(0)
+  useEffect(() => { myTaskBadge(user?.id).then(setTaskBadge) }, [user?.id, loc.pathname])
+  useEffect(() => { const i = setInterval(() => myTaskBadge(user?.id).then(setTaskBadge), 60000); return () => clearInterval(i) }, [user?.id])
   const handleLogout = () => supabase.auth.signOut()
   const close = () => setSidebarOpen(false)
 
@@ -70,6 +76,7 @@ export default function Layout() {
           >
             <i className={`ti ${item.icon}`} aria-hidden="true" style={item.accent ? { color: item.accent } : undefined} />
             {item.label}
+            {item.to === '/tasks' && taskBadge > 0 && <span title="Мої прострочені й на сьогодні" style={{ marginLeft: 'auto', background: '#dc2626', color: '#fff', borderRadius: 999, fontSize: 11, fontWeight: 600, padding: '1px 7px' }}>{taskBadge}</span>}
           </NavLink>
         </div>
       ))}

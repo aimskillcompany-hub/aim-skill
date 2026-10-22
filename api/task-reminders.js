@@ -22,7 +22,7 @@ export default async function handler(req, res) {
     const today = kyivToday()
     const { data: tasks } = await admin.from('tasks')
       .select('id, title, due_date, priority')
-      .eq('status', 'open').not('due_date', 'is', null).lte('due_date', today)
+      .not('status', 'in', '(done,cancelled,on_hold)').not('due_date', 'is', null).lte('due_date', today)
       .or(`reminded_on.is.null,reminded_on.lt.${today}`)
       .order('due_date')
     if (!tasks?.length) return res.status(200).json({ ok: true, reminded: 0 })

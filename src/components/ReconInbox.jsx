@@ -330,10 +330,11 @@ function TaskBlock({ p, explain, hint, tasks, onCreated }) {
   const save = async () => {
     if (!title.trim()) { setErr('Вкажіть, що зробити'); return }
     setBusy(true); setErr(null)
-    const { data, error } = await supabase.from('tasks').insert({
-      title: title.trim(), description: `${desc.trim()}\n\nЗвірка: ${reconLineToken(x.line.outId)}`, due_date: due || null, priority,
-      created_by: user?.id || null, source: 'recon',
-    }).select('id').single()
+    const base = { title: title.trim(), description: `${desc.trim()}\n\nЗвірка: ${reconLineToken(x.line.outId)}`, due_date: due || null, priority,
+      created_by: user?.id || null, source: 'recon' }
+    let { data, error } = await supabase.from('tasks').insert({ ...base, assignee_id: user?.id || null, status: 'new',
+      entity_type: 'reconciliation', entity_ref: reconLineToken(x.line.outId) }).select('id').single()
+    if (error && /column|schema cache/.test(error.message || '')) ({ data, error } = await supabase.from('tasks').insert({ ...base, status: 'open' }).select('id').single())   // до 092
     setBusy(false)
     if (error) { setErr(error.message); return }
     setSaved(data?.id || true); setOpen(false); onCreated?.()

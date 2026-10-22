@@ -165,10 +165,16 @@ async function sendDoc(admin, chatId, docId) {
 }
 
 // ── Задачі ──
+let _owner
+async function ownerProfileId(admin) {
+  if (_owner !== undefined) return _owner
+  const { data } = await admin.from('profiles').select('id').eq('role', 'admin').order('created_at').limit(1).maybeSingle()
+  return (_owner = data?.id || null)
+}
 async function showTasks(admin, chatId) {
   const today = kyivToday()
   const { data } = await admin.from('tasks').select('id, title, due_date, priority')
-    .eq('status', 'open').order('due_date', { nullsFirst: false }).limit(25)
+    .not('status', 'in', '(done,cancelled)').order('due_date', { nullsFirst: false }).limit(25)
   if (!data?.length) return send(chatId, '✅ Активних задач немає. Додати — «➕ Задача».', { reply_markup: MAIN_KB })
   const rows = data.map(t => {
     const late = t.due_date && t.due_date < today
@@ -183,8 +189,9 @@ async function showTaskCard(admin, chatId, id) {
   if (!t) return send(chatId, 'Задачу не знайдено.')
   const txt = [`📌 <b>${t.title}</b>`, t.description ? t.description : null,
     t.due_date ? `📅 Термін: ${t.due_date}` : null,
-    t.status === 'done' ? '✅ Виконано' : null].filter(Boolean).join('\n')
-  const kb = t.status === 'done'
+    ({ in_progress: '🔵 В роботі', review: '📨 На перевірці', done: '✅ Виконано', on_hold: '⏸ Відкладено', cancelled: '✖️ Скасовано' })[t.status] || null,
+    t.result_text ? `📝 Результат: ${t.result_text}` : null].filter(Boolean).join('\n')
+  const kb = ['done', 'review', 'cancelled'].includes(t.status)
     ? [[{ text: '↩️ Повернути в роботу', callback_data: `taskopen:${id}` }, { text: '🗑 Видалити', callback_data: `taskdel:${id}` }]]
     : [[{ text: '✅ Виконано', callback_data: `taskdone:${id}` }, { text: '🗑 Видалити', callback_data: `taskdel:${id}` }]]
   return send(chatId, txt, { reply_markup: { inline_keyboard: kb } })
@@ -259,8 +266,13 @@ export default async function handler(req, res) {
       // ── Задачі ──
       if (data === 'tasks:0' || data === 'tasks') { await showTasks(admin, chatId); return res.json({ ok: true }) }
       if (data.startsWith('taskview:')) { await showTaskCard(admin, chatId, data.slice(9)); return res.json({ ok: true }) }
-      if (data.startsWith('taskdone:')) { await admin.from('tasks').update({ status: 'done', done_at: new Date().toISOString() }).eq('id', data.slice(9)); await send(chatId, '✅ Задачу виконано.'); await showTasks(admin, chatId); return res.json({ ok: true }) }
-      if (data.startsWith('taskopen:')) { await admin.from('tasks').update({ status: 'open', done_at: null }).eq('id', data.slice(9)); await send(chatId, '↩️ Повернено в роботу.'); await showTasks(admin, chatId); return res.json({ ok: true }) }
+      // планер (092): задача закривається лише з результатом — питаємо його в чаті
+      if (data.startsWith('taskdone:')) {
+        await setSession(admin, fromId, { flow: 'task', step: 'task_result', id: data.slice(9) })
+        await send(chatId, '📝 <b>Результат виконання</b> — коротко: що зроблено, з яким результатом:', { reply_markup: cancelKb })
+        return res.json({ ok: true })
+      }
+      if (data.startsWith('taskopen:')) { await admin.from('tasks').update({ status: 'in_progress' }).eq('id', data.slice(9)); await send(chatId, '↩️ Повернено в роботу.'); await showTasks(admin, chatId); return res.json({ ok: true }) }
       if (data.startsWith('taskdel:')) { await admin.from('tasks').delete().eq('id', data.slice(8)); await send(chatId, '🗑 Задачу видалено.'); await showTasks(admin, chatId); return res.json({ ok: true }) }
 
       if (data.startsWith('order:')) { await showCard(admin, chatId, data.slice(6)); return res.json({ ok: true }) }
@@ -376,6 +388,17 @@ export default async function handler(req, res) {
       return res.json({ ok: true })
     }
 
+    // Результат задачі (кнопка «Виконано»)
+    if (s?.flow === 'task' && s.step === 'task_result') {
+      const { data: t } = await admin.from('tasks').select('requires_review').eq('id', s.id).maybeSingle()
+      const status = t?.requires_review ? 'review' : 'done'
+      const { error } = await admin.from('tasks').update({ result_text: text, result_type: 'full', status }).eq('id', s.id)
+      await clearSession(admin, fromId)
+      if (error) { await send(chatId, 'Помилка: ' + error.message, { reply_markup: MAIN_KB }); return res.json({ ok: true }) }
+      await send(chatId, status === 'review' ? '📨 Результат надіслано на перевірку постановнику.' : '✅ Задачу закрито з результатом.', { reply_markup: MAIN_KB })
+      await showTasks(admin, chatId)
+      return res.json({ ok: true })
+    }
     // Майстер задачі
     if (s?.flow === 'task' && s.step === 'task_title') {
       s.title = text; s.step = 'task_due'; await setSession(admin, fromId, s)
@@ -385,7 +408,8 @@ export default async function handler(req, res) {
     if (s?.flow === 'task' && s.step === 'task_due') {
       const due = parseDue(text)
       if (due === undefined) { await send(chatId, 'Не зрозумів дату. Напиши <code>2026-07-25</code>, «сьогодні», «завтра», «+3д» або «-»:', { reply_markup: cancelKb }); return res.json({ ok: true }) }
-      const { error } = await admin.from('tasks').insert({ title: s.title, due_date: due, status: 'open', priority: 'normal', source: 'bot' })
+      const owner = await ownerProfileId(admin)   // задачі з бота — на власника (адміністратора)
+      const { error } = await admin.from('tasks').insert({ title: s.title, due_date: due, status: 'new', priority: 'normal', source: 'bot', created_by: owner, assignee_id: owner })
       await clearSession(admin, fromId)
       if (error) { await send(chatId, 'Помилка: ' + error.message, { reply_markup: MAIN_KB }); return res.json({ ok: true }) }
       await send(chatId, `✅ Задачу створено${due ? ` на <b>${due}</b>` : ''}.`, { reply_markup: MAIN_KB })
