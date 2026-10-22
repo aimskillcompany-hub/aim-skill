@@ -33,6 +33,7 @@ export default function TaskForm({ task, people: peopleIn, me, onClose, onSaved,
     setBusy(true); setErr(null)
     const row = { title: f.title.trim().slice(0, 200), description: (f.description.trim() + keepRecon) || null, assignee_id: f.assignee_id || me,
       due_at: dueAtFrom(f.due, f.time), start_date: f.start_date || null, priority: f.priority, requires_review: !!f.requires_review }
+    if (otherEntity && !isEdit) Object.assign(row, { entity_type: task.entity_type, entity_id: task.entity_id || null, entity_ref: task.entity_ref || null })
     if (!otherEntity) {   // прив'язка до замовлення (звірку / документ не перезаписуємо)
       Object.assign(row, f.order_id
         ? { entity_type: 'order', entity_id: f.order_id, entity_ref: `/orders/${f.order_id}` }
@@ -53,6 +54,7 @@ export default function TaskForm({ task, people: peopleIn, me, onClose, onSaved,
             <input className="form-input" value={f.title} maxLength={200} autoFocus onChange={e => set('title', e.target.value)} /></div>
           <div className="form-group"><label>Опис — постановка, очікуваний результат</label>
             <textarea className="form-input" rows={3} value={f.description} onChange={e => set('description', e.target.value)} style={{ resize: 'vertical', height: 'auto' }} /></div>
+          {task.entity_type === 'counterparty' && <div style={{ fontSize: 13, color: 'var(--text2)' }}><i className="ti ti-users" /> Задача буде прив'язана до цього контрагента</div>}
           {!otherEntity && (lockOrder
             ? <div style={{ fontSize: 13, color: 'var(--text2)' }}><i className="ti ti-shopping-cart" /> Задача буде прив'язана до цього замовлення</div>
             : <div className="form-group"><label>Замовлення (необов'язково)</label>

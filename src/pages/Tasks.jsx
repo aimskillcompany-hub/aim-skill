@@ -97,6 +97,7 @@ export default function Tasks() {
             <span style={d.style}>{d.label}</span>
             {t.entity_type === 'reconciliation' && <span style={{ background: '#eef2ff', color: '#3730a3', borderRadius: 6, padding: '1px 6px' }}>зі звірки</span>}
             {t.entity_type === 'order' && <span style={{ background: '#ecfdf5', color: '#065f46', borderRadius: 6, padding: '1px 6px' }}><i className="ti ti-shopping-cart" /> №{t.order?.order_number || '…'}</span>}
+            {t.entity_type === 'counterparty' && <span style={{ background: '#fdf4ff', color: '#86198f', borderRadius: 6, padding: '1px 6px' }}><i className="ti ti-users" /> {t.counterparty?.name || 'контрагент'}</span>}
             {t.source === 'bot' && <span><i className="ti ti-brand-telegram" /> з бота</span>}
             {t.requires_review && <span title="Результат приймає постановник">перевірка</span>}
             {t.comments > 0 && <span><i className="ti ti-message" /> {t.comments}</span>}
@@ -273,6 +274,8 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
         {recon && <Link to={recon} style={{ fontSize: 13, display: 'inline-block', marginTop: 6 }}><i className="ti ti-arrows-exchange" /> Відкрити в звірці</Link>}
         {t.entity_type === 'order' && t.entity_id && <Link to={`/orders/${t.entity_id}`} style={{ fontSize: 13, display: 'inline-block', marginTop: 6 }}>
           <i className="ti ti-shopping-cart" /> Замовлення №{t.order?.order_number || t.entity_id.slice(0, 6)}{t.order?.contractors?.name ? ` · ${t.order.contractors.name}` : ''}</Link>}
+        {t.entity_type === 'counterparty' && t.entity_id && <Link to={`/contractors/${t.entity_id}`} style={{ fontSize: 13, display: 'inline-block', marginTop: 6, marginLeft: 8 }}>
+          <i className="ti ti-users" /> {t.counterparty?.name || 'Контрагент'}</Link>}
       </div>
 
       {/* дії */}

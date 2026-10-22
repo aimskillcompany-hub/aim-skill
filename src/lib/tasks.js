@@ -99,7 +99,15 @@ export async function loadTasks() {
     const { data: os } = await supabase.from('orders').select('id, order_number, contractors(name)').in('id', orderIds)
     ;(os || []).forEach(o => { orders[o.id] = o })
   }
-  return tasks.map(t => ({ ...t, watchers: watchers[t.id] || [], comments: comments[t.id] || 0, order: t.entity_type === 'order' ? orders[t.entity_id] || null : null }))
+  const cIds = [...new Set(tasks.filter(t => t.entity_type === 'counterparty' && t.entity_id).map(t => t.entity_id))]
+  const cps = {}
+  if (cIds.length) {
+    const { data: cs } = await supabase.from('contractors').select('id, name').in('id', cIds)
+    ;(cs || []).forEach(c => { cps[c.id] = c })
+  }
+  return tasks.map(t => ({ ...t, watchers: watchers[t.id] || [], comments: comments[t.id] || 0,
+    order: t.entity_type === 'order' ? orders[t.entity_id] || null : null,
+    counterparty: t.entity_type === 'counterparty' ? cps[t.entity_id] || null : null }))
 }
 
 export const errText = (e) => {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { myTaskBadge } from '../lib/tasks'
+import QuickTaskFab from './QuickTaskFab'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { CompanySwitcher, useCompany } from '../lib/company'
@@ -143,6 +144,7 @@ export default function Layout() {
           ))}
         </nav>
       </main>
+      {canAccess(role, 'tasks') && <QuickTaskFab />}
       <style>{`@keyframes slideInLeft { from { transform: translateX(-100%); } to { transform: translateX(0); } }`}</style>
     </div>
   )
