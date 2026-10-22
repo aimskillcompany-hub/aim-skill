@@ -644,12 +644,8 @@ function Subtasks({ t, people, canEdit, onChanged }) {
             <input type="checkbox" aria-label="Виконано" checked={x.done} disabled={!canEdit || busy} onChange={() => act(() => updateSubtask(x.id, { done: !x.done }))}
               style={{ width: 18, height: 18, flex: '0 0 auto', accentColor: '#2563eb', cursor: canEdit ? 'pointer' : 'default' }} />
             <span style={{ flex: '1 1 auto', minWidth: 0, fontSize: 14, lineHeight: 1.4, textDecoration: x.done ? 'line-through' : 'none', color: x.done ? '#9ca3af' : 'var(--text, #111827)' }}>{x.text}</span>
-            {/* термін: кнопка-«ярлик» з прихованим полем дати */}
-            <label className="tk-ghost" title="Термін підзадачі" style={{ position: 'relative', height: 28, padding: '0 8px', borderRadius: 6, fontSize: 12, color: late ? '#b91c1c' : '#6b7280', fontWeight: late ? 600 : 400, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', cursor: canEdit ? 'pointer' : 'default' }}>
-              {x.due_date ? shortDate(x.due_date) : 'Без терміну'}
-              {canEdit && <input type="date" value={x.due_date || ''} disabled={busy} onChange={e => act(() => updateSubtask(x.id, { due_date: e.target.value || null }))}
-                style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }} />}
-            </label>
+            {/* термін: клік відкриває календар (showPicker), × — прибрати термін */}
+            <SubDue value={x.due_date} late={late} canEdit={canEdit} busy={busy} onChange={(v) => act(() => updateSubtask(x.id, { due_date: v }))} />
             {/* виконавець: аватар з прихованим списком */}
             <label title={who ? personName(who) : 'Призначити виконавця'} style={{ position: 'relative', flex: '0 0 auto', cursor: canEdit ? 'pointer' : 'default', display: 'inline-flex' }}>
               {who ? <Avatar person={who} id={who.id} size={26} />
@@ -675,5 +671,29 @@ function Subtasks({ t, people, canEdit, onChanged }) {
       </div>}
       {err && <div style={{ color: 'var(--red)', fontSize: 12.5, padding: '0 18px 12px' }}>{err}</div>}
     </section>
+  )
+}
+
+// Термін підзадачі: ярлик «Без терміну» / «26 жов»; клік — календар браузера; × — очистити
+function SubDue({ value, late, canEdit, busy, onChange }) {
+  const ref = useRef(null)
+  const open = () => {
+    const el = ref.current
+    if (!el || !canEdit || busy) return
+    try { el.showPicker() } catch { el.focus(); el.click() }
+  }
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 2, flex: '0 0 auto' }}>
+      <button type="button" className="tk-ghost" onClick={open} disabled={!canEdit || busy} title={canEdit ? 'Встановити термін' : undefined}
+        style={{ height: 28, padding: '0 8px', borderRadius: 6, border: 'none', background: 'none', fontSize: 12, fontFamily: 'inherit', whiteSpace: 'nowrap',
+          color: late ? '#b91c1c' : value ? 'var(--text2, #374151)' : '#6b7280', fontWeight: late ? 600 : 400, cursor: canEdit ? 'pointer' : 'default', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <i className="ti ti-calendar" style={{ fontSize: 13 }} />{value ? shortDate(value) : 'Без терміну'}
+      </button>
+      {value && canEdit && <button type="button" aria-label="Прибрати термін" disabled={busy} onClick={() => onChange(null)}
+        style={{ border: 'none', background: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 13, padding: '0 2px' }}>×</button>}
+      {/* саме поле дати — невидиме, під ярликом (для календаря) */}
+      <input ref={ref} type="date" tabIndex={-1} aria-hidden="true" value={value || ''} onChange={e => onChange(e.target.value || null)}
+        style={{ position: 'absolute', left: 0, bottom: 0, width: 1, height: 1, opacity: 0, pointerEvents: 'none', border: 0, padding: 0 }} />
+    </span>
   )
 }
