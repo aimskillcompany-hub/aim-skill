@@ -89,7 +89,7 @@ export default function Tasks() {
   const Row = ({ t }) => {
     const d = dueView(t), s = STATUS[t.status], on = t.id === selId
     return (
-      <button onClick={() => pick(t.id)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', border: 'none', borderTop: '1px solid var(--border)', textAlign: 'left', cursor: 'pointer', background: on ? 'var(--blue-bg, #eff6ff)' : 'var(--surface)', boxShadow: on ? 'inset 3px 0 0 #2563eb' : 'none', color: 'var(--text)', font: 'inherit' }}>
+      <button onClick={() => pick(t.id)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', border: 'none', borderTop: '1px solid var(--border)', textAlign: 'left', cursor: 'pointer', background: on ? 'var(--blue-bg, #eff6ff)' : 'var(--surface)', boxShadow: on ? 'inset 3px 0 0 #2563eb' : 'none', color: 'var(--text)', fontFamily: 'inherit' }}>
         <span style={{ width: 10, height: 10, borderRadius: 999, background: s.dot, flex: '0 0 auto' }} />
         <span style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
           <span style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.35, textDecoration: t.status === 'done' ? 'line-through' : 'none', color: t.status === 'done' || t.status === 'cancelled' ? 'var(--text3)' : 'var(--text)' }}>{t.title}</span>
@@ -137,7 +137,7 @@ export default function Tasks() {
             <div style={{ maxHeight: 420, overflowY: 'auto' }}>
               {notifs.length === 0 && <div style={{ padding: 14, fontSize: 13, color: 'var(--text3)' }}>Сповіщень немає</div>}
               {notifs.map(n => <button key={n.id} onClick={async () => { if (!n.read_at) { await markNotificationsRead(me, [n.id]); setNotifs(x => x.map(y => y.id === n.id ? { ...y, read_at: new Date().toISOString() } : y)) } if (n.task_id) pick(n.task_id); setBell(false) }}
-                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', border: 'none', borderBottom: '1px solid var(--border)', background: n.read_at ? 'var(--surface)' : 'var(--blue-bg, #eff6ff)', cursor: 'pointer', font: 'inherit', color: 'var(--text)' }}>
+                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', border: 'none', borderBottom: '1px solid var(--border)', background: n.read_at ? 'var(--surface)' : 'var(--blue-bg, #eff6ff)', cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text)' }}>
                 <div style={{ fontSize: 13, fontWeight: n.read_at ? 400 : 600 }}>{n.title}</div>
                 {n.body && <div style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 2 }}>{n.body}</div>}
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>{shortDate(String(n.created_at).slice(0, 10))} {kyivTime(n.created_at)}</div>
@@ -184,7 +184,7 @@ export default function Tasks() {
                 return (
                   <section key={k} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
                     {k === 'done'
-                      ? <button onClick={() => setShowDone(v => !v)} aria-expanded={!folded} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', fontWeight: 700, fontSize: 13, background: 'var(--surface2)', color: color, border: 'none', cursor: 'pointer', font: 'inherit', textAlign: 'left' }}>
+                      ? <button onClick={() => setShowDone(v => !v)} aria-expanded={!folded} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', fontWeight: 700, fontSize: 13, background: 'var(--surface2)', color: color, border: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
                           <i className={`ti ti-chevron-${folded ? 'right' : 'down'}`} />{name} <span style={{ color: 'var(--text3)', fontWeight: 500 }}>{items.length}</span>
                           <span style={{ marginLeft: 'auto', fontWeight: 500, fontSize: 12, color: 'var(--text3)' }}>{folded ? 'показати' : 'сховати'}</span>
                         </button>
@@ -203,7 +203,7 @@ export default function Tasks() {
                   <div key={st} style={{ background: 'var(--surface2)', borderRadius: 12, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 320 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 4px 6px' }}><span style={pill(STATUS[st])}>{STATUS[st].label}</span><span style={{ color: 'var(--text3)', fontSize: 12 }}>{items.length}</span></div>
                     {items.slice(0, 50).map(t => { const d = dueView(t); return (
-                      <button key={t.id} onClick={() => pick(t.id)} style={{ display: 'flex', flexDirection: 'column', gap: 8, textAlign: 'left', background: 'var(--surface)', borderRadius: 10, padding: '10px 12px', cursor: 'pointer', color: 'var(--text)', font: 'inherit', border: t.id === selId ? '2px solid #2563eb' : '1px solid var(--border)' }}>
+                      <button key={t.id} onClick={() => pick(t.id)} style={{ display: 'flex', flexDirection: 'column', gap: 8, textAlign: 'left', background: 'var(--surface)', borderRadius: 10, padding: '10px 12px', cursor: 'pointer', color: 'var(--text)', fontFamily: 'inherit', border: t.id === selId ? '2px solid #2563eb' : '1px solid var(--border)' }}>
                         <span style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.35 }}>{t.title}</span>
                         <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6, fontSize: 12 }}><span style={d.style}>{d.label}</span>{t.priority !== 'normal' && <span style={prioStyle(t.priority)}>{PRIORITY[t.priority]?.label}</span>}</span>
                         <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: 'var(--text3)' }}>
@@ -244,7 +244,7 @@ const dueLong = (t) => {
   const rel = isOverdue(t) ? 'прострочено' : diff === 0 ? 'сьогодні' : diff === 1 ? 'завтра' : diff > 1 ? `через ${diff} ${diff < 5 ? 'дні' : 'днів'}` : ''
   return { main: `${WD[d.getUTCDay()]}, ${shortDate(t.due_date)}${tm && tm !== '18:00' ? ' ' + tm : ''}`, rel, late: isOverdue(t) }
 }
-const ghostBtn = { border: 'none', background: 'none', borderRadius: 8, cursor: 'pointer', font: 'inherit', color: 'inherit' }
+const ghostBtn = { border: 'none', background: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', color: 'inherit' }
 
 function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, onEdit, onOpen }) {
   const [feed, setFeed] = useState([])
@@ -298,8 +298,8 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
 
   const recon = (t.entity_type === 'reconciliation' ? t.entity_ref : null) || (t.description || '').match(/Звірка:\s*(\/inventory\/recon\?\S+)/)?.[1]
   const desc = (t.description || '').replace(/\n*Звірка:\s*\/inventory\/recon\?\S+\s*$/, '')
-  const btn = (bg) => ({ height: 38, padding: '0 16px', borderRadius: 8, border: 'none', background: bg, color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', font: 'inherit' })
-  const outline = { height: 38, padding: '0 14px', borderRadius: 8, border: '1px solid #d1d5db', background: 'var(--surface, #fff)', color: C.text, fontWeight: 600, fontSize: 13, cursor: 'pointer', font: 'inherit' }
+  const btn = (bg) => ({ height: 38, padding: '0 16px', borderRadius: 8, border: 'none', background: bg, color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' })
+  const outline = { height: 38, padding: '0 14px', borderRadius: 8, border: '1px solid #d1d5db', background: 'var(--surface, #fff)', color: C.text, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }
   const due = dueLong(t)
   const idx = STEPS.indexOf(t.status)
   const comments = feed.filter(f => f.kind === 'comment').slice().reverse()       // старіші зверху, нові — над полем вводу
@@ -313,7 +313,6 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
   let primary = null, secondary = null
   if (t.status === 'new' && (isAssignee || isCreator)) primary = <button disabled={busy} style={btn('#2563eb')} onClick={() => run(() => updateTask(t.id, { status: 'in_progress' }), 'Задачу взято в роботу')}>Взяти в роботу</button>
   if (t.status === 'in_progress' && (isAssignee || isCreator) && form !== 'result') primary = <button disabled={busy} style={btn('#111827')} onClick={() => { setForm('result'); setDraft(t.result_text || ''); setRtype(t.result_type || 'full') }}>Здати результат</button>
-  if (t.status === 'new' && (isAssignee || isCreator) && form !== 'result') secondary = <button disabled={busy} className="tk-ghost" style={outline} onClick={() => { setForm('result'); setDraft(''); setRtype('full') }}>Здати результат</button>
   if (t.status === 'review' && isCreator) {
     primary = <button disabled={busy} style={btn('#15803d')} onClick={() => run(() => updateTask(t.id, { status: 'done' }), 'Результат прийнято')}>Прийняти</button>
     secondary = <button disabled={busy} className="tk-ghost" style={outline} onClick={() => { setForm('return'); setDraft('') }}>Повернути</button>
@@ -349,6 +348,7 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
           </button>
           {menu && <div role="menu" style={{ position: 'absolute', right: 46, top: 46, width: 230, background: 'var(--surface, #fff)', border: `1px solid ${C.line}`, borderRadius: 12, boxShadow: '0 12px 32px rgba(17,24,39,0.12)', padding: 6, zIndex: 20, display: 'flex', flexDirection: 'column' }}>
             {canEdit && <button role="menuitem" className="tk-menuitem" style={{ ...ghostBtn, textAlign: 'left', padding: '10px 12px', fontSize: 13 }} onClick={() => { setMenu(false); onEdit() }}>Редагувати</button>}
+            {t.status === 'new' && (isAssignee || isCreator) && <button role="menuitem" className="tk-menuitem" style={{ ...ghostBtn, textAlign: 'left', padding: '10px 12px', fontSize: 13 }} onClick={() => { setMenu(false); setForm('result'); setDraft(''); setRtype('full') }}>Здати результат одразу</button>}
             {ACTIVE(t) && t.status !== 'on_hold' && canEdit && <button role="menuitem" className="tk-menuitem" style={{ ...ghostBtn, textAlign: 'left', padding: '10px 12px', fontSize: 13 }} onClick={() => run(() => updateTask(t.id, { status: 'on_hold' }), 'Задачу відкладено')}>Відкласти</button>}
             <button role="menuitem" className="tk-menuitem" style={{ ...ghostBtn, textAlign: 'left', padding: '10px 12px', fontSize: 13 }} onClick={copyLink}>Скопіювати посилання</button>
             <button role="menuitem" className="tk-menuitem" style={{ ...ghostBtn, textAlign: 'left', padding: '10px 12px', fontSize: 13 }} onClick={duplicate}>Дублювати</button>
@@ -389,9 +389,9 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
             <label htmlFor="tk-res" style={{ fontWeight: 600, fontSize: 15 }}>{form === 'result' ? 'Результат виконання' : 'Що доопрацювати'}</label>
             <textarea id="tk-res" value={draft} onChange={e => setDraft(e.target.value)} rows={4} autoFocus
               placeholder={form === 'result' ? 'Що зроблено, з яким результатом, що залишилось' : 'Коментар для відповідального'}
-              style={{ border: '1px solid #d1d5db', borderRadius: 10, padding: '10px 12px', fontSize: 14, lineHeight: 1.5, resize: 'vertical', background: 'var(--surface, #fff)', color: C.text, font: 'inherit' }} />
+              style={{ border: '1px solid #d1d5db', borderRadius: 10, padding: '10px 12px', fontSize: 14, lineHeight: 1.5, resize: 'vertical', background: 'var(--surface, #fff)', color: C.text, fontFamily: 'inherit' }} />
             {form === 'result' && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {Object.entries(RESULT).map(([k, l]) => <button key={k} onClick={() => setRtype(k)} aria-pressed={rtype === k} style={{ height: 32, padding: '0 12px', borderRadius: 999, cursor: 'pointer', fontSize: 12, fontWeight: 600, font: 'inherit', border: `1px solid ${rtype === k ? '#111827' : '#d1d5db'}`, background: rtype === k ? '#111827' : 'var(--surface, #fff)', color: rtype === k ? '#fff' : 'var(--text2, #374151)' }}>{l}</button>)}
+              {Object.entries(RESULT).map(([k, l]) => <button key={k} onClick={() => setRtype(k)} aria-pressed={rtype === k} style={{ height: 32, padding: '0 12px', borderRadius: 999, cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'inherit', border: `1px solid ${rtype === k ? '#111827' : '#d1d5db'}`, background: rtype === k ? '#111827' : 'var(--surface, #fff)', color: rtype === k ? '#fff' : 'var(--text2, #374151)' }}>{l}</button>)}
             </div>}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="tk-ghost" style={{ ...ghostBtn, height: 38, padding: '0 14px', fontSize: 13 }} onClick={() => setForm(null)}>Скасувати</button>
@@ -421,7 +421,7 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
           <section style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div role="tablist" style={{ display: 'flex', gap: 18, borderBottom: '1px solid #e5e7eb' }}>
               {[['comments', `Коментарі${comments.length ? ` · ${comments.length}` : ''}`], ['history', 'Історія']].map(([k, l]) => (
-                <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} style={{ border: 'none', background: 'none', padding: '10px 2px', marginBottom: -1, cursor: 'pointer', fontSize: 14, fontWeight: 600, font: 'inherit', color: tab === k ? C.text : C.muted, borderBottom: `2px solid ${tab === k ? '#111827' : 'transparent'}` }}>{l}</button>
+                <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} style={{ border: 'none', background: 'none', padding: '10px 2px', marginBottom: -1, cursor: 'pointer', fontSize: 14, fontWeight: 600, fontFamily: 'inherit', color: tab === k ? C.text : C.muted, borderBottom: `2px solid ${tab === k ? '#111827' : 'transparent'}` }}>{l}</button>
               ))}
             </div>
             {tab === 'comments' ? <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -435,10 +435,10 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
                 <div style={{ flex: '1 1 auto', border: '1px solid #d1d5db', borderRadius: 12, background: 'var(--surface, #fff)', overflow: 'hidden' }}>
                   <textarea value={cmt} onChange={e => setCmt(e.target.value)} rows={2} placeholder="Напишіть коментар… @ — згадати колегу" aria-label="Коментар"
                     onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sendComment() } }}
-                    style={{ width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', padding: '10px 12px', fontSize: 14, resize: 'none', background: 'transparent', color: C.text, font: 'inherit' }} />
+                    style={{ width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', padding: '10px 12px', fontSize: 14, resize: 'none', background: 'transparent', color: C.text, fontFamily: 'inherit' }} />
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px 8px 12px' }}>
                     <span style={{ fontSize: 12, color: C.muted }}>Ctrl + Enter — надіслати</span>
-                    <button onClick={sendComment} disabled={!cmt.trim() || busy} style={{ height: 32, padding: '0 14px', borderRadius: 8, border: 'none', fontWeight: 600, fontSize: 13, cursor: cmt.trim() ? 'pointer' : 'default', font: 'inherit', background: cmt.trim() ? '#111827' : '#f3f4f6', color: cmt.trim() ? '#fff' : '#6b7280' }}>Надіслати</button>
+                    <button onClick={sendComment} disabled={!cmt.trim() || busy} style={{ height: 32, padding: '0 14px', borderRadius: 8, border: 'none', fontWeight: 600, fontSize: 13, cursor: cmt.trim() ? 'pointer' : 'default', fontFamily: 'inherit', background: cmt.trim() ? '#111827' : '#f3f4f6', color: cmt.trim() ? '#fff' : '#6b7280' }}>Надіслати</button>
                   </div>
                 </div>
               </div>
@@ -453,7 +453,7 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
         {/* ── праворуч: властивості ── */}
         <aside aria-label="Властивості задачі" className="tk-right">
           <div style={{ ...card, padding: 8 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '112px minmax(0, 1fr)', alignItems: 'center', rowGap: 2, fontSize: 13 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '110px minmax(0, 1fr)', alignItems: 'center', rowGap: 2, fontSize: 13 }}>
               <span style={{ color: C.muted, padding: '0 10px' }}>Статус</span>
               <div className="tk-prop" style={propRow}><span style={pill(s)}>{s.label}</span></div>
 
@@ -482,7 +482,9 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
               <span style={{ color: C.muted, padding: '0 10px' }}>Термін</span>
               <button className="tk-prop" onClick={canEdit ? onEdit : undefined} style={{ ...ghostBtn, ...propRow, cursor: canEdit ? 'pointer' : 'default' }} title={canEdit ? 'Змінити термін' : undefined}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
-                {due ? <span style={{ color: due.late ? '#b91c1c' : C.text, fontWeight: due.late ? 600 : 400 }}>{due.main}{due.rel && <span style={{ color: due.late ? '#b91c1c' : C.muted, fontWeight: 400 }}> · {due.rel}</span>}</span>
+                {due ? <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25, minWidth: 0 }}>
+                    <span style={{ color: due.late ? '#b91c1c' : C.text, fontWeight: due.late ? 600 : 400, whiteSpace: 'nowrap' }}>{due.main}</span>
+                    {due.rel && <span style={{ fontSize: 12, color: due.late ? '#b91c1c' : C.muted }}>{due.rel}</span>}</span>
                   : <span style={{ color: C.muted }}>Без терміну</span>}
               </button>
 
@@ -532,7 +534,7 @@ function Reminders({ t, canEdit, busy, run }) {
   const [at, setAt] = useState('')
   const toggle = (m) => run(() => updateTask(t.id, { remind_offsets: offs.includes(m) ? offs.filter(x => x !== m) : [...offs, m].sort((a, b) => b - a) }),
     offs.includes(m) ? 'Нагадування вимкнено' : 'Нагадування увімкнено — прийде в додаток і Telegram')
-  const chip = (on, clickable = true) => ({ height: 30, padding: '0 10px', borderRadius: 999, cursor: clickable ? 'pointer' : 'default', fontSize: 12, fontWeight: 600, font: 'inherit',
+  const chip = (on, clickable = true) => ({ height: 30, padding: '0 10px', borderRadius: 999, cursor: clickable ? 'pointer' : 'default', fontSize: 12, fontWeight: 600, fontFamily: 'inherit',
     border: `1px solid ${on ? '#bfdbfe' : '#e5e7eb'}`, background: on ? '#eff6ff' : 'var(--surface, #fff)', color: on ? '#1d4ed8' : '#6b7280' })
   return (
     <div style={{ background: 'var(--surface, #fff)', border: '1px solid var(--border, #eceef1)', borderRadius: 14, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -543,7 +545,7 @@ function Reminders({ t, canEdit, busy, run }) {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
         {[[1440, 'За 24 год'], [60, 'За 1 год']].map(([m, l]) => <button key={m} disabled={!canEdit || busy || !t.due_at} aria-pressed={offs.includes(m)} style={chip(offs.includes(m))} onClick={() => toggle(m)}>{l}</button>)}
         <span style={{ ...chip(!!t.due_at, false), display: 'inline-flex', alignItems: 'center' }} title="Завжди — відповідальному й постановнику">У момент терміну</span>
-        {!open && <button className="tk-ghost" onClick={() => setOpen(true)} style={{ height: 30, padding: '0 10px', borderRadius: 999, border: '1px dashed #d1d5db', background: 'none', fontSize: 12, color: 'var(--text2, #374151)', cursor: 'pointer', font: 'inherit' }}>+ Нагадати мені…</button>}
+        {!open && <button className="tk-ghost" onClick={() => setOpen(true)} style={{ height: 30, padding: '0 10px', borderRadius: 999, border: '1px dashed #d1d5db', background: 'none', fontSize: 12, color: 'var(--text2, #374151)', cursor: 'pointer', fontFamily: 'inherit' }}>+ Нагадати мені…</button>}
       </div>
       {open && <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
         <input type="datetime-local" value={at} onChange={e => setAt(e.target.value)} autoFocus style={{ padding: '4px 8px', fontSize: 13, height: 32, border: '1px solid #d1d5db', borderRadius: 8, background: 'var(--surface, #fff)', color: 'var(--text)' }} />
@@ -669,7 +671,7 @@ function Subtasks({ t, people, canEdit, onChanged }) {
           placeholder="Додати підзадачу — Enter. Можна вставити список."
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addLines(text) } }}
           onPaste={e => { const v = e.clipboardData.getData('text'); if (v.includes('\n')) { e.preventDefault(); addLines(v) } }}
-          style={{ flex: '1 1 auto', minWidth: 0, height: 36, border: 'none', outline: 'none', fontSize: 14, background: 'transparent', color: 'var(--text, #111827)', font: 'inherit' }} />
+          style={{ flex: '1 1 auto', minWidth: 0, height: 36, border: 'none', outline: 'none', fontSize: 14, background: 'transparent', color: 'var(--text, #111827)', fontFamily: 'inherit' }} />
       </div>}
       {err && <div style={{ color: 'var(--red)', fontSize: 12.5, padding: '0 18px 12px' }}>{err}</div>}
     </section>

@@ -576,7 +576,7 @@ function ProductModal({ product, onClose, asPage = false, backTo = '/inventory' 
         </div>
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 10 }}>
           {[['batches', 'Партії', 'ti-stack-2'], ['movs', 'Рухи', 'ti-arrows-up-down']].map(([k, l, ic]) => (
-            <button key={k} onClick={() => setView(k)} style={{ background: 'none', border: 0, borderBottom: '2px solid ' + (view === k ? 'var(--text)' : 'transparent'), padding: '6px 12px', font: 'inherit', fontWeight: view === k ? 700 : 500, color: view === k ? 'var(--text)' : 'var(--text3)', cursor: 'pointer', display: 'flex', gap: 6, alignItems: 'center' }}><i className={`ti ${ic}`} />{l}</button>
+            <button key={k} onClick={() => setView(k)} style={{ background: 'none', border: 0, borderBottom: '2px solid ' + (view === k ? 'var(--text)' : 'transparent'), padding: '6px 12px', fontFamily: 'inherit', fontWeight: view === k ? 700 : 500, color: view === k ? 'var(--text)' : 'var(--text3)', cursor: 'pointer', display: 'flex', gap: 6, alignItems: 'center' }}><i className={`ti ${ic}`} />{l}</button>
           ))}
         </div>
         {view === 'batches' && <ProductBatches productId={product.id} unit={form?.unit || stock?.unit} productName={form?.name || product.name} onOpenDoc={openAnyDoc} />}

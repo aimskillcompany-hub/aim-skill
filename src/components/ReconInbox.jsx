@@ -151,7 +151,7 @@ export default function ReconInbox({ data, canEdit, reload, onDialog, onDates, o
         <div style={{ flex: '1 1 320px', maxWidth: '100%', display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '78vh', overflowY: 'auto' }}>
           {visible.map(p => (
             <button key={p.id} onClick={() => { setSel(p.id); setMode(null); setErr(null) }}
-              style={{ width: '100%', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 5, padding: '12px 14px', borderRadius: 12, cursor: 'pointer', font: 'inherit', fontSize: 14, color: 'inherit', background: 'var(--surface)', border: p.id === sel ? '1px solid var(--text)' : '1px solid var(--border)', boxShadow: p.id === sel ? '0 0 0 1px var(--text)' : 'none' }}>
+              style={{ width: '100%', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 5, padding: '12px 14px', borderRadius: 12, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, color: 'inherit', background: 'var(--surface)', border: p.id === sel ? '1px solid var(--text)' : '1px solid var(--border)', boxShadow: p.id === sel ? '0 0 0 1px var(--text)' : 'none' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                 <span style={badge(p.sev)}>{p.label}</span>
                 <span style={{ fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', color: p.sev === 'err' ? 'var(--red)' : 'var(--amber)' }}>{p.metric}</span>
@@ -199,7 +199,7 @@ function ProblemCard({ p, pos, n, canEdit, busy, err, mode, onPrev, onNext, onCl
   const big = { fontSize: 18, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
   const cell = { padding: '9px 14px' }
   const buyHl = (keys) => keys.includes(p.kind) ? { ...cell, ...hl(p.sev), fontWeight: 600 } : cell
-  const lnk = { background: 'none', border: 0, padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 2 }
+  const lnk = { background: 'none', border: 0, padding: 0, fontFamily: 'inherit', color: 'inherit', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 2 }
   // перегляд документів: бічна панель «Видаткова / Прихідна / Поруч» (як у таблиці); без неї — картка документа
   const view = (mode) => {
     if (onDrawer) onDrawer({ doc: x.doc, mode, line: x.line, src: s || null })

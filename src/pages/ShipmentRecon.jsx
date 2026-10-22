@@ -38,7 +38,7 @@ const sep = { borderLeft: '2px solid var(--border)' }
 const th = { position: 'sticky', top: 0, background: 'var(--surface2)', zIndex: 1, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.03em', color: 'var(--text3)', padding: '8px 10px', whiteSpace: 'nowrap', textAlign: 'left' }
 const td = { padding: '7px 10px', borderBottom: '1px solid var(--border)', verticalAlign: 'top', fontSize: 13 }
 const r = { textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }
-const linkBtn = { background: 'none', border: 0, padding: 0, font: 'inherit', fontWeight: 600, color: 'inherit', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'var(--text3)', textUnderlineOffset: 2 }
+const linkBtn = { background: 'none', border: 0, padding: 0, fontFamily: 'inherit', fontWeight: 600, color: 'inherit', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'var(--text3)', textUnderlineOffset: 2 }
 
 export default function ShipmentRecon() {
   const { user } = useUser()
@@ -163,7 +163,7 @@ export default function ShipmentRecon() {
 
       <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border)', marginBottom: 14 }}>
         {[['inbox', `Проблеми${data ? ` (${problemsN})` : ''}`, 'ti-inbox'], ['table', 'Таблиця', 'ti-table']].map(([k, l, ic]) => (
-          <button key={k} onClick={() => setTab(k)} style={{ background: 'none', border: 0, borderBottom: '2px solid ' + (tab === k ? 'var(--text)' : 'transparent'), padding: '8px 14px', font: 'inherit', fontWeight: tab === k ? 700 : 500, color: tab === k ? 'var(--text)' : 'var(--text3)', cursor: 'pointer', display: 'flex', gap: 6, alignItems: 'center' }}><i className={`ti ${ic}`} />{l}</button>
+          <button key={k} onClick={() => setTab(k)} style={{ background: 'none', border: 0, borderBottom: '2px solid ' + (tab === k ? 'var(--text)' : 'transparent'), padding: '8px 14px', fontFamily: 'inherit', fontWeight: tab === k ? 700 : 500, color: tab === k ? 'var(--text)' : 'var(--text3)', cursor: 'pointer', display: 'flex', gap: 6, alignItems: 'center' }}><i className={`ti ${ic}`} />{l}</button>
         ))}
       </div>
       {tab === 'inbox' && (data
@@ -393,10 +393,10 @@ function SourceBox({ line: l, src: s, used, best, canEdit, onDrawer, onDialog })
     <div style={{ border: (best || used ? '1px solid ' : '1px dashed ') + 'var(--border)', background: used || best ? 'var(--surface)' : 'transparent', borderRadius: 10, padding: '8px 10px', margin: '3px 0', display: 'grid', gridTemplateColumns: 'minmax(180px, 1.6fr) minmax(120px, 1fr) minmax(90px, .8fr) minmax(70px, .6fr) auto', gap: 10, alignItems: 'center', fontSize: 13 }}>
       <div>
         <span style={{ fontSize: 11, color: 'var(--text3)', display: 'block' }}>{used ? `Списано з партії · ${HOW_LABEL[s.how] || s.how}${s.qty ? ` · ${s.qty} ${l.unit}` : ''}` : s.kind === 'order' ? 'Кандидат · те саме замовлення' : s.kind === 'other' ? 'Кандидат · ⧉ інша картка' : 'Кандидат'}</span>
-        {s.inDocId ? <button onClick={() => onDrawer({ mode: 'rec', line: l, src: s })} style={{ background: 'none', border: 0, padding: 0, font: 'inherit', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>Прихідна № {s.docNo}</button> : <b>Прихід без документа</b>}
+        {s.inDocId ? <button onClick={() => onDrawer({ mode: 'rec', line: l, src: s })} style={{ background: 'none', border: 0, padding: 0, fontFamily: 'inherit', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>Прихідна № {s.docNo}</button> : <b>Прихід без документа</b>}
         {s.inLine != null && <span style={{ fontSize: 12, color: 'var(--text3)' }}> · рядок {s.inLine}</span>}
         {' · '}{s.supplier}
-        {s.inDocId && <div><button onClick={() => onDrawer({ mode: 'both', line: l, src: s })} style={{ background: 'none', border: 0, padding: 0, font: 'inherit', fontSize: 12, cursor: 'pointer', textDecoration: 'underline', color: 'var(--text2)' }}><i className="ti ti-file-text" /> порівняти з видатковою</button></div>}
+        {s.inDocId && <div><button onClick={() => onDrawer({ mode: 'both', line: l, src: s })} style={{ background: 'none', border: 0, padding: 0, fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', textDecoration: 'underline', color: 'var(--text2)' }}><i className="ti ti-file-text" /> порівняти з видатковою</button></div>}
         {s.otherCard && <div style={{ fontSize: 12, color: 'var(--amber)' }}>⧉ на іншій картці: «{s.inProductName}»{s.inProductSku ? ` (${s.inProductSku})` : ', артикул не вказано'}</div>}
       </div>
       <div>

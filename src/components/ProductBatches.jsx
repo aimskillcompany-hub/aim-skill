@@ -22,7 +22,7 @@ const r = { textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabul
 const sub = { fontSize: 11, color: 'var(--text3)', ...{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' } }
 const sepL = { borderLeft: '2px solid var(--border)' }
 const TH = { padding: '6px 6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
-const lnk = { background: 'none', border: 0, padding: 0, font: 'inherit', color: 'var(--blue)', cursor: 'pointer', textAlign: 'left' }
+const lnk = { background: 'none', border: 0, padding: 0, fontFamily: 'inherit', color: 'var(--blue)', cursor: 'pointer', textAlign: 'left' }
 
 // розбіжності рядка «партія → відвантаження»
 function shipIssues(s) {

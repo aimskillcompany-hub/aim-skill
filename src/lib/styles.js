@@ -25,6 +25,8 @@ export const css = `
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html { overflow-x: hidden; max-width: 100vw; }
+  /* кнопки й поля успадковують шрифт сторінки (браузер сам не передає розмір і гарнітуру) */
+  button, input, textarea, select { font: inherit; }
   body {
     font-family: -apple-system, 'Inter', sans-serif;
     background: var(--bg);
@@ -78,10 +80,11 @@ export const css = `
     display: flex; align-items: center; gap: 10px;
     padding: 10px 12px; border-radius: var(--radius-md); cursor: pointer;
     color: var(--text2); font-size: 14px; font-weight: 500;
-    transition: all .15s ease; margin: 2px 0; user-select: none;
+    transition: all .15s ease; margin: 2px 0; user-select: none; text-decoration: none;
   }
   .nav-item:hover { background: var(--bg); color: var(--text); }
-  .nav-item.active { background: #000; color: #fff; font-weight: 600; }
+  .nav-item.active { background: rgba(37,99,235,.10); color: var(--text); font-weight: 600; box-shadow: inset 3px 0 0 #2563eb; }
+  .nav-item.active i { color: #2563eb; }
   .nav-item i { font-size: 18px; width: 20px; text-align: center; }
   .sidebar-footer { padding: 16px 20px; border-top: 1px solid var(--border); }
 
