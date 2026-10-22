@@ -227,14 +227,6 @@ export default function Tasks() {
 // ── Картка задачі (редизайн 22.10: вся робоча область; ліворуч — задача, підзадачі, коментарі; праворуч — властивості) ──
 const C = { line: 'var(--border, #eceef1)', soft: 'var(--surface2, #f3f4f6)', muted: 'var(--text3, #6b7280)', text: 'var(--text, #111827)' }
 const STEPS = ['new', 'in_progress', 'review', 'done']
-const HINT = {
-  new: 'Задача ще не в роботі. Візьміть її, щоб команда бачила, хто нею займається.',
-  in_progress: 'Коли закінчите — натисніть «Здати результат» і коротко опишіть, що зроблено.',
-  review: 'Результат чекає на перевірку автора задачі.',
-  done: 'Задачу закрито з результатом.',
-  on_hold: 'Задачу відкладено. Нагадування призупинені.',
-  cancelled: 'Задачу скасовано.',
-}
 const WD = ['нд', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб']
 const dueLong = (t) => {
   if (!t.due_date) return null
@@ -392,9 +384,8 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
                 </li>
               })}
             </ol>
-            <div style={{ fontSize: 13, color: 'var(--text2, #4b5563)' }}>
-              {t.status === 'review' && !isCreator ? `Результат чекає на перевірку: ${personName(P(t.created_by))}.` : HINT[t.status]}
-            </div>
+            {t.status === 'review' && !isCreator && <div style={{ fontSize: 13, color: 'var(--text2, #4b5563)' }}>Чекає на перевірку: {personName(P(t.created_by))}</div>}
+            {['on_hold', 'cancelled'].includes(t.status) && <div style={{ fontSize: 13, color: 'var(--text2, #4b5563)' }}>{STATUS[t.status].label}</div>}
           </div>
 
           {form && <section style={{ ...card, borderColor: '#c7d2fe', padding: 18, display: 'flex', flexDirection: 'column', gap: 12, boxShadow: '0 0 0 4px #eef2ff' }}>
