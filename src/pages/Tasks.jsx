@@ -744,18 +744,24 @@ function SubResultView({ x, files, people, onOpen }) {
 // результат підзадачі (редагування): коментар + файли до 20 МБ; «Зберегти і позначити виконаною»
 function SubResultForm({ x, t, files, canEdit, onClose, onSaved }) {
   const [text, setText] = useState(x.result_text || '')
-  const [picked, setPicked] = useState([])
+  const [uploading, setUploading] = useState(null)   // назви файлів, що вантажаться
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
+  // файл вантажиться одразу після вибору (не треба окремо «Зберегти»)
+  const upload = async (list) => {
+    if (!list.length) return
+    setUploading(list.map(f => f.name).join(', ')); setErr(null)
+    try { await uploadTaskFiles(t.id, x.id, list); await onSaved() } catch (e) { setErr(errText(e)) }
+    setUploading(null)
+  }
   const save = async (markDone) => {
     setBusy(true); setErr(null)
     try {
-      if (picked.length) await uploadTaskFiles(t.id, x.id, picked)
       const patch = {}
       if ((text || '') !== (x.result_text || '')) patch.result_text = text.trim() || null
       if (markDone && !x.done) patch.done = true
       if (Object.keys(patch).length) await updateSubtask(x.id, patch)
-      setPicked([]); await onSaved(); onClose()
+      await onSaved(); onClose()
     } catch (e) { setErr(errText(e)) }
     setBusy(false)
   }
@@ -776,10 +782,11 @@ function SubResultForm({ x, t, files, canEdit, onClose, onSaved }) {
           {canEdit && <button aria-label="Видалити файл" disabled={busy} onClick={() => del(f)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#9ca3af' }}>×</button>}
         </span>)}
       </div>}
-      {canEdit && <label style={{ fontSize: 12.5, color: '#4b5563', border: '1px dashed #c7d2fe', borderRadius: 8, padding: 10, textAlign: 'center', cursor: 'pointer' }}>
-        <input type="file" multiple style={{ display: 'none' }} onChange={e => { setPicked(p => [...p, ...Array.from(e.target.files || [])]); e.target.value = '' }} />
-        <i className="ti ti-upload" /> Оберіть файли · PDF, фото, скани до {MAX_FILE_MB} МБ
-        {picked.length > 0 && <div style={{ marginTop: 6, color: 'var(--text)' }}>{picked.map((f, i) => <span key={i} style={{ marginRight: 8 }}>📎 {f.name}</span>)}</div>}
+      {canEdit && <label
+        onDragOver={e => { e.preventDefault() }} onDrop={e => { e.preventDefault(); upload(Array.from(e.dataTransfer.files || [])) }}
+        style={{ fontSize: 12.5, color: '#4b5563', border: '1px dashed #c7d2fe', borderRadius: 8, padding: 10, textAlign: 'center', cursor: uploading ? 'wait' : 'pointer', background: uploading ? '#eef2ff' : 'transparent' }}>
+        <input type="file" multiple disabled={!!uploading} style={{ display: 'none' }} onChange={e => { const l = Array.from(e.target.files || []); e.target.value = ''; upload(l) }} />
+        {uploading ? <>⏳ Завантажую: {uploading}…</> : <><i className="ti ti-upload" /> Перетягніть файли сюди або оберіть · PDF, фото, скани до {MAX_FILE_MB} МБ</>}
       </label>}
       {err && <div style={{ color: 'var(--red)', fontSize: 12.5 }}>{err}</div>}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>

@@ -286,7 +286,10 @@ export async function uploadTaskFiles(taskId, subtaskId, files) {
     const { error: upErr } = await supabase.storage.from('documents').upload(path, f, { upsert: false, contentType: f.type || undefined })
     if (upErr) throw new Error(`Файл «${f.name}» не завантажено: ${upErr.message}`)
     const { error } = await supabase.from('task_files').insert({ task_id: taskId, subtask_id: subtaskId || null, storage_path: path, name: f.name, size: f.size, mime: f.type || null })
-    if (error) { await supabase.storage.from('documents').remove([path]); throw new Error(errText(error)) }
+    if (error) {
+      await supabase.storage.from('documents').remove([path])
+      throw new Error(/task_files|relation|schema cache/.test(error.message || '') ? 'Застосуйте міграцію 095 (результат підзадачі) — файл не збережено' : errText(error))
+    }
   }
 }
 export async function openTaskFile(row) {
