@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import TaskForm from '../components/TaskForm'
+import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { todayKyiv } from '../lib/dates'
 import {
@@ -70,8 +72,14 @@ export default function Tasks() {
     const q = parseQuick(quick, people, me)
     if (!q.title) { flash('Введіть текст задачі'); return }
     try {
+      let link = {}
+      if (q.orderNo) {   // «№1234» — прив'язати до замовлення
+        const { data: o } = await supabase.from('orders').select('id').eq('order_number', q.orderNo).limit(1).maybeSingle()
+        if (!o) { flash(`Замовлення №${q.orderNo} не знайдено`); return }
+        link = { entity_type: 'order', entity_id: o.id, entity_ref: `/orders/${o.id}` }
+      }
       const id = await createTask({ title: q.title.slice(0, 200), assignee_id: q.assignee, due_at: dueAtFrom(q.due, q.time), priority: q.priority,
-        requires_review: q.assignee !== me })
+        requires_review: q.assignee !== me, ...link })
       setQuick(''); await reload(); pick(id)
       if (q.assignee !== me) { setScope('created'); flash(`Призначено: ${personName(P(q.assignee))}. Результат прийматимете ви.`) } else flash('Задачу додано')
     } catch (e) { flash(errText(e)) }
@@ -88,6 +96,7 @@ export default function Tasks() {
             <span style={pill(s)}>{s.label}</span>
             <span style={d.style}>{d.label}</span>
             {t.entity_type === 'reconciliation' && <span style={{ background: '#eef2ff', color: '#3730a3', borderRadius: 6, padding: '1px 6px' }}>зі звірки</span>}
+            {t.entity_type === 'order' && <span style={{ background: '#ecfdf5', color: '#065f46', borderRadius: 6, padding: '1px 6px' }}><i className="ti ti-shopping-cart" /> №{t.order?.order_number || '…'}</span>}
             {t.source === 'bot' && <span><i className="ti ti-brand-telegram" /> з бота</span>}
             {t.requires_review && <span title="Результат приймає постановник">перевірка</span>}
             {t.comments > 0 && <span><i className="ti ti-message" /> {t.comments}</span>}
@@ -139,8 +148,8 @@ export default function Tasks() {
 
       <div className="card" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', padding: 10, marginBottom: 14 }}>
         <input ref={quickRef} className="form-input" value={quick} onChange={e => setQuick(e.target.value)} onKeyDown={e => e.key === 'Enter' && addQuick()}
-          placeholder="Швидко: «Надіслати акт ПРООН завтра 15:00 @Олена !високий»" style={{ flex: '1 1 320px', minWidth: 0, border: 'none' }} />
-        <span style={{ fontSize: 12, color: 'var(--text3)' }}>@ім'я — відповідальний · сьогодні / завтра / 25.10 · 15:00 · !високий / !терміново</span>
+          placeholder="Швидко: «Надіслати акт ПРООН завтра 15:00 @Олена !високий №1234»" style={{ flex: '1 1 320px', minWidth: 0, border: 'none' }} />
+        <span style={{ fontSize: 12, color: 'var(--text3)' }}>@ім'я — відповідальний · сьогодні / завтра / 25.10 · 15:00 · !високий / !терміново · №замовлення</span>
         <button className="btn" onClick={addQuick}>Додати</button>
       </div>
 
@@ -245,7 +254,7 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
     run(async () => { await addComment(t.id, `Повернуто на доопрацювання: ${draft.trim()}`); await updateTask(t.id, { status: 'in_progress' }) }, 'Повернуто на доопрацювання')
       .then(ok => { if (ok) { setForm(null); setDraft('') } })
   }
-  const recon = t.entity_ref || (t.description || '').match(/Звірка:\s*(\/inventory\/recon\?\S+)/)?.[1]
+  const recon = (t.entity_type === 'reconciliation' ? t.entity_ref : null) || (t.description || '').match(/Звірка:\s*(\/inventory\/recon\?\S+)/)?.[1]
   const desc = (t.description || '').replace(/\n*Звірка:\s*\/inventory\/recon\?\S+\s*$/, '')
   const btn = (bg, fg = '#fff', border = 'none') => ({ height: 38, padding: '0 14px', borderRadius: 8, border, background: bg, color: fg, fontWeight: 600, cursor: 'pointer', font: 'inherit' })
 
@@ -262,6 +271,8 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
         <h2 style={{ margin: 0, fontSize: 18, lineHeight: 1.3 }}>{t.title}</h2>
         {desc && <p style={{ margin: '8px 0 0', color: 'var(--text2)', fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-line' }}>{desc}</p>}
         {recon && <Link to={recon} style={{ fontSize: 13, display: 'inline-block', marginTop: 6 }}><i className="ti ti-arrows-exchange" /> Відкрити в звірці</Link>}
+        {t.entity_type === 'order' && t.entity_id && <Link to={`/orders/${t.entity_id}`} style={{ fontSize: 13, display: 'inline-block', marginTop: 6 }}>
+          <i className="ti ti-shopping-cart" /> Замовлення №{t.order?.order_number || t.entity_id.slice(0, 6)}{t.order?.contractors?.name ? ` · ${t.order.contractors.name}` : ''}</Link>}
       </div>
 
       {/* дії */}
@@ -359,63 +370,6 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
   )
 }
 
-// ── Створення / редагування ──
-function TaskForm({ task, people, me, onClose, onSaved }) {
-  const isEdit = !!task.id
-  const tmInit = task.due_at ? kyivTime(task.due_at) : ''
-  const [f, setF] = useState({
-    title: task.title || '', description: (task.description || '').replace(/\n*Звірка:\s*\/inventory\/recon\?\S+\s*$/, ''),
-    assignee_id: task.assignee_id || me, due: task.due_date || '', time: tmInit === '18:00' ? '' : tmInit, start_date: task.start_date || '',
-    priority: task.priority || 'normal', requires_review: task.requires_review ?? false,
-  })
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState(null)
-  const set = (k, v) => setF(x => ({ ...x, [k]: v }))
-  const keepRecon = (task.description || '').match(/\n*Звірка:\s*\/inventory\/recon\?\S+\s*$/)?.[0] || ''
-  const save = async () => {
-    if (!f.title.trim()) { setErr('Вкажіть, що зробити'); return }
-    setBusy(true); setErr(null)
-    const row = { title: f.title.trim().slice(0, 200), description: (f.description.trim() + keepRecon) || null, assignee_id: f.assignee_id || me,
-      due_at: dueAtFrom(f.due, f.time), start_date: f.start_date || null, priority: f.priority, requires_review: !!f.requires_review }
-    try {
-      if (isEdit) { await updateTask(task.id, row); onSaved(task.id) } else onSaved(await createTask(row))
-    } catch (e) { setErr(errText(e)) }
-    setBusy(false)
-  }
-  return (
-    <div className="modal-bg" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 560 }}>
-        <div className="modal-header"><h2>{isEdit ? 'Редагувати задачу' : 'Нова задача'}</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div className="form-group"><label>Що зробити * <span style={{ color: 'var(--text3)', fontWeight: 400 }}>{f.title.length}/200</span></label>
-            <input className="form-input" value={f.title} maxLength={200} autoFocus onChange={e => set('title', e.target.value)} /></div>
-          <div className="form-group"><label>Опис — постановка, очікуваний результат</label>
-            <textarea className="form-input" rows={3} value={f.description} onChange={e => set('description', e.target.value)} style={{ resize: 'vertical' }} /></div>
-          <div className="form-grid">
-            <div className="form-group"><label>Відповідальний *</label>
-              <select className="form-input" value={f.assignee_id || ''} onChange={e => { set('assignee_id', e.target.value); if (!isEdit) set('requires_review', e.target.value !== me) }}>
-                {people.map(p => <option key={p.id} value={p.id}>{personName(p)}</option>)}
-              </select></div>
-            <div className="form-group"><label>Пріоритет</label>
-              <select className="form-input" value={f.priority} onChange={e => set('priority', e.target.value)}>
-                {Object.entries(PRIORITY).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
-              </select></div>
-            <div className="form-group"><label>Термін</label><input type="date" className="form-input" value={f.due} onChange={e => set('due', e.target.value)} /></div>
-            <div className="form-group"><label>Час (без часу — 18:00)</label><input type="time" className="form-input" value={f.time} onChange={e => set('time', e.target.value)} /></div>
-            <div className="form-group"><label>Початок</label><input type="date" className="form-input" value={f.start_date} onChange={e => set('start_date', e.target.value)} /></div>
-            <div className="form-group"><label>&nbsp;</label>
-              <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 400 }}><input type="checkbox" checked={f.requires_review} onChange={e => set('requires_review', e.target.checked)} /> Потребує перевірки (приймає постановник)</label></div>
-          </div>
-          {err && <div style={{ color: 'var(--red)', fontSize: 13 }}>{err}</div>}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button className="btn" onClick={onClose}>Скасувати</button>
-            <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? '…' : 'Зберегти'}</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // ── Нагадування в картці: за 24 год / за 1 год до терміну (відповідальному) + «Нагадати мені…» ──
 function Reminders({ t, canEdit, busy, run, flash }) {

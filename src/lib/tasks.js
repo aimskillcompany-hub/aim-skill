@@ -69,7 +69,10 @@ export function parseQuick(raw, people, meId) {
   if (tm) { time = `${tm[1].padStart(2, '0')}:${tm[2]}`; text = text.replace(tm[0], ' '); if (!due) due = today }
   const pr = [[/\s!термінов\S*/i, 'urgent'], [/\s!висок\S*/i, 'high'], [/\s!низьк\S*/i, 'low']]
   for (const [re, v] of pr) if (re.test(text)) { priority = v; text = text.replace(re, ' ') }
-  return { title: text.replace(/\s+/g, ' ').trim(), assignee, due, time, priority }
+  let orderNo = null
+  const om = text.match(/\s[№#]\s?([\w\-\/]+)/)
+  if (om) { orderNo = om[1]; text = text.replace(om[0], ' ') }
+  return { title: text.replace(/\s+/g, ' ').trim(), assignee, due, time, priority, orderNo }
 }
 
 // ── дані ──
@@ -89,7 +92,14 @@ export async function loadTasks() {
   const watchers = {}, comments = {}
   ;(w.data || []).forEach(x => { (watchers[x.task_id] ||= []).push(x.user_id) })
   ;(c.data || []).forEach(x => { comments[x.task_id] = (comments[x.task_id] || 0) + 1 })
-  return tasks.map(t => ({ ...t, watchers: watchers[t.id] || [], comments: comments[t.id] || 0 }))
+  // замовлення, до яких прив'язані задачі (№ і клієнт — для посилання)
+  const orderIds = [...new Set(tasks.filter(t => t.entity_type === 'order' && t.entity_id).map(t => t.entity_id))]
+  const orders = {}
+  if (orderIds.length) {
+    const { data: os } = await supabase.from('orders').select('id, order_number, contractors(name)').in('id', orderIds)
+    ;(os || []).forEach(o => { orders[o.id] = o })
+  }
+  return tasks.map(t => ({ ...t, watchers: watchers[t.id] || [], comments: comments[t.id] || 0, order: t.entity_type === 'order' ? orders[t.entity_id] || null : null }))
 }
 
 export const errText = (e) => {
