@@ -61,3 +61,11 @@
   .rpt-table tfoot td { padding: 0 !important; border: 0 !important; }
   .rpt-table tfoot td:first-child, .rpt-table tfoot td:nth-child(3), .rpt-table tfoot td:last-child { display: none; }
 }
+
+/* «Для бухгалтера»: пакет за місяць (ТЗ 5.4) */
+.acc-pack { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; background: var(--ink); color: var(--surface); border-radius: var(--r-card); padding: 18px 22px; margin-bottom: 16px; }
+.acc-pack-t { display: flex; flex-direction: column; gap: 3px; flex: 1 1 280px; min-width: 0; }
+.acc-pack-t span, .acc-pack-t small { font-size: 12px; color: var(--on-dark-muted); }
+.acc-pack-t b { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.acc-pack-m { width: 170px; background: var(--ink-field); border-color: var(--ink-line); color: var(--surface); color-scheme: dark; }
+@media (max-width: 767px) { .acc-pack .btn { width: 100%; justify-content: center; } .acc-pack-m { width: 100%; } }
