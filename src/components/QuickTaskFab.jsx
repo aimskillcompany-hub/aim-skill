@@ -31,7 +31,7 @@ export default function QuickTaskFab() {
           <button onClick={() => setDone(null)} aria-label="Закрити" style={{ marginLeft: 8, background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer' }}>×</button>
         </div>}
         <button onClick={() => { setDone(null); setOpen(true) }} title={ctx ? `Нова задача (буде прив'язана ${ctx.label})` : 'Нова задача'} aria-label="Створити задачу"
-          style={{ height: 52, minWidth: 52, padding: '0 18px', borderRadius: 999, border: 'none', background: '#111827', color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer',
+          style={{ height: 52, minWidth: 52, padding: '0 18px', borderRadius: 999, border: 'none', background: 'var(--primary)', color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer',
             display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', boxShadow: '0 8px 24px rgba(17,24,39,.3)', fontFamily: 'inherit' }}>
           <i className="ti ti-plus" style={{ fontSize: 20 }} /><span className="lbl">Задача</span>
         </button>

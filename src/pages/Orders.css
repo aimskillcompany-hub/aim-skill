@@ -11,7 +11,7 @@
 .orders-pills { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 
 .orders-task-badge { margin-left: 6px; border: none; cursor: pointer; border-radius: var(--radius-sm); padding: 1px 6px; font-size: 11px; font-weight: 700;
-  background: var(--blue-soft); color: #3730a3; display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; }
+  background: var(--primary-soft); color: var(--primary-hover); display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; }
 .orders-task-badge .ti { font-size: 13px; }
 .orders-task-badge.is-late { background: var(--danger-bg); color: var(--danger); }
 .orders-task-badge:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
