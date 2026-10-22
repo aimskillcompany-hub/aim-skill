@@ -6,6 +6,8 @@ import { clearCompanyCache } from '../lib/companyConfig'
 import { useCompany } from '../lib/company'
 import { invalidateCache, PL_ORDER, PL_LABELS } from '../lib/articles'
 import { ROLES, ROLE_LABELS, ROLE_HINTS } from '../lib/permissions'
+import { useNewUi } from '../lib/uiPrefs'
+import SettingsNew from './SettingsNew'
 
 const TABS = [
   { id: 'company', label: 'Реквізити', icon: 'ti-building' },
@@ -16,6 +18,8 @@ const TABS = [
 
 export default function Settings() {
   const [tab, setTab] = useState('company')
+  const newUi = useNewUi()
+  if (newUi) return <SettingsNew CompanyTab={CompanyTab} UsersTab={UsersTab} />
   return (
     <div>
       <div className="page-header"><h1>Налаштування</h1></div>

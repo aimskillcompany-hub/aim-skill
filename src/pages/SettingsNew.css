@@ -1,0 +1,33 @@
+/* «Налаштування» — новий інтерфейс. Лише токени. */
+.stn h2 { margin: 0; font-size: 17px; font-weight: 700; } .stn h2 small { color: var(--muted); font-weight: 500; font-size: 13px; margin-left: 6px; }
+.stn-body { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 20px; align-items: start; }
+.stn-nav { display: flex; flex-direction: column; gap: 6px; position: sticky; top: 16px; }
+.stn-nav button { display: flex; gap: 12px; align-items: flex-start; text-align: left; padding: 12px 14px; border-radius: 16px; border: 1px solid transparent; background: none; font: inherit; color: var(--text); cursor: pointer; }
+.stn-nav button:hover { background: var(--surface); }
+.stn-nav button[aria-current="page"] { background: var(--surface); border-color: var(--border); }
+.stn-nav i { font-size: 20px; color: var(--muted); margin-top: 1px; } .stn-nav button[aria-current="page"] i { color: var(--brand); }
+.stn-nav span { display: flex; flex-direction: column; gap: 2px; } .stn-nav small { font-size: 12px; color: var(--muted); }
+.stn-main, .stn-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.stn-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; } .stn-bar .rpt-sub { margin: 0; }
+.stn-cos { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.stn-co { display: flex; gap: 12px; align-items: center; text-align: left; padding: 14px 16px; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); font: inherit; color: var(--text); cursor: pointer; min-width: 0; }
+.stn-co[aria-pressed="true"] { border: 2px solid var(--brand); padding: 13px 15px; }
+.stn-co span:last-child { display: flex; flex-direction: column; min-width: 0; } .stn-co small { font-size: 12px; color: var(--muted); }
+.stn-co-av { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand-dark); font-weight: 700; flex: none; }
+.stn-group ul { list-style: none; margin: 10px 0 0; padding: 0; }
+.stn-group li { display: flex; align-items: center; gap: 10px; min-height: 46px; border-top: 1px solid var(--divider); background: var(--surface); }
+.stn-group li.is-drag { opacity: .4; }
+.stn-grip { color: var(--muted-2); cursor: grab; }
+.stn-a-name { flex: 1; min-width: 0; display: flex; flex-direction: column; } .stn-a-name small { font-size: 11px; color: var(--muted); }
+.stn-arrows { display: inline-flex; }
+.stn-dry { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; font-size: 14px; } .stn-dry p { margin: 0; }
+.stn-months { list-style: none; margin: 0; padding: 0; max-height: 200px; overflow: auto; }
+.stn-months li { display: flex; justify-content: space-between; padding: 6px 0; border-top: 1px solid var(--divider); font-size: 13px; }
+.stn-accs { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.stn-acc { display: flex; flex-direction: column; gap: 6px; } .stn-acc.is-off { opacity: .6; }
+.stn-acc-h { display: flex; align-items: center; gap: 8px; } .stn-acc-h b { flex: 1; } .stn-acc-h i { color: var(--muted); font-size: 18px; }
+.stn-acc-b { display: flex; flex-direction: column; } .stn-acc-b small { font-size: 12px; color: var(--muted); } .stn-acc-b b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.stn-acc-s { font-size: 12px; color: var(--muted); padding: 6px 10px; border-radius: 10px; background: var(--surface-sunken); }
+.stn-acc-s.is-warn { background: var(--warn-bg); color: var(--warn-fg); font-weight: 600; }
+.stn-matrix .c { text-align: center; } .stn-yes { color: var(--brand); font-size: 18px; } .stn-no { color: var(--muted-2); }
+@media (max-width: 1023px) { .stn-body { grid-template-columns: minmax(0, 1fr); } .stn-nav { position: static; flex-direction: row; overflow-x: auto; } .stn-nav button { flex: 0 0 auto; } .stn-nav small { display: none; } }
