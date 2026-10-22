@@ -16,14 +16,17 @@ export const TONES = {
 // Ключ — код статусу в базі (orders.status); результат архівування — won / lost (orders.outcome)
 export const ORDER_STATUS_TONE = {
   new: 'neutral',               // Новий
-  tender: 'progress',           // Тендер
+  tender: 'attention',          // Тендер — у застосунку позначений як етап, що потребує дії (accent)
   processing: 'progress',       // В опрацюванні
   needs_contract: 'attention',  // Потребує договір
   ordering_supplier: 'progress',// Замовлення у дистрибютора
   shipped: 'progress',          // Відвантажено
   needs_payment: 'attention',   // Потребує оплати
-  paid: 'progress',             // Оплачено — ще не фінальний етап (далі «Закрито»); див. відкриті питання
+  paid: 'success',              // Оплачено (далі ще «Закрито»; див. відкриті питання)
   closed: 'success',            // Закрито
+  // легасі-коди до міграції 032 — тон за етапом, на який вони відображаються
+  proposal_sent: 'progress', confirmed: 'progress', contract_signed: 'progress', invoiced: 'progress', paid_partial: 'progress',
+  client_transferred: 'progress', deal_done: 'progress', in_transit: 'progress', ready_to_ship: 'progress', docs_received: 'progress',
   won: 'success',               // результат: Виконано
   lost: 'danger',               // результат: Програно
 }

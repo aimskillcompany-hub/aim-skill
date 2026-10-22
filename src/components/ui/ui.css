@@ -22,6 +22,10 @@
 .ui-ph-left { min-width: 0; flex: 1 1 260px; }
 .ui-ph-left p { font-size: 14px; color: var(--text2); margin-top: 6px; }
 .ui-ph-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
+@media (max-width: 768px) {
+  .ui-ph-actions { width: 100%; flex-shrink: 1; }
+  .ui-ph-actions > .btn:not(.btn-icon) { flex: 1 1 0; width: auto; min-width: 0; }
+}
 .ui-crumbs { display: flex; gap: 6px; font-size: 14px; color: var(--text2); flex-wrap: wrap; margin-bottom: 4px; }
 .ui-crumbs a { color: var(--text2); text-decoration: none; }
 .ui-crumbs a:hover { color: var(--text); }
@@ -54,7 +58,7 @@
 .ui-seg-btn:hover { color: var(--text); }
 .ui-seg-btn[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, .12); }
 .ui-seg-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
-.ui-seg-count { color: var(--text2); font-weight: 500; }
+.ui-seg-count { color: var(--text-strong2); font-weight: 500; opacity: .85; }
 .ui-segmented-sm .ui-seg-btn { height: 26px; padding: 0 10px; font-size: 12px; }
 @media (pointer: coarse) { .ui-seg-btn { min-height: var(--h-touch); } }
 

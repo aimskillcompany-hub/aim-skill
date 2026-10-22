@@ -447,6 +447,7 @@ textarea.form-input { height: auto; min-height: var(--h-control); padding: 8px 1
 
   .btn { width: 100%; min-height: var(--h-touch); }
   .btn-sm { min-height: var(--h-touch); width: auto; }
+  .btn.btn-icon { width: var(--h-touch); flex: 0 0 auto; }
   .btn-row { flex-direction: column; gap: 8px; }
 
   /* 16 px — щоб iOS не збільшував сторінку при фокусі; висота під палець */
