@@ -72,3 +72,10 @@ export function formatShort(v) {
   if (a >= 1e3) return pre + nf(0).format(Math.round(a / 1e3)) + NNBSP + 'тис'
   return pre + nf(0).format(Math.round(a))
 }
+
+// Відмінювання за числом: plural(1, ['позиція', 'позиції', 'позицій']) → «позиція»; 3 → «позиції»; 5, 11 → «позицій»
+export function plural(n, [one, few, many]) {
+  const a = Math.abs(Math.trunc(Number(n) || 0)), m100 = a % 100, m10 = a % 10
+  if (m100 > 10 && m100 < 20) return many
+  return m10 === 1 ? one : m10 >= 2 && m10 <= 4 ? few : many
+}

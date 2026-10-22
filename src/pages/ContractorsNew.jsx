@@ -3,7 +3,7 @@
 // «Дебіторка» (lib/receivables), станом на сьогодні. Лише читання.
 import { useEffect, useMemo, useState } from 'react'
 import { Segmented, Button, KpiTile, EmptyState, TableSkeleton } from '../components/ui'
-import { formatAmount } from '../utils/format'
+import { formatAmount, plural } from '../utils/format'
 import { todayKyiv } from '../lib/dates'
 import { loadReceivablesAsOf, groupReceivables } from '../lib/receivables'
 import { initials } from '../components/AppShell'
@@ -21,8 +21,6 @@ function ago(iso) {
   if (m < 12) return { label: `${m} міс. тому`, old: m > 6 }
   return { label: 'понад рік тому', old: true }
 }
-// 1 контрагент · 2 контрагенти · 5 контрагентів
-const plural = (n, [one, few, many]) => { const a = n % 100, b = n % 10; return a > 10 && a < 20 ? many : b === 1 ? one : b >= 2 && b <= 4 ? few : many }
 const typeOf = (c) => c.is_client && c.is_supplier ? 'both' : c.is_client ? 'client' : c.is_supplier ? 'supplier' : 'none'
 
 export default function ContractorsNew({ list, loading, q, setQ, filter, setFilter, companies, onNew, navigate }) {

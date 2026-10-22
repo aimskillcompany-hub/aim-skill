@@ -156,6 +156,7 @@ textarea.form-input { height: auto; min-height: var(--h-control); padding: 8px 1
 .btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
 .btn > .ti { font-size: 16px; }
+a.btn { text-decoration: none; }
 .btn-primary { background: var(--blue); color: #fff; border-color: var(--blue); }
 .btn-primary:hover:not(:disabled) { background: var(--blue-hover); border-color: var(--blue-hover); }
 /* brand — зелена (позитивна дія: «Розподілити», «Підтвердити»); у новому інтерфейсі primary — ink (ТЗ, розділ 2) */
