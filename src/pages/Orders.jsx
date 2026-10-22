@@ -8,7 +8,7 @@ import { fmt } from '../lib/fmt'
 
 const fmtDate = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('.') : ''
 import {
-  ORDER_TYPES, OUTCOME, statusLabel,
+  ORDER_TYPES, OUTCOME, statusLabel, STATUS_ORDER,
   proposalOverdue, paymentOverdue,
 } from '../lib/orders'
 import { autoLinkPayment } from '../lib/orderPayments'
@@ -18,6 +18,8 @@ import { useSort, SortTh } from '../components/Sort'
 import { PageHeader, Segmented, StatusPill, TableSkeleton, EmptyState, Modal, Button, useToast } from '../components/ui'
 import { formatMoney, formatDate } from '../utils/format'
 import './Orders.css'
+import OrdersNew from './OrdersNew'
+import { useNewUi } from '../lib/uiPrefs'
 
 export default function Orders() {
   const navigate = useNavigate()
@@ -29,6 +31,10 @@ export default function Orders() {
   const [filter, setFilter] = useState('all')
   const [view, setView] = useState('table') // table | kanban
   const [showNew, setShowNew] = useState(false)
+  // новий інтерфейс: фільтр за менеджером і етапом (плитки) — лише відбір на клієнті
+  const newUi = useNewUi()
+  const [manager, setManager] = useState('')
+  const [stage, setStage] = useState(null)
 
   const load = async () => {
     setLoading(true)
@@ -136,10 +142,12 @@ export default function Orders() {
       else if (filter === 'lost') { if (!lost) return false }           // Програні
       else { if (done) return false }                                    // усі інші фільтри — лише в роботі
       if (filter === 'mine' && o.manager_id !== user?.id) return false
+      if (manager && o.managerName !== manager) return false
+      if (stage && (o.archived_at || o.status !== stage)) return false
       if (!term) return true
       return o.clientName.toLowerCase().includes(term) || (o.order_number || '').toLowerCase().includes(term)
     })
-  }, [orders, q, filter])
+  }, [orders, q, filter, manager, stage])
 
   const { sort, onSort, sorted } = useSort('order_number', 'asc')
   const sortedOrders = sorted(filtered, {
@@ -152,6 +160,7 @@ export default function Orders() {
     manager: o => o.managerName || '',
     type: o => ORDER_TYPES[o.type] || '',
     status: o => statusLabel(o),
+    stage: o => STATUS_ORDER.indexOf(o.status),
     total: o => Number(o.total) || 0,
   })
 
@@ -175,6 +184,18 @@ export default function Orders() {
     { value: 'kanban', label: 'Канбан', icon: 'ti-layout-kanban' },
     { value: 'report', label: 'Звіт', icon: 'ti-report' },
   ]
+
+  if (newUi) return (
+    <>
+      <OrdersNew orders={orders} rows={sortedOrders} loading={loading} q={q} setQ={setQ} filter={filter} setFilter={setFilter} filters={FILTERS}
+        view={view} setView={setView} views={VIEWS} manager={manager} setManager={setManager} stage={stage} setStage={setStage}
+        linking={linking} autoLinkPayments={autoLinkPayments} onNew={() => setShowNew(true)} navigate={navigate}
+        flags={{ toggleInvestor, toggleForecast, toggleCommission }} sort={sort} onSort={onSort}
+        kanban={<Kanban orders={filtered} type={filter} onOpen={(id) => navigate(`/orders/${id}`)} />}
+        report={<OrderReport />} />
+      {showNew && <NewOrderModal onClose={() => setShowNew(false)} onCreated={(id) => { setShowNew(false); navigate(`/orders/${id}`) }} />}
+    </>
+  )
 
   return (
     <div>
