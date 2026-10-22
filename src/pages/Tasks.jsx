@@ -6,6 +6,8 @@ import {
   STATUS, PRIORITY, RESULT, GROUPS, ACTIVE, bucket, isOverdue, shortDate, kyivTime, dueAtFrom, parseQuick,
   loadPeople, loadTasks, createTask, updateTask, deleteTask, addWatcher, removeWatcher, addComment, loadFeed,
   describeActivity, personName, initials, avatarColor, errText,
+  loadNotifications, markNotificationsRead, subscribeNotifications, NOTIFY_PREFS, loadMyNotifySettings, saveNotifyPrefs,
+  telegramLinkUrl, telegramUnlink, remindMe,
 } from '../lib/tasks'
 
 // Планер задач (ТЗ 22.10.2026, етап 1): відповідальний, спостерігачі, статуси з перевіркою, результат, коментарі, історія.
@@ -37,6 +39,15 @@ export default function Tasks() {
   const [err, setErr] = useState(null)
   const [edit, setEdit] = useState(null)
   const quickRef = useRef(null)
+  const [notifs, setNotifs] = useState([])
+  const [bell, setBell] = useState(false)
+  const [settings, setSettings] = useState(false)
+  useEffect(() => {
+    if (!me) return
+    loadNotifications(me).then(setNotifs)
+    return subscribeNotifications(me, (n) => { setNotifs(x => [n, ...x].slice(0, 40)); reload() })
+  }, [me])
+  const unread = notifs.filter(n => !n.read_at).length
 
   const reload = () => loadTasks().then(setTasks).catch(e => { setErr(errText(e)); setTasks([]) })
   useEffect(() => { reload(); loadPeople().then(setPeople) }, [])
@@ -95,6 +106,31 @@ export default function Tasks() {
             Активних: <b>{active.length}</b> · прострочено: <b style={{ color: '#b91c1c' }}>{active.filter(t => isOverdue(t)).length}</b> · на перевірці: <b>{active.filter(t => t.status === 'review').length}</b>
           </div>
         </div>
+        <div style={{ position: 'relative' }}>
+          <button className="btn" aria-label="Сповіщення" onClick={() => setBell(b => !b)} style={{ position: 'relative' }}>
+            <i className="ti ti-bell" />
+            {unread > 0 && <span style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 999, background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{unread}</span>}
+          </button>
+          {bell && <div role="dialog" aria-label="Сповіщення" style={{ position: 'absolute', right: 0, top: 46, width: 380, maxWidth: '90vw', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 12px 32px rgba(17,24,39,.15)', zIndex: 20, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
+              <b style={{ fontSize: 14 }}>Сповіщення</b>
+              <span style={{ display: 'flex', gap: 6 }}>
+                {unread > 0 && <button className="btn btn-sm" onClick={async () => { await markNotificationsRead(me); setNotifs(x => x.map(n => ({ ...n, read_at: n.read_at || new Date().toISOString() }))) }}>Прочитати всі</button>}
+                <button className="btn btn-sm" onClick={() => { setBell(false); setSettings(true) }} title="Налаштування сповіщень і Telegram"><i className="ti ti-settings" /></button>
+              </span>
+            </div>
+            <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+              {notifs.length === 0 && <div style={{ padding: 14, fontSize: 13, color: 'var(--text3)' }}>Сповіщень немає</div>}
+              {notifs.map(n => <button key={n.id} onClick={async () => { if (!n.read_at) { await markNotificationsRead(me, [n.id]); setNotifs(x => x.map(y => y.id === n.id ? { ...y, read_at: new Date().toISOString() } : y)) } if (n.task_id) pick(n.task_id); setBell(false) }}
+                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', border: 'none', borderBottom: '1px solid var(--border)', background: n.read_at ? 'var(--surface)' : 'var(--blue-bg, #eff6ff)', cursor: 'pointer', font: 'inherit', color: 'var(--text)' }}>
+                <div style={{ fontSize: 13, fontWeight: n.read_at ? 400 : 600 }}>{n.title}</div>
+                {n.body && <div style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 2 }}>{n.body}</div>}
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>{shortDate(String(n.created_at).slice(0, 10))} {kyivTime(n.created_at)}</div>
+              </button>)}
+            </div>
+          </div>}
+        </div>
+        <button className="btn" onClick={() => setSettings(true)}><i className="ti ti-brand-telegram" /> Сповіщення</button>
         <button className="btn" onClick={() => setEdit({ priority: 'normal', assignee_id: me })}><i className="ti ti-forms" /> Детальна форма</button>
         <button className="btn btn-primary" onClick={() => quickRef.current?.focus()}><i className="ti ti-plus" /> Нова задача</button>
       </div>
@@ -160,6 +196,7 @@ export default function Tasks() {
         </div>
         {sel && <TaskPanel key={sel.id} task={sel} people={people} me={me} isAdmin={user?.role === 'admin'} onClose={() => pick(null)} onChanged={reload} flash={flash} onEdit={() => setEdit(sel)} />}
       </div>
+      {settings && <NotifySettings me={me} onClose={() => setSettings(false)} />}
       {edit && <TaskForm task={edit} people={people} me={me} onClose={() => setEdit(null)} onSaved={(id) => { setEdit(null); reload(); if (id) pick(id) }} />}
     </div>
   )
@@ -289,6 +326,9 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
         </label>
       </div>
 
+      {/* нагадування */}
+      {ACTIVE(t) && <Reminders t={t} canEdit={canEdit} busy={busy} run={run} flash={flash} />}
+
       {/* коментарі та історія */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
         <div style={{ fontWeight: 600, fontSize: 13 }}>Коментарі та історія</div>
@@ -364,6 +404,77 @@ function TaskForm({ task, people, me, onClose, onSaved }) {
             <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? '…' : 'Зберегти'}</button>
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Нагадування в картці: за 24 год / за 1 год до терміну (відповідальному) + «Нагадати мені…» ──
+function Reminders({ t, canEdit, busy, run, flash }) {
+  const offs = t.remind_offsets || [1440, 60]
+  const [at, setAt] = useState('')
+  const toggle = (m) => run(() => updateTask(t.id, { remind_offsets: offs.includes(m) ? offs.filter(x => x !== m) : [...offs, m].sort((a, b) => b - a) }),
+    offs.includes(m) ? 'Нагадування вимкнено' : 'Нагадування увімкнено — прийде в додаток і Telegram')
+  const chip = (on) => ({ height: 30, padding: '0 12px', borderRadius: 999, cursor: canEdit ? 'pointer' : 'default', fontSize: 12, fontWeight: 600, font: 'inherit',
+    border: `1px solid ${on ? '#2563eb' : 'var(--border)'}`, background: on ? '#eff6ff' : 'var(--surface)', color: on ? '#1d4ed8' : 'var(--text2)' })
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ fontWeight: 600, fontSize: 13 }}>Нагадування</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+        {[[1440, 'За 24 год'], [60, 'За 1 год']].map(([m, l]) => <button key={m} disabled={!canEdit || busy || !t.due_at} style={chip(offs.includes(m))} onClick={() => toggle(m)} aria-pressed={offs.includes(m)}>{l}</button>)}
+        <span style={{ fontSize: 12, color: 'var(--text3)' }}>+ у момент терміну; прострочені — щодня о 09:00</span>
+      </div>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, color: 'var(--text2)' }}>Нагадати мені</span>
+        <input type="datetime-local" className="form-input" value={at} onChange={e => setAt(e.target.value)} style={{ padding: '4px 8px', fontSize: 13, height: 34, width: 200 }} />
+        <button className="btn btn-sm" disabled={!at || busy} onClick={() => run(() => remindMe(t.id, at), 'Нагадаю в додатку та Telegram').then(ok => ok && setAt(''))}>OK</button>
+      </div>
+      {!t.due_at && <div style={{ fontSize: 12, color: 'var(--text3)' }}>Задайте термін, щоб працювали нагадування до терміну.</div>}
+    </div>
+  )
+}
+
+// ── Налаштування сповіщень і підключення Telegram (кожен — для себе) ──
+function NotifySettings({ me, onClose }) {
+  const [st, setSt] = useState(null)
+  const [err, setErr] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const load = () => loadMyNotifySettings(me).then(setSt).catch(e => setErr(errText(e)))
+  useEffect(() => { load() }, [me])
+  const toggle = async (k) => {
+    const prefs = { ...st.prefs, [k]: st.prefs[k] === false }
+    setSt({ ...st, prefs })
+    try { await saveNotifyPrefs(prefs) } catch (e) { setErr(errText(e)) }
+  }
+  const connect = async () => {
+    setBusy(true); setErr(null)
+    try { window.open(await telegramLinkUrl(), '_blank') } catch (e) { setErr(errText(e)) }
+    setBusy(false)
+  }
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
+        <div className="modal-header"><h2 style={{ fontSize: 16 }}>Сповіщення</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
+        {!st ? <p style={{ color: 'var(--text3)' }}>Завантаження…</p> : <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontSize: 13 }}>
+          <div className="card" style={{ padding: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <i className="ti ti-brand-telegram" style={{ fontSize: 20, color: '#229ED9' }} />
+              <b style={{ flex: 1 }}>Telegram {st.linked ? '— підключено' : '— не підключено'}</b>
+              {st.linked
+                ? <button className="btn btn-sm" disabled={busy} onClick={async () => { await telegramUnlink().catch(e => setErr(errText(e))); load() }}>Відключити</button>
+                : <button className="btn btn-primary btn-sm" disabled={busy} onClick={connect}>{busy ? '…' : 'Підключити Telegram'}</button>}
+            </div>
+            {!st.linked && <div style={{ color: 'var(--text3)', marginTop: 6 }}>Відкриється бот — натисніть у ньому «Start». Посилання діє 15 хвилин. Потім оновіть це вікно.</div>}
+            {st.linked && <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={load}>Оновити</button>}
+          </div>
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>Що надсилати в Telegram</div>
+            {NOTIFY_PREFS.map(([k, l]) => <label key={k} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '5px 0', cursor: 'pointer' }}>
+              <input type="checkbox" checked={st.prefs[k] !== false} onChange={() => toggle(k)} /> {l}</label>)}
+            <div style={{ color: 'var(--text3)', marginTop: 6 }}>У додатку (дзвіночок) видно всі сповіщення. Тихі години 22:00–08:00 — Telegram-повідомлення приходять вранці.</div>
+          </div>
+          {err && <div style={{ color: 'var(--red)' }}>{err}</div>}
+        </div>}
       </div>
     </div>
   )

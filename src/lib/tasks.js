@@ -96,6 +96,7 @@ export const errText = (e) => {
   const m = e?.message || String(e || '')
   if (/tasks_status_check|assignee_id|task_watchers|RESULT_REQUIRED|REVIEW_REQUIRED/.test(m)) return m.replace(/^[A-Z_]+:\s*/, '')
   if (/column .* does not exist|relation .*task_/.test(m)) return 'Застосуйте міграцію 092 (планер задач)'
+  if (/notifications|telegram_link_code|set_notify_prefs|task_remind_me|schema cache/.test(m)) return 'Застосуйте міграцію 093 (нагадування)'
   return m
 }
 
@@ -163,4 +164,55 @@ export async function myTaskBadge(userId) {
   if (error) return 0
   const today = todayKyiv()
   return (data || []).filter(t => isOverdue(t) || t.due_date === today).length
+}
+
+// ── сповіщення (етап 2, міграція 093) ──
+export async function loadNotifications(userId) {
+  if (!userId) return []
+  const { data } = await supabase.from('notifications').select('id, task_id, kind, title, body, read_at, created_at').eq('user_id', userId)
+    .order('created_at', { ascending: false }).limit(40)
+  return data || []
+}
+export async function markNotificationsRead(userId, ids = null) {
+  let q = supabase.from('notifications').update({ read_at: new Date().toISOString() }).eq('user_id', userId).is('read_at', null)
+  if (ids) q = q.in('id', ids)
+  await q
+}
+// нові сповіщення одразу (Supabase Realtime); повертає функцію відписки
+export function subscribeNotifications(userId, onNew) {
+  if (!userId) return () => {}
+  const ch = supabase.channel('notif-' + userId)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` }, (p) => onNew(p.new))
+    .subscribe()
+  return () => { supabase.removeChannel(ch) }
+}
+export const NOTIFY_PREFS = [
+  ['assigned', 'Мені призначили задачу'], ['due', 'Термін наближається / настав'], ['overdue', 'Задачу прострочено (щодня о 09:00)'],
+  ['review', 'Перевірка: здано / прийнято / повернуто'], ['comment', 'Коментарі та @згадки'], ['digest', 'Ранковий дайджест (робочі дні 08:30)'],
+]
+export async function loadMyNotifySettings(userId) {
+  const { data } = await supabase.from('profiles').select('telegram_chat_id, notify_prefs').eq('id', userId).maybeSingle()
+  return { linked: !!data?.telegram_chat_id, prefs: data?.notify_prefs || {} }
+}
+export async function saveNotifyPrefs(prefs) {
+  const { error } = await supabase.rpc('set_notify_prefs', { p: prefs })
+  if (error) throw new Error(errText(error))
+}
+// «Підключити Telegram»: одноразовий код (15 хв) → посилання на бота
+export async function telegramLinkUrl() {
+  const [{ data: code, error }, me] = await Promise.all([
+    supabase.rpc('telegram_link_code'),
+    fetch('/api/telegram?me=1').then(r => r.json()).catch(() => ({})),
+  ])
+  if (error) throw new Error(errText(error))
+  if (!me?.username) throw new Error('Не вдалося визначити бота (перевірте TELEGRAM_BOT_TOKEN у Vercel)')
+  return `https://t.me/${me.username}?start=${code}`
+}
+export async function telegramUnlink() {
+  const { error } = await supabase.rpc('telegram_unlink')
+  if (error) throw new Error(errText(error))
+}
+export async function remindMe(taskId, isoLocal) {
+  const { error } = await supabase.rpc('task_remind_me', { p_task: taskId, p_at: new Date(isoLocal).toISOString(), p_kind: 'custom' })
+  if (error) throw new Error(errText(error))
 }

@@ -60,6 +60,14 @@ const setSession = (admin, tgId, state) => admin.from('bot_sessions').upsert({ t
 const clearSession = (admin, tgId) => admin.from('bot_sessions').delete().eq('telegram_id', tgId)
 
 const isAllowed = (id) => ALLOWED.length === 0 ? false : ALLOWED.includes(String(id))
+// Працівник, що прив'язав Telegram у «Задачі» → «Сповіщення» (093): бачить лише свої задачі й нагадування
+async function profileByChat(admin, chatId) {
+  const { data } = await admin.from('profiles').select('id, full_name').eq('telegram_chat_id', chatId).maybeSingle()
+  return data || null
+}
+const STAFF_KB = { keyboard: [['📋 Мої задачі']], resize_keyboard: true }
+const TASK_CB = /^(taskdone|taskview|snooze1h|snoozetm|mytasks)/
+const kyivTomorrow9 = () => new Date(`${kyivToday(1)}T09:00:00+0${new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kyiv', timeZoneName: 'shortOffset' }).format(new Date()).match(/GMT\+(\d)/)?.[1] || 2}:00`).toISOString()
 
 // ── Створення заявки (клієнта НЕ створюємо автоматично) ──
 async function createOrder(admin, s) {
@@ -171,11 +179,13 @@ async function ownerProfileId(admin) {
   const { data } = await admin.from('profiles').select('id').eq('role', 'admin').order('created_at').limit(1).maybeSingle()
   return (_owner = data?.id || null)
 }
-async function showTasks(admin, chatId) {
+async function showTasks(admin, chatId, profileId) {
   const today = kyivToday()
-  const { data } = await admin.from('tasks').select('id, title, due_date, priority')
+  let q = admin.from('tasks').select('id, title, due_date, priority')
     .not('status', 'in', '(done,cancelled)').order('due_date', { nullsFirst: false }).limit(25)
-  if (!data?.length) return send(chatId, '✅ Активних задач немає. Додати — «➕ Задача».', { reply_markup: MAIN_KB })
+  if (profileId) q = q.eq('assignee_id', profileId)
+  const { data } = await q
+  if (!data?.length) return send(chatId, profileId ? '✅ Активних задач на вас немає.' : '✅ Активних задач немає. Додати — «➕ Задача».', { reply_markup: profileId ? STAFF_KB : MAIN_KB })
   const rows = data.map(t => {
     const late = t.due_date && t.due_date < today
     const mark = late ? '⚠️' : t.priority === 'high' ? '🔴' : '•'
@@ -208,6 +218,19 @@ function parseDue(text) {
   return undefined // не розпізнано
 }
 
+// Результат задачі з чату: перевірка потрібна, якщо закриває не постановник
+async function handleTaskResult(admin, chatId, fromId, s, text) {
+  const { data: t } = await admin.from('tasks').select('requires_review, created_by').eq('id', s.id).maybeSingle()
+  const me = await profileByChat(admin, fromId)
+  const status = t?.requires_review && !(me && me.id === t.created_by) ? 'review' : 'done'
+  const { error } = await admin.from('tasks').update({ result_text: text, result_type: 'full', status }).eq('id', s.id)
+  await clearSession(admin, fromId)
+  const kb = isAllowed(fromId) ? MAIN_KB : STAFF_KB
+  if (error) return send(chatId, 'Помилка: ' + error.message, { reply_markup: kb })
+  await send(chatId, status === 'review' ? '📨 Результат надіслано на перевірку постановнику.' : '✅ Задачу закрито з результатом.', { reply_markup: kb })
+  return showTasks(admin, chatId, isAllowed(fromId) ? undefined : me?.id)
+}
+
 // ── Головний обробник ──
 export default async function handler(req, res) {
   // Одноразове (ідемпотентне) налаштування вебхука з секретом. Безпечно для будь-кого:
@@ -221,6 +244,11 @@ export default async function handler(req, res) {
     const j = await r.json().catch(() => ({}))
     return res.status(r.ok && j.ok ? 200 : 502).json({ ok: !!j.ok, description: j.description || null })
   }
+  if (req.method === 'GET' && (req.query?.me === '1' || /[?&]me=1/.test(req.url || ''))) {
+    if (!TOKEN) return res.status(200).json({ ok: false })
+    const j = await tg('getMe', {})
+    return res.status(200).json({ ok: !!j.ok, username: j.result?.username || null })
+  }
   if (!secretOk(req)) return res.status(401).json({ ok: false })
   if (req.method !== 'POST') return res.status(200).json({ ok: true })
   if (!TOKEN) return res.status(200).json({ ok: false, error: 'no token' })
@@ -233,8 +261,9 @@ export default async function handler(req, res) {
       const cq = upd.callback_query
       const chatId = cq.message.chat.id
       const fromId = cq.from.id
-      if (!isAllowed(fromId)) { await answer(cq.id, 'Немає доступу'); return res.json({ ok: true }) }
       const data = cq.data || ''
+      const staff = isAllowed(fromId) ? null : await profileByChat(admin, fromId)
+      if (!isAllowed(fromId) && !(staff && TASK_CB.test(data))) { await answer(cq.id, 'Немає доступу'); return res.json({ ok: true }) }
       await answer(cq.id)
 
       if (data === 'cancel') { await clearSession(admin, fromId); await send(chatId, 'Скасовано.', { reply_markup: MAIN_KB }); return res.json({ ok: true }) }
@@ -265,9 +294,23 @@ export default async function handler(req, res) {
       }
       // ── Задачі ──
       if (data === 'tasks:0' || data === 'tasks') { await showTasks(admin, chatId); return res.json({ ok: true }) }
+      if (data === 'mytasks') { const me = staff || await profileByChat(admin, fromId); await showTasks(admin, chatId, me?.id); return res.json({ ok: true }) }
+      // «Нагадати пізніше» — лише собі (не змінює термін задачі)
+      if (data.startsWith('snooze1h:') || data.startsWith('snoozetm:')) {
+        const me = staff || await profileByChat(admin, fromId)
+        if (!me) { await send(chatId, 'Щоб отримувати нагадування, підключіть Telegram у «Задачі» → «Сповіщення».'); return res.json({ ok: true }) }
+        const at = data.startsWith('snooze1h:') ? new Date(Date.now() + 3600e3).toISOString() : kyivTomorrow9()
+        await admin.from('task_reminders').insert({ task_id: data.slice(9), user_id: me.id, remind_at: at, kind: 'snooze' })
+        await send(chatId, data.startsWith('snooze1h:') ? '⏰ Нагадаю через годину.' : '🌅 Нагадаю завтра о 09:00.')
+        return res.json({ ok: true })
+      }
       if (data.startsWith('taskview:')) { await showTaskCard(admin, chatId, data.slice(9)); return res.json({ ok: true }) }
       // планер (092): задача закривається лише з результатом — питаємо його в чаті
       if (data.startsWith('taskdone:')) {
+        if (staff) {
+          const { data: t } = await admin.from('tasks').select('assignee_id, created_by').eq('id', data.slice(9)).maybeSingle()
+          if (!t || (t.assignee_id !== staff.id && t.created_by !== staff.id)) { await send(chatId, 'Це не ваша задача.'); return res.json({ ok: true }) }
+        }
         await setSession(admin, fromId, { flow: 'task', step: 'task_result', id: data.slice(9) })
         await send(chatId, '📝 <b>Результат виконання</b> — коротко: що зроблено, з яким результатом:', { reply_markup: cancelKb })
         return res.json({ ok: true })
@@ -312,9 +355,29 @@ export default async function handler(req, res) {
     const fromId = msg.from.id
     const text = msg.text.trim()
 
-    if (!isAllowed(fromId)) {
-      await send(chatId, `Немає доступу. Ваш Telegram ID: <code>${fromId}</code>\nПередайте його власнику для додавання.`)
+    // прив'язка Telegram до профілю: «Задачі» → «Сповіщення» → «Підключити Telegram» відкриває /start <код>
+    const startCode = text.match(/^\/start\s+([0-9a-f]{12,40})$/i)?.[1]
+    if (startCode) {
+      const { data: p } = await admin.from('profiles').select('id, full_name, telegram_link_expires').eq('telegram_link_code', startCode).maybeSingle()
+      if (!p || !p.telegram_link_expires || new Date(p.telegram_link_expires) < new Date()) {
+        await send(chatId, 'Код недійсний або застарів. Натисніть «Підключити Telegram» у застосунку ще раз.'); return res.json({ ok: true })
+      }
+      await admin.from('profiles').update({ telegram_chat_id: null }).eq('telegram_chat_id', chatId).neq('id', p.id)
+      await admin.from('profiles').update({ telegram_chat_id: chatId, telegram_link_code: null, telegram_link_expires: null }).eq('id', p.id)
+      await send(chatId, `✅ Telegram підключено${p.full_name ? `, ${p.full_name}` : ''}. Сюди надходитимуть нагадування та сповіщення по задачах.`,
+        { reply_markup: isAllowed(fromId) ? MAIN_KB : STAFF_KB })
       return res.json({ ok: true })
+    }
+    if (!isAllowed(fromId)) {
+      const staff = await profileByChat(admin, fromId)
+      if (!staff) {
+        await send(chatId, `Немає доступу. Щоб отримувати нагадування по задачах, натисніть у застосунку «Задачі» → «Сповіщення» → «Підключити Telegram».\nВаш Telegram ID: <code>${fromId}</code>`)
+        return res.json({ ok: true })
+      }
+      const ss = await getSession(admin, fromId)
+      if (ss?.flow === 'task' && ss.step === 'task_result') await handleTaskResult(admin, chatId, fromId, ss, text)
+      else await showTasks(admin, chatId, staff.id)
+      return res.json({ ok: true })     // працівникам — лише задачі (решта бота — власнику)
     }
 
     // Команди / кнопки головного меню
@@ -389,16 +452,8 @@ export default async function handler(req, res) {
     }
 
     // Результат задачі (кнопка «Виконано»)
-    if (s?.flow === 'task' && s.step === 'task_result') {
-      const { data: t } = await admin.from('tasks').select('requires_review').eq('id', s.id).maybeSingle()
-      const status = t?.requires_review ? 'review' : 'done'
-      const { error } = await admin.from('tasks').update({ result_text: text, result_type: 'full', status }).eq('id', s.id)
-      await clearSession(admin, fromId)
-      if (error) { await send(chatId, 'Помилка: ' + error.message, { reply_markup: MAIN_KB }); return res.json({ ok: true }) }
-      await send(chatId, status === 'review' ? '📨 Результат надіслано на перевірку постановнику.' : '✅ Задачу закрито з результатом.', { reply_markup: MAIN_KB })
-      await showTasks(admin, chatId)
-      return res.json({ ok: true })
-    }
+    if (s?.flow === 'task' && s.step === 'task_result') { await handleTaskResult(admin, chatId, fromId, s, text); return res.json({ ok: true }) }
+
     // Майстер задачі
     if (s?.flow === 'task' && s.step === 'task_title') {
       s.title = text; s.step = 'task_due'; await setSession(admin, fromId, s)
