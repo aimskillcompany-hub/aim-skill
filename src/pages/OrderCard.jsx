@@ -24,6 +24,7 @@ import { PageHeader, StatusPill, Button, ConfirmDialog, TableSkeleton, EmptyStat
 import { formatMoney } from '../utils/format'
 import './OrderCard.css'
 import { OrderHeadNew, OrderAside, OrderTotals, useOrderPlan } from './OrderCardNew'
+import ItemsNew from './ItemsNew'
 import { useNewUi } from '../lib/uiPrefs'
 import { Tabs, Callout } from '../components/ui'
 import {
@@ -319,7 +320,7 @@ function NewCardLayout({ o, payment, busy, msg, overdue, tab, tabs, switchTab, o
           action={o.client_id ? { label: 'Картка клієнта', to: `/contractors/${o.client_id}` } : { label: 'Деталі', onClick: () => switchTab('details') }} />
       )}
       {overdue && <Callout tone="danger" title="КП без відповіді понад 48 год." text="Клієнт ще не відповів на комерційну пропозицію." action={{ label: 'КП', onClick: () => switchTab('proposals') }} />}
-      <div className="ocn-grid">
+      <div className={`ocn-grid${tab === 'items' ? ' is-items' : ''}`}>
         <section className="ocn-main">
           <Tabs ariaLabel="Розділи замовлення" idPrefix="ocn-tab" value={tab} onChange={switchTab}
             tabs={tabs.map(t => ({ id: t.id, label: t.label }))} />
@@ -565,6 +566,7 @@ function ItemsTab({ o, onChange, onDirty }) {
   const { active } = useCompany()
   const vatOn = active?.is_vat_payer !== false   // неплатник ПДВ → увесь ПДВ-функціонал вимкнено
   const defVat = vatOn ? 20 : 0
+  const newUi = useNewUi()
   const [rows, setRows] = useState(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -702,15 +704,20 @@ function ItemsTab({ o, onChange, onDirty }) {
     .then(({ data }) => { setRows((data || []).map(r => ({ ...r, supplier_name: r.contractors?.name || null }))); setDirty(false); onDirty?.(false) })
   useEffect(() => { load() }, [o.id])
   useEffect(() => { supabase.from('contractors').select('id, name').eq('is_supplier', true).order('name').then(({ data }) => setSuppliers(data || [])) }, [])
+  // Створити постачальника (назва — з поля або з запиту); повертає { id, name } або null
+  const createSupplier = async (preset) => {
+    const name = (preset || window.prompt('Назва нового постачальника') || '').trim()
+    if (!name) return null
+    const { data, error } = await supabase.from('contractors').insert({ name, is_supplier: true }).select('id, name').single()
+    if (error || !data) { toast('Не вдалося створити постачальника: ' + (error?.message || ''), { type: 'error' }); return null }
+    setSuppliers(s => [...s, data].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'uk')))
+    return data
+  }
   // Обрати наявного постачальника або створити нового (колонка «Постачальник»)
   const chooseSupplier = async (i, v) => {
     if (v === '__new__') {
-      const name = (window.prompt('Назва нового постачальника') || '').trim()
-      if (!name) return
-      const { data, error } = await supabase.from('contractors').insert({ name, is_supplier: true }).select('id, name').single()
-      if (error || !data) { toast('Не вдалося створити постачальника: ' + (error?.message || ''), { type: 'error' }); return }
-      setSuppliers(s => [...s, data].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'uk')))
-      setRow(i, { supplier_id: data.id, supplier_name: data.name })
+      const data = await createSupplier()
+      if (data) setRow(i, { supplier_id: data.id, supplier_name: data.name })
     } else {
       const sup = suppliers.find(s => s.id === v)
       setRow(i, { supplier_id: v || null, supplier_name: sup?.name || null })
@@ -741,6 +748,8 @@ function ItemsTab({ o, onChange, onDirty }) {
     }])
   }
   const removeRow = (i) => { markDirty(); setRows(rs => rs.filter((_, j) => j !== i)) }
+  // Нова позиція з форми додавання (новий інтерфейс)
+  const addRowWith = (row) => { markDirty(); setRows(rs => [...rs, row]) }
   // unit_price трактується залежно від price_includes_vat:
   //   true  → ціна вже з ПДВ (прайс); false → ціна без ПДВ, ПДВ зверху (склад)
   // Неплатник ПДВ: ігноруємо ПДВ-прапорці рядка (можуть лишитися з прайсу/іншої юрособи) → net = gross
@@ -785,6 +794,20 @@ function ItemsTab({ o, onChange, onDirty }) {
       return r
     }))
   }
+  // «Ціни вводяться: з ПДВ / без ПДВ» для всіх позицій (новий інтерфейс). Числа перераховуються в
+  // новий базис, тож суми рядків і замовлення НЕ змінюються — змінюється лише те, як ціни вводяться.
+  const setAllIncl = (toIncl) => {
+    if (!vatOn) return
+    markDirty()
+    const r2 = (v) => Math.round(v * 100) / 100
+    setRows(rs => rs.map(r => {
+      if (!!r.price_includes_vat === toIncl) return r
+      const k = 1 + rate(r) / 100, kc = 1 + costRateOf(r) / 100
+      return { ...r, price_includes_vat: toIncl,
+        unit_price: r2(toIncl ? (Number(r.unit_price) || 0) * k : (Number(r.unit_price) || 0) / k),
+        cost_price: r2(toIncl ? (Number(r.cost_price) || 0) * kc : (Number(r.cost_price) || 0) / kc) }
+    }))
+  }
   const sum = (rows || []).reduce((s, r) => s + rowTotal(r), 0)         // всього з ПДВ
   const netSum = (rows || []).reduce((s, r) => s + rowNet(r), 0)         // без ПДВ
   const vatSum = sum - netSum                                            // ПДВ
@@ -825,6 +848,25 @@ function ItemsTab({ o, onChange, onDirty }) {
   }
 
   if (rows == null) return <Loading />
+
+  if (newUi) return (
+    <>
+      <ItemsNew rows={rows} vatOn={vatOn} defVat={defVat} suppliers={suppliers} newIncl={false}
+        h={{ rowMargin, marginPct, netCost, grossCost, netUnit, grossUnit, rowTotal, rowNet, fmtMarkup, setMarkup }}
+        setRow={setRow} removeRow={removeRow} addRowWith={addRowWith} setAllIncl={setAllIncl} chooseSupplier={chooseSupplier} createSupplier={createSupplier}
+        bulkMarkup={bulkMarkup} setBulkMarkup={setBulkMarkup} applyBulkMarkup={applyBulkMarkup}
+        save={save} saving={saving} saved={saved} dirty={dirty} aiMsg={aiMsg} aiLoading={aiLoading}
+        actions={{ table: () => tableRef.current?.click(), price: () => setShowPicker(true), spec: () => specRef.current?.click(), cost: () => costRef.current?.click() }}
+        onReport={() => investorReportPdf(o, rows)} />
+      <input ref={specRef} type="file" accept=".docx,.pdf,image/*" multiple style={{ display: 'none' }} disabled={aiLoading}
+        onChange={e => { const fs = Array.from(e.target.files || []); e.target.value = ''; importSpec(fs) }} />
+      <input ref={costRef} type="file" accept=".docx,.pdf,image/*" multiple style={{ display: 'none' }} disabled={aiLoading}
+        onChange={e => { const fs = Array.from(e.target.files || []); e.target.value = ''; importCosts(fs) }} />
+      <input ref={tableRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }}
+        onChange={e => { const fs = Array.from(e.target.files || []); e.target.value = ''; importTable(fs) }} />
+      {showPicker && <PricePickerModal onPick={addFromPrice} onClose={() => setShowPicker(false)} />}
+    </>
+  )
 
   const GRID = vatOn
     ? 'minmax(0,1fr) 52px 88px 88px 58px 86px 96px 104px 150px 28px'

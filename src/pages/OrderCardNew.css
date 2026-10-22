@@ -117,3 +117,9 @@ a.ocn-meta-item:hover { color: var(--brand-dark); }
   .ocn-totals { margin: 4px -14px -16px; }
   .ocn-aside { grid-template-columns: minmax(0, 1fr); }
 }
+/* «Товари» — широка таблиця: до 1600 px колонка праворуч переходить під неї (три блоки в ряд) */
+@media (min-width: 768px) and (max-width: 1599px) {
+  .ocn-grid.is-items { grid-template-columns: minmax(0, 1fr); }
+  .ocn-grid.is-items .ocn-aside { position: static; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (min-width: 768px) and (max-width: 1023px) { .ocn-grid.is-items .ocn-aside { grid-template-columns: minmax(0, 1fr); } }
