@@ -305,6 +305,14 @@ function GoodsReportView({ year, month }) {
         <Col title={`Залишок на кінець (${d.remaining.length})`} color="var(--text)" sub={`на ${fmtInt(t.remainingValue)} грн`} rows={d.remaining}
           render={r => <>{fmt(r.qty)} шт · {fmt(r.unitCost)} грн/од · Σ <b style={{ color: 'var(--text2)' }}>{fmtInt(r.value)}</b></>} />
       </div>
+      {(d.assembled?.length > 0 || d.consumed?.length > 0) && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14, alignItems: 'start', marginTop: 14 }}>
+          <Col title={`Зібрано комплектів (${d.assembled.length})`} color="var(--text)" sub={`за собівартістю компонентів ${fmtInt(t.assembledSum)} грн — не закупівля`} rows={d.assembled}
+            render={r => <>{fmt(r.qty)} шт · {fmt(r.price)} грн/од · Σ <b style={{ color: 'var(--text2)' }}>{fmtInt(r.sum)}</b></>} />
+          <Col title={`Використано у збірках (${d.consumed.length})`} color="var(--text)" sub="компоненти списані в комплект — не продаж" rows={d.consumed}
+            render={r => <>{fmt(r.qty)} шт</>} />
+        </div>
+      )}
       <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 10, marginBottom: 0 }}>
         <i className="ti ti-paperclip" /> Клік по товару відкриває документ: у «Куплено» й «Залишок» — прихідну накладну, у «Продано» — вашу видаткову. Щоб звірити ціни з оригіналом. Ціни без ПДВ.
       </p>
