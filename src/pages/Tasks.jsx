@@ -234,8 +234,7 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
   const [busy, setBusy] = useState(false)
   const [addW, setAddW] = useState(false)
   const P = (id) => people.find(p => p.id === id)
-  const [full, setFull] = useState(() => { try { return localStorage.getItem('tasks.fullCard') === '1' } catch { return false } })
-  useEffect(() => { try { localStorage.setItem('tasks.fullCard', full ? '1' : '0') } catch {} }, [full])
+  const [feedTab, setFeedTab] = useState('comments')
   const loadF = () => loadFeed(t.id).then(setFeed).catch(() => setFeed([]))
   useEffect(() => { const h = (e) => { if (e.key === 'Escape' && !document.querySelector('.modal-bg')) onClose() }; window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h) }, [onClose])
   useEffect(() => { loadF() }, [t.id, t.status, t.assignee_id, t.due_at, t.comments])
@@ -268,127 +267,168 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
   const desc = (t.description || '').replace(/\n*Звірка:\s*\/inventory\/recon\?\S+\s*$/, '')
   const btn = (bg, fg = '#fff', border = 'none') => ({ height: 38, padding: '0 14px', borderRadius: 8, border, background: bg, color: fg, fontWeight: 600, cursor: 'pointer', font: 'inherit' })
 
+  const card = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }
+  const lbl = { fontSize: 11.5, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 600, marginBottom: 4 }
+  const selStyle = { padding: '6px 10px', fontSize: 13, lineHeight: 1.4, height: 38, width: '100%' }
+  const comments = feed.filter(f => f.kind === 'comment')
+  const shown = feedTab === 'comments' ? comments : feedTab === 'history' ? feed.filter(f => f.kind !== 'comment') : feed
+  const sendComment = () => cmt.trim() && run(() => addComment(t.id, cmt.trim())).then(ok => ok && setCmt(''))
+
   return (
     <>
-    {/* панель на половину екрана справа; клік по затемненню або Esc — закрити */}
-    <style>{`.task-drawer{position:fixed;top:0;right:0;bottom:0;width:50vw;min-width:520px;max-width:960px;z-index:180;animation:taskIn .2s ease}
-      @keyframes taskIn{from{transform:translateX(40px);opacity:.6}to{transform:none;opacity:1}}
-      .task-drawer.full{width:100vw;min-width:0;max-width:none;padding-left:max(24px,calc((100vw - 980px)/2))!important;padding-right:max(24px,calc((100vw - 980px)/2))!important}
-      @media (max-width:900px){.task-drawer{width:100vw;min-width:0;max-width:none}}`}</style>
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,.25)', zIndex: 179 }} />
-    <aside aria-label="Картка задачі" className={`task-drawer${full ? ' full' : ''}`} style={{ background: 'var(--surface)', borderLeft: '1px solid var(--border)', boxShadow: '-12px 0 32px rgba(17,24,39,.15)', padding: '18px 24px 32px', display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, position: 'sticky', top: -18, margin: full ? '-18px 0 0' : '-18px -24px 0', padding: full ? '14px 0 10px' : '14px 24px 10px', background: 'var(--surface)', zIndex: 1, borderBottom: '1px solid var(--border)' }}>
-        <span style={pill(s)}>{s.label}</span>
-        <span style={{ display: 'flex', gap: 4 }}>
-          <button className="btn btn-sm" onClick={() => setFull(v => !v)} title={full ? 'Половина екрана' : 'На весь екран'}><i className={`ti ti-${full ? 'arrows-minimize' : 'arrows-maximize'}`} /></button>
-          {canEdit && <button className="btn btn-sm" onClick={onEdit} title="Редагувати"><i className="ti ti-pencil" /></button>}
+    {/* картка задачі на весь екран: ліворуч — задача, підзадачі, коментарі; праворуч — деталі (як у CRM) */}
+    <style>{`.task-full{position:fixed;inset:0;z-index:180;background:var(--bg, #f5f6f8);overflow-y:auto;animation:taskIn .18s ease}
+      @keyframes taskIn{from{opacity:.4;transform:translateY(8px)}to{opacity:1;transform:none}}
+      .task-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;grid-template-areas:"head side" "body side";gap:20px 28px;max-width:1280px;margin:0 auto;padding:20px 28px 48px;align-items:start}
+      .task-head{grid-area:head;display:flex;flex-direction:column;gap:14px;min-width:0}
+      .task-body{grid-area:body;display:flex;flex-direction:column;gap:20px;min-width:0}
+      .task-side{grid-area:side;display:flex;flex-direction:column;gap:14px;position:sticky;top:76px}
+      @media (max-width:900px){.task-grid{grid-template-columns:minmax(0,1fr);grid-template-areas:"head" "side" "body";padding:14px 16px 90px}.task-side{position:static}}`}</style>
+    <div className="task-full" role="dialog" aria-label="Картка задачі">
+      <div style={{ position: 'sticky', top: 0, zIndex: 2, background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ maxWidth: 1280, margin: '0 auto', padding: '12px 28px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button className="btn btn-sm" onClick={onClose}><i className="ti ti-arrow-left" /> Задачі</button>
+          <span style={pill(s)}>{s.label}</span>
+          {t.priority !== 'normal' && <span style={prioStyle(t.priority)}>{PRIORITY[t.priority]?.label}</span>}
+          <span style={{ ...d.style, fontSize: 13 }}><i className="ti ti-calendar" /> {d.label}</span>
+          <span style={{ flex: 1 }} />
+          {canEdit && <button className="btn btn-sm" onClick={onEdit} title="Редагувати назву, опис, термін"><i className="ti ti-pencil" /> Редагувати</button>}
           <button className="btn btn-sm" onClick={onClose} aria-label="Закрити картку"><i className="ti ti-x" /></button>
-        </span>
-      </div>
-      <div>
-        <h2 style={{ margin: 0, fontSize: 21, lineHeight: 1.3 }}>{t.title}</h2>
-        {desc && <p style={{ margin: '8px 0 0', color: 'var(--text2)', fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-line' }}>{desc}</p>}
-        {recon && <Link to={recon} style={{ fontSize: 13, display: 'inline-block', marginTop: 6 }}><i className="ti ti-arrows-exchange" /> Відкрити в звірці</Link>}
-        {t.entity_type === 'order' && t.entity_id && <Link to={`/orders/${t.entity_id}`} style={{ fontSize: 13, display: 'inline-block', marginTop: 6 }}>
-          <i className="ti ti-shopping-cart" /> Замовлення №{t.order?.order_number || t.entity_id.slice(0, 6)}{t.order?.contractors?.name ? ` · ${t.order.contractors.name}` : ''}</Link>}
-        {t.entity_type === 'counterparty' && t.entity_id && <Link to={`/contractors/${t.entity_id}`} style={{ fontSize: 13, display: 'inline-block', marginTop: 6, marginLeft: 8 }}>
-          <i className="ti ti-users" /> {t.counterparty?.name || 'Контрагент'}</Link>}
-      </div>
-
-      {/* дії */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {t.status === 'new' && (isAssignee || isCreator) && <button disabled={busy} style={btn('#2563eb')} onClick={() => run(() => updateTask(t.id, { status: 'in_progress' }), 'Взято в роботу')}>Взяти в роботу</button>}
-        {['new', 'in_progress'].includes(t.status) && (isAssignee || isCreator) && <button disabled={busy} style={btn('#111827')} onClick={() => { setForm('result'); setDraft(t.result_text || ''); setRtype(t.result_type || 'full') }}>Здати результат</button>}
-        {t.status === 'review' && isCreator && <>
-          <button disabled={busy} style={btn('#15803d')} onClick={() => run(() => updateTask(t.id, { status: 'done' }), `Результат прийнято`)}>Прийняти</button>
-          <button disabled={busy} style={btn('var(--surface)', 'var(--text)', '1px solid var(--border)')} onClick={() => { setForm('return'); setDraft('') }}>Повернути на доопрацювання</button>
-        </>}
-        {t.status === 'review' && !isCreator && <span style={{ fontSize: 13, color: '#92400e', background: '#fef3c7', padding: '8px 12px', borderRadius: 8 }}>Очікує перевірки: {personName(P(t.created_by))}</span>}
-        {['done', 'cancelled'].includes(t.status) && canEdit && <button disabled={busy} style={btn('var(--surface)', 'var(--text)', '1px solid var(--border)')} onClick={() => run(() => updateTask(t.id, { status: 'in_progress' }), 'Відкрито знову')}>Відкрити знову</button>}
-        {t.status === 'on_hold' && canEdit && <button disabled={busy} style={btn('var(--surface)', 'var(--text)', '1px solid var(--border)')} onClick={() => run(() => updateTask(t.id, { status: 'in_progress' }), 'Відновлено')}>Відновити</button>}
-        {ACTIVE(t) && t.status !== 'on_hold' && canEdit && <button disabled={busy} className="btn btn-sm" onClick={() => run(() => updateTask(t.id, { status: 'on_hold' }), 'Відкладено')}>Відкласти</button>}
-        {ACTIVE(t) && (isCreator || isAdmin) && <button disabled={busy} className="btn btn-sm" style={{ color: 'var(--red)' }} onClick={() => confirm('Скасувати задачу?') && run(() => updateTask(t.id, { status: 'cancelled' }), 'Скасовано')}>Скасувати</button>}
-      </div>
-
-      {form && <div style={{ border: '1px solid #c7d2fe', background: 'var(--surface2)', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <label style={{ fontWeight: 600, fontSize: 13 }}>{form === 'result' ? 'Результат виконання *' : 'Що доопрацювати *'}</label>
-        <textarea className="form-input" rows={4} value={draft} onChange={e => setDraft(e.target.value)} autoFocus
-          placeholder={form === 'result' ? 'Що зроблено, з яким результатом, що залишилось' : 'Коментар для відповідального'} style={{ resize: 'vertical' }} />
-        {form === 'result' && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {Object.entries(RESULT).map(([k, l]) => <button key={k} onClick={() => setRtype(k)} style={{ height: 30, padding: '0 12px', borderRadius: 999, cursor: 'pointer', fontSize: 12, fontWeight: 600, font: 'inherit', border: `1px solid ${rtype === k ? '#111827' : 'var(--border)'}`, background: rtype === k ? '#111827' : 'var(--surface)', color: rtype === k ? '#fff' : 'var(--text)' }}>{l}</button>)}
-        </div>}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button disabled={busy} style={btn('#111827')} onClick={form === 'result' ? submit : giveBack}>
-            {form === 'return' ? 'Повернути' : t.requires_review && !isCreator ? 'Надіслати на перевірку' : 'Закрити з результатом'}</button>
-          <button className="btn" onClick={() => setForm(null)}>Скасувати</button>
-        </div>
-      </div>}
-
-      {t.result_text && form !== 'result' && <div style={{ border: '1px solid #bbf7d0', background: '#f0fdf4', borderRadius: 10, padding: 12, color: '#14532d' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, fontWeight: 600, color: '#166534' }}>
-          <span>Результат{t.result_type ? ` · ${RESULT[t.result_type]}` : ''}</span>
-          <span style={{ fontWeight: 500 }}>{personName(P(t.result_by))}{t.result_at ? `, ${shortDate(String(t.result_at).slice(0, 10))} ${kyivTime(t.result_at)}` : ''}</span>
-        </div>
-        <div style={{ fontSize: 13, lineHeight: 1.5, marginTop: 4, whiteSpace: 'pre-line' }}>{t.result_text}</div>
-      </div>}
-
-      <Subtasks t={t} people={people} canEdit={canEdit || (t.subAssignees || []).includes(me)} onChanged={onChanged} />
-
-      {/* атрибути */}
-      <div style={{ display: 'grid', gridTemplateColumns: '130px minmax(0, 1fr)', gap: '10px 14px', alignItems: 'center', fontSize: 13, maxWidth: 640 }}>
-        <span style={{ color: 'var(--text3)' }}>Відповідальний</span>
-        <select className="form-input" disabled={!canEdit || busy} value={t.assignee_id || ''} style={{ padding: '6px 10px', fontSize: 13, lineHeight: 1.4 }}
-          onChange={e => run(() => updateTask(t.id, { assignee_id: e.target.value || null }), `Призначено: ${personName(P(e.target.value))}`)}>
-          {!t.assignee_id && <option value="">—</option>}
-          {people.map(p => <option key={p.id} value={p.id}>{personName(p)}</option>)}
-        </select>
-        <span style={{ color: 'var(--text3)' }}>Поставив</span><span>{personName(P(t.created_by))}</span>
-        <span style={{ color: 'var(--text3)' }}>Спостерігачі</span>
-        <span style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-          {t.watchers.map(w => <span key={w} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><Avatar person={P(w)} id={w} size={26} />
-            {canEdit && <button className="btn btn-sm" title="Прибрати" style={{ padding: '0 4px', fontSize: 11 }} onClick={() => run(() => removeWatcher(t.id, w))}>×</button>}</span>)}
-          {addW ? <select className="form-input" style={{ padding: '4px 8px', fontSize: 13, lineHeight: 1.4, width: 170 }} autoFocus onBlur={() => setAddW(false)}
-              onChange={e => { setAddW(false); e.target.value && run(() => addWatcher(t.id, e.target.value)) }}>
-              <option value="">обрати…</option>
-              {people.filter(p => !t.watchers.includes(p.id)).map(p => <option key={p.id} value={p.id}>{personName(p)}</option>)}
-            </select>
-            : <button className="btn btn-sm" style={{ borderStyle: 'dashed', borderRadius: 999 }} onClick={() => setAddW(true)}>+ додати</button>}
-        </span>
-        <span style={{ color: 'var(--text3)' }}>Термін</span><span style={d.style}>{d.label}</span>
-        <span style={{ color: 'var(--text3)' }}>Пріоритет</span>
-        <select className="form-input" disabled={!canEdit || busy} value={t.priority || 'normal'} style={{ padding: '6px 10px', fontSize: 13, lineHeight: 1.4 }}
-          onChange={e => run(() => updateTask(t.id, { priority: e.target.value }))}>
-          {Object.entries(PRIORITY).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
-        </select>
-        <span style={{ color: 'var(--text3)' }}>Перевірка</span>
-        <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: isCreator ? 'pointer' : 'default' }}>
-          <input type="checkbox" checked={!!t.requires_review} disabled={!isCreator || busy} onChange={e => run(() => updateTask(t.id, { requires_review: e.target.checked }))} />
-          {t.requires_review ? `потрібна — приймає ${personName(P(t.created_by))}` : 'не потрібна'}
-        </label>
-      </div>
-
-      {/* нагадування */}
-      {ACTIVE(t) && <Reminders t={t} canEdit={canEdit} busy={busy} run={run} flash={flash} />}
-
-      {/* коментарі та історія */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-        <div style={{ fontWeight: 600, fontSize: 13 }}>Коментарі та історія</div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <input className="form-input" value={cmt} onChange={e => setCmt(e.target.value)} placeholder="Написати коментар…" style={{ padding: '7px 10px', fontSize: 13 }}
-            onKeyDown={e => { if (e.key === 'Enter' && cmt.trim()) run(() => addComment(t.id, cmt.trim())).then(ok => ok && setCmt('')) }} />
-          <button className="btn" disabled={!cmt.trim() || busy} onClick={() => run(() => addComment(t.id, cmt.trim())).then(ok => ok && setCmt(''))}>Надіслати</button>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {feed.map(f => <div key={f.kind + f.id} style={{ fontSize: 12.5, lineHeight: 1.45, color: 'var(--text2)', ...(f.kind === 'comment' ? { background: 'var(--surface2)', borderRadius: 8, padding: '6px 8px' } : {}) }}>
-            <b style={{ color: 'var(--text)' }}>{f.who ? personName(P(f.who)) : 'Система'}</b>{' '}
-            {f.kind === 'comment' ? <span style={{ whiteSpace: 'pre-line', color: 'var(--text)' }}>{f.body}</span> : describeActivity(f, people)}
-            <span style={{ color: 'var(--text3)' }}> · {shortDate(String(f.created_at).slice(0, 10))} {kyivTime(f.created_at)}</span>
-          </div>)}
         </div>
       </div>
-      {(isCreator || isAdmin) && <button className="btn btn-sm" style={{ color: 'var(--red)', alignSelf: 'flex-start' }}
-        onClick={() => confirm('Видалити задачу назавжди? Краще «Скасувати» — тоді лишиться історія.') && run(async () => { await deleteTask(t.id); onClose() }, 'Задачу видалено')}><i className="ti ti-trash" /> Видалити</button>}
-    </aside>
+
+      <div className="task-grid">
+        {/* ── задача ── */}
+        <div className="task-head">
+          <h1 style={{ margin: 0, fontSize: 26, lineHeight: 1.25 }}>{t.title}</h1>
+          {desc && <div style={{ ...card, color: 'var(--text)', fontSize: 14, lineHeight: 1.6, whiteSpace: 'pre-line' }}>{desc}</div>}
+          {(recon || t.entity_type === 'order' || t.entity_type === 'counterparty') && <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 13 }}>
+            {recon && <Link to={recon}><i className="ti ti-arrows-exchange" /> Відкрити в звірці</Link>}
+            {t.entity_type === 'order' && t.entity_id && <Link to={`/orders/${t.entity_id}`}><i className="ti ti-shopping-cart" /> Замовлення №{t.order?.order_number || t.entity_id.slice(0, 6)}{t.order?.contractors?.name ? ` · ${t.order.contractors.name}` : ''}</Link>}
+            {t.entity_type === 'counterparty' && t.entity_id && <Link to={`/contractors/${t.entity_id}`}><i className="ti ti-users" /> {t.counterparty?.name || 'Контрагент'}</Link>}
+          </div>}
+
+          {/* дії */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {t.status === 'new' && (isAssignee || isCreator) && <button disabled={busy} style={btn('#2563eb')} onClick={() => run(() => updateTask(t.id, { status: 'in_progress' }), 'Взято в роботу')}>Взяти в роботу</button>}
+            {['new', 'in_progress'].includes(t.status) && (isAssignee || isCreator) && <button disabled={busy} style={btn('#111827')} onClick={() => { setForm('result'); setDraft(t.result_text || ''); setRtype(t.result_type || 'full') }}>Здати результат</button>}
+            {t.status === 'review' && isCreator && <>
+              <button disabled={busy} style={btn('#15803d')} onClick={() => run(() => updateTask(t.id, { status: 'done' }), 'Результат прийнято')}>Прийняти</button>
+              <button disabled={busy} style={btn('var(--surface)', 'var(--text)', '1px solid var(--border)')} onClick={() => { setForm('return'); setDraft('') }}>Повернути на доопрацювання</button>
+            </>}
+            {t.status === 'review' && !isCreator && <span style={{ fontSize: 13, color: '#92400e', background: '#fef3c7', padding: '9px 12px', borderRadius: 8 }}>Очікує перевірки: {personName(P(t.created_by))}</span>}
+            {['done', 'cancelled'].includes(t.status) && canEdit && <button disabled={busy} style={btn('var(--surface)', 'var(--text)', '1px solid var(--border)')} onClick={() => run(() => updateTask(t.id, { status: 'in_progress' }), 'Відкрито знову')}>Відкрити знову</button>}
+            {t.status === 'on_hold' && canEdit && <button disabled={busy} style={btn('var(--surface)', 'var(--text)', '1px solid var(--border)')} onClick={() => run(() => updateTask(t.id, { status: 'in_progress' }), 'Відновлено')}>Відновити</button>}
+            {ACTIVE(t) && t.status !== 'on_hold' && canEdit && <button disabled={busy} style={btn('var(--surface)', 'var(--text2)', '1px solid var(--border)')} onClick={() => run(() => updateTask(t.id, { status: 'on_hold' }), 'Відкладено')}>Відкласти</button>}
+            {ACTIVE(t) && (isCreator || isAdmin) && <button disabled={busy} style={btn('var(--surface)', 'var(--red)', '1px solid var(--border)')} onClick={() => confirm('Скасувати задачу?') && run(() => updateTask(t.id, { status: 'cancelled' }), 'Скасовано')}>Скасувати</button>}
+          </div>
+
+          {form && <div style={{ ...card, borderColor: '#c7d2fe', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <label style={{ fontWeight: 600, fontSize: 13 }}>{form === 'result' ? 'Результат виконання *' : 'Що доопрацювати *'}</label>
+            <textarea className="form-input" rows={4} value={draft} onChange={e => setDraft(e.target.value)} autoFocus
+              placeholder={form === 'result' ? 'Що зроблено, з яким результатом, що залишилось' : 'Коментар для відповідального'} style={{ resize: 'vertical', height: 'auto' }} />
+            {form === 'result' && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {Object.entries(RESULT).map(([k, l]) => <button key={k} onClick={() => setRtype(k)} style={{ height: 30, padding: '0 12px', borderRadius: 999, cursor: 'pointer', fontSize: 12, fontWeight: 600, font: 'inherit', border: `1px solid ${rtype === k ? '#111827' : 'var(--border)'}`, background: rtype === k ? '#111827' : 'var(--surface)', color: rtype === k ? '#fff' : 'var(--text)' }}>{l}</button>)}
+            </div>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button disabled={busy} style={btn('#111827')} onClick={form === 'result' ? submit : giveBack}>
+                {form === 'return' ? 'Повернути' : t.requires_review && !isCreator ? 'Надіслати на перевірку' : 'Закрити з результатом'}</button>
+              <button className="btn" onClick={() => setForm(null)}>Скасувати</button>
+            </div>
+          </div>}
+
+          {t.result_text && form !== 'result' && <div style={{ border: '1px solid #bbf7d0', background: '#f0fdf4', borderRadius: 12, padding: 14, color: '#14532d' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, fontWeight: 600, color: '#166534' }}>
+              <span>Результат{t.result_type ? ` · ${RESULT[t.result_type]}` : ''}</span>
+              <span style={{ fontWeight: 500 }}>{personName(P(t.result_by))}{t.result_at ? `, ${shortDate(String(t.result_at).slice(0, 10))} ${kyivTime(t.result_at)}` : ''}</span>
+            </div>
+            <div style={{ fontSize: 14, lineHeight: 1.55, marginTop: 4, whiteSpace: 'pre-line' }}>{t.result_text}</div>
+          </div>}
+        </div>
+
+        {/* ── підзадачі та коментарі (знизу) ── */}
+        <div className="task-body">
+          <div style={card}>
+            <Subtasks t={t} people={people} canEdit={canEdit || (t.subAssignees || []).includes(me)} onChanged={onChanged} />
+          </div>
+
+          <div style={card}>
+            <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border)', marginBottom: 12 }}>
+              {[['comments', `Коментарі${comments.length ? ` ${comments.length}` : ''}`], ['history', 'Історія'], ['all', 'Усе']].map(([k, l]) => (
+                <button key={k} onClick={() => setFeedTab(k)} style={{ background: 'none', border: 0, borderBottom: `2px solid ${feedTab === k ? 'var(--text)' : 'transparent'}`, padding: '6px 12px', font: 'inherit', fontSize: 13, fontWeight: feedTab === k ? 700 : 500, color: feedTab === k ? 'var(--text)' : 'var(--text3)', cursor: 'pointer' }}>{l}</button>
+              ))}
+            </div>
+            {feedTab !== 'history' && <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 14 }}>
+              <Avatar person={P(me)} id={me} size={32} />
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <textarea className="form-input" rows={2} value={cmt} onChange={e => setCmt(e.target.value)} placeholder="Написати коментар… (@ім'я — згадати колегу)"
+                  onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendComment() }} style={{ padding: '8px 10px', fontSize: 13, height: 'auto', resize: 'vertical' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 11.5, color: 'var(--text3)' }}>Ctrl / ⌘ + Enter — надіслати</span>
+                  <button className="btn btn-primary btn-sm" disabled={!cmt.trim() || busy} onClick={sendComment}>Надіслати</button>
+                </div>
+              </div>
+            </div>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {shown.length === 0 && <div style={{ fontSize: 13, color: 'var(--text3)' }}>{feedTab === 'comments' ? 'Коментарів ще немає.' : 'Порожньо.'}</div>}
+              {shown.map(f => f.kind === 'comment'
+                ? <div key={'c' + f.id} style={{ display: 'flex', gap: 10 }}>
+                    <Avatar person={P(f.who)} id={f.who} size={32} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5 }}><b>{personName(P(f.who))}</b> <span style={{ color: 'var(--text3)' }}>{shortDate(String(f.created_at).slice(0, 10))} {kyivTime(f.created_at)}</span></div>
+                      <div style={{ fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-line', marginTop: 2 }}>{f.body}</div>
+                    </div>
+                  </div>
+                : <div key={'a' + f.id} style={{ fontSize: 12.5, color: 'var(--text2)', paddingLeft: 42 }}>
+                    <b style={{ color: 'var(--text)' }}>{f.who ? personName(P(f.who)) : 'Система'}</b> {describeActivity(f, people)}
+                    <span style={{ color: 'var(--text3)' }}> · {shortDate(String(f.created_at).slice(0, 10))} {kyivTime(f.created_at)}</span>
+                  </div>)}
+            </div>
+          </div>
+        </div>
+
+        {/* ── деталі (праворуч) ── */}
+        <aside className="task-side">
+          <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>Деталі</div>
+            <div><div style={lbl}>Статус</div><span style={pill(s)}>{s.label}</span></div>
+            <div><div style={lbl}>Відповідальний</div>
+              <select className="form-input" disabled={!canEdit || busy} value={t.assignee_id || ''} style={selStyle}
+                onChange={e => run(() => updateTask(t.id, { assignee_id: e.target.value || null }), `Призначено: ${personName(P(e.target.value))}`)}>
+                {!t.assignee_id && <option value="">—</option>}
+                {people.map(p => <option key={p.id} value={p.id}>{personName(p)}</option>)}
+              </select></div>
+            <div><div style={lbl}>Поставив</div><span style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}><Avatar person={P(t.created_by)} id={t.created_by} size={26} />{personName(P(t.created_by))}</span></div>
+            <div><div style={lbl}>Спостерігачі</div>
+              <span style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                {t.watchers.map(w => <span key={w} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><Avatar person={P(w)} id={w} size={26} />
+                  {canEdit && <button className="btn btn-sm" title="Прибрати" style={{ padding: '0 4px', fontSize: 11 }} onClick={() => run(() => removeWatcher(t.id, w))}>×</button>}</span>)}
+                {addW ? <select className="form-input" style={{ padding: '4px 8px', fontSize: 13, lineHeight: 1.4, height: 34, width: 180 }} autoFocus onBlur={() => setAddW(false)}
+                    onChange={e => { setAddW(false); e.target.value && run(() => addWatcher(t.id, e.target.value)) }}>
+                    <option value="">обрати…</option>
+                    {people.filter(p => !t.watchers.includes(p.id)).map(p => <option key={p.id} value={p.id}>{personName(p)}</option>)}
+                  </select>
+                  : <button className="btn btn-sm" style={{ borderStyle: 'dashed', borderRadius: 999 }} onClick={() => setAddW(true)}>+ додати</button>}
+              </span></div>
+            <div><div style={lbl}>Термін</div><span style={{ ...d.style, fontSize: 13 }}>{d.label}</span>{t.start_date && <div style={{ fontSize: 12, color: 'var(--text3)' }}>початок: {shortDate(t.start_date)}</div>}</div>
+            <div><div style={lbl}>Пріоритет</div>
+              <select className="form-input" disabled={!canEdit || busy} value={t.priority || 'normal'} style={selStyle}
+                onChange={e => run(() => updateTask(t.id, { priority: e.target.value }))}>
+                {Object.entries(PRIORITY).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+              </select></div>
+            <div><div style={lbl}>Перевірка результату</div>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, cursor: isCreator ? 'pointer' : 'default' }}>
+                <input type="checkbox" checked={!!t.requires_review} disabled={!isCreator || busy} onChange={e => run(() => updateTask(t.id, { requires_review: e.target.checked }))} />
+                {t.requires_review ? `потрібна — приймає ${personName(P(t.created_by))}` : 'не потрібна'}
+              </label></div>
+            <div style={{ fontSize: 12, color: 'var(--text3)' }}>Створено {shortDate(String(t.created_at).slice(0, 10))} {kyivTime(t.created_at)}{t.source === 'bot' ? ' · з Telegram' : t.entity_type === 'reconciliation' ? ' · зі звірки' : ''}</div>
+          </div>
+          {ACTIVE(t) && <div style={card}><Reminders t={t} canEdit={canEdit} busy={busy} run={run} flash={flash} /></div>}
+          {(isCreator || isAdmin) && <button className="btn btn-sm" style={{ color: 'var(--red)', alignSelf: 'flex-start' }}
+            onClick={() => confirm('Видалити задачу назавжди? Краще «Скасувати» — тоді лишиться історія.') && run(async () => { await deleteTask(t.id); onClose() }, 'Задачу видалено')}><i className="ti ti-trash" /> Видалити задачу</button>}
+        </aside>
+      </div>
+    </div>
     </>
   )
 }
