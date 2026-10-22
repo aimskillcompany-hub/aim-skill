@@ -287,6 +287,18 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
     run(async () => { await addComment(t.id, `Повернуто на доопрацювання: ${draft.trim()}`); await updateTask(t.id, { status: 'in_progress' }) }, 'Повернуто на доопрацювання')
       .then(ok => { if (ok) { setForm(null); setDraft('') } })
   }
+  // зміна статусу з панелі: «На перевірці» / «Виконано» без результату — спершу форма результату
+  const changeStatus = (st) => {
+    if (st === t.status) return
+    if ((st === 'review' || st === 'done') && !(t.result_text || '').trim()) {
+      setForm('result'); setDraft(''); setRtype('full')
+      flash(st === 'review' ? 'Опишіть результат — і задача піде на перевірку' : 'Опишіть результат — без нього задачу не закрити')
+      return
+    }
+    if (st === 'done' && t.requires_review && !isCreator) { flash(`Задача потребує перевірки — прийняти її може ${personName(P(t.created_by))}`); return }
+    if (st === 'cancelled' && !confirm('Скасувати задачу?')) return
+    run(() => updateTask(t.id, { status: st }), `Статус: ${STATUS[st].label}`)
+  }
   const duplicate = () => run(async () => {
     const id = await createTask({ title: `${t.title} (копія)`.slice(0, 200), description: t.description, assignee_id: t.assignee_id, priority: t.priority,
       due_at: t.due_at, start_date: t.start_date, requires_review: t.requires_review, entity_type: t.entity_type, entity_id: t.entity_id, entity_ref: t.entity_ref })
@@ -455,7 +467,12 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
           <div style={{ ...card, padding: 8 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '110px minmax(0, 1fr)', alignItems: 'center', rowGap: 2, fontSize: 13 }}>
               <span style={{ color: C.muted, padding: '0 10px' }}>Статус</span>
-              <div className="tk-prop" style={propRow}><span style={pill(s)}>{s.label}</span></div>
+              <label className="tk-prop" style={{ ...propRow, cursor: canEdit ? 'pointer' : 'default' }} title={canEdit ? 'Змінити статус' : undefined}>
+                <span style={pill(s)}>{s.label}</span>{canEdit && <i className="ti ti-chevron-down" style={{ color: C.muted, fontSize: 14 }} />}
+                {canEdit && <select aria-label="Статус" disabled={busy} value={t.status} style={hiddenSelect} onChange={e => changeStatus(e.target.value)}>
+                  {Object.entries(STATUS).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+                </select>}
+              </label>
 
               <span style={{ color: C.muted, padding: '0 10px' }}>Відповідальний</span>
               <label className="tk-prop" style={{ ...propRow, cursor: canEdit ? 'pointer' : 'default' }}>
