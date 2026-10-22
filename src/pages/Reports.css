@@ -1,0 +1,63 @@
+/* «Звіти» — новий інтерфейс (макети Reports / ReportsPayables / ReportsProfit / ReportsAccountant / ReportsMobile). */
+.rpt-page { display: flex; flex-direction: column; gap: 16px; }
+.rpt-h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -.03em; }
+.rpt-sub { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
+.rpt-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.rpt-tile { display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 16px 18px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); font: inherit; color: var(--text); cursor: pointer; min-width: 0; }
+.rpt-tile:hover { border-color: var(--border-strong); }
+.rpt-tile[aria-selected="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+.rpt-tile:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.rpt-tile-name { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.rpt-tile[aria-selected="true"] .rpt-tile-name, .rpt-tile[aria-selected="true"] .rpt-tile-sub { color: var(--on-dark-muted); }
+.rpt-tile-value { font-size: 24px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.rpt-tile-value.is-neg { color: var(--danger-fg); }
+.rpt-tile[aria-selected="true"] .rpt-tile-value { color: var(--on-dark-pos); }
+.rpt-tile[aria-selected="true"] .rpt-tile-value.is-neg { color: var(--on-dark-neg); }
+.rpt-tile-sub { font-size: 12px; color: var(--muted); min-height: 1em; }
+
+/* звіт (кредиторка тощо) */
+.rpt { display: flex; flex-direction: column; gap: 14px; }
+.rpt-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.rpt-kpis .ui-kpi { border-radius: 18px; }
+.rpt-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+.rpt-card.is-flush { padding: 0; overflow: hidden; }
+.rpt-h3 { margin: 0; font-size: 15px; font-weight: 700; }
+.rpt-h3 small { font-weight: 500; color: var(--muted); font-size: 12px; margin-left: 6px; }
+.rpt-table { border: 0 !important; border-radius: 0 !important; }
+.rpt-table .r { text-align: right; }
+.rpt-table tr.is-click { cursor: pointer; }
+.rpt-table tr.rpt-sub td { background: var(--surface-sunken); font-size: 13px; }
+.rpt-table tfoot td { font-weight: 700; background: var(--surface-sunken); }
+.rpt-x { width: 36px; }
+.rpt-x button { border: 0; background: none; width: 28px; height: 28px; border-radius: 8px; color: var(--muted); cursor: pointer; }
+.rpt-num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rpt-muted { color: var(--muted); }
+.rpt-late { color: var(--danger-fg); font-weight: 600; }
+.rpt-link { border: 0; background: none; padding: 0; font: inherit; color: var(--brand-dark); font-weight: 600; cursor: pointer; }
+.rpt-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.rpt-list li { display: flex; justify-content: space-between; gap: 12px; }
+@media (max-width: 767px) {
+  .rpt-h1 { font-size: 28px; }
+  .rpt-tiles { display: flex; overflow-x: auto; scrollbar-width: none; }
+  .rpt-tile { flex: 0 0 190px; }
+}
+@media (max-width: 767px) {
+  .rpt-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .rpt-kpis .ui-kpi { padding: 12px; }
+  .rpt-kpis .ui-kpi-value { font-size: 17px; }
+  .rpt-table table { min-width: 0 !important; }
+  .rpt-table thead, .rpt-table .c-docs, .rpt-table .c-due { display: none; }
+  .rpt-table tbody tr.is-click { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; grid-template-areas: "x name name" "x sum over"; gap: 2px 8px; padding: 10px 12px; border-bottom: 1px solid var(--divider); }
+  .rpt-table tbody tr.is-click td { padding: 0 !important; border: 0 !important; }
+  .rpt-table .rpt-x { grid-area: x; }
+  .rpt-table .c-name { grid-area: name; }
+  .rpt-table .c-sum { grid-area: sum; text-align: left !important; }
+  .rpt-table .c-over { grid-area: over; }
+  .rpt-table tr.rpt-sub { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; padding: 10px 12px 10px 44px; }
+  .rpt-table tr.rpt-sub td { padding: 0 !important; border: 0 !important; }
+  .rpt-table tr.rpt-sub td:first-child, .rpt-table tr.rpt-sub td:nth-child(3) { display: none; }
+  .rpt-table tr.rpt-sub td:nth-child(2) { grid-column: 1 / -1; }
+  .rpt-table tfoot tr { display: flex; justify-content: space-between; padding: 10px 12px; }
+  .rpt-table tfoot td { padding: 0 !important; border: 0 !important; }
+  .rpt-table tfoot td:first-child, .rpt-table tfoot td:nth-child(3), .rpt-table tfoot td:last-child { display: none; }
+}
