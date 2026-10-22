@@ -4,6 +4,8 @@ import { HashRouter } from 'react-router-dom'
 import App from './App.jsx'
 import './styles/tokens.css'
 import './styles/base.css'
+import './components/ui/ui.css'
+import { ToastProvider } from './components/ui/Toast'
 
 // Застарілі чанки після нового деплою → перезавантажити один раз
 window.addEventListener('vite:preloadError', () => {
@@ -16,7 +18,9 @@ window.addEventListener('vite:preloadError', () => {
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <HashRouter>
-      <App />
+      <ToastProvider>
+        <App />
+      </ToastProvider>
     </HashRouter>
   </React.StrictMode>
 )
