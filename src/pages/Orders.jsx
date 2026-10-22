@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { takeSnapshot, supersedeSnapshot, isMissingSnapTable } from '../lib/snapshots'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { qc, withCompany } from '../lib/companyScope'
@@ -130,7 +131,11 @@ export default function Orders() {
     if (error) {
       setOrders(prev => prev.map(x => x.id === o.id ? { ...x, in_forecast: !val } : x))
       toast('Не вдалося зберегти: ' + (/in_forecast/.test(error.message || '') ? 'запустіть міграцію 061' : error.message), { type: 'error' })
+      return
     }
+    // ТЗ 6.2: знімок прогнозу — у момент позначки; зняли позначку — знімок іде в історію
+    try { if (val) await takeSnapshot(o.id); else await supersedeSnapshot(o.id) }
+    catch (e) { if (!isMissingSnapTable(e)) toast('Позначку збережено, але знімок прогнозу — ні: ' + e.message, { type: 'error' }) }
   }
 
   const filtered = useMemo(() => {
