@@ -10,6 +10,7 @@ import {
   describeActivity, personName, initials, avatarColor, errText,
   loadNotifications, markNotificationsRead, subscribeNotifications, NOTIFY_PREFS, loadMyNotifySettings, saveNotifyPrefs,
   telegramLinkUrl, telegramUnlink, remindMe, loadSubtasks, addSubtasks, updateSubtask, deleteSubtask,
+  loadTaskFiles, uploadTaskFiles, openTaskFile, deleteTaskFile, MAX_FILE_MB,
 } from '../lib/tasks'
 
 // Планер задач (ТЗ 22.10.2026, етап 1): відповідальний, спостерігачі, статуси з перевіркою, результат, коментарі, історія.
@@ -328,7 +329,7 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
     <style>{`.task-full{position:fixed;top:0;right:0;bottom:0;left:240px;z-index:180;background:var(--bg, #f6f7f9);overflow-y:auto;animation:taskIn .16s ease;border-left:1px solid var(--border)}
       @keyframes taskIn{from{opacity:.4}to{opacity:1}}
       .tk-ghost:hover,.tk-prop:hover,.tk-menuitem:hover{background:var(--surface2, #f3f4f6)!important}
-      .tk-sub:hover{background:var(--surface2, #fafafa)} .tk-sub:hover .tk-subx{opacity:1!important}
+      .tk-sub:hover{background:var(--surface2, #fafafa)} .tk-step:hover{background:var(--surface2, #f3f4f6)} .tk-step:hover span:first-child{filter:brightness(.92)} .tk-sub:hover .tk-subx{opacity:1!important}
       .tk-body{padding:28px;display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start;max-width:1240px;width:100%;box-sizing:border-box}
       .tk-left{flex:999 1 520px;min-width:0;display:flex;flex-direction:column;gap:24px}
       .tk-right{flex:1 1 300px;max-width:360px;min-width:0;display:flex;flex-direction:column;gap:16px;position:sticky;top:76px}
@@ -378,9 +379,13 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
             <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
               {STEPS.map((k, i) => {
                 const passed = idx >= 0 && i <= idx, cur = i === idx
-                return <li key={k} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <span style={{ display: 'block', height: 6, borderRadius: 999, background: passed ? (t.status === 'done' ? '#16a34a' : '#2563eb') : '#e5e7eb' }} />
-                  <span style={{ fontSize: 13, fontWeight: cur ? 700 : 400, color: cur ? C.text : passed ? 'var(--text2, #374151)' : C.muted }}>{STATUS[k].label}</span>
+                return <li key={k}>
+                  <button type="button" className={canEdit && !cur ? 'tk-step' : undefined} disabled={!canEdit || busy || cur} onClick={() => changeStatus(k)}
+                    title={canEdit && !cur ? `Перевести в «${STATUS[k].label}»` : undefined} aria-current={cur ? 'step' : undefined}
+                    style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8, border: 'none', background: 'none', padding: '4px 2px', borderRadius: 8, textAlign: 'left', cursor: canEdit && !cur ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+                    <span style={{ display: 'block', width: '100%', height: 6, borderRadius: 999, background: passed ? (t.status === 'done' ? '#16a34a' : '#2563eb') : '#e5e7eb' }} />
+                    <span style={{ fontSize: 13, fontWeight: cur ? 700 : 400, color: cur ? C.text : passed ? 'var(--text2, #374151)' : C.muted }}>{STATUS[k].label}</span>
+                  </button>
                 </li>
               })}
             </ol>
@@ -617,7 +622,12 @@ function Subtasks({ t, people, canEdit, onChanged }) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
-  const load = () => loadSubtasks(t.id).then(x => { setItems(x); setErr(null) }).catch(e => { setItems([]); setErr(errText(e)) })
+  const [files, setFiles] = useState([])
+  const [res, setRes] = useState(null)          // id підзадачі з відкритою формою результату
+  const load = () => {
+    loadTaskFiles(t.id).then(setFiles).catch(() => setFiles([]))
+    return loadSubtasks(t.id).then(x => { setItems(x); setErr(null) }).catch(e => { setItems([]); setErr(errText(e)) })
+  }
   useEffect(() => { load() }, [t.id])
   const act = async (fn) => {
     setBusy(true); setErr(null)
@@ -648,7 +658,8 @@ function Subtasks({ t, people, canEdit, onChanged }) {
         const late = !x.done && x.due_date && x.due_date < today
         const who = people.find(p => p.id === x.assignee_id)
         return (
-          <div key={x.id} className="tk-sub" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', borderTop: `1px solid ${line}`, minHeight: 44 }}>
+          <div key={x.id} style={{ borderTop: `1px solid ${line}` }}>
+          <div className="tk-sub" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', minHeight: 44 }}>
             <input type="checkbox" aria-label="Виконано" checked={x.done} disabled={!canEdit || busy} onChange={() => act(() => updateSubtask(x.id, { done: !x.done }))}
               style={{ width: 18, height: 18, flex: '0 0 auto', accentColor: '#2563eb', cursor: canEdit ? 'pointer' : 'default' }} />
             <span style={{ flex: '1 1 auto', minWidth: 0, fontSize: 14, lineHeight: 1.4, textDecoration: x.done ? 'line-through' : 'none', color: x.done ? '#9ca3af' : 'var(--text, #111827)' }}>{x.text}</span>
@@ -664,8 +675,16 @@ function Subtasks({ t, people, canEdit, onChanged }) {
                 {people.map(p => <option key={p.id} value={p.id}>{personName(p)}</option>)}
               </select>}
             </label>
-            {canEdit && <button className="tk-subx tk-ghost" aria-label="Видалити підзадачу" disabled={busy} onClick={() => act(() => deleteSubtask(x.id))}
+            {(() => { const n = files.filter(f => f.subtask_id === x.id).length, has = !!(x.result_text || '').trim() || n > 0
+              return <button className="tk-ghost" title={has ? 'Результат підзадачі' : 'Додати результат: коментар і файли'} onClick={() => setRes(r => r === x.id ? null : x.id)}
+                style={{ height: 28, padding: '0 6px', border: 'none', background: res === x.id ? 'var(--surface2, #f3f4f6)' : 'none', borderRadius: 6, cursor: 'pointer', color: has ? '#2563eb' : '#9ca3af', fontSize: 12, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 3, flex: '0 0 auto' }}>
+                <i className="ti ti-paperclip" style={{ fontSize: 15 }} />{n > 0 ? n : ''}</button> })()}
+            {canEdit && <button className="tk-subx tk-ghost" aria-label="Видалити підзадачу" disabled={busy} onClick={() => confirm(`Видалити підзадачу «${x.text}»?`) && act(() => deleteSubtask(x.id))}
               style={{ opacity: 0.35, width: 28, height: 28, border: 'none', background: 'none', borderRadius: 6, cursor: 'pointer', color: '#6b7280', fontSize: 16 }}>×</button>}
+          </div>
+          {res !== x.id && ((x.result_text || '').trim() || files.some(f => f.subtask_id === x.id)) && <SubResultView x={x} files={files.filter(f => f.subtask_id === x.id)} people={people} onOpen={() => setRes(x.id)} />}
+          {res === x.id && <SubResultForm x={x} t={t} files={files.filter(f => f.subtask_id === x.id)} canEdit={canEdit} people={people}
+            onClose={() => setRes(null)} onSaved={async () => { await load(); onChanged() }} />}
           </div>
         )
       })}
@@ -703,5 +722,71 @@ function SubDue({ value, late, canEdit, busy, onChange }) {
       <input ref={ref} type="date" tabIndex={-1} aria-hidden="true" value={value || ''} onChange={e => onChange(e.target.value || null)}
         style={{ position: 'absolute', left: 0, bottom: 0, width: 1, height: 1, opacity: 0, pointerEvents: 'none', border: 0, padding: 0 }} />
     </span>
+  )
+}
+
+// результат підзадачі (перегляд): коментар і файли
+function SubResultView({ x, files, people, onOpen }) {
+  const who = people.find(p => p.id === x.result_by)
+  return (
+    <div onClick={onOpen} style={{ margin: '0 18px 10px 48px', padding: '8px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, cursor: 'pointer', color: '#14532d' }}>
+      {(x.result_text || '').trim() && <div style={{ fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-line' }}>{x.result_text}</div>}
+      {files.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: x.result_text ? 6 : 0 }}>
+        {files.map(f => <button key={f.id} onClick={e => { e.stopPropagation(); openTaskFile(f).catch(err => alert(err.message)) }}
+          style={{ border: '1px solid #bbf7d0', background: '#fff', borderRadius: 6, padding: '2px 8px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: '#166534' }}>
+          <i className="ti ti-file" /> {f.name}</button>)}
+      </div>}
+      {x.result_at && <div style={{ fontSize: 11.5, color: '#4d7c0f', marginTop: 4 }}>{who ? personName(who) + ', ' : ''}{shortDate(String(x.result_at).slice(0, 10))} {kyivTime(x.result_at)}</div>}
+    </div>
+  )
+}
+
+// результат підзадачі (редагування): коментар + файли до 20 МБ; «Зберегти і позначити виконаною»
+function SubResultForm({ x, t, files, canEdit, onClose, onSaved }) {
+  const [text, setText] = useState(x.result_text || '')
+  const [picked, setPicked] = useState([])
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const save = async (markDone) => {
+    setBusy(true); setErr(null)
+    try {
+      if (picked.length) await uploadTaskFiles(t.id, x.id, picked)
+      const patch = {}
+      if ((text || '') !== (x.result_text || '')) patch.result_text = text.trim() || null
+      if (markDone && !x.done) patch.done = true
+      if (Object.keys(patch).length) await updateSubtask(x.id, patch)
+      setPicked([]); await onSaved(); onClose()
+    } catch (e) { setErr(errText(e)) }
+    setBusy(false)
+  }
+  const del = async (f) => {
+    if (!confirm(`Видалити файл «${f.name}»?`)) return
+    setBusy(true)
+    try { await deleteTaskFile(f); await onSaved() } catch (e) { setErr(errText(e)) }
+    setBusy(false)
+  }
+  return (
+    <div style={{ margin: '0 18px 12px 48px', padding: 12, border: '1px solid #c7d2fe', borderRadius: 10, background: 'var(--surface, #fff)', display: 'flex', flexDirection: 'column', gap: 8, boxShadow: '0 0 0 3px #eef2ff' }}>
+      <div style={{ fontSize: 13, fontWeight: 600 }}>Результат підзадачі</div>
+      <textarea value={text} onChange={e => setText(e.target.value)} rows={3} disabled={!canEdit || busy} autoFocus placeholder="Коментар: що зроблено, номер документа, з ким домовились…"
+        style={{ border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 10px', fontSize: 13, lineHeight: 1.5, resize: 'vertical', background: 'var(--surface, #fff)', color: 'var(--text)' }} />
+      {files.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {files.map(f => <span key={f.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid var(--border, #e5e7eb)', borderRadius: 6, padding: '2px 4px 2px 8px', fontSize: 12 }}>
+          <button onClick={() => openTaskFile(f).catch(e => setErr(e.message))} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', color: '#1d4ed8', padding: 0 }}><i className="ti ti-file" /> {f.name}</button>
+          {canEdit && <button aria-label="Видалити файл" disabled={busy} onClick={() => del(f)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#9ca3af' }}>×</button>}
+        </span>)}
+      </div>}
+      {canEdit && <label style={{ fontSize: 12.5, color: '#4b5563', border: '1px dashed #c7d2fe', borderRadius: 8, padding: 10, textAlign: 'center', cursor: 'pointer' }}>
+        <input type="file" multiple style={{ display: 'none' }} onChange={e => { setPicked(p => [...p, ...Array.from(e.target.files || [])]); e.target.value = '' }} />
+        <i className="ti ti-upload" /> Оберіть файли · PDF, фото, скани до {MAX_FILE_MB} МБ
+        {picked.length > 0 && <div style={{ marginTop: 6, color: 'var(--text)' }}>{picked.map((f, i) => <span key={i} style={{ marginRight: 8 }}>📎 {f.name}</span>)}</div>}
+      </label>}
+      {err && <div style={{ color: 'var(--red)', fontSize: 12.5 }}>{err}</div>}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+        <button className="btn btn-sm" onClick={onClose} disabled={busy}>Закрити</button>
+        {canEdit && <button className="btn btn-sm" onClick={() => save(false)} disabled={busy}>{busy ? '…' : 'Зберегти'}</button>}
+        {canEdit && !x.done && <button className="btn btn-primary btn-sm" onClick={() => save(true)} disabled={busy}>Зберегти і позначити виконаною</button>}
+      </div>
+    </div>
   )
 }

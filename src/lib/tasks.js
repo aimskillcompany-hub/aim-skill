@@ -122,6 +122,7 @@ export const errText = (e) => {
   const m = e?.message || String(e || '')
   if (/tasks_status_check|assignee_id|task_watchers|RESULT_REQUIRED|REVIEW_REQUIRED/.test(m)) return m.replace(/^[A-Z_]+:\s*/, '')
   if (/column .* does not exist|relation .*task_/.test(m)) return 'Застосуйте міграцію 092 (планер задач)'
+  if (/task_files|result_text.*task_checklist|task_checklist.*result/.test(m)) return 'Застосуйте міграцію 095 (результат підзадачі)'
   if (/task_checklist/.test(m)) return 'Застосуйте міграцію 094 (підзадачі)'
   if (/notifications|telegram_link_code|set_notify_prefs|task_remind_me|schema cache/.test(m)) return 'Застосуйте міграцію 093 (нагадування)'
   return m
@@ -183,6 +184,7 @@ export function describeActivity(a, people) {
     case 'subtask_add': return `додав(ла) підзадачу «${nv?.text}»`
     case 'subtask_done': return nv?.done ? `виконав(ла) підзадачу «${nv?.text}»` : `зняв(ла) позначку з підзадачі «${nv?.text}»`
     case 'subtask_del': return `видалив(ла) підзадачу «${ov?.text}»`
+    case 'subtask_result': return `додав(ла) результат підзадачі «${nv?.text}»: ${nv?.result || ''}`
     default: return a.action
   }
 }
@@ -267,4 +269,33 @@ export async function updateSubtask(id, patch) {
 export async function deleteSubtask(id) {
   const { error } = await supabase.from('task_checklist').delete().eq('id', id)
   if (error) throw new Error(errText(error))
+}
+
+// ── файли задачі / підзадачі (095): сховище documents, tasks/<задача>/<підзадача>/… ──
+export const MAX_FILE_MB = 20
+export async function loadTaskFiles(taskId) {
+  const { data, error } = await supabase.from('task_files').select('*').eq('task_id', taskId).order('created_at')
+  if (error) throw new Error(errText(error))
+  return data || []
+}
+export async function uploadTaskFiles(taskId, subtaskId, files) {
+  for (const f of files) {
+    if (f.size > MAX_FILE_MB * 1024 * 1024) throw new Error(`«${f.name}» більший за ${MAX_FILE_MB} МБ`)
+    const safe = f.name.replace(/[^\w.\-]+/g, '_').slice(-80) || 'file'
+    const path = `tasks/${taskId}/${subtaskId || 'task'}/${Date.now()}_${safe}`
+    const { error: upErr } = await supabase.storage.from('documents').upload(path, f, { upsert: false, contentType: f.type || undefined })
+    if (upErr) throw new Error(`Файл «${f.name}» не завантажено: ${upErr.message}`)
+    const { error } = await supabase.from('task_files').insert({ task_id: taskId, subtask_id: subtaskId || null, storage_path: path, name: f.name, size: f.size, mime: f.type || null })
+    if (error) { await supabase.storage.from('documents').remove([path]); throw new Error(errText(error)) }
+  }
+}
+export async function openTaskFile(row) {
+  const { data, error } = await supabase.storage.from('documents').createSignedUrl(row.storage_path, 600)
+  if (error || !data?.signedUrl) throw new Error('Не вдалося відкрити файл')
+  window.open(data.signedUrl, '_blank')
+}
+export async function deleteTaskFile(row) {
+  const { error } = await supabase.from('task_files').delete().eq('id', row.id)
+  if (error) throw new Error(errText(error))
+  await supabase.storage.from('documents').remove([row.storage_path]).catch(() => {})
 }
