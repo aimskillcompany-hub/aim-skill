@@ -241,7 +241,7 @@ export default function Orders() {
                         {OUTCOME[o.outcome]
                           ? <StatusPill status={o.outcome} kind="order" />
                           : <StatusPill status={o.status} kind="order" label={statusLabel(o)} />}
-                        {o.paid_transaction_id && (
+                        {o.paid_transaction_id && o.status !== 'paid' && (
                           <span title={o.payment ? `Оплата ${fmtDate(o.payment.date)} · ${fmt(Math.abs(o.payment.amount))} грн` : 'Оплачено клієнтом'}>
                             <StatusPill status="paid" kind="order" size="sm" label="Оплачено клієнтом" />
                           </span>
