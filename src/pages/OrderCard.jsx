@@ -23,6 +23,9 @@ import { unlinkOrderPayment } from '../lib/orderPayments'
 import { PageHeader, StatusPill, Button, ConfirmDialog, TableSkeleton, EmptyState, Modal, useToast } from '../components/ui'
 import { formatMoney } from '../utils/format'
 import './OrderCard.css'
+import { OrderHeadNew, OrderAside, OrderTotals, useOrderPlan } from './OrderCardNew'
+import { useNewUi } from '../lib/uiPrefs'
+import { Tabs, Callout } from '../components/ui'
 import {
   ORDER_TYPES, TYPE_COLORS, OUTCOME, flowFor, proposalOverdue,
 } from '../lib/orders'
@@ -62,6 +65,7 @@ export default function OrderCard() {
   const [itemsDirty, setItemsDirty] = useState(false)
   const [askUnlink, setAskUnlink] = useState(false)
   const toast = useToast()
+  const newUi = useNewUi()
 
   const UNSAVED_MSG = 'У вкладці «Товари» є незбережені зміни. Якщо піти — вони втратяться. Продовжити?'
   const guardLeave = () => !itemsDirty || window.confirm(UNSAVED_MSG)
@@ -185,6 +189,37 @@ export default function OrderCard() {
     else if (e.key === 'End') go(tabs.length - 1)
   }
 
+  const panel = (
+    <>
+      {tab === 'details' && <DetailsTab key={`${o.status}|${o.closed_at || ''}`} o={o} onSaved={load} />}
+      {tab === 'items' && <ItemsTab o={o} onChange={load} onDirty={setItemsDirty} />}
+      {tab === 'proposals' && <ProposalsTab o={o} onChange={load} />}
+      {tab === 'documents' && <DocumentsTab o={o} />}
+      {tab === 'suppliers' && <SuppliersTab o={o} />}
+      {tab === 'vendorreg' && <VendorRegTab o={o} />}
+      {tab === 'tender' && o.procurement_type === 'tender' && <TenderDocsTab o={o} />}
+      {tab === 'finance' && <OrderFinanceTab o={o} onOrderChange={load} />}
+      {tab === 'stock' && <StockTab o={o} />}
+      {tab === 'tasks' && <OrderTasksTab o={o} />}
+    </>
+  )
+  const dialogs = (
+    <>
+      <ConfirmDialog open={askUnlink} danger title="Відв'язати оплату?" confirmLabel="Відв'язати"
+        text={payment ? `${fmtDate(payment.date)} · ${fmt(Math.abs(payment.amount))} грн від замовлення ${o.order_number || ''}.\n\n${payment.description || ''}\n\nЦе не наша оплата — «Підтягнути оплати» більше не пропонуватиме її цьому замовленню.` : ''}
+        onCancel={() => setAskUnlink(false)} onConfirm={doUnlink} />
+      <ConfirmDialog open={confirmDel} danger title={`Видалити замовлення ${o.order_number || ''}?`} confirmLabel="Видалити" loading={busy === 'del'}
+        text="Замовлення можна видалити, лише якщо до нього не прив'язано документів. Інакше — завершіть його («Виконано» / «Програно»)."
+        onCancel={() => setConfirmDel(false)} onConfirm={del} />
+    </>
+  )
+
+  if (newUi) return (
+    <NewCardLayout o={o} payment={payment} busy={busy} msg={msg} overdue={overdue} tab={tab} tabs={tabs} switchTab={switchTab}
+      onBack={leaveCrumb} onStatus={setStatus} onArchive={archive} onUnarchive={unarchive} onOutcome={setOutcome} onCopy={copyOrder}
+      onDelete={() => { setMsg(null); setConfirmDel(true) }} onUnlinkPayment={() => setAskUnlink(true)} panel={panel} dialogs={dialogs} />
+  )
+
   return (
     <div>
       <PageHeader
@@ -252,18 +287,7 @@ export default function OrderCard() {
         ))}
       </div>
 
-      <div id="oc-tabpanel" role="tabpanel" aria-labelledby={`oc-tab-${tab}`}>
-        {tab === 'details' && <DetailsTab key={`${o.status}|${o.closed_at || ''}`} o={o} onSaved={load} />}
-        {tab === 'items' && <ItemsTab o={o} onChange={load} onDirty={setItemsDirty} />}
-        {tab === 'proposals' && <ProposalsTab o={o} onChange={load} />}
-        {tab === 'documents' && <DocumentsTab o={o} />}
-        {tab === 'suppliers' && <SuppliersTab o={o} />}
-        {tab === 'vendorreg' && <VendorRegTab o={o} />}
-        {tab === 'tender' && o.procurement_type === 'tender' && <TenderDocsTab o={o} />}
-        {tab === 'finance' && <OrderFinanceTab o={o} onOrderChange={load} />}
-        {tab === 'stock' && <StockTab o={o} />}
-        {tab === 'tasks' && <OrderTasksTab o={o} />}
-      </div>
+      <div id="oc-tabpanel" role="tabpanel" aria-labelledby={`oc-tab-${tab}`}>{panel}</div>
 
       <ConfirmDialog open={askUnlink} danger title="Відв'язати оплату?" confirmLabel="Відв'язати"
         text={payment ? `${fmtDate(payment.date)} · ${fmt(Math.abs(payment.amount))} грн від замовлення ${o.order_number || ''}.\n\n${payment.description || ''}\n\nЦе не наша оплата — «Підтягнути оплати» більше не пропонуватиме її цьому замовленню.` : ''}
@@ -271,6 +295,40 @@ export default function OrderCard() {
       <ConfirmDialog open={confirmDel} danger title={`Видалити замовлення ${o.order_number || ''}?`} confirmLabel="Видалити" loading={busy === 'del'}
         text="Замовлення можна видалити, лише якщо до нього не прив'язано документів. Інакше — завершіть його («Виконано» / «Програно»)."
         onCancel={() => setConfirmDel(false)} onConfirm={del} />
+    </div>
+  )
+}
+
+// Новий інтерфейс: шапка, підказки, вкладки + колонка праворуч (макет Order). План рахується тут, щоб
+// шапка (маржа) і колонка (прибуток) брали одне число.
+function NewCardLayout({ o, payment, busy, msg, overdue, tab, tabs, switchTab, onBack, onStatus, onArchive, onUnarchive, onOutcome, onCopy, onDelete, onUnlinkPayment, panel, dialogs }) {
+  const plan = useOrderPlan(o)
+  const lost = o.outcome === 'lost'
+  return (
+    <div className="ocn">
+      <OrderHeadNew o={o} plan={plan} busy={busy} payment={payment} onBack={onBack} onStatus={onStatus} onArchive={onArchive}
+        onUnarchive={onUnarchive} onCopy={onCopy} onDelete={onDelete} onUnlinkPayment={onUnlinkPayment} />
+      {msg && <Callout tone="danger" title="Не вдалося." text={msg} />}
+      {o.archived_at && (
+        <Callout tone={lost ? 'danger' : 'brand'} title={`${lost ? 'Програно' : 'Виконано'} з ${fmtDate(o.archived_at)}.`}
+          text={lost ? 'Замовлення в архіві як програне.' : 'Замовлення завершено.'}
+          action={{ label: lost ? 'Позначити виконаним' : 'Позначити програним', onClick: () => onOutcome(lost ? 'won' : 'lost') }} />
+      )}
+      {!o.archived_at && o.status === 'needs_contract' && !o.contract_id && (
+        <Callout tone="warn" title="Етап «Потребує договір», а договір не вибрано." text="Додайте договір у картці клієнта й виберіть його в «Деталях»."
+          action={o.client_id ? { label: 'Картка клієнта', to: `/contractors/${o.client_id}` } : { label: 'Деталі', onClick: () => switchTab('details') }} />
+      )}
+      {overdue && <Callout tone="danger" title="КП без відповіді понад 48 год." text="Клієнт ще не відповів на комерційну пропозицію." action={{ label: 'КП', onClick: () => switchTab('proposals') }} />}
+      <div className="ocn-grid">
+        <section className="ocn-main">
+          <Tabs ariaLabel="Розділи замовлення" idPrefix="ocn-tab" value={tab} onChange={switchTab}
+            tabs={tabs.map(t => ({ id: t.id, label: t.label }))} />
+          <div className="ocn-panel" role="tabpanel" aria-labelledby={`ocn-tab-${tab}`}>{panel}</div>
+          {tab === 'items' && <OrderTotals o={o} plan={plan} />}
+        </section>
+        <OrderAside o={o} plan={plan} payment={payment} onTab={switchTab} />
+      </div>
+      {dialogs}
     </div>
   )
 }
