@@ -5,6 +5,8 @@ import { exportReceivablesPdf } from '../lib/receivablesPdf'
 import { loadDocItems } from '../lib/docItems'
 import { lastReminders } from '../lib/clientStatement'
 import ClientStatementModal from './ClientStatementModal'
+import ReceivablesNew from './ReceivablesNew'
+import { useNewUi } from '../lib/uiPrefs'
 
 // Звіт «Дебіторка»: підсумок + старіння + контрагенти (розгортаються до документів). PDF-експорт.
 const MONTHS = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень', 'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень']
@@ -55,6 +57,17 @@ export default function ReceivablesReport() {
 
   const years = [2025, 2026, 2027].filter(y => y <= now.getFullYear() + 1)
   const asOf = raw?.asOf ? d(raw.asOf) : ''
+
+  const newUi = useNewUi()
+  const pdf = () => filtered && exportReceivablesPdf({ ...filtered, asOf: raw.asOf, scopeName: scope === 'all' ? 'Усі юрособи' : (raw?.companies.find(c => c.id === scope)?.name || '') })
+  const report = (c) => setStmt(raw.docs.filter(x => x.contractorId === c.contractorId).length ? { ...c, docs: raw.docs.filter(x => x.contractorId === c.contractorId) } : c)
+  if (newUi) return (
+    <>
+      <ReceivablesNew raw={raw} filtered={filtered} shown={shown} loading={loading} err={err} year={year} setYear={setYear} month={month} setMonth={setMonth}
+        years={years} scope={scope} setScope={setScope} companies={companies} q={q} setQ={setQ} reminders={reminders} onReport={report} onPdf={pdf} />
+      {stmt && <ClientStatementModal group={stmt} defaultAsOf={raw?.asOf} onClose={() => setStmt(null)} onLogged={reloadReminders} />}
+    </>
+  )
 
   return (
     <div style={{ fontFamily: 'Manrope, system-ui, sans-serif', color: '#17151F', display: 'flex', flexDirection: 'column', gap: 24 }}>

@@ -2,6 +2,8 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useCompany } from '../lib/company'
 import { useUser } from '../lib/auth'
 import { computeProfitability, saveAgent } from '../lib/profitability'
+import { useNewUi } from '../lib/uiPrefs'
+import ProfitabilityNew from './ProfitabilityNew'
 
 // Прибутковість реалізації: видаткові → товари (закупка FIFO → реалізація → прибуток → агентські → чистий).
 const now = new Date()
@@ -38,6 +40,10 @@ export default function ProfitabilityReport() {
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [companyId, from, to, tick])
+
+  const newUi = useNewUi()
+  if (newUi) return <ProfitabilityNew data={data} loading={loading} err={err} from={from} to={to} setFrom={setFrom} setTo={setTo}
+    companies={companies} companyId={companyId} setCompanyId={setCompanyId} userId={user?.id} onChanged={() => setTick(t => t + 1)} />
 
   return (
     <div style={{ fontFamily: 'Manrope, system-ui, sans-serif', color: '#17151F', display: 'flex', flexDirection: 'column', gap: 22 }}>
