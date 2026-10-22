@@ -19,6 +19,7 @@ import VendorRegTab from '../components/VendorRegTab'
 import TenderDocsTab from '../components/TenderDocsTab'
 import OrderFinanceTab from '../components/OrderFinanceTab'
 import OrderTasksTab from '../components/OrderTasksTab'
+import { unlinkOrderPayment } from '../lib/orderPayments'
 import {
   ORDER_TYPES, TYPE_COLORS, OUTCOME, flowFor, proposalOverdue,
 } from '../lib/orders'
@@ -172,9 +173,15 @@ export default function OrderCard() {
                 </span>
               )}
               {o.paid_transaction_id && payment && (
-                <span title={payment.description || ''} style={{ background: 'var(--green-bg, #e7f7ec)', color: 'var(--green)', borderRadius: 6, padding: '2px 10px', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  <i className="ti ti-cash" /> Оплачено клієнтом · {fmtDate(payment.date)} · {fmt(Math.abs(payment.amount))} грн
-                </span>
+                <button title={`${payment.description || ''}\n\nНатисніть, щоб відв'язати, якщо це не оплата цього замовлення`}
+                  onClick={async () => {
+                    if (!confirm(`Відв'язати оплату ${fmtDate(payment.date)} · ${fmt(Math.abs(payment.amount))} грн від замовлення ${o.order_number || ''}?\n\n${payment.description || ''}\n\nЦе не наша оплата — «Підтягнути оплати» більше не пропонуватиме її цьому замовленню.`)) return
+                    try { const r = await unlinkOrderPayment(o); if (!r.remembered) alert('Оплату відв\'язано. Щоб вона не підтягнулась знову, застосуйте міграцію 096.'); load() }
+                    catch (e) { alert('Не вдалося відв\'язати: ' + e.message) }
+                  }}
+                  style={{ background: 'var(--green-bg, #e7f7ec)', color: 'var(--green)', borderRadius: 6, padding: '2px 10px', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <i className="ti ti-cash" /> Оплачено клієнтом · {fmtDate(payment.date)} · {fmt(Math.abs(payment.amount))} грн <i className="ti ti-x" style={{ opacity: .6 }} />
+                </button>
               )}
             </div>
           </div>

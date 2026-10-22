@@ -23,7 +23,8 @@ export async function paymentCandidates(order) {
     .eq('direction', 'Доходи')
     .eq('is_ignored', false)
     .order('date', { ascending: false })
-  let list = (txs || []).filter(t => amountMatches(order.total, t.amount))
+  const rejected = new Set(order.rejected_payment_ids || [])            // «це не наша оплата» (096)
+  let list = (txs || []).filter(t => amountMatches(order.total, t.amount) && !rejected.has(t.id))
   if (list.length) {
     // Прибираємо транзакції, вже зайняті іншим замовленням (щоб не двоїти оплату).
     try {
@@ -60,4 +61,18 @@ export async function autoLinkPayment(order) {
   const { error } = await qc('orders').update({ paid_transaction_id: tx.id }).eq('id', order.id)
   if (error) throw error
   return tx
+}
+
+// Відв'язати оплату від замовлення; reject = «це не наша оплата» — більше не пропонувати її автопідбором
+export async function unlinkOrderPayment(order, { reject = true } = {}) {
+  const txId = order.paid_transaction_id
+  const patch = { paid_transaction_id: null }
+  if (reject && txId) patch.rejected_payment_ids = [...new Set([...(order.rejected_payment_ids || []), txId])]
+  let { error } = await qc('orders').update(patch).eq('id', order.id)
+  if (error && /rejected_payment_ids/.test(error.message || '')) {   // до міграції 096 — лише відв'язати
+    ({ error } = await qc('orders').update({ paid_transaction_id: null }).eq('id', order.id))
+    if (!error) return { ok: true, remembered: false }
+  }
+  if (error) throw new Error(error.message)
+  return { ok: true, remembered: reject }
 }

@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { qc } from '../lib/companyScope'
 import { useUser } from '../lib/auth'
 import { fmt, fmtInt } from '../lib/fmt'
-import { paymentCandidates, clientPayments } from '../lib/orderPayments'
+import { paymentCandidates, clientPayments, unlinkOrderPayment } from '../lib/orderPayments'
 import { useCompany } from '../lib/company'
 import { computeOrderPlan } from '../lib/orderPlan'
 import OrderPaymentPlan from './OrderPaymentPlan'
@@ -56,7 +56,7 @@ export default function OrderFinanceTab({ o, onOrderChange }) {
   }
   const unlinkPayment = async () => {
     setPayBusy(true)
-    await qc('orders').update({ paid_transaction_id: null }).eq('id', o.id)
+    try { await unlinkOrderPayment(o) } catch (e) { alert('Не вдалося відв\'язати: ' + e.message) }   // і більше не пропонувати її
     setPayBusy(false); onOrderChange?.()
   }
   const openPayPicker = async () => setPickList(await clientPayments(o).catch(() => []))
