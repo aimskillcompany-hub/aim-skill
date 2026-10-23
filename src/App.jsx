@@ -1,6 +1,5 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { css, mobileCss } from './lib/styles'
 import { AuthProvider, RequireAuth, useUser } from './lib/auth'
 import { CompanyProvider } from './lib/company'
 import { canAccess, firstSection } from './lib/permissions'
@@ -47,6 +46,7 @@ const Profitability = lazyPage(() => import('./pages/Profitability'))
 const Settings = lazyPage(() => import('./pages/Settings'))
 const PeriodClose = lazyPage(() => import('./pages/PeriodClose'))
 const Tasks = lazyPage(() => import('./pages/Tasks'))
+const UiKit = lazyPage(() => import('./pages/UiKit'))
 
 const Loading = () => <div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Завантаження…</div>
 
@@ -54,6 +54,12 @@ const Loading = () => <div style={{ padding: 40, textAlign: 'center', color: 'va
 function Gate({ section, children }) {
   const { user } = useUser()
   if (!canAccess(user?.role, section)) return <Navigate to={`/${firstSection(user?.role)}`} replace />
+  return children
+}
+// Еталон дизайн-системи: лише адміністратор (у режимі розробки сторінка доступна й без входу — див. маршрути)
+function AdminOnly({ children }) {
+  const { user } = useUser()
+  if (user?.role !== 'admin') return <Navigate to={`/${firstSection(user?.role)}`} replace />
   return children
 }
 // Стартовий розділ за роллю
@@ -66,11 +72,11 @@ export default function App() {
   return (
     <AuthProvider>
       <CompanyProvider>
-      <style>{css}{mobileCss}</style>
       <ErrorBoundary>
         <Suspense fallback={<Loading />}>
           <Routes>
             <Route path="/login" element={<Login />} />
+            {import.meta.env.DEV && <Route path="/ui-dev" element={<div style={{ padding: "24px 16px 120px", background: "var(--bg)", minHeight: "100vh" }}><UiKit /></div>} />}
             <Route element={<RequireAuth><Layout /></RequireAuth>}>
               <Route index element={<Home />} />
               <Route path="/orders" element={<Gate section="orders"><Orders /></Gate>} />
@@ -96,6 +102,7 @@ export default function App() {
               <Route path="/period-close" element={<Gate section="period-close"><PeriodClose /></Gate>} />
               <Route path="/tasks" element={<Gate section="tasks"><Tasks /></Gate>} />
               <Route path="/settings" element={<Gate section="settings"><Settings /></Gate>} />
+              <Route path="/ui" element={<AdminOnly><UiKit /></AdminOnly>} />
               <Route path="*" element={<Home />} />
             </Route>
           </Routes>

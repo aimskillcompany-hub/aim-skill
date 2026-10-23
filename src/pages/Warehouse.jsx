@@ -747,7 +747,7 @@ function MovementsTab() {
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
         <select className="form-input" value={type} onChange={e => setType(e.target.value)} style={{ width: 180 }}>
-          <option value="all">Всі рухи</option><option value="in">Прихід</option><option value="out">Видаток</option><option value="adjustment">Коригування</option>
+          <option value="all">Усі рухи</option><option value="in">Прихід</option><option value="out">Видаток</option><option value="adjustment">Коригування</option>
         </select>
       </div>
       <div className="card">

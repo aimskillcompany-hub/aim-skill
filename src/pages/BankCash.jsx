@@ -270,15 +270,15 @@ function TransactionsTab({ accounts, onChange }) {
         <input className="form-input" placeholder="Пошук: контрагент або ЄДРПОУ…" value={q} onChange={e => setQ(e.target.value)} style={{ flex: '1 1 240px', maxWidth: 340 }} />
         <select className="form-input" value={status} onChange={e => setStatus(e.target.value)} style={{ width: 180 }}>
           <option value="unconfirmed">Непідтверджені</option>
-          <option value="all">Всі</option>
+          <option value="all">Усі</option>
           <option value="ignored">Ігноровані</option>
         </select>
         <select className="form-input" value={acc} onChange={e => setAcc(e.target.value)} style={{ width: 180 }}>
-          <option value="all">Всі рахунки</option>
+          <option value="all">Усі рахунки</option>
           {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
         </select>
         <select className="form-input" value={art} onChange={e => setArt(e.target.value)} style={{ width: 200 }}>
-          <option value="all">Всі статті</option>
+          <option value="all">Усі статті</option>
           <option value="__none__">Без статті</option>
           <option value="__nolink__">Стаття не з довідника</option>
           <option value="__nocontractor__">Без контрагента</option>
@@ -568,7 +568,7 @@ function TxModal({ tx, grouped, accounts = [], onClose, onSaved, onLink, onOpenD
                 <option value="">— без проекту —</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
-              {!projects.length && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>Проектів немає. Створіть у розділі «Фінрезультат проекту».</div>}
+              {!projects.length && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>Проектів немає. Створіть у розділі «Фінрезультат проєкту».</div>}
             </div>
           )}
         </div>
