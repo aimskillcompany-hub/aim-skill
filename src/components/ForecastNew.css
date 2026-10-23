@@ -121,3 +121,24 @@
 @media (max-width: 767px) { .fcn-eq > div:not(.is-res) b { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } }
 /* плашка касового розриву — суцільний теплий фон на темній картці (макет Forecast) */
 .fcn-gap, .fcn-gap.is-bad { background: color-mix(in srgb, var(--on-dark-neg) 14%, var(--ink)); box-shadow: none; }
+/* «Угоди в роботі» (ТЗ 5.3, 23.10.2026): веб — три картки залишку замість hero й графіка; телефон — як було (hero + місяці) */
+.fcn-three { display: flex; flex-direction: column; gap: 14px; }
+.fcn-three-h { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+.fcn-three-c { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; }
+.fcn-three-c > .ti { color: var(--muted-2); font-size: 18px; }
+.fcn-mc { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; border-radius: 18px; background: var(--surface-sunken); min-width: 0; }
+.fcn-mc span { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.fcn-mc em { font-style: normal; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+.fcn-mc b { font-size: 30px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.fcn-mc small { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.fcn-mc.is-low { background: var(--warn-bg); } .fcn-mc.is-low span { color: var(--warn-fg); } .fcn-mc.is-low em { background: var(--warn-fg); color: #fff; }
+.fcn-mc.is-low.is-neg b { color: var(--danger-fg); }
+.fcn-mc.is-end { background: var(--ink); color: #fff; } .fcn-mc.is-end span, .fcn-mc.is-end small { color: var(--on-dark-muted); }
+.fcn-mc.is-end em { background: var(--ink-field); color: var(--on-dark-pos); } .fcn-mc.is-end b.is-neg { color: var(--on-dark-neg); }
+.fcn-three-gap { margin: 0; font-size: 13px; color: var(--danger-fg); }
+.fcn-three-note { margin: 0; padding-top: 12px; border-top: 1px solid var(--divider); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; color: var(--muted); }
+.fcn-three-note > i { width: 8px; height: 8px; border-radius: 50%; background: var(--warn-mark); }
+.fcn-three-note .rpt-link { text-decoration: underline; text-underline-offset: 3px; }
+.fcn-manual.is-empty { display: none; }
+@media (min-width: 768px) { .fcn-hero, .fcn-mid { display: none !important; } }
+@media (max-width: 767px) { .fcn-three { display: none; } .fcn-manual.is-empty { display: block; } }
