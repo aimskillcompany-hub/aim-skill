@@ -120,7 +120,7 @@ export default function ConsolidatedNew({ data, forecast, loading, err, year, mo
           <thead><tr><th scope="col">Стаття</th>{rows.map((r, i) => <th key={r.id} scope="col" className={hl === i ? 'is-hl' : ''}><i style={{ background: ENT[i % ENT.length] }} />{r.name}</th>)}<th scope="col" className="csn-grp">Група · факт</th>{showFc && <><th scope="col">Рух</th><th scope="col" className="csn-fc">Прогноз</th></>}</tr></thead>
           <tbody>
             <tr className="csn-sec"><th colSpan={cols}>Активи</th></tr>
-            {line('Гроші', r => r.cash, { fc: () => fc.cash, move: forecast ? <span className="csn-io"><span className="is-pos">+{n0(income)}</span><span className="is-neg">−{n0(expense)}</span></span> : '—' })}
+            {line('Гроші', r => r.cash, { fc: () => fc.cash, move: forecast && (Math.round(income) || Math.round(expense)) ? <span className="csn-io"><span className="is-pos">+{n0(income)}</span><span className="is-neg">−{n0(expense)}</span></span> : '—' })}
             {line('Склад', r => r.stock, { fc: () => fc.stock })}
             {line('Дебіторка', r => r.recv, { fc: () => fc.recv, move: rc ? mv(-rc) : '—' })}
             {line('Основні засоби', r => r.fa, { fc: () => fc.fa })}

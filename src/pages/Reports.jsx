@@ -46,7 +46,8 @@ function useTileFigures(companies, active) {
       try {
         const list = await listOutgoingDocs()
         const month = list.filter(d => (d.doc_date || '').slice(0, 7) === today.slice(0, 7))
-        set('accountant', { value: month.reduce((s, d) => s + (Number(d.amount) || 0), 0), sub: `${MONTHS[Number(today.slice(5, 7)) - 1]}: ${month.length} ${plural(month.length, ['документ', 'документи', 'документів'])}` })
+        // макет Reports: на плитці — кількість документів, сума — підписом
+        set('accountant', { value: month.length, text: `${month.length} ${plural(month.length, ['документ', 'документи', 'документів'])}`, sub: `${MONTHS[Number(today.slice(5, 7)) - 1]}: на ${formatAmount(month.reduce((s, d) => s + (Number(d.amount) || 0), 0), { decimals: 0 })} ₴` })
       } catch { set('accountant', { error: true }) }
     })()
     return () => { alive = false }
@@ -88,7 +89,7 @@ export default function Reports() {
           return (
             <button key={t.id} id={`rpt-tab-${t.id}`} type="button" role="tab" aria-selected={tab === t.id} aria-controls="rpt-panel" className="rpt-tile" onClick={() => setTab(t.id)}>
               <span className="rpt-tile-name"><i className={`ti ${t.icon}`} aria-hidden="true" />{t.label}</span>
-              <b className={`rpt-tile-value${x?.value < 0 ? ' is-neg' : ''}`}>{!x ? '…' : x.error ? '—' : `${formatAmount(x.value, { decimals: 0 })} ₴`}</b>
+              <b className={`rpt-tile-value${x?.value < 0 ? ' is-neg' : ''}`}>{!x ? '…' : x.error ? '—' : x.text || `${formatAmount(x.value, { decimals: 0 })} ₴`}</b>
               <span className="rpt-tile-sub">{x?.error ? 'не вдалося порахувати' : x?.sub || ' '}</span>
             </button>
           )

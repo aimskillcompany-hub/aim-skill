@@ -15,9 +15,6 @@
 .ctn-kpi-in .ui-kpi-value { color: var(--brand-dark); }
 .ctn-kpi-out .ui-kpi-value { color: var(--expense-fg); }
 .ctn-sort { position: relative; }
-.ctn-sort-btn { display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); font: inherit; font-size: 14px; color: var(--text); cursor: pointer; white-space: nowrap; }
-.ctn-sort-btn .ti { color: var(--muted); }
-.ctn-sort-btn:hover { border-color: var(--border-strong, var(--border)); background: var(--surface-sunken); }
 .ctn-table-wrap { overflow-x: auto; }
 .ctn-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .ctn-table th { text-align: left; padding: 12px 12px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); white-space: nowrap; }

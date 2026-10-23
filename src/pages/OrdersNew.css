@@ -36,7 +36,7 @@
 .on-search { position: relative; flex: 1 1 220px; max-width: 320px; }
 .on-search .ti { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 16px; pointer-events: none; }
 .on-search .form-input { padding-left: 36px; width: 100%; }
-.on-mgr { width: auto; min-width: 170px; }
+.on-mgr { position: relative; flex: none; }
 .on-views { margin-left: auto; }
 .on-active-filter { padding: 10px 18px; font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--divider); display: flex; gap: 8px; align-items: center; }
 .on-active-filter b { color: var(--text); }

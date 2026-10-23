@@ -36,7 +36,7 @@ function ForecastNewPage() {
           : 'Цифри беруться із замовлень з позначкою «в прогноз». Щоб змінити прогноз, змініть замовлення.'}</p>
       </div>
       <Tabs ariaLabel="Розділи прогнозу" idPrefix="fc" value={tab} onChange={setTab}
-        tabs={[{ id: 'deals', label: 'Угоди в роботі', icon: 'ti-trending-up' }, { id: 'accuracy', label: 'Точність прогнозу', icon: 'ti-target-arrow' }]} />
+        tabs={[{ id: 'deals', label: 'Угоди в роботі' }, { id: 'accuracy', label: 'Точність прогнозу' }]} />
       {tab === 'deals' ? <ForecastBalance /> : <ForecastAccuracy />}
     </div>
   )
