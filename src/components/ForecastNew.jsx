@@ -19,6 +19,9 @@ const MLOC = ['січні', 'лютому', 'березні', 'квітні', '�
 const MNOM = ['січень', 'лютий', 'березень', 'квітень', 'травень', 'червень', 'липень', 'серпень', 'вересень', 'жовтень', 'листопад', 'грудень']
 const mIdx = (ym) => Number(ym.slice(5, 7)) - 1
 
+// «Що заважає» (макет Forecast): етап замовлення, який тримає гроші; інакше — стан графіка платежів
+const BLOCKER = { new: 'Не опрацьовано', tender: 'Тендер ще триває', needs_contract: 'Потрібен договір' }
+
 export default function ForecastNew({ months, orders, manual, flags, co, setCo, coList, companies, userId, onChange }) {
   const [open, setOpen] = useState({})
   const [adding, setAdding] = useState(null)
@@ -75,6 +78,19 @@ export default function ForecastNew({ months, orders, manual, flags, co, setCo, 
               ))}
             </div>
           )}
+          {/* телефон (макет ForecastMobile): місяці — списком зі смужками */}
+          {months.rows.length > 0 && (() => { const mx = Math.max(1, ...months.rows.map(m => Math.abs(m.balance))); return (
+            <ul className="fcn-mrows">
+              <li><span className="fcn-mr-l">Зараз</span><b>{n0(months.startCash)}</b></li>
+              {months.rows.map((m, i) => (
+                <li key={m.ym}>
+                  <span className="fcn-mr-l"><b>{MS[mIdx(m.ym)]} {m.ym.slice(0, 4)}</b>{i === 0 && <small> з простроченим</small>}</span>
+                  <b className={m.balance < 0 || (m.net < 0 && m === low) ? 'is-neg' : ''}>{n0(m.balance)}</b>
+                  <small className="fcn-mr-d">{formatAmount(m.income, { decimals: 0, sign: 'always' })} · −{n0(m.expense)} · потік {formatAmount(m.net, { decimals: 0, sign: 'always' })}</small>
+                  <span className="fcn-mr-bar"><i className={m.net < 0 ? 'is-neg' : ''} style={{ width: `${Math.min(100, (Math.abs(m.balance) / mx) * 100)}%` }} /></span>
+                </li>
+              ))}
+            </ul>) })()}
         </section>
         <section className="cfn-card fcn-src" aria-label="Звідки цифри">
           <h2>Звідки цифри</h2>
@@ -91,7 +107,7 @@ export default function ForecastNew({ months, orders, manual, flags, co, setCo, 
         <div className="cfn-report-head"><h2 className="rpt-h3">Замовлення в прогнозі · {orders.length}</h2><span className="rpt-muted rpt-note">натисніть рядок — побачите графік платежів</span></div>
         {orders.length === 0 ? <EmptyState icon="ti-trending-up" title="Немає замовлень у прогнозі" text="Позначте замовлення «в прогноз» у реєстрі «Замовлення» — суми й дати візьмуться з нього." />
           : <div className="tbl-wrap rpt-table fcn-table"><table>
-            <thead><tr><th>Замовлення</th><th>Клієнт</th><th className="r">Прийде</th><th className="r">Піде</th><th className="r">Нетто</th><th className="r">Маржа</th><th>Стан</th></tr></thead>
+            <thead><tr><th>Замовлення</th><th>Клієнт</th><th className="r">Прийде</th><th className="r">Піде</th><th className="r">Нетто</th><th className="r">Маржа</th><th>Що заважає</th></tr></thead>
             <tbody>
               {[...orders].sort((x, y) => (y.lines.some(l => l.remaining > 0.5) ? 1 : 0) - (x.lines.some(l => l.remaining > 0.5) ? 1 : 0)).map(o => {
                 const pend = o.lines.filter(l => l.remaining > 0.5)
@@ -103,11 +119,11 @@ export default function ForecastNew({ months, orders, manual, flags, co, setCo, 
                     <tr className="is-click" onClick={() => setOpen(s => ({ ...s, [o.id]: !s[o.id] }))} aria-expanded={isOpen}>
                       <td className="c-name"><Link to={`/orders/${o.id}`} onClick={e => e.stopPropagation()} className="fcn-num">№{o.number}</Link><small className="rpt-muted">{o.company}</small></td>
                       <td className="c-client">{o.client}</td>
-                      <td className="r rpt-num fcn-in">{o.income ? `+${n0(o.income)}` : '—'}</td>
-                      <td className="r rpt-num fcn-out">{o.expense ? `−${n0(o.expense)}` : '—'}</td>
-                      <td className={`r rpt-num c-net${o.net < 0 ? ' rpt-late' : ''}`}><b>{n0(o.net)}</b></td>
+                      <td className="r rpt-num fcn-in" data-l="Прийде">{o.income ? `+${n0(o.income)}` : '—'}</td>
+                      <td className="r rpt-num fcn-out" data-l="Піде">{o.expense ? `−${n0(o.expense)}` : '—'}</td>
+                      <td className={`r rpt-num c-net${o.net < 0 ? ' rpt-late' : ''}`} data-l={`Нетто${margin == null ? '' : ' · ' + (margin * 100).toFixed(1).replace('.', ',') + '%'}`}><b>{n0(o.net)}</b></td>
                       <td className="r rpt-num">{margin == null ? '—' : `${(margin * 100).toFixed(1).replace('.', ',')}%`}</td>
-                      <td>{!pend.length ? <span className="fcn-pill is-ok">виконано</span> : overdue ? <span className="fcn-pill is-bad">є прострочене</span> : est ? <span className="fcn-pill">дати орієнтовні</span> : <span className="fcn-pill is-ok">за графіком</span>}</td>
+                      <td className="c-st">{!pend.length ? <span className="fcn-pill is-ok">виконано</span> : BLOCKER[o.status] ? <span className="fcn-pill is-warn">{BLOCKER[o.status]}</span> : overdue ? <span className="fcn-pill is-bad">є прострочене</span> : est ? <span className="fcn-pill">дати орієнтовні</span> : <span className="fcn-pill is-ok">за графіком</span>}</td>
                     </tr>
                     {isOpen && (
                       <tr className="rpt-sub fcn-sched"><td colSpan={7}>
