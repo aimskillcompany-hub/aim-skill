@@ -4,6 +4,7 @@ import TaskForm from '../components/TaskForm'
 import { useNewUi } from '../lib/uiPrefs'
 import { Segmented, Button, EmptyState, TableSkeleton } from '../components/ui'
 import './TasksNew.css'
+import TaskPanelNew from './TaskPanelNew'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { todayKyiv } from '../lib/dates'
@@ -327,7 +328,7 @@ function TaskRowNew({ t, me, on, P, onPick, compact = false }) {
       </span>
       <span className="tkn-row-side">
         <span className={`tkn-when${late ? ' is-late' : ''}`}>{late && <i className="tkn-late-dot" aria-hidden="true" />}{late ? `${shortDate(t.due_date)}${tm && tm !== '18:00' ? ' ' + tm : ''}` : when}</span>
-        <Avatar person={P(t.assignee_id)} id={t.assignee_id} size={26} />
+        <span className="tpn-av tkn-av" title={personName(P(t.assignee_id))}>{P(t.assignee_id) ? initials(P(t.assignee_id)) : '?'}</span>
       </span>
     </button>
   )
@@ -357,6 +358,7 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
   const [menu, setMenu] = useState(false)
   const [tab, setTab] = useState('comments')
   const [addW, setAddW] = useState(false)
+  const newUi = useNewUi()
   const P = (id) => people.find(p => p.id === id)
   const loadF = () => loadFeed(t.id).then(setFeed).catch(() => setFeed([]))
   useEffect(() => { loadF() }, [t.id, t.status, t.assignee_id, t.due_at, t.comments, t.subDone, t.subTotal])
@@ -432,6 +434,14 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
   }
   if (['done', 'on_hold', 'cancelled'].includes(t.status) && canEdit) secondary = <button disabled={busy} className="tk-ghost" style={outline} onClick={() => run(() => updateTask(t.id, { status: 'in_progress' }), t.status === 'done' ? 'Відкрито знову' : 'Відновлено')}>{t.status === 'done' ? 'Відкрити знову' : 'Відновити'}</button>
 
+  if (newUi) return (
+    <div className={`task-full${inline ? ' task-inline' : ''} is-new`} role={inline ? 'region' : 'dialog'} aria-label="Картка задачі">
+      <TaskPanelNew x={{ t, P, me, people, canEdit, isCreator, isAssignee, isAdmin, busy, run, form, setForm, draft, setDraft, rtype, setRtype, submit, giveBack,
+        changeStatus, duplicate, copyLink, onEdit, onClose, comments, history, cmt, setCmt, sendComment, tab, setTab, desc, recon, due, inline,
+        subtasks: <Subtasks t={t} people={people} canEdit={canEdit || (t.subAssignees || []).includes(me)} onChanged={onChanged} /> }} />
+    </div>
+  )
+
   return (
     <>
     <style>{`.task-full{position:fixed;top:0;right:0;bottom:0;left:240px;z-index:180;background:var(--bg, #f6f7f9);overflow-y:auto;animation:taskIn .16s ease;border-left:1px solid var(--border)}
@@ -479,7 +489,7 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
         <div className="tk-left">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <h1 style={{ margin: 0, fontSize: 28, lineHeight: 1.25, fontWeight: 700, letterSpacing: '-0.01em' }}>{t.title}</h1>
-            <div style={{ fontSize: 13, color: C.muted }}>Поставив {personName(P(t.created_by))} · {shortDate(String(t.created_at).slice(0, 10))}, {kyivTime(t.created_at)}{t.source === 'bot' ? ' · з Telegram' : ''}</div>
+            <div style={{ fontSize: 13, color: C.muted }}>Поставив {personName(P(t.created_by))}{t.created_at ? ` · ${shortDate(String(t.created_at).slice(0, 10))}, ${kyivTime(t.created_at)}` : ''}{t.source === 'bot' ? ' · з Telegram' : ''}</div>
           </div>
 
           {/* етапи */}
