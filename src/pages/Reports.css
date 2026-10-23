@@ -171,3 +171,15 @@
 .rpt-groupchk { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; font-size: 14px; cursor: pointer; }
 .rpt-groupchk input { width: 18px; height: 18px; accent-color: var(--brand); }
 @media (max-width: 767px) { .rpt-head-acts { width: 100%; } .rpt-head-acts .ui-pm { flex: 1; } .rpt-groupchk { margin-left: 0; } .rpt-cos { width: 100%; overflow-x: auto; flex-wrap: nowrap; } }
+/* «Кредиторка»: одна підсумкова картка з трьох частин (макет ReportsPayables) */
+.rpt-paysum { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 16px 24px; align-items: end; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); padding: 20px 24px; }
+.rpt-paysum > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rpt-paysum span { font-size: 13px; color: var(--muted); }
+.rpt-paysum b { font-size: 24px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.rpt-paysum .rpt-ps-main b { font-size: 40px; color: var(--expense-fg); }
+.rpt-paysum b.is-out { color: var(--expense-fg); } .rpt-paysum b.is-in { color: var(--brand-dark); }
+.rpt-paysum small { font-size: 12px; color: var(--muted); }
+.rpt-paysum .rpt-link { align-self: flex-start; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.rpt-kpis.is-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1023px) { .rpt-paysum { grid-template-columns: 1fr 1fr; } .rpt-paysum .rpt-ps-main { grid-column: 1 / -1; } }
+@media (max-width: 767px) { .rpt-paysum { padding: 16px; } .rpt-paysum .rpt-ps-main b { font-size: 30px; } .rpt-paysum b { font-size: 18px; } .rpt-kpis.is-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
