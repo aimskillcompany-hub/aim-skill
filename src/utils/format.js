@@ -58,3 +58,17 @@ export function formatDate(iso, { withWeekday = false, now = new Date() } = {}) 
   if (withWeekday) out = `${wd}, ${out}`
   return out.replace(/\./g, '')
 }
+
+// Коротка сума для плиток: 641 000 → «641 тис», 2 700 000 → «2,7 млн», 20 534 000 → «20,5 млн», 950 → «950».
+// Знак «−» зберігається. Точна сума — у підказці / таблиці.
+export function formatShort(v) {
+  if (v === null || v === undefined || v === '') return '—'
+  const n = Number(v)
+  if (!Number.isFinite(n)) return '—'
+  const a = Math.abs(n), pre = n < 0 ? MINUS : ''
+  const one = (x) => nf(x < 100 ? 1 : 0).format(x).replace(/,0$/, '').replace(/[\s  ]/g, NNBSP)
+  if (a >= 1e9) return pre + one(a / 1e9) + NNBSP + 'млрд'
+  if (a >= 1e6) return pre + one(a / 1e6) + NNBSP + 'млн'
+  if (a >= 1e3) return pre + nf(0).format(Math.round(a / 1e3)) + NNBSP + 'тис'
+  return pre + nf(0).format(Math.round(a))
+}

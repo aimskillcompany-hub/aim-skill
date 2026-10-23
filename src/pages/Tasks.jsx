@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import TaskForm from '../components/TaskForm'
+import { useNewUi } from '../lib/uiPrefs'
+import { Segmented, Button, EmptyState, TableSkeleton } from '../components/ui'
+import './TasksNew.css'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { todayKyiv } from '../lib/dates'
@@ -45,6 +48,14 @@ export default function Tasks() {
   const [notifs, setNotifs] = useState([])
   const [bell, setBell] = useState(false)
   const [settings, setSettings] = useState(false)
+  // новий інтерфейс: пошук і «задача поруч» (≥ 1280 px) замість панелі на весь екран
+  const newUi = useNewUi()
+  const [q, setQ] = useState('')
+  const [wide, setWide] = useState(() => typeof window !== 'undefined' && window.matchMedia?.('(min-width: 1280px)').matches)
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1280px)'), on = () => setWide(mq.matches)
+    mq.addEventListener?.('change', on); return () => mq.removeEventListener?.('change', on)
+  }, [])
   useEffect(() => {
     if (!me) return
     loadNotifications(me).then(setNotifs)
@@ -62,7 +73,9 @@ export default function Tasks() {
   const inScope = (t) => scope === 'mine' ? mineOf(t)
     : scope === 'created' ? t.created_by === me && t.assignee_id !== me
     : scope === 'watch' ? t.watchers.includes(me) : true
-  const list = useMemo(() => (tasks || []).filter(inScope), [tasks, scope, me])
+  const term = q.trim().toLowerCase()
+  const matches = (t) => !term || [t.title, t.order?.order_number, t.order?.contractors?.name, t.counterparty?.name].some(v => (v || '').toLowerCase().includes(term))
+  const list = useMemo(() => (tasks || []).filter(t => inScope(t) && matches(t)), [tasks, scope, me, term])
   const counts = useMemo(() => Object.fromEntries(['mine', 'created', 'watch', 'all'].map(s => [s, (tasks || []).filter(t => ACTIVE(t) && (
     s === 'mine' ? mineOf(t) : s === 'created' ? t.created_by === me && t.assignee_id !== me : s === 'watch' ? t.watchers.includes(me) : true)).length])), [tasks, me])
   const active = (tasks || []).filter(ACTIVE)
@@ -93,6 +106,93 @@ export default function Tasks() {
         {t.priority !== 'normal' && <span style={prioStyle(t.priority)}>{PRIORITY[t.priority]?.label}</span>}
         <Avatar person={P(t.assignee_id)} id={t.assignee_id} size={30} />
       </button>
+    )
+  }
+
+  if (newUi) {
+    const bell_ = (
+      <span className="tkn-bell-wrap">
+        <Button variant="secondary" iconOnly icon="ti-bell" aria-label={`Сповіщення${unread ? `, непрочитаних: ${unread}` : ''}`} onClick={() => setBell(b => !b)} />
+        {unread > 0 && <span className="tkn-bell-n" aria-hidden="true">{unread}</span>}
+        {bell && <div role="dialog" aria-label="Сповіщення" className="tkn-bell">
+          <div className="tkn-bell-head"><b>Сповіщення</b>
+            <span>{unread > 0 && <Button size="sm" variant="ghost" onClick={async () => { await markNotificationsRead(me); setNotifs(x => x.map(n => ({ ...n, read_at: n.read_at || new Date().toISOString() }))) }}>Прочитати всі</Button>}
+              <Button size="sm" variant="ghost" iconOnly icon="ti-settings" aria-label="Налаштування сповіщень і Telegram" onClick={() => { setBell(false); setSettings(true) }} /></span>
+          </div>
+          <div className="tkn-bell-list">
+            {notifs.length === 0 && <p className="tkn-muted">Сповіщень немає</p>}
+            {notifs.map(n => <button key={n.id} type="button" className={n.read_at ? '' : 'is-unread'} onClick={async () => { if (!n.read_at) { await markNotificationsRead(me, [n.id]); setNotifs(x => x.map(y => y.id === n.id ? { ...y, read_at: new Date().toISOString() } : y)) } if (n.task_id) pick(n.task_id); setBell(false) }}>
+              <b>{n.title}</b>{n.body && <span>{n.body}</span>}<small>{shortDate(String(n.created_at).slice(0, 10))} {kyivTime(n.created_at)}</small>
+            </button>)}
+          </div>
+        </div>}
+      </span>
+    )
+    const groups = GROUPS.map(([k, name]) => ({ k, name, items: list.filter(t => bucket(t) === k) })).filter(g => g.items.length)
+    const showDetail = sel && wide
+    return (
+      <div className={`tkn${showDetail ? ' has-detail' : ''}`}>
+        <div className="tkn-head">
+          <div className="tkn-title">
+            <h1>Задачі</h1>
+            <span className="tkn-chip">Активних {active.length}</span>
+            <span className={`tkn-chip${active.some(t => isOverdue(t)) ? ' is-danger' : ''}`}>Прострочено {active.filter(t => isOverdue(t)).length}</span>
+            <span className="tkn-chip">На перевірці {active.filter(t => t.status === 'review').length}</span>
+          </div>
+          <div className="tkn-actions">{bell_}<Button variant="brand" icon="ti-plus" onClick={() => setEdit({ priority: 'normal', assignee_id: me })}>Нова задача</Button></div>
+        </div>
+        <div className="tkn-toolbar">
+          <Segmented ariaLabel="Чиї задачі" value={scope} onChange={setScope}
+            options={[['mine', 'Мої'], ['created', 'Я поставив'], ['watch', 'Я спостерігаю'], ['all', 'Усі']].map(([value, label]) => ({ value, label, count: counts[value] }))} />
+          <label className="tkn-search"><i className="ti ti-search" aria-hidden="true" />
+            <input type="search" className="form-input" placeholder="Пошук: задача, №, клієнт" aria-label="Пошук задач" value={q} onChange={e => setQ(e.target.value)} /></label>
+          <span className="tkn-view"><Segmented ariaLabel="Вигляд" value={view} onChange={setView} options={[{ value: 'list', label: 'Список' }, { value: 'board', label: 'Канбан' }]} /></span>
+        </div>
+        {toast && <div role="status" className="tkn-toast">{toast}</div>}
+        {err && <div role="alert" className="tkn-err">{err}</div>}
+
+        <div className="tkn-body">
+          <div className="tkn-list">
+            {tasks == null ? <TableSkeleton rows={6} cols={2} label="Завантаження задач…" />
+              : view === 'board' ? (
+                <div className="tkn-board">
+                  {['new', 'in_progress', 'review', 'done'].map(st => {
+                    const items = list.filter(t => t.status === st)
+                    return (
+                      <div key={st} className="tkn-col">
+                        <div className="tkn-col-head"><span>{STATUS[st].label}</span><span>{items.length}</span></div>
+                        {items.slice(0, 50).map(t => <TaskRowNew key={t.id} t={t} me={me} on={t.id === selId} P={P} onPick={pick} compact />)}
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : !list.length ? (
+                <div className="tkn-card"><EmptyState icon="ti-checklist" title={term ? 'Нічого не знайдено' : 'Задач немає'}
+                  text={term ? 'Змініть пошук або вкладку.' : 'Додайте першу — кнопкою «Нова задача».'}
+                  action={term ? { label: 'Скинути пошук', onClick: () => setQ('') } : { label: 'Нова задача', icon: 'ti-plus', onClick: () => setEdit({ priority: 'normal', assignee_id: me }) }} /></div>
+              ) : (
+                <div className="tkn-card">
+                  {groups.map(g => {
+                    const folded = g.k === 'done' && !showDone
+                    return (
+                      <section key={g.k} className="tkn-group" aria-label={g.name}>
+                        {g.k === 'done'
+                          ? <button type="button" className="tkn-group-head is-btn" aria-expanded={!folded} onClick={() => setShowDone(v => !v)}>
+                              <i className={`ti ti-chevron-${folded ? 'right' : 'down'}`} aria-hidden="true" />{g.name}<span>{g.items.length}</span></button>
+                          : <div className={`tkn-group-head is-${g.k}`}>{g.name}<span>{g.items.length}</span></div>}
+                        {!folded && (g.k === 'done' ? g.items.slice(0, 50) : g.items).map(t => <TaskRowNew key={t.id} t={t} me={me} on={t.id === selId} P={P} onPick={pick} />)}
+                      </section>
+                    )
+                  })}
+                </div>
+              )}
+          </div>
+          {sel && <TaskPanel key={sel.id} inline={wide} task={sel} people={people} me={me} isAdmin={user?.role === 'admin'} onClose={() => pick(null)} onChanged={reload} flash={flash} onEdit={() => setEdit(sel)} onOpen={(id) => { reload().then(() => pick(id)) }} />}
+        </div>
+        <button type="button" className="tkn-fab" onClick={() => setEdit({ priority: 'normal', assignee_id: me })} aria-label="Нова задача"><i className="ti ti-plus" aria-hidden="true" /></button>
+        {settings && <NotifySettings me={me} onClose={() => setSettings(false)} />}
+        {edit && <TaskForm task={edit} people={people} me={me} onClose={() => setEdit(null)} onSaved={(id) => { setEdit(null); reload(); if (id) pick(id) }} />}
+      </div>
     )
   }
 
@@ -201,6 +301,38 @@ export default function Tasks() {
   )
 }
 
+// Рядок задачі в новому інтерфейсі (макети Tasks / TasksMobile)
+function TaskRowNew({ t, me, on, P, onPick, compact = false }) {
+  const late = isOverdue(t)
+  const tm = t.due_at ? kyivTime(t.due_at) : ''
+  const when = !t.due_date ? 'без терміну' : (tm && tm !== '18:00' ? tm : 'весь день')
+  const done = t.status === 'done' || t.status === 'cancelled'
+  const forMe = t.assignee_id !== me && (t.subAssignees || []).includes(me)
+  return (
+    <button type="button" className={`tkn-row${on ? ' is-on' : ''}${done ? ' is-done' : ''}${compact ? ' is-compact' : ''}`} onClick={() => onPick(t.id)} aria-current={on ? 'true' : undefined}>
+      <span className={`tkn-ring is-${t.status}`} aria-hidden="true">{t.status === 'done' && <i className="ti ti-check" />}</span>
+      <span className="tkn-row-main">
+        <span className="tkn-row-title">{t.title}</span>
+        <span className="tkn-row-meta">
+          {t.entity_type === 'order' && <span className="tkn-ref"><i className="ti ti-shopping-cart" aria-hidden="true" /><b>№{t.order?.order_number || '…'}</b>{t.order?.contractors?.name && <span className="tkn-ref-client">{t.order.contractors.name}</span>}</span>}
+          {t.entity_type === 'counterparty' && <span className="tkn-ref"><i className="ti ti-users" aria-hidden="true" /><b>Контрагент</b><span className="tkn-ref-client">{t.counterparty?.name || ''}</span></span>}
+          {t.entity_type === 'reconciliation' && <span className="tkn-tag is-info">зі звірки</span>}
+          {t.subTotal > 0 && <span className={t.subDone === t.subTotal ? 'is-ok' : ''}><i className="ti ti-checkbox" aria-hidden="true" />{t.subDone}/{t.subTotal}</span>}
+          {forMe && <span className="tkn-tag is-warn">підзадача для вас</span>}
+          {t.priority === 'high' || t.priority === 'urgent' ? <span className="tkn-tag is-danger">{PRIORITY[t.priority]?.label}</span> : null}
+          {t.requires_review && <span className="tkn-tag is-group">з перевіркою</span>}
+          {t.status !== 'new' && !done && <span className="tkn-status">{STATUS[t.status]?.label}</span>}
+          {t.comments > 0 && <span><i className="ti ti-message" aria-hidden="true" />{t.comments}</span>}
+        </span>
+      </span>
+      <span className="tkn-row-side">
+        <span className={`tkn-when${late ? ' is-late' : ''}`}>{late && <i className="tkn-late-dot" aria-hidden="true" />}{late ? `${shortDate(t.due_date)}${tm && tm !== '18:00' ? ' ' + tm : ''}` : when}</span>
+        <Avatar person={P(t.assignee_id)} id={t.assignee_id} size={26} />
+      </span>
+    </button>
+  )
+}
+
 // ── Картка задачі (редизайн 22.10: вся робоча область; ліворуч — задача, підзадачі, коментарі; праворуч — властивості) ──
 const C = { line: 'var(--border, #eceef1)', soft: 'var(--surface2, #f3f4f6)', muted: 'var(--text3, #6b7280)', text: 'var(--text, #111827)' }
 const STEPS = ['new', 'in_progress', 'review', 'done']
@@ -215,7 +347,7 @@ const dueLong = (t) => {
 }
 const ghostBtn = { border: 'none', background: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', color: 'inherit' }
 
-function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, onEdit, onOpen }) {
+function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, onEdit, onOpen, inline = false }) {
   const [feed, setFeed] = useState([])
   const [form, setForm] = useState(null)       // 'result' | 'return'
   const [draft, setDraft] = useState('')
@@ -310,7 +442,7 @@ function TaskPanel({ task: t, people, me, isAdmin, onClose, onChanged, flash, on
       .tk-left{flex:999 1 520px;min-width:0;display:flex;flex-direction:column;gap:24px}
       .tk-right{flex:1 1 300px;max-width:360px;min-width:0;display:flex;flex-direction:column;gap:16px;position:sticky;top:76px}
       @media (max-width:768px){.task-full{left:0;border-left:none}.tk-body{padding:16px 16px 96px;gap:18px}.tk-right{max-width:none;position:static;order:-1}.tk-crumb{display:none!important}}`}</style>
-    <div className="task-full" role="dialog" aria-label="Картка задачі">
+    <div className={`task-full${inline ? ' task-inline' : ''}`} role={inline ? 'region' : 'dialog'} aria-label="Картка задачі">
       {/* верхня смуга */}
       <div style={{ height: 60, padding: '0 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, borderBottom: `1px solid ${C.line}`, background: 'var(--surface, #fff)', position: 'sticky', top: 0, zIndex: 5 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: C.muted, minWidth: 0 }}>

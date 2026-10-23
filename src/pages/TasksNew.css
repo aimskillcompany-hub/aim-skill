@@ -1,0 +1,100 @@
+/* Задачі — новий інтерфейс (макети Tasks / TasksMobile / TaskMobile). Лише токени. */
+.tkn { display: flex; flex-direction: column; gap: 14px; }
+.tkn-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.tkn-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.tkn-title h1 { margin: 0 6px 0 0; font-size: 30px; font-weight: 700; letter-spacing: -.03em; }
+.tkn-chip { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tkn-chip.is-danger { background: var(--danger-soft-bg); border-color: var(--danger-soft-bg); color: var(--danger-fg); }
+.tkn-actions { display: flex; gap: 8px; align-items: center; }
+.tkn-bell-wrap { position: relative; display: inline-flex; }
+.tkn-bell-n { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 999px; background: var(--expense-chart); color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center; pointer-events: none; }
+.tkn-bell { position: absolute; right: 0; top: calc(100% + 8px); width: 380px; max-width: calc(100vw - 32px); background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow-pop); z-index: 160; overflow: hidden; }
+.tkn-bell-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--divider); }
+.tkn-bell-head span { display: flex; gap: 4px; }
+.tkn-bell-list { max-height: 420px; overflow-y: auto; }
+.tkn-bell-list button { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left; padding: 10px 14px; border: 0; border-top: 1px solid var(--divider); background: var(--surface); font: inherit; font-size: 13px; color: var(--text); cursor: pointer; }
+.tkn-bell-list button:first-child { border-top: 0; }
+.tkn-bell-list button.is-unread { background: var(--brand-soft); }
+.tkn-bell-list b { font-weight: 600; }
+.tkn-bell-list span { color: var(--muted); }
+.tkn-bell-list small { font-size: 11px; color: var(--muted-2); }
+.tkn-muted { margin: 0; padding: 14px; font-size: 13px; color: var(--muted); }
+
+.tkn-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.tkn-search { position: relative; flex: 1 1 260px; }
+.tkn-search .ti { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.tkn-search .form-input { width: 100%; padding-left: 36px; background: var(--surface); }
+.tkn-toast { align-self: flex-start; background: var(--ink); color: #fff; border-radius: 10px; padding: 8px 14px; font-size: 13px; }
+.tkn-err { color: var(--danger-fg); font-size: 13px; }
+
+.tkn-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+.tkn.has-detail .tkn-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); }
+.tkn-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); overflow: hidden; }
+.tkn-group-head { display: flex; align-items: center; gap: 8px; padding: 10px 18px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); background: var(--surface-sunken); border-top: 1px solid var(--divider); }
+.tkn-group:first-child .tkn-group-head { border-top: 0; }
+.tkn-group-head span { margin-left: auto; font-weight: 600; }
+.tkn-group-head.is-overdue { color: var(--danger-fg); }
+.tkn-group-head.is-today { color: var(--expense-fg); }
+.tkn-group-head.is-btn { width: 100%; border-left: 0; border-right: 0; border-bottom: 0; cursor: pointer; font-family: inherit; text-align: left; }
+
+.tkn-row { display: flex; align-items: flex-start; gap: 12px; width: 100%; padding: 12px 18px; border: 0; border-top: 1px solid var(--divider); background: var(--surface); text-align: left; font: inherit; color: var(--text); cursor: pointer; }
+.tkn-group-head + .tkn-row { border-top: 0; }
+.tkn-row:hover { background: var(--surface-sunken); }
+.tkn-row.is-on { background: var(--brand-soft); box-shadow: inset 3px 0 0 var(--brand); }
+.tkn-row:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.tkn-ring { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--border-strong); flex: 0 0 auto; margin-top: 1px; display: grid; place-items: center; }
+.tkn-ring.is-in_progress { border-color: var(--info-fg); }
+.tkn-ring.is-review { border-color: var(--group-fg); }
+.tkn-ring.is-done { border-color: var(--brand); background: var(--brand); color: #fff; }
+.tkn-ring.is-done .ti { font-size: 12px; }
+.tkn-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.tkn-row-title { font-size: 14px; font-weight: 600; line-height: 1.35; }
+.tkn-row.is-done .tkn-row-title { text-decoration: line-through; color: var(--muted); }
+.tkn-row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12px; color: var(--muted); }
+.tkn-row-meta > span { display: inline-flex; align-items: center; gap: 4px; }
+.tkn-row-meta .is-ok { color: var(--brand-dark); }
+.tkn-ref b { color: var(--text-strong2); font-weight: 600; }
+.tkn-ref-client { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tkn-tag { height: 20px; padding: 0 8px; border-radius: 6px; font-weight: 600; }
+.tkn-tag.is-warn { background: var(--warn-bg); color: var(--warn-fg); }
+.tkn-tag.is-danger { background: var(--danger-soft-bg); color: var(--danger-fg); }
+.tkn-tag.is-group { background: var(--group-bg); color: var(--group-fg); }
+.tkn-tag.is-info { background: var(--info-bg); color: var(--info-fg); }
+.tkn-status { color: var(--info-fg); font-weight: 600; }
+.tkn-row-side { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex: 0 0 auto; }
+.tkn-when { font-size: 12px; font-weight: 600; color: var(--text-strong2); white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
+.tkn-when.is-late { color: var(--danger-fg); }
+.tkn-late-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--expense-chart); }
+
+.tkn-board { display: grid; grid-template-columns: repeat(4, minmax(220px, 1fr)); gap: 12px; overflow-x: auto; padding-bottom: 6px; }
+.tkn-col { background: var(--surface2); border-radius: 18px; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 320px; }
+.tkn-col-head { display: flex; justify-content: space-between; padding: 4px 6px; font-size: 13px; font-weight: 700; }
+.tkn-row.is-compact { border: 1px solid var(--border); border-radius: 14px; padding: 10px 12px; }
+.tkn-row.is-compact .tkn-ring { display: none; }
+
+/* картка задачі поруч зі списком (≥ 1280 px) — та сама панель, але в колонці */
+.task-full.task-inline { position: sticky; top: 16px; right: auto; bottom: auto; left: auto; z-index: auto; max-height: calc(100vh - 32px); overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); animation: none; }
+.task-inline > div:first-child { padding: 0 20px !important; border-radius: var(--r-card) var(--r-card) 0 0; }
+.task-inline .tk-body { padding: 18px 20px 24px; gap: 18px; max-width: none; }
+.task-inline .tk-right { order: -1; flex: 1 1 100%; max-width: none; position: static; }
+.task-inline .tk-left { flex-basis: 100%; }
+/* без колонки (вужче 1280 px, телефон): панель на весь екран поверх меню й нижньої панелі */
+[data-ui="new"] .task-full:not(.task-inline) { left: 0; z-index: 230; border-left: 0; background: var(--ground); }
+
+.tkn-fab { display: none; }
+@media (max-width: 767px) {
+  .tkn-head { position: relative; }
+  .tkn-title h1 { font-size: 28px; flex-basis: 100%; }
+  .tkn-actions { position: absolute; top: 0; right: 0; }
+  .tkn-actions .btn-brand { display: none; }
+  .tkn-toolbar .ui-segmented { order: 2; }
+  .tkn-search { flex-basis: 100%; order: 1; }
+  .tkn-view { display: none; }
+  .tkn-card { border-radius: var(--r-card-mobile); }
+  .tkn-row { padding: 14px 14px; min-height: 56px; }
+  .tkn-ref-client { display: none; }
+  .tkn-fab { display: grid; place-items: center; position: fixed; right: 16px; bottom: calc(var(--bottom-nav-h) + 26px + env(safe-area-inset-bottom)); width: 56px; height: 56px;
+    border-radius: 18px; border: 0; background: var(--brand); color: #fff; box-shadow: var(--shadow-pop); z-index: 190; cursor: pointer; }
+  .tkn-fab .ti { font-size: 26px; }
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatMoney, formatAmount, formatDate, MINUS, NNBSP } from './format'
+import { formatMoney, formatAmount, formatShort, formatDate, MINUS, NNBSP } from './format'
 
 // нерозривні пробіли uk-UA (U+00A0 / U+202F) → звичайні, щоб порівнювати з текстом ТЗ
 const plain = (s) => s.replace(/[  ]/g, ' ')
@@ -36,6 +36,19 @@ describe('formatAmount (ТЗ: «−» і вузький пробіл)', () => {
   it('без звичайного дефіса й звичайних пробілів', () => {
     const s = formatAmount(-24887553.5)
     expect(s).not.toMatch(/[- \u00A0]/)
+  })
+})
+
+describe('formatShort', () => {
+  const p = (s) => s.replace(/\u202F/g, ' ')
+  it('тис / млн / дрібні', () => {
+    expect(p(formatShort(641000))).toBe('641 тис')
+    expect(p(formatShort(2700000))).toBe('2,7 млн')
+    expect(p(formatShort(20534000))).toBe('20,5 млн')
+    expect(p(formatShort(4500000))).toBe('4,5 млн')
+    expect(p(formatShort(1000000))).toBe('1 млн')
+    expect(formatShort(950)).toBe('950')
+    expect(p(formatShort(-589000))).toBe('\u2212589 тис')
   })
 })
 
