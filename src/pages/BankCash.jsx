@@ -19,11 +19,19 @@ import { todayKyiv } from '../lib/dates'
 import LinkCheckModal from '../components/LinkCheckModal'
 import { useNewUi } from '../lib/uiPrefs'
 import { Button, useToast } from '../components/ui'
-import { formatAmount } from '../utils/format'
+import { formatAmount, plural } from '../utils/format'
 import BankNew from './BankNew'
 
 // поля документа для DocModal
 const DOC_FIELDS = 'id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)'
+
+// фільтр періоду ({ year, month }; year null — усі)
+function withPeriod(qb, { year, month }) {
+  if (!year) return qb
+  const from = month ? `${year}-${String(month).padStart(2, '0')}-01` : `${year}-01-01`
+  const to = month ? (month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`) : `${year + 1}-01-01`
+  return qb.gte('date', from).lt('date', to)
+}
 
 const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД', 'ОЗ']
 // Статті, яким можна призначати проект (для CashFlow-звіту в розрізі проектів)
@@ -34,10 +42,17 @@ export default function BankCash() {
   const [tab, setTab] = useState(sp.get('tab') === 'import' ? 'import' : 'transactions')
   const [accounts, setAccounts] = useState([])
   const newUi = useNewUi()
-  const [addSignal, setAddSignal] = useState(0)   // новий інтерфейс: «+ Операція» в шапці відкриває форму у вкладці
+  const [addSignal, setAddSignal] = useState(0)
+  const accState = useState('all')   // новий інтерфейс: «+ Операція» в шапці відкриває форму у вкладці
 
   const loadAccounts = async () => { setAccounts(await getAccountBalances()) }
   useEffect(() => { loadAccounts() }, [])
+  const [txInfo, setTxInfo] = useState(null)   // новий інтерфейс: «N операцій · остання — дата»
+  useEffect(() => {
+    if (!newUi) return
+    qc('bank_transactions').select('date', { count: 'exact' }).eq('is_ignored', false).order('date', { ascending: false }).limit(1)
+      .then(({ data, count, error }) => { if (!error) setTxInfo({ count, last: data?.[0]?.date }) })
+  }, [newUi, accounts])
 
   if (newUi) {
     const total = accounts.reduce((s, a) => s + (Number(a.balance) || 0), 0)
@@ -47,29 +62,39 @@ export default function BankCash() {
       <div className="bkn-page">
         <div className="bkn-head">
           <div><h1 className="bkn-h1">Банк і каса</h1>
-            <p className="bkn-sub">{accounts.length} рахунків · залишок {formatAmount(total, { decimals: 0 })} ₴</p></div>
+            <p className="bkn-sub">{txInfo?.count != null
+              ? <>{formatAmount(txInfo.count, { decimals: 0 })} {plural(txInfo.count, ['операція', 'операції', 'операцій'])}{txInfo.last && <> · остання — {txInfo.last.split('-').reverse().join('.')}</>}</>
+              : <>{accounts.length} рахунків · залишок {formatAmount(total, { decimals: 0 })} ₴</>}</p></div>
           <div className="bkn-head-actions">
             <Button variant="secondary" icon="ti-upload" onClick={() => setTab('import')}>Імпорт виписки</Button>
             <Button variant="secondary" icon="ti-arrows-exchange" onClick={() => setTab('transfer')} className="bkn-hide-sm">Переказ між рахунками</Button>
             <Button variant="brand" icon="ti-plus" onClick={() => { setTab('transactions'); setAddSignal(n => n + 1) }} className="bkn-hide-sm">Операція</Button>
           </div>
         </div>
+        {/* телефон: одна темна картка з плитками рахунків (макет BankMobile) */}
+        <section className="bkn-mhero" aria-label="Залишки на рахунках">
+          <span className="bkn-mhero-l">На всіх рахунках</span>
+          <b className="bkn-mhero-v">{formatAmount(total, { decimals: 0 })} <small>₴</small></b>
+          <div className="bkn-mhero-accs">{accounts.map(a => (
+            <span key={a.id} className="bkn-mhero-acc"><small>{a.name}</small><b className={a.balance < 0 ? 'is-neg' : ''}>{formatAmount(a.balance, { decimals: 0 })} ₴</b></span>
+          ))}</div>
+        </section>
         <div className="bkn-accounts" role="group" aria-label="Рахунки">
-          <section className="bkn-acc is-total">
+          <button type="button" className="bkn-acc is-total" aria-pressed={accState[0] === 'all'} onClick={() => { accState[1]('all'); setTab('transactions') }}>
             <span className="bkn-acc-name"><span className="bkn-acc-ic" aria-hidden="true">Σ</span>Усі рахунки</span>
             <b className="bkn-acc-bal">{formatAmount(total, { decimals: 0 })} <small>₴</small></b>
             <span className="bkn-acc-flow"><span>↓ {formatAmount(inflow, { decimals: 0 })}</span><span>↑ {formatAmount(outflow, { decimals: 0 })}</span></span>
-          </section>
+          </button>
           {accounts.map(a => (
-            <section key={a.id} className="bkn-acc">
+            <button type="button" key={a.id} className="bkn-acc" aria-pressed={accState[0] === a.id} onClick={() => { accState[1](accState[0] === a.id ? 'all' : a.id); setTab('transactions') }}>
               <span className="bkn-acc-name"><span className="bkn-acc-ic" aria-hidden="true">{a.type === 'cash' ? '₴' : (a.name || '?')[0]}</span>{a.name}</span>
               <b className={`bkn-acc-bal${a.balance < 0 ? ' is-neg' : ''}`}>{formatAmount(a.balance, { decimals: 0 })} <small>₴</small></b>
               <span className="bkn-acc-flow"><span>↓ {formatAmount(a.inflow, { decimals: 0 })}</span><span>↑ {formatAmount(a.outflow, { decimals: 0 })}</span></span>
-            </section>
+            </button>
           ))}
         </div>
         {tab !== 'transactions' && <button type="button" className="bkn-back" onClick={() => setTab('transactions')}><i className="ti ti-chevron-left" aria-hidden="true" />До операцій</button>}
-        {tab === 'transactions' && <TransactionsTab accounts={accounts} onChange={loadAccounts} newUi addSignal={addSignal} />}
+        {tab === 'transactions' && <TransactionsTab accounts={accounts} onChange={loadAccounts} newUi addSignal={addSignal} accState={accState} />}
         {tab === 'import' && <div className="card"><ImportTab accounts={accounts} onDone={() => { loadAccounts(); setTab('transactions') }} /></div>}
         {tab === 'transfer' && <div className="card"><TransferTab accounts={accounts} onDone={() => { loadAccounts(); setTab('transactions') }} /></div>}
       </div>
@@ -116,14 +141,17 @@ const tabStyle = (active) => ({
 })
 
 // ───────── Транзакції + валідація ─────────
-function TransactionsTab({ accounts, onChange, newUi = false, addSignal = 0 }) {
+function TransactionsTab({ accounts, onChange, newUi = false, addSignal = 0, accState }) {
   const toast = useToast()
   const [rows, setRows] = useState([])
   const [articles, setArticles] = useState([])
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState('all') // all | unconfirmed | ignored — за замовчуванням показуємо всі
-  const [acc, setAcc] = useState('all')
+  const accLocal = useState('all')
+  const [acc, setAcc] = accState || accLocal         // новий інтерфейс: рахунок обирають плитками вгорі
   const [art, setArt] = useState('all')               // фільтр за статтею
+  const [period, setPeriod] = useState({ year: null, month: 0 })   // новий інтерфейс: місяць / рік / усі періоди
+  const [tabCounts, setTabCounts] = useState({})
   const [limit, setLimit] = useState(500)             // пагінація «показати ще»
   const [showCheck, setShowCheck] = useState(false)
   const [q, setQ] = useState('')
@@ -146,6 +174,7 @@ function TransactionsTab({ accounts, onChange, newUi = false, addSignal = 0 }) {
       .eq('is_ignored', status === 'ignored').order('date', { ascending: false }).limit(limit)
     if (status === 'unconfirmed') qb = qb.eq('is_validated', false)
     if (acc !== 'all') qb = qb.eq('account_id', acc)
+    qb = withPeriod(qb, period)
     if (art === '__none__') qb = qb.or('article.is.null,article.eq.')          // порожній текст теж «без статті»
     else if (art === '__nocontractor__') qb = qb.is('contractor_id', null)
     else if (art === '__nolink__') qb = qb.not('article', 'is', null).neq('article', '').is('article_id', null)   // стаття, якої немає в довіднику
@@ -196,8 +225,16 @@ function TransactionsTab({ accounts, onChange, newUi = false, addSignal = 0 }) {
     setLoading(false)
   }
   useEffect(() => { fetchArticles().then(setArticles) }, [])
-  useEffect(() => { const t = setTimeout(load, q ? 350 : 0); return () => clearTimeout(t) }, [status, acc, art, q, limit])
-  useEffect(() => { setLimit(500) }, [status, acc, art, q])   // нові фільтри — з початку
+  useEffect(() => { const t = setTimeout(load, q ? 350 : 0); return () => clearTimeout(t) }, [status, acc, art, q, limit, period])
+  useEffect(() => { setLimit(500) }, [status, acc, art, q, period])   // нові фільтри — з початку
+  // лічильники на вкладках «Непідтверджені / Усі / Ігноровані» (рахунок і період — як у списку)
+  useEffect(() => {
+    if (!newUi) return
+    const base = () => withPeriod(acc !== 'all' ? qc('bank_transactions').select('id', { count: 'exact', head: true }).eq('account_id', acc) : qc('bank_transactions').select('id', { count: 'exact', head: true }), period)
+    const n = (q) => q.then(({ count, error }) => (error ? undefined : count))
+    Promise.all([n(base().eq('is_ignored', false).eq('is_validated', false)), n(base().eq('is_ignored', false)), n(base().eq('is_ignored', true))])
+      .then(([unconfirmed, all, ignored]) => setTabCounts({ unconfirmed, all, ignored })).catch(() => {})
+  }, [newUi, acc, period, rows])
 
   const grouped = useMemo(() => groupByType(articles), [articles])
   const { sort, onSort, sorted } = useSort('date', 'desc')
@@ -368,7 +405,7 @@ function TransactionsTab({ accounts, onChange, newUi = false, addSignal = 0 }) {
 
   if (newUi) return (
     <>
-      <BankNew rows={view} loading={loading} status={status} setStatus={setStatus} q={q} setQ={setQ} acc={acc} setAcc={setAcc} accounts={accounts}
+      <BankNew rows={view} loading={loading} status={status} setStatus={setStatus} period={period} setPeriod={setPeriod} tabCounts={tabCounts} q={q} setQ={setQ} acc={acc} setAcc={setAcc} accounts={accounts}
         art={art} setArt={setArt} grouped={grouped} typeLabels={TYPE_LABELS} directions={DIRECTIONS}
         sel={sel} toggleSel={toggleSel} setSel={setSel} onOpen={setEditTx} onLink={setLinkTx} onAdd={() => setShowAdd(true)}
         autoLink={autoLink} linking={linking} linkMsg={linkMsg} autoFill={autoFill} onCheck={() => setShowCheck(true)}

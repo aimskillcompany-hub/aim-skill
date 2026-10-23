@@ -1,5 +1,6 @@
 // Компактний вибір періоду (ТЗ редизайну, розділ 2; макети: «Жовтень 2026 ▾» / «Січень — жовтень 2026 ▾» у шапці).
 //   year, month (0 — весь рік), onChange({ year, month }); years — дозволені роки; allowYear — чи можна «весь рік»;
+//   allowAll — пункт «Усі періоди» (year: null)
 //   yearOnly — лише рік (для Cash Flow, де місяці — чипами). Майбутні місяці поточного року — неактивні.
 import { useEffect, useId, useRef, useState } from 'react'
 
@@ -13,14 +14,14 @@ export const periodText = (year, month) => {
   return last === 11 ? `${year} рік` : `${MN[0]} — ${MN[last].toLowerCase()} ${year}`
 }
 
-export default function PeriodMenu({ year, month = 0, onChange, years, allowYear = true, yearOnly = false, align = 'right' }) {
+export default function PeriodMenu({ year, month = 0, onChange, years, allowYear = true, yearOnly = false, allowAll = false, align = 'right' }) {
   const [open, setOpen] = useState(false)
-  const [y, setY] = useState(year)
+  const [y, setY] = useState(year ?? new Date().getFullYear())
   const wrap = useRef(null), btn = useRef(null)
   const id = useId()
   const now = new Date()
   const ys = years || [now.getFullYear() - 2, now.getFullYear() - 1, now.getFullYear()]
-  useEffect(() => { if (open) setY(year) }, [open, year])
+  useEffect(() => { if (open) setY(year ?? now.getFullYear()) }, [open, year])
   useEffect(() => {
     if (!open) return
     wrap.current?.querySelector('[aria-pressed="true"], .ui-pm-grid button:not(:disabled)')?.focus()
@@ -31,7 +32,7 @@ export default function PeriodMenu({ year, month = 0, onChange, years, allowYear
   }, [open])
   const pick = (yy, mm) => { onChange({ year: yy, month: mm }); setOpen(false); btn.current?.focus() }
   const lastMonth = y === now.getFullYear() ? now.getMonth() + 1 : y > now.getFullYear() ? 0 : 12
-  const label = yearOnly ? String(year) : periodText(year, month)
+  const label = year == null ? 'Усі періоди' : yearOnly ? String(year) : periodText(year, month)
 
   return (
     <span className="ui-pm" ref={wrap}>
@@ -45,6 +46,7 @@ export default function PeriodMenu({ year, month = 0, onChange, years, allowYear
             <b>{y}</b>
             <button type="button" aria-label="Наступний рік" disabled={!ys.includes(y + 1)} onClick={() => setY(y + 1)}><i className="ti ti-chevron-right" aria-hidden="true" /></button>
           </div>
+          {allowAll && <button type="button" className="ui-pm-all" aria-pressed={year == null} onClick={() => pick(null, 0)}>Усі періоди</button>}
           {yearOnly ? <button type="button" className="ui-pm-all" aria-pressed={y === year} onClick={() => pick(y, month)}>Обрати {y}</button> : <>
             {allowYear && <button type="button" className="ui-pm-all" aria-pressed={y === year && !month} onClick={() => pick(y, 0)}>{y === now.getFullYear() ? `Січень — ${MN[now.getMonth()].toLowerCase()}` : 'Весь рік'}</button>}
             <div className="ui-pm-grid">
