@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react'
 import { Button, Modal, Segmented, TableSkeleton, Callout } from '../components/ui'
 import { listCloseLog } from '../lib/periodClose'
+import { computeCashFlow } from '../lib/cashflow'
 import { formatAmount, plural } from '../utils/format'
 import './Reports.css'
 import './PeriodCloseNew.css'
@@ -126,8 +127,17 @@ export default function PeriodCloseNew({ year, setYear, sel, openMonth, statusOf
 
         <section className="cfn-card pcn-step" aria-label="Крок 3">
           <div className="pcn-step-h"><span className="pcn-n">{isClosed ? <i className="ti ti-file-analytics" aria-hidden="true" /> : 3}</span><div><h2>Звіти місяця</h2><small className="rpt-muted">{isClosed ? 'Цифри закритого місяця.' : 'Кожну цифру можна розкрити до операцій і виправити.'}</small></div></div>
+          <div className="pcn-r3">
+            <CashMini year={year} month={sel} onOpen={() => { setRep('cashflow'); document.getElementById('pcn-report')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }} />
+            <section className="pcn-other" aria-label="Інші звіти за місяць">
+              <h3>Інші звіти за {MONTHS[sel - 1].toLowerCase()}</h3>
+              {[['pl', 'P&L', 'прибутки та збитки · нарахування і касовий'], ['balance', 'Управлінський баланс', `стан на кінець місяця`], ['goods', 'Товари', 'куплено → продано → лишилось']].map(([k, t, d]) => (
+                <button key={k} type="button" aria-pressed={rep === k} onClick={() => { setRep(k); document.getElementById('pcn-report')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }}>
+                  <span><b>{t}</b><small>{d}</small></span><i className="ti ti-arrow-right" aria-hidden="true" /></button>))}
+            </section>
+          </div>
           <Segmented ariaLabel="Звіт" value={rep} onChange={setRep} options={[{ value: 'cashflow', label: 'Cash Flow' }, { value: 'pl', label: 'P&L' }, { value: 'balance', label: 'Баланс' }, { value: 'goods', label: 'Товари' }]} />
-          <div className="pcn-report">{renderReport(rep)}</div>
+          <div className="pcn-report" id="pcn-report">{renderReport(rep)}</div>
         </section>
 
         {log.length > 0 && (
@@ -151,5 +161,34 @@ export default function PeriodCloseNew({ year, setYear, sel, openMonth, statusOf
         <div className="form-group"><label htmlFor="pcn-reason">Причина *</label><textarea id="pcn-reason" className="form-input" rows={3} value={reason} onChange={e => setReason(e.target.value)} placeholder="Напр. забули провести прихідну від постачальника" /></div>
       </Modal>
     </div>
+  )
+}
+
+// Cash Flow місяця: залишок по днях (макет PeriodClose, крок 3) — той самий computeCashFlow, що й звіт нижче
+function CashMini({ year, month, onOpen }) {
+  const [d, setD] = useState(null)
+  useEffect(() => { setD(null); computeCashFlow(year, month).then(setD).catch(() => setD(false)) }, [year, month])
+  if (d === false) return null
+  if (!d) return <section className="cfn-card pcn-cash"><TableSkeleton rows={3} cols={2} label="Рахую Cash Flow…" /></section>
+  const pts = [d.openingCash, ...d.cols.map(c => d.closingByCol[c.key])]
+  const lo = Math.min(...pts), hi = Math.max(...pts), span = hi - lo || 1
+  const xy = pts.map((v, i) => [(i / Math.max(1, pts.length - 1)) * 100, 92 - ((v - lo) / span) * 80])
+  const peak = pts.indexOf(hi)
+  const n0 = (v) => formatAmount(v, { decimals: 0 })
+  return (
+    <section className="cfn-card pcn-cash" aria-label="Cash Flow: залишок по днях">
+      <div className="pcn-cash-h"><h3>Cash Flow · залишок по днях</h3><button type="button" className="rpt-link" onClick={onOpen}>Відкрити повністю →</button></div>
+      <dl className="pcn-cash-k">
+        <div><dt>На початок</dt><dd>{n0(d.openingCash)}</dd></div>
+        <div><dt>Надходження</dt><dd className="is-in">{formatAmount(d.inflow?.total || 0, { decimals: 0, sign: 'always' })}</dd></div>
+        <div><dt>Витрати</dt><dd className="is-out">{formatAmount(-(Math.abs(d.outflow?.total || 0)), { decimals: 0, sign: 'always' })}</dd></div>
+        <div><dt>На кінець</dt><dd className={d.closingCash < 0 ? 'is-out' : ''}>{n0(d.closingCash)}</dd></div>
+      </dl>
+      <svg className="pcn-cash-svg" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label={`Залишок від ${n0(d.openingCash)} до ${n0(d.closingCash)}, найвищий ${n0(hi)}`}>
+        <polygon points={`0,100 ${xy.map(p => p.join(',')).join(' ')} 100,100`} className="pcn-cash-area" />
+        <polyline points={xy.map(p => p.join(',')).join(' ')} className="pcn-cash-line" vectorEffect="non-scaling-stroke" />
+      </svg>
+      <div className="pcn-cash-x"><span>1.{String(month).padStart(2, '0')}</span><span>макс. {n0(hi)}{peak > 0 ? ` · ${d.cols[peak - 1]?.label || ''}.${String(month).padStart(2, '0')}` : ''}</span><span>{d.cols.length}.{String(month).padStart(2, '0')}</span></div>
+    </section>
   )
 }

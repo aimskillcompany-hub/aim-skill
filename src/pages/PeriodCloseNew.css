@@ -79,3 +79,20 @@
 .pcn-tile.is-bad { background: var(--danger-soft-bg); color: var(--danger-fg); }
 .pcn-tile.is-bad.is-zero { background: var(--surface-sunken); color: var(--text); }
 @media (max-width: 1023px) { .pcn-row1 { grid-template-columns: minmax(0, 1fr); } .pcn-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* крок 3: міні Cash Flow + «Інші звіти» (макет PeriodClose) */
+.pcn-r3 { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr); gap: 16px; margin-bottom: 14px; }
+.pcn-cash { display: flex; flex-direction: column; gap: 10px; background: var(--surface-sunken) !important; border: 0 !important; }
+.pcn-cash-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; } .pcn-cash-h h3, .pcn-other h3 { margin: 0; font-size: 15px; font-weight: 700; }
+.pcn-cash-h .rpt-link { font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.pcn-cash-k { margin: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.pcn-cash-k dt { font-size: 12px; color: var(--muted); } .pcn-cash-k dd { margin: 2px 0 0; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pcn-cash-k dd.is-in { color: var(--brand-dark); } .pcn-cash-k dd.is-out { color: var(--expense-fg); }
+.pcn-cash-svg { width: 100%; height: 120px; display: block; }
+.pcn-cash-area { fill: var(--brand-soft); } .pcn-cash-line { fill: none; stroke: var(--brand); stroke-width: 2; }
+.pcn-cash-x { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pcn-other { display: flex; flex-direction: column; gap: 8px; }
+.pcn-other button { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; border: 1px solid transparent; background: var(--surface-sunken); font: inherit; color: var(--text); text-align: left; cursor: pointer; }
+.pcn-other button span { display: flex; flex-direction: column; } .pcn-other small { font-size: 12px; color: var(--muted); }
+.pcn-other button[aria-pressed="true"] { border-color: var(--brand); background: var(--surface); }
+@media (max-width: 1023px) { .pcn-r3 { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 767px) { .pcn-cash-k { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
