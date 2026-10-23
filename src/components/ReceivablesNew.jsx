@@ -5,9 +5,8 @@ import { useNavigate } from 'react-router-dom'
 import { BUCKETS } from '../lib/receivables'
 import { loadDocItems } from '../lib/docItems'
 import { formatAmount, plural } from '../utils/format'
-import { Segmented, StackBar, TableSkeleton, EmptyState, Button, Callout } from './ui'
+import { Segmented, StackBar, TableSkeleton, EmptyState, Button, Callout, PeriodMenu } from './ui'
 
-const MONTHS = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень', 'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень']
 const BUCKET_COLORS = { '0-7': 'var(--brand)', '8-14': 'var(--warn-mark)', '15-30': 'var(--expense-chart)', '30+': 'var(--danger-fg)' }
 const n0 = (v) => formatAmount(v, { decimals: 0 })
 const n2 = (v) => formatAmount(v)
@@ -24,13 +23,12 @@ export default function ReceivablesNew({ raw, filtered, shown, loading, err, yea
   return (
     <div className="rpt">
       <div className="rpt-bar">
-        <select className="form-input rpt-sel" aria-label="Місяць" value={month} onChange={e => setMonth(Number(e.target.value))}>{MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}</select>
-        <select className="form-input rpt-sel is-year" aria-label="Рік" value={year} onChange={e => setYear(Number(e.target.value))}>{years.map(y => <option key={y} value={y}>{y}</option>)}</select>
         {(raw?.companies || companies || []).length > 1 && (
           <Segmented ariaLabel="Юрособа" value={scope} onChange={setScope}
             options={[{ value: 'all', label: 'Усі' }, ...(raw?.companies || companies).map(c => ({ value: c.id, label: c.short_name || c.name }))]} />
         )}
-        <Button variant="primary" icon="ti-file-download" onClick={onPdf} disabled={!filtered}>PDF</Button>
+        <span className="rpt-right"><PeriodMenu year={year} month={month} allowYear={false} years={years} onChange={p => { setYear(p.year); setMonth(p.month) }} />
+          <Button variant="primary" icon="ti-file-download" onClick={onPdf} disabled={!filtered}>PDF</Button></span>
       </div>
 
       {err && <Callout tone="danger" title="Не вдалося порахувати дебіторку." text={err} />}

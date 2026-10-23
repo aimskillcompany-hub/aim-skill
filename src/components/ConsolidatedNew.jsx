@@ -6,12 +6,11 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { eliminateIntragroup } from '../lib/group'
 import { formatAmount } from '../utils/format'
-import { Button, Switch, TableSkeleton, Callout } from './ui'
+import { Button, Switch, TableSkeleton, Callout, PeriodMenu } from './ui'
 import '../pages/Reports.css'
 import '../pages/AnalyticsNew.css'
 import './ConsolidatedNew.css'
 
-const MONTHS = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень', 'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень']
 const n0 = (v) => formatAmount(v, { decimals: 0 })
 const pct = (f) => `${(Math.abs(f) * 100).toFixed(1).replace('.', ',')}%`
 const ENT = ['var(--brand)', 'var(--info-fg)', 'var(--group-fg)', 'var(--warn-mark)', 'var(--expense-chart)']
@@ -30,10 +29,9 @@ export default function ConsolidatedNew({ data, forecast, loading, err, year, mo
 
   const head = (
     <div className="rpt-bar">
-      <select className="form-input rpt-sel" aria-label="Місяць" value={month} onChange={e => setMonth(Number(e.target.value))}>{MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}</select>
-      <select className="form-input rpt-sel is-year" aria-label="Рік" value={year} onChange={e => setYear(Number(e.target.value))}>{years.map(y => <option key={y} value={y}>{y}</option>)}</select>
       <Switch checked={showGroup} onChange={setShowGroup} label="Операції всередині групи" />
-      <Button variant="secondary" icon="ti-download" onClick={onPdf} disabled={!data}>PDF</Button>
+      <span className="rpt-right"><PeriodMenu year={year} month={month} allowYear={false} years={years} onChange={p => { setYear(p.year); setMonth(p.month) }} />
+        <Button variant="secondary" icon="ti-download" onClick={onPdf} disabled={!data}>PDF</Button></span>
     </div>
   )
   if (err) return <div className="rpt">{head}<Callout tone="danger" title="Не вдалося порахувати зведений баланс." text={err} /></div>

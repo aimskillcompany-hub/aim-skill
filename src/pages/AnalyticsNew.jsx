@@ -13,13 +13,13 @@ const signed = (v) => formatAmount(v, { decimals: 0, sign: 'always' })
 const plain = (v) => formatAmount(Math.abs(v), { decimals: 0 })
 
 // Рік + місяці чипами (майбутні місяці поточного року — неактивні)
-export function PeriodChips({ year, setYear, month, setMonth, years }) {
+export function PeriodChips({ year, setYear, month, setMonth, years, noYear = false }) {
   const lastMonth = year === NOW.getFullYear() ? NOW.getMonth() + 1 : 12
   return (
     <div className="an-period">
-      <select className="form-input an-year" value={year} onChange={e => setYear(Number(e.target.value))} aria-label="Рік">
+      {!noYear && <select className="form-input an-year" value={year} onChange={e => setYear(Number(e.target.value))} aria-label="Рік">
         {years.map(y => <option key={y} value={y}>{y}</option>)}
-      </select>
+      </select>}
       <div className="an-chips" role="group" aria-label="Місяць">
         <button type="button" className="an-chip" aria-pressed={!month} onClick={() => setMonth(0)}>Весь рік</button>
         {MONTHS_SHORT.map((m, i) => (

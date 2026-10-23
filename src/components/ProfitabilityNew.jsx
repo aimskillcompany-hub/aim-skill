@@ -5,7 +5,7 @@ import { saveAgent, computeTotals } from '../lib/profitability'
 import { useGroupContractors } from '../lib/group'
 import { listDecisions } from '../lib/decisions'
 import { formatAmount, plural } from '../utils/format'
-import { TableSkeleton, EmptyState, Callout, useToast } from './ui'
+import { TableSkeleton, EmptyState, Callout, useToast, PeriodMenu } from './ui'
 import '../pages/AnalyticsNew.css'
 
 const n0 = (v) => formatAmount(v, { decimals: 0 })
@@ -30,11 +30,8 @@ export default function ProfitabilityNew({ data, loading, err, from, to, setFrom
   return (
     <div className="rpt">
       <div className="rpt-bar">
-        <span className="mgn-dates">
-          <input type="date" className="form-input" aria-label="Період з" value={from} onChange={e => e.target.value && setFrom(e.target.value)} />
-          <span aria-hidden="true">—</span>
-          <input type="date" className="form-input" aria-label="Період по" value={to} onChange={e => e.target.value && setTo(e.target.value)} />
-        </span>
+        <span className="rpt-right"><PeriodMenu year={Number(from.slice(0, 4))} month={from.slice(5) === '01-01' && to.slice(5) === '12-31' ? 0 : Number(from.slice(5, 7))}
+          onChange={p => { const y = p.year, m = p.month; setFrom(m ? `${y}-${String(m).padStart(2, '0')}-01` : `${y}-01-01`); setTo(m ? `${y}-${String(m).padStart(2, '0')}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}` : `${y}-12-31`) }} /></span>
         {(companies || []).length > 1 && (
           <select className="form-input rpt-sel" aria-label="Юрособа" value={companyId || ''} onChange={e => setCompanyId(e.target.value)}>
             {companies.map(c => <option key={c.id} value={c.id}>{c.short_name || c.name}</option>)}

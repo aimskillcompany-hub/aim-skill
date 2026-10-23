@@ -206,3 +206,40 @@
 
 /* Позначка «група» — контрагент є нашою компанією (ТЗ 6.4) */
 .grp-chip { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; margin-left: 6px; border-radius: var(--r-pill, 999px); background: var(--group-bg); color: var(--group-fg); font-size: 11px; font-weight: 600; vertical-align: middle; white-space: nowrap; }
+
+/* Вибір періоду (PeriodMenu) */
+.ui-pm { position: relative; display: inline-flex; }
+.ui-pm-btn { display: inline-flex; align-items: center; gap: 8px; height: var(--h-control, 40px); padding: 0 14px; border-radius: var(--radius-md, 12px); border: 1px solid var(--border); background: var(--surface); font: inherit; font-size: 14px; font-weight: 600; color: var(--text); cursor: pointer; white-space: nowrap; }
+.ui-pm-btn:hover { border-color: var(--border-strong); }
+.ui-pm-btn .ti-calendar { color: var(--muted); } .ui-pm-btn .ti-chevron-down { color: var(--muted); font-size: 14px; }
+.ui-pm-pop { position: absolute; top: calc(100% + 6px); z-index: 60; width: 248px; padding: 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-pop, 0 12px 32px rgba(0,0,0,.12)); display: flex; flex-direction: column; gap: 10px; }
+.ui-pm-pop.is-right { right: 0; } .ui-pm-pop.is-left { left: 0; }
+.ui-pm-year { display: flex; align-items: center; justify-content: space-between; }
+.ui-pm-year b { font-size: 15px; }
+.ui-pm-year button { width: 32px; height: 32px; border-radius: 10px; border: 0; background: var(--surface-sunken); cursor: pointer; color: var(--text); }
+.ui-pm-year button:disabled { opacity: .35; cursor: default; }
+.ui-pm-all { height: 36px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text); }
+.ui-pm-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.ui-pm-grid button { height: 36px; border-radius: 10px; border: 0; background: var(--surface-sunken); font: inherit; font-size: 13px; cursor: pointer; color: var(--text); }
+.ui-pm-grid button:disabled { opacity: .35; cursor: default; }
+.ui-pm-all[aria-pressed="true"], .ui-pm-grid button[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: var(--surface); font-weight: 700; }
+.ui-pm-grid button:focus-visible, .ui-pm-all:focus-visible, .ui-pm-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+@media (max-width: 767px) { .ui-pm-btn { height: 38px; padding: 0 12px; font-size: 13px; } }
+
+/* Вкладки-пігулки (Аналітика) */
+.ui-tabs.is-pills { display: inline-flex; width: auto; max-width: 100%; gap: 2px; padding: 4px; border: 0; border-radius: 14px; background: var(--seg-track); }
+.ui-tabs.is-pills .ui-tab { height: 36px; padding: 0 14px; border: 0; border-radius: 10px; margin: 0; font-weight: 500; color: var(--muted); }
+.ui-tabs.is-pills .ui-tab::after { display: none; }
+.ui-tabs.is-pills .ui-tab[aria-selected="true"] { background: var(--surface); color: var(--text); font-weight: 700; box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 12%, transparent); border-bottom: 0; }
+.ui-tab-short { display: none; }
+@media (max-width: 767px) {
+  .ui-tab-long { display: none; } .ui-tab-short { display: inline; }
+  .ui-tabs.is-pills { display: flex; width: 100%; overflow-x: auto; }
+  .ui-tabs.is-pills .ui-tab { flex: 1 0 auto; padding: 0 10px; }
+}
+@media (max-width: 767px) {
+  /* на телефоні — окремі чипи, активний темний (макет Main / PnLMobile) */
+  .ui-tabs.is-pills { background: none; padding: 0; gap: 6px; border-radius: 0; }
+  .ui-tabs.is-pills .ui-tab { height: 40px; border: 1px solid var(--border); border-radius: var(--r-pill); background: var(--surface); color: var(--text); }
+  .ui-tabs.is-pills .ui-tab[aria-selected="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); box-shadow: none; }
+}
