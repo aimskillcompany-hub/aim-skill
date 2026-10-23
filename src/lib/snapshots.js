@@ -2,6 +2,7 @@
 // «Прогноз» (buildOrderForecasts → computeOrderPlan), у момент позначки «в прогноз»; далі не змінюється.
 import { supabase } from './supabase'
 import { buildOrderForecasts } from './forecast'
+import { expenseNet } from './orderPlan'
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100
 export const isMissingSnapTable = (e) => /forecast_snapshots/.test(e?.message || '') && /(does not exist|not find|schema cache)/i.test(e?.message || '')
@@ -19,14 +20,16 @@ export const COST_LABELS = { purchase: 'Закупівля (собівартіс
 export async function buildSnapshot(orderId) {
   const [rows, { data: exps }] = await Promise.all([
     buildOrderForecasts({ orderIds: [orderId] }),
-    supabase.from('order_expenses').select('name, amount').eq('order_id', orderId),
+    supabase.from('order_expenses').select('*').eq('order_id', orderId),
   ])
   const o = rows?.[0]
   if (!o) throw new Error('Замовлення не знайдено')
   const p = o.plan || {}
   const costs = { purchase: r2(p.costNet), logistics: 0, commission: 0, agent: r2(p.agent), tax: r2(p.tax), other: 0 }
   let named = 0
-  ;(exps || []).forEach(e => { const b = costBucket(e.name); const a = Number(e.amount) || 0; costs[b] = r2(costs[b] + a); named += a })
+  // тип витрати (102) має перевагу над назвою; сума — без ПДВ (expenseNet)
+  const BY_KIND = { delivery: 'logistics', bank_fee: 'commission', agent: 'agent', install: 'other', other: 'other' }
+  ;(exps || []).forEach(e => { const b = BY_KIND[e.kind] || costBucket(e.name); const a = expenseNet(e); costs[b] = r2(costs[b] + a); named += a })
   costs.other = r2(costs.other + Math.max(0, (Number(p.other) || 0) - named))   // «інші витрати» без назви
   return {
     order_id: orderId, company_id: o.companyId || null,

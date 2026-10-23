@@ -1,0 +1,82 @@
+/* Вкладка «Прибутковість» у замовленні — новий інтерфейс. Лише токени. */
+.opn { display: flex; flex-direction: column; gap: 16px; }
+.opn h2 { margin: 0; font-size: 17px; font-weight: 700; }
+.opn .is-pos { color: var(--brand-dark); } .opn .is-neg { color: var(--expense-fg); } .opn .is-muted, .opn-muted { color: var(--muted); }
+.opn-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); overflow: hidden; }
+.opn-card:not(:first-child) { padding: 20px 22px; } .opn-card.is-flush { padding: 0; }
+.opn-pad { padding: 18px 22px 12px; }
+.opn-top { display: grid; grid-template-columns: 1fr 1fr 1.15fr; border-bottom: 1px solid var(--divider); }
+.opn-cell { display: flex; flex-direction: column; gap: 4px; padding: 20px 24px; min-width: 0; }
+.opn-cell + .opn-cell { border-left: 1px solid var(--divider); }
+.opn-cell > span { font-size: 13px; color: var(--muted); }
+.opn-cell > b { font-size: 36px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.opn-cell > small { font-size: 13px; color: var(--muted); }
+.opn-paidbar { align-self: flex-start; margin-top: 4px; padding: 3px 10px; border-radius: var(--r-pill); background: var(--warn-bg); color: var(--warn-fg); font-size: 12px; font-weight: 600; }
+.opn-verdict { justify-content: center; border-left: 0 !important; }
+.opn-verdict b { font-size: 15px; } .opn-verdict p { margin: 0; font-size: 14px; line-height: 1.5; }
+.opn-verdict.is-info { background: var(--surface-sunken); } .opn-verdict.is-ok { background: var(--brand-soft); color: var(--brand-dark); }
+.opn-verdict.is-fair { background: var(--warn-bg); color: var(--warn-fg); } .opn-verdict.is-bad { background: var(--expense-bg); color: var(--expense-fg); }
+.opn-tbl { overflow-x: auto; }
+.opn-tbl table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.opn-tbl th, .opn-tbl td { padding: 13px 22px; border-bottom: 1px solid var(--divider); text-align: left; }
+.opn-tbl thead th { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: var(--surface-sunken); }
+.opn-tbl .r { text-align: right; white-space: nowrap; }
+.opn-tbl tbody th { font-weight: 400; } .opn-tbl tbody th small { color: var(--muted); font-size: 12.5px; }
+.opn-tbl tr.is-sub th, .opn-tbl tr.is-sub td { background: var(--surface-sunken); font-weight: 700; }
+.opn-tbl tr.is-net th, .opn-tbl tr.is-net td { background: var(--brand-soft); font-weight: 700; }
+.opn-chips { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 14px 22px; font-size: 14px; color: var(--muted); }
+.opn-chip { padding: 7px 14px; border-radius: var(--r-pill); border: 1px dashed var(--border-strong); background: var(--surface); font: inherit; font-size: 14px; color: var(--text); cursor: pointer; }
+.opn-chip:hover { border-color: var(--brand); color: var(--brand-dark); }
+.opn-exps { list-style: none; margin: 0; padding: 0 22px 14px; }
+.opn-exps li { display: flex; align-items: center; gap: 10px; min-height: 38px; border-top: 1px solid var(--divider); font-size: 13.5px; }
+.opn-exps li span { flex: 1; min-width: 0; } .opn-exps b { font-variant-numeric: tabular-nums; } .opn-exps small { color: var(--muted); font-weight: 400; }
+.opn-head { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.opn-ship { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; color: var(--muted); }
+.opn-ship label { display: inline-flex; align-items: center; gap: 8px; } .opn-ship .form-input { width: 160px; } .opn-ship .opn-days { width: 72px; }
+.opn-ship small { width: 100%; text-align: right; font-size: 12px; }
+.opn-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.opn-pay { display: flex; flex-direction: column; gap: 6px; padding: 16px 18px; border: 1px solid var(--border); border-radius: 18px; min-width: 0; }
+.opn-pay.is-low { background: var(--expense-bg); border-color: transparent; }
+.opn-pay-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.opn-st { font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: var(--r-pill); background: var(--surface-sunken); color: var(--muted); white-space: nowrap; }
+.opn-st.is-ok { background: var(--brand-soft); color: var(--brand-dark); } .opn-st.is-late { background: var(--warn-bg); color: var(--warn-fg); } .opn-st.is-part { background: var(--warn-bg); color: var(--warn-fg); }
+.opn-pay-l { font-size: 14px; }
+.opn-pay-a { font-size: 26px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.opn-prog { height: 5px; border-radius: 3px; background: var(--seg-track); overflow: hidden; } .opn-prog i { display: block; height: 100%; background: var(--warn-mark); }
+.opn-warn { font-size: 12.5px; color: var(--warn-fg); } .opn-warn button { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; text-decoration: underline; color: inherit; cursor: pointer; }
+.opn-after { padding-top: 8px; border-top: 1px dashed var(--border); font-size: 12.5px; color: var(--muted); }
+.opn-foot { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-top: 14px; font-size: 13.5px; }
+.opn-frozen { color: var(--expense-fg); }
+.opn-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.opn-cands { display: flex; flex-direction: column; gap: 6px; padding: 0 22px 12px; }
+.opn-cands > div { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 12px; background: var(--brand-soft); font-size: 13.5px; }
+.opn-empty { margin: 0; padding: 12px 22px 22px; color: var(--muted); font-size: 14px; }
+.opn-pays { list-style: none; margin: 0; padding: 0; }
+.opn-pays li { display: grid; grid-template-columns: 96px minmax(0, 1fr) 190px 140px 36px; gap: 12px; align-items: center; min-height: 52px; padding: 0 12px 0 22px; border-top: 1px solid var(--divider); font-size: 14px; }
+.opn-p-d { color: var(--muted); font-variant-numeric: tabular-nums; } .opn-p-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .opn-p-n small { color: var(--muted); font-size: 13px; }
+.opn-p-s { font-size: 12.5px; color: var(--muted); } .opn-p-a { text-align: right; font-variant-numeric: tabular-nums; }
+.opn-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--seg-track); }
+.opn-seg button { border: 0; background: none; padding: 6px 12px; border-radius: 8px; font: inherit; font-size: 13px; cursor: pointer; color: var(--muted); }
+.opn-seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); font-weight: 600; }
+@media (max-width: 1023px) { .opn-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .opn-pays li { grid-template-columns: 84px minmax(0, 1fr) 130px 36px; } .opn-p-s { display: none; } }
+@media (max-width: 767px) {
+  .opn-top { grid-template-columns: 1fr 1fr; } .opn-verdict { grid-column: 1 / -1; } .opn-cell { padding: 16px; } .opn-cell > b { font-size: 26px; }
+  .opn-cell + .opn-cell { border-left: 0; }
+  .opn-tbl thead { display: none; }
+  .opn-tbl tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 10px 16px; border-bottom: 1px solid var(--divider); }
+  .opn-tbl th, .opn-tbl td { padding: 0; border: 0; background: transparent !important; }
+  .opn-tbl tbody th { grid-row: 1 / span 3; } .opn-tbl tbody td { text-align: right; font-size: 13px; }
+  .opn-tbl tr.is-sub, .opn-tbl tr.is-net { background: var(--surface-sunken); } .opn-tbl tr.is-net { background: var(--brand-soft); }
+  .opn-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; } .opn-chip { flex: none; }
+  .opn-card:not(:first-child) { padding: 16px; }
+  .opn-cards { grid-template-columns: minmax(0, 1fr); }
+  .opn-ship small { text-align: left; }
+  .opn-pays li { grid-template-columns: minmax(0, 1fr) auto 36px; padding: 10px 8px 10px 16px; } .opn-p-d { grid-column: 1 / -1; font-size: 12px; }
+}
+/* вкладка стоїть поруч із боковою панеллю картки — великі числа не переносимо */
+.opn-cell > b { font-size: clamp(22px, 2.3vw, 34px); white-space: nowrap; }
+.opn-pay-a { font-size: clamp(18px, 1.7vw, 24px); white-space: nowrap; }
+.opn-cards { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+.opn-pay-h { flex-wrap: wrap; } .opn-st { white-space: normal; }
+@media (max-width: 1279px) { .opn-top { grid-template-columns: 1fr 1fr; } .opn-verdict { grid-column: 1 / -1; } }
+.opn-cell.opn-verdict > b { font-size: 15px; white-space: normal; letter-spacing: 0; }

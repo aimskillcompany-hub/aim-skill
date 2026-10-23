@@ -53,3 +53,6 @@ export function computeOrderPlan(items, { vatOn = true, agentPct = 0, otherExpen
     gross, tax, agent, other, net, bySupplier,
   }
 }
+
+// Сума «іншої витрати» замовлення без ПДВ (міграція 102: vat_included; старі витрати — без ПДВ, як і раніше)
+export const expenseNet = (e) => Math.round(((Number(e.amount) || 0) / (e.vat_included ? 1.2 : 1)) * 100) / 100
