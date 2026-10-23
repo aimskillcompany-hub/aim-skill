@@ -30,7 +30,8 @@ const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД', 'О�
 const PROJECT_ARTICLES = ['Виручка: товари / ПЗ', 'Закупівля товарів']
 
 export default function BankCash() {
-  const [tab, setTab] = useState('transactions')
+  const [sp] = useSearchParams()
+  const [tab, setTab] = useState(sp.get('tab') === 'import' ? 'import' : 'transactions')
   const [accounts, setAccounts] = useState([])
   const newUi = useNewUi()
   const [addSignal, setAddSignal] = useState(0)   // новий інтерфейс: «+ Операція» в шапці відкриває форму у вкладці

@@ -28,6 +28,27 @@
 .ccn-body { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); padding: 8px 20px 20px; min-width: 0; }
 .ccn-body > .ui-tabs { margin: 0 -20px 18px; padding: 0 12px; }
 .ccn-panel .card { border-radius: 18px; }
+/* звірка з макетами: 4 картки реквізитів, лічильники вкладок, мобільна темна картка */
+.ccn-topbar, .ccn-owed-sub, .ccn-sm, .ccn-olist { display: none; }
+.ccd { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.ccd-card { border: 1px solid var(--border); border-radius: 18px; padding: 18px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.ccd-card.is-empty { border-style: dashed; }
+.ccd-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.ccd-h b { font-size: 15px; font-weight: 700; }
+.ccd-edit { border: 0; background: none; padding: 0; font: inherit; font-size: 13px; font-weight: 600; color: var(--brand-dark); cursor: pointer; }
+.ccd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+.ccd-f { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ccd-f.is-wide { grid-column: 1 / -1; }
+.ccd-f span { font-size: 12px; font-weight: 500; color: var(--muted); }
+.ccd-f b { font-size: 14px; font-weight: 500; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.ccd-hint { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.45; }
+.ccd-add { align-self: flex-start; height: 34px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); font: inherit; font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer; }
+.ccd-add:hover { background: var(--surface-sunken); }
+.ccd-link { align-self: flex-start; display: inline-flex; gap: 6px; align-items: center; border: 0; background: none; padding: 0; font: inherit; font-size: 13px; color: var(--brand-dark); cursor: pointer; }
+.ccd-people { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.ccd-people li { display: flex; flex-direction: column; gap: 1px; font-size: 14px; }
+.ccd-people span, .ccd-people small { font-size: 12px; color: var(--muted); }
+.ccn-contracts { border: 1px solid var(--border); border-radius: 18px; padding: 18px; }
 @media (max-width: 767px) {
   .ccn-head { padding: 16px; border-radius: var(--r-card-mobile); }
   .ccn-av { width: 48px; height: 48px; font-size: 16px; border-radius: 14px; }
@@ -38,4 +59,45 @@
   .ccn-kpis { grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .ccn-body { padding: 12px 14px 16px; border-radius: var(--r-card-mobile); }
   .ccn-body > .ui-tabs { margin: 0 -14px 14px; padding: 0 14px; }
+  /* макет ContractorMobile */
+  .ccn-back { display: none; }
+  .ccn-topbar { display: flex; align-items: center; gap: 8px; }
+  .ccn-tb-sp { flex: 1; }
+  .ccn-tb-btn { width: 44px; height: 44px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface); display: grid; place-items: center; color: var(--text); font-size: 20px; cursor: pointer; text-decoration: none; }
+  .ccn-tb-btn.is-plain { border: 0; background: none; width: 36px; }
+  .ccn-head { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 12px; padding: 0; background: none; border: 0; }
+  .ccn-head-main { gap: 6px; }
+  .ccn-meta > span:not(.ccn-chip):not(.ccn-edr) { display: none; }
+  .ccn-copy { display: none; }
+  .ccn-actions { grid-column: 1 / -1; display: flex; flex-wrap: nowrap; gap: 10px; }
+  .ccn-actions .btn { flex: 1 1 0; }
+  .ccn-actions .ccn-act-edit { display: none; }
+  .ccn-actions .ccn-act-order { order: -1; flex-basis: auto; }
+  .ccn-actions .btn { height: 48px; justify-content: center; }
+  .ccn-lg { display: none; }
+  .ccn-sm { display: inline; }
+  .ccn-kpi-lg { display: none !important; }
+  .ccn-owed { padding: 20px; }
+  .ccn-owed-value { font-size: 30px; }
+  .ccn-owed-link { display: none; }
+  .ccn-owed-sub { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; padding-top: 14px; border-top: 1px solid var(--ink-line); }
+  .ccn-owed-sub > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .ccn-owed-sub small { font-size: 12px; color: var(--on-dark-muted); }
+  .ccn-owed-sub b { font-size: 17px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ccn-body { padding: 0; background: none; border: 0; }
+  .ccn-body > .ui-tabs { margin: 0 -16px 12px; padding: 0 16px; border: 0; gap: 8px; }
+  .ccn-body > .ui-tabs .ui-tab-count { min-width: 22px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--surface2); display: inline-grid; place-items: center; font-size: 11px; font-weight: 700; }
+  .ccn-body > .ui-tabs .ui-tab[aria-selected="true"] .ui-tab-count { background: var(--brand); color: #fff; }
+  .ccn-panel td:first-child { white-space: nowrap; }
+  .ccn-otable { display: none; }
+  .ccn-olist { display: flex; flex-direction: column; gap: 8px; list-style: none; margin: 0; padding: 0; }
+  .ccn-olist button { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'main sum' 'st sum'; gap: 6px 12px; align-items: center; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--r-card-mobile); background: var(--surface); font: inherit; color: var(--text); text-align: left; cursor: pointer; }
+  .ccn-o-main { grid-area: main; display: flex; gap: 8px; align-items: baseline; }
+  .ccn-o-main b { font-size: 15px; }
+  .ccn-o-main small { font-size: 12px; color: var(--muted); }
+  .ccn-o-st { grid-area: st; justify-self: start; padding: 2px 8px; border-radius: 999px; background: var(--surface2); font-size: 12px; font-weight: 600; color: var(--text-strong2, var(--text)); }
+  .ccn-o-sum { grid-area: sum; font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ccd { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .ccd-card { background: var(--surface); border-radius: var(--r-card-mobile); }
+  .ccn-contracts { background: var(--surface); }
 }
