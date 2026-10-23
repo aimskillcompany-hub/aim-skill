@@ -2,7 +2,7 @@
 .an-page { display: flex; flex-direction: column; gap: 16px; }
 .an-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .an-head h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -.03em; }
-.an-head .ui-tabs { flex: 1 1 auto; min-width: 0; }
+.an-head .ui-tabs { flex: 0 1 auto; min-width: 0; }
 .an-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .an-toolbar > :last-child:not(:first-child) { margin-left: auto; }
 .an-period { display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%; }
@@ -351,3 +351,52 @@ button.mgn-kpi { cursor: pointer; }
   .mgn-dates .form-input { width: 140px; }
 }
 .mgn-tbl thead th:nth-child(5), .mgn-tbl thead th:nth-child(7) { text-align: left; }
+
+/* правий край панелі інструментів: вибір періоду, експорт */
+.an-right { margin-left: auto; display: inline-flex; align-items: center; gap: 10px; }
+.an-toolbar > .an-right:last-child { margin-left: auto; }
+@media (max-width: 767px) { .an-right { margin-left: 0; width: 100%; } .an-right .btn { flex: 1; } }
+
+/* ── Звірка з макетами, п. 3: на телефоні таблиці → картки / списки ── */
+@media (max-width: 767px) {
+  /* загальне: рядок таблиці стає карткою-сіткою */
+  .bln-tbl thead, .mgn-tbl thead, .csn-tbl thead, .pln-tbl thead, .fca-table thead { display: none; }
+  .bln-tbl table, .mgn-tbl table, .csn-tbl table, .pln-tbl table { min-width: 0 !important; }
+  .bln-tbl, .mgn-tbl, .csn-tbl, .pln-tbl { overflow-x: visible; }
+  .bln-tbl tr, .mgn-tbl tbody tr, .csn-tbl tbody tr, .pln-tbl tbody tr { display: grid; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--divider); }
+  .bln-tbl th, .bln-tbl td, .mgn-tbl th, .mgn-tbl td, .csn-tbl th, .csn-tbl td, .pln-tbl th, .pln-tbl td { padding: 0 !important; height: auto !important; border: 0 !important; position: static !important; }
+
+  /* Баланс по місяцях: місяць · капітал · зміна (макет BalanceMobile «Капітал по місяцях») */
+  .bln-tbl tr { grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; }
+  .bln-tbl td:nth-child(n+2):nth-child(-n+7) { display: none; }
+  .bln-tbl td.is-strong { font-size: 15px; }
+
+  /* Маржа: № і клієнт · маржа / %, шкала · оплата (макет MarginMobile) */
+  .mgn-tbl tbody tr { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name margin" "pct pct" "pay pay"; gap: 6px 10px; }
+  .mgn-tbl tbody th { grid-area: name; } .mgn-tbl tbody td:nth-child(4) { grid-area: margin; text-align: right; }
+  .mgn-tbl tbody td:nth-child(5) { grid-area: pct; } .mgn-tbl tbody td:nth-child(7) { grid-area: pay; }
+  .mgn-tbl tbody td:nth-child(2), .mgn-tbl tbody td:nth-child(3), .mgn-tbl tbody td:nth-child(6) { display: none; }
+  .mgn-pct { min-width: 0; } .mgn-track { flex: 1; }
+
+  /* Зведений баланс: список «стаття — сума групи» (макет InvestorMobile) */
+  .csn-tbl tbody tr { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+  .csn-tbl tbody td:not(.csn-grp) { display: none; }
+  .csn-tbl tbody td.csn-grp { background: none; text-align: right; }
+  .csn-tbl .csn-sec th { grid-column: 1 / -1; padding-top: 6px !important; }
+
+  /* P&L: список «стаття — разом» (макет PnLMobile) */
+  .pln-tbl tbody tr { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+  .pln-tbl tbody td { display: none; } .pln-tbl tbody td:last-child { display: block; text-align: right; }
+  .pln-tbl tbody th { white-space: normal; }
+
+  /* Точність прогнозу: № · прибуток · оцінка */
+  .fca-table tbody tr.is-click { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name acc" "net net"; gap: 4px 10px; }
+  .fca-table tbody tr.is-click td:last-child { display: block !important; grid-area: acc; }
+}
+@media (max-width: 767px) {
+  /* фон підсумкових рядків — на весь рядок-картку */
+  .pln-tbl tbody th, .pln-tbl tbody td, .csn-tbl tbody th, .csn-tbl tbody td, .bln-tbl th, .bln-tbl td { background: transparent !important; }
+  .pln-tbl tr.pln-subtotal, .csn-tbl tr.csn-tot, .csn-tbl tr.csn-share { background: var(--surface-sunken); }
+  .pln-tbl tr.is-net, .csn-tbl tr.csn-eqrow { background: var(--brand-soft); }
+  .bln-tbl tr.is-picked { background: var(--brand-soft); }
+}

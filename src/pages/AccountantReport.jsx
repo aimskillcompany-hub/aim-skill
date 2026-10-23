@@ -65,7 +65,7 @@ function SourceRows({ s, unit, openFile, indent }) {
   )
 }
 
-export default function AccountantReport() {
+export default function AccountantReport({ ctl = null } = {}) {
   const { activeId } = useCompany()
   const [list, setList] = useState(null)
   const [sel, setSel] = useState('')
@@ -86,6 +86,8 @@ export default function AccountantReport() {
   // Архів місяця (новий інтерфейс): усі видаткові й акти місяця з прихідними та сканами одним .zip
   const newUi = useNewUi()
   const [arcMonth, setArcMonth] = useState(() => todayKyiv().slice(0, 7))
+  useEffect(() => { if (ctl?.year && ctl?.month) setArcMonth(`${ctl.year}-${String(ctl.month).padStart(2, '0')}`) }, [ctl?.year, ctl?.month])
+  useEffect(() => { ctl?.registerExport?.(null) }, [ctl?.registerExport])
   const [arcProg, setArcProg] = useState(null)   // { i, n } під час збирання
   const [arcNote, setArcNote] = useState(null)
   const monthDocs = useMemo(() => (list || []).filter(x => (x.doc_date || '').startsWith(arcMonth)), [list, arcMonth])
@@ -109,7 +111,7 @@ export default function AccountantReport() {
         <b>{list ? `${monthDocs.length} ${plural(monthDocs.length, ['документ', 'документи', 'документів'])} на ${formatAmount(monthSum, { decimals: 0 })} ₴` : '…'}</b>
         <small>{arcProg ? `Збираю ${arcProg.i} з ${arcProg.n}…` : arcNote || 'Видаткові й акти місяця, прихідні до них і скани — одним архівом, з переліком.'}</small>
       </div>
-      <input type="month" className="form-input acc-pack-m" aria-label="Місяць" value={arcMonth} max={todayKyiv().slice(0, 7)} onChange={e => e.target.value && setArcMonth(e.target.value)} />
+      {!ctl && <input type="month" className="form-input acc-pack-m" aria-label="Місяць" value={arcMonth} max={todayKyiv().slice(0, 7)} onChange={e => e.target.value && setArcMonth(e.target.value)} />}
       <button type="button" className="btn btn-brand" onClick={downloadMonth} disabled={!monthDocs.length || !!arcProg}>
         <i className="ti ti-file-zip" aria-hidden="true" />{arcProg ? 'Архівую…' : 'Завантажити архів місяця (.zip)'}
       </button>

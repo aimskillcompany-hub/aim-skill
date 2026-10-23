@@ -535,3 +535,14 @@ a.btn { text-decoration: none; }
   .mobile-nav-icon { font-size: 20px; }
   
 }
+
+/* ── Звірка з макетами, п. 4: старі форми в новому інтерфейсі виглядають як компоненти дизайн-системи ── */
+[data-ui="new"] select.form-input, [data-ui="new"] .form-input:is(select) {
+  appearance: none; -webkit-appearance: none; padding-right: 34px; cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 17px) 52%, calc(100% - 12px) 52%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
+}
+[data-ui="new"] select.form-input:disabled { cursor: default; opacity: .6; }
+[data-ui="new"] input[type="checkbox"], [data-ui="new"] input[type="radio"] { accent-color: var(--brand); }
+[data-ui="new"] .form-input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); outline: none; }
+[data-ui="new"] input[type="date"].form-input, [data-ui="new"] input[type="month"].form-input, [data-ui="new"] input[type="datetime-local"].form-input { color-scheme: light; }

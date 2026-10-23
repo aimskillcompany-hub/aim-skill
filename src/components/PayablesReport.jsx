@@ -9,6 +9,7 @@ import { getDocType } from '../lib/docgen'
 import { todayKyiv } from '../lib/dates'
 import { loadPayablesAsOf, groupPayables } from '../lib/payables'
 import { useGroupContractors } from '../lib/group'
+import { exportReportXlsx, exportReportPdf } from '../lib/reportExport'
 import { BUCKETS } from '../lib/receivables'
 import { formatAmount, plural } from '../utils/format'
 import { KpiTile, StackBar, EmptyState, TableSkeleton, Button, Callout } from './ui'
@@ -16,7 +17,8 @@ import { KpiTile, StackBar, EmptyState, TableSkeleton, Button, Callout } from '.
 const dmy = (iso) => iso ? iso.split('-').reverse().join('.') : '—'
 const BUCKET_COLORS = { '0-7': 'var(--brand)', '8-14': 'var(--warn-mark)', '15-30': 'var(--expense-chart)', '30+': 'var(--danger-fg)' }
 
-export default function PayablesReport({ showGroup = true } = {}) {
+// ctl — спільна шапка «Звітів»: { year, month, scope, registerExport }
+export default function PayablesReport({ showGroup = true, ctl = null } = {}) {
   const grp = useGroupContractors()
   const { companies } = useCompany()
   const navigate = useNavigate()
@@ -27,10 +29,20 @@ export default function PayablesReport({ showGroup = true } = {}) {
   useEffect(() => {
     if (!companies?.length) return
     setData(null); setErr(null)
-    loadPayablesAsOf(companies, todayKyiv()).then(r => setData(r)).catch(e => setErr(e.message))
-  }, [companies])
+    const today = todayKyiv()
+    const end = ctl?.year && ctl?.month ? `${ctl.year}-${String(ctl.month).padStart(2, '0')}-${String(new Date(ctl.year, ctl.month, 0).getDate()).padStart(2, '0')}` : today
+    loadPayablesAsOf(companies, end < today ? end : today).then(r => setData(r)).catch(e => setErr(e.message))
+  }, [companies, ctl?.year, ctl?.month])
   // ТЗ 6.4: без операцій усередині групи — прибираємо борги перед нашими компаніями
-  const g = useMemo(() => data ? groupPayables(showGroup ? data.docs : data.docs.filter(d => !grp.has(d.contractorId))) : null, [data, showGroup, grp.ready])
+  const scoped = useMemo(() => (data?.docs || []).filter(d => (!ctl?.scope || ctl.scope === 'all' || d.companyId === ctl.scope) && (showGroup || !grp.has(d.contractorId))), [data, showGroup, grp.ready, ctl?.scope])
+  const g = useMemo(() => data ? groupPayables(scoped) : null, [data, scoped])
+  useEffect(() => {
+    if (!ctl?.registerExport) return
+    const cols = [{ key: 'name', label: 'Постачальник' }, { key: 'doc', label: 'Документ' }, { key: 'date', label: 'Дата' }, { key: 'sum', label: 'Борг, з ПДВ', num: true }, { key: 'due', label: 'Строк оплати' }, { key: 'over', label: 'Прострочка, дн.', num: true }]
+    const rows = g ? g.contractors.flatMap(c => c.docs.map(d => ({ name: c.name, doc: `${getDocType(d.type)?.label || 'Документ'} № ${d.doc_number}`, date: dmy(d.doc_date), sum: d.outstanding, due: dmy(d.dueDate), over: d.overdueDays > 0 ? d.overdueDays : '' }))) : []
+    const spec = { fileName: `Кредиторка ${data?.asOf || ''}`, title: 'Кредиторка — ми винні', subtitle: `станом на ${dmy(data?.asOf)}`, sheet: 'Кредиторка', columns: cols, rows, total: g ? { name: 'Разом', sum: g.summary.total } : null }
+    ctl.registerExport(g ? { xlsx: () => exportReportXlsx(spec), pdf: () => exportReportPdf(spec) } : null)
+  }, [g, ctl?.registerExport])
   // номери замовлень для документів
   useEffect(() => {
     const ids = [...new Set((data?.docs || []).map(d => d.order_id).filter(Boolean))]
@@ -41,7 +53,7 @@ export default function PayablesReport({ showGroup = true } = {}) {
   if (err) return <Callout tone="danger" title="Не вдалося порахувати кредиторку." text={err} />
   if (!g) return <TableSkeleton rows={6} cols={5} label="Рахую кредиторку…" />
   const s = g.summary
-  const docs = showGroup ? data.docs : data.docs.filter(d => !grp.has(d.contractorId))
+  const docs = scoped
   const overdue = docs.filter(d => d.overdueDays > 0).reduce((a, d) => a + d.outstanding, 0)
   const prepaid = (data.overpaid || []).reduce((a, x) => a + x.over, 0)
   const toggle = (id) => setOpen(o => { const n = new Set(o); n.has(id) ? n.delete(id) : n.add(id); return n })

@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useCompany } from '../lib/company'
 import { useUser } from '../lib/auth'
-import { computeProfitability, saveAgent } from '../lib/profitability'
+import { computeProfitability, saveAgent, computeTotals } from '../lib/profitability'
 import { useNewUi } from '../lib/uiPrefs'
 import ProfitabilityNew from './ProfitabilityNew'
 
@@ -16,7 +16,8 @@ const MONO = { fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontVari
 const firstDay = (y, m) => `${y}-${String(m).padStart(2, '0')}-01`
 const lastDay = (y, m) => `${y}-${String(m).padStart(2, '0')}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`
 
-export default function ProfitabilityReport({ showGroup = true } = {}) {
+// ctl — спільна шапка «Звітів»: { year, month, scope, registerExport }
+export default function ProfitabilityReport({ showGroup = true, ctl = null } = {}) {
   const { companies } = useCompany()
   const { user } = useUser()
   const [companyId, setCompanyId] = useState(null)
@@ -30,20 +31,28 @@ export default function ProfitabilityReport({ showGroup = true } = {}) {
   useEffect(() => { if (!companyId && companies?.length) setCompanyId(companies[0].id) }, [companies])
   const company = useMemo(() => (companies || []).find(c => c.id === companyId), [companies, companyId])
 
+  // спільна шапка: місяць (або рік) → період; юрособа → companyId (усі — кожна окремо, разом)
   useEffect(() => {
-    if (!companyId) return
+    if (!ctl?.year) return
+    const y = ctl.year, m = ctl.month
+    setFrom(m ? firstDay(y, m) : `${y}-01-01`); setTo(m ? lastDay(y, m) : `${y}-12-31`)
+  }, [ctl?.year, ctl?.month])
+  const ids = ctl ? (ctl.scope && ctl.scope !== 'all' ? [ctl.scope] : (companies || []).map(c => c.id)) : (companyId ? [companyId] : [])
+  useEffect(() => {
+    if (!ids.length) return
     let cancelled = false
     setLoading(true); setErr(null)
-    computeProfitability(companyId, company?.is_vat_payer !== false, from, to)
+    Promise.all(ids.map(id => { const c = (companies || []).find(x => x.id === id); return computeProfitability(id, c?.is_vat_payer !== false, from, to) }))
+      .then(rs => rs.length === 1 ? rs[0] : { invoices: rs.flatMap(r => r.invoices), totals: computeTotals(rs.flatMap(r => r.invoices)) })
       .then(r => { if (!cancelled) setData(r) })
       .catch(e => { if (!cancelled) setErr(e.message) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [companyId, from, to, tick])
+  }, [ids.join(','), from, to, tick])
 
   const newUi = useNewUi()
   if (newUi) return <ProfitabilityNew data={data} loading={loading} err={err} from={from} to={to} setFrom={setFrom} setTo={setTo}
-    companies={companies} companyId={companyId} setCompanyId={setCompanyId} userId={user?.id} showGroup={showGroup} onChanged={() => setTick(t => t + 1)} />
+    companies={companies} companyId={companyId} setCompanyId={setCompanyId} userId={user?.id} showGroup={showGroup} onChanged={() => setTick(t => t + 1)} ctl={ctl} />
 
   return (
     <div style={{ fontFamily: 'Manrope, system-ui, sans-serif', color: '#17151F', display: 'flex', flexDirection: 'column', gap: 22 }}>

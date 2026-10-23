@@ -4,7 +4,8 @@
 import { useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
-export default function Tabs({ tabs = [], value, onChange, ariaLabel, idPrefix = 'tab' }) {
+// variant="pills" — сегмент-пігулки (макети Аналітики); tabs[].short — коротка назва на телефоні
+export default function Tabs({ tabs = [], value, onChange, ariaLabel, idPrefix = 'tab', variant }) {
   const ref = useRef(null)
   useEffect(() => {
     const box = ref.current, el = box?.querySelector('[aria-selected="true"]')
@@ -21,11 +22,11 @@ export default function Tabs({ tabs = [], value, onChange, ariaLabel, idPrefix =
     else if (e.key === 'End') go(tabs.length - 1)
   }
   return (
-    <div className="ui-tabs" role="tablist" aria-label={ariaLabel} ref={ref} onKeyDown={onKey}>
+    <div className={`ui-tabs${variant === 'pills' ? ' is-pills' : ''}`} role="tablist" aria-label={ariaLabel} ref={ref} onKeyDown={onKey}>
       {tabs.map(t => (
         <button key={t.id} id={`${idPrefix}-${t.id}`} type="button" role="tab" aria-selected={t.id === value} tabIndex={t.id === value ? 0 : -1}
           className="ui-tab" onClick={() => onChange?.(t.id)}>
-          {t.icon && <i className={`ti ${t.icon}`} aria-hidden="true" />}{t.label}
+          {t.icon && <i className={`ti ${t.icon}`} aria-hidden="true" />}{t.short ? <><span className="ui-tab-long">{t.label}</span><span className="ui-tab-short" aria-hidden="true">{t.short}</span></> : t.label}
           {t.count != null && <span className="ui-tab-count">{t.count}</span>}
         </button>
       ))}
