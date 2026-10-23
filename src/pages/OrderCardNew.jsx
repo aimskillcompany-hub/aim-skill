@@ -5,7 +5,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useCompany } from '../lib/company'
-import { computeOrderPlan } from '../lib/orderPlan'
+import { computeOrderPlan, expenseNet } from '../lib/orderPlan'
+import { loadOrderProfit } from '../lib/orderProfit'
 import { ORDER_TYPES, OUTCOME, flowFor, statusLabel } from '../lib/orders'
 import { STATUS as TASK_STATUS, ACTIVE, isOverdue, shortDate, kyivTime } from '../lib/tasks'
 import { formatAmount } from '../utils/format'
@@ -25,8 +26,8 @@ export function useOrderPlan(o) {
     ;(async () => {
       let { data: rows, error } = await supabase.from('order_items').select('qty, unit_price, cost_price, vat_rate, cost_vat_rate, price_includes_vat, supplier_id').eq('order_id', o.id)
       if (error) ({ data: rows } = await supabase.from('order_items').select('qty, unit_price, cost_price, vat_rate, price_includes_vat, supplier_id').eq('order_id', o.id))
-      const { data: exp } = await supabase.from('order_expenses').select('amount').eq('order_id', o.id)
-      const other = (exp || []).reduce((s, e) => s + (Number(e.amount) || 0), 0)
+      const { data: exp } = await supabase.from('order_expenses').select('*').eq('order_id', o.id)
+      const other = (exp || []).reduce((s, e) => s + expenseNet(e), 0)
       if (alive) setState({ count: (rows || []).length, plan: computeOrderPlan(rows || [], { vatOn, agentPct: o.agent_commission_pct, otherExpenses: other }) })
     })()
     return () => { alive = false }
@@ -78,8 +79,18 @@ export function OrderHeadNew({ o, plan, busy, onBack, onStatus, onArchive, onUna
   const cur = steps.findIndex(x => x.s === o.status)
   const next = !o.archived_at && cur >= 0 ? steps[cur + 1] : null
   const p = plan?.plan
-  const gross = p ? p.gross : null
-  const pct = p && p.revenueNet > 0 ? Math.round((p.gross / p.revenueNet) * 100) : null
+  // ТЗ «Прибутковість у замовленні» 2.0: у шапці — чистий прибуток (план), після закриття й повної оплати — факт
+  const { active } = useCompany()
+  const [fact, setFact] = useState(null)
+  useEffect(() => {
+    setFact(null)
+    if (o.status !== 'closed') return
+    let on = true
+    loadOrderProfit(o, { vatOn: active?.is_vat_payer !== false }).then(r => { if (on && r.hasFact && r.fullyPaid) setFact(r.fact) }).catch(() => {})
+    return () => { on = false }
+  }, [o.id, o.status, o.paid_transaction_id])
+  const head = fact ? { net: fact.net, rev: fact.revenue, tag: 'факт' } : p ? { net: p.net, rev: p.revenueNet, tag: 'план' } : null
+  const headPct = head && head.rev > 0 ? (head.net / head.rev * 100).toFixed(1).replace('.', ',') : null
   const client = o.contractors?.name
   return (
     <>
@@ -109,7 +120,7 @@ export function OrderHeadNew({ o, plan, busy, onBack, onStatus, onArchive, onUna
           </div>
           <div className="ocn-head-side">
             <div className="ocn-total">{formatAmount(o.total)} <small>₴</small></div>
-            <div className="ocn-total-sub">з ПДВ{gross != null && <> · маржа <b className={gross < 0 ? 'is-neg' : ''}>{formatAmount(gross, { decimals: 0 })} ₴{pct != null ? ` (${pct}%)` : ''}</b></>}</div>
+            <div className="ocn-total-sub">з ПДВ{head && <> · чистий прибуток <b className={head.net < 0 ? 'is-neg' : ''}>{formatAmount(head.net, { decimals: 0 })} ₴</b> · {head.tag}{headPct != null ? ` · ${headPct}%` : ''}</>}</div>
             <div className="ocn-actions">
               <Button variant="secondary" iconOnly icon="ti-copy" aria-label="Копіювати замовлення" title="Копіювати замовлення" onClick={onCopy} loading={busy === 'copy'} />
               {o.archived_at

@@ -16,7 +16,7 @@
 // Для балансу: оплата дебіторки / кредиторки змінює лише гроші, не капітал (борг уже в балансі) —
 // тому окремо повертаємо receivableCollect і payablePay.
 import { supabase } from './supabase'
-import { computeOrderPlan } from './orderPlan'
+import { computeOrderPlan, expenseNet } from './orderPlan'
 import { countsAsDebt, debtDate, loadDocPayments } from './debts'
 import { fetchAll } from './fetchAll'
 
@@ -78,7 +78,8 @@ export async function buildOrderForecasts({ orderIds = null } = {}) {
   let { data: items, error: iErr } = await inChunks('order_items', 'order_id, qty, unit_price, cost_price, vat_rate, cost_vat_rate, price_includes_vat, supplier_id', 'order_id', ids)
   if (iErr) { ({ data: items } = await inChunks('order_items', 'order_id, qty, unit_price, cost_price, vat_rate, price_includes_vat, supplier_id', 'order_id', ids)); flags.no067 = true }
   // Інші витрати (065), факт (057), графік (067), субзамовлення (дати оплати постачальнику)
-  const { data: exps, error: eErr } = await inChunks('order_expenses', 'order_id, amount', 'order_id', ids)
+  let { data: exps, error: eErr } = await inChunks('order_expenses', 'order_id, amount, vat_included', 'order_id', ids)
+  if (eErr) ({ data: exps, error: eErr } = await inChunks('order_expenses', 'order_id, amount', 'order_id', ids))   // до міграції 102
   if (eErr) flags.no065 = true
   const { data: ots, error: tErr } = await inChunks('order_transactions', 'order_id, kind, amount, transaction_id, bank_transactions(date, contractor_id)', 'order_id', ids)
   if (tErr) flags.no057 = true
@@ -108,7 +109,7 @@ export async function buildOrderForecasts({ orderIds = null } = {}) {
   return orders.map(o => {
     const vatOn = o.companies?.is_vat_payer !== false
     const oItems = itemsBy[o.id] || []
-    const otherSum = (expBy[o.id] || []).reduce((s, e) => s + (Number(e.amount) || 0), 0)
+    const otherSum = (expBy[o.id] || []).reduce((s, e) => s + expenseNet(e), 0)   // «з ПДВ» → без ПДВ (102)
     const plan = computeOrderPlan(oItems, { vatOn, agentPct: o.agent_commission_pct, otherExpenses: otherSum })
     const pl = planBy[o.id] || []
     const pShip = pl.find(x => x.kind === 'ship'), pClient = pl.find(x => x.kind === 'client')

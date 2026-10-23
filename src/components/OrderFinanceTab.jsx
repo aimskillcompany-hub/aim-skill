@@ -8,6 +8,8 @@ import { useCompany } from '../lib/company'
 import { computeOrderPlan } from '../lib/orderPlan'
 import OrderPaymentPlan from './OrderPaymentPlan'
 import { Modal, Button, Switch, TableSkeleton, useToast } from './ui'
+import { useNewUi } from '../lib/uiPrefs'
+import OrderProfitNew from './OrderProfitNew'
 
 // Вкладка «Прибутковість» картки замовлення: касовий, РЕАЛЬНИЙ прибуток за
 // фактичними банківськими транзакціями. Оплата клієнта прив'язується тут (замість
@@ -17,6 +19,12 @@ import { Modal, Button, Switch, TableSkeleton, useToast } from './ui'
 const d = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('.') : ''
 
 export default function OrderFinanceTab({ o, onOrderChange }) {
+  // Новий інтерфейс (ТЗ «Прибутковість у замовленні»): план / факт за оплатами, рух грошей, оплати
+  if (useNewUi()) return <OrderProfitNew o={o} onOrderChange={onOrderChange} />
+  return <OrderFinanceTabOld o={o} onOrderChange={onOrderChange} />
+}
+
+function OrderFinanceTabOld({ o, onOrderChange }) {
   const { user } = useUser()
   const toast = useToast()
   const [items, setItems] = useState(null)
@@ -277,7 +285,7 @@ function PlannedProfit({ o, userId }) {
 }
 
 // Вибір банківської транзакції + сума частки
-function TxPicker({ kind, orderId, clientId, userId, onClose, onAdded }) {
+export function TxPicker({ kind, orderId, clientId, userId, onClose, onAdded }) {
   const toast = useToast()
   const [q, setQ] = useState('')
   const [rows, setRows] = useState(null)
