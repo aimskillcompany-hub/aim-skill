@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { loadClientPaid } from '../lib/forecast'
 import { takeSnapshot, supersedeSnapshot, isMissingSnapTable } from '../lib/snapshots'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -84,6 +85,9 @@ export default function Orders() {
     }))
     setOrders(enriched)
     setLoading(false)
+    // Скільки клієнт уже сплатив (часткові оплати) — для замовлень у роботі; те саме правило, що й «Прогноз»
+    const open = enriched.filter(o => !o.archived_at && Number(o.total) > 0)
+    loadClientPaid(open).then(paid => setOrders(prev => prev.map(o => paid[o.id] != null ? { ...o, clientPaid: paid[o.id] } : o))).catch(() => {})
   }
   useEffect(() => { load() }, [])
 

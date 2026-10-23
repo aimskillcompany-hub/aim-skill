@@ -293,3 +293,33 @@ export async function currentCashByCompany() {
   Object.keys(byCo).forEach(k => byCo[k] = r2(byCo[k]))
   return byCo
 }
+
+// Скільки клієнт уже сплатив по кожному замовленню — те саме правило, що й «Прогноз» (buildOrderForecasts):
+// оплати, прив'язані до замовлення (order_transactions, income), «оплачено клієнтом» (orders.paid_transaction_id)
+// і оплати видаткових / актів замовлення; одна транзакція рахується один раз. → { [orderId]: сума }
+export async function loadClientPaid(orders) {
+  const ids = (orders || []).map(o => o.id)
+  if (!ids.length) return {}
+  const [{ data: ots }, { data: docs }] = await Promise.all([
+    inChunks('order_transactions', 'order_id, kind, amount, transaction_id', 'order_id', ids),
+    inChunks('documents', 'id, order_id, type, direction, amount', 'order_id', ids),
+  ])
+  const paidTxIds = orders.map(o => o.paid_transaction_id).filter(Boolean)
+  const { data: paidTxs } = paidTxIds.length ? await inChunks('bank_transactions', 'id, amount', 'id', paidTxIds) : { data: [] }
+  const recv = (docs || []).filter(d => countsAsDebt(d.type) && d.amount != null && d.direction === 'receivable')
+  const docPays = await loadDocPayments(recv.map(d => d.id))
+  const paysOfDoc = {}; docPays.forEach(t => { (paysOfDoc[t.document_id] ||= []).push(t) })
+  const txById = {}; (paidTxs || []).forEach(t => txById[t.id] = t)
+  const out = {}
+  orders.forEach(o => {
+    const oOts = (ots || []).filter(t => t.order_id === o.id)
+    const otTx = new Set(oOts.map(t => t.transaction_id).filter(Boolean))
+    const ptx = o.paid_transaction_id && !otTx.has(o.paid_transaction_id) ? txById[o.paid_transaction_id] : null
+    out[o.id] = r2(paidAcrossSources([
+      perTx(oOts.filter(t => t.kind === 'income').map(t => ({ txId: t.transaction_id, amount: Number(t.amount) || 0 }))),
+      perTx(ptx ? [{ txId: ptx.id, amount: Math.abs(Number(ptx.amount) || 0) }] : []),
+      perTx(recv.filter(d => d.order_id === o.id).flatMap(d => (paysOfDoc[d.id] || []).map(t => ({ txId: t.transaction_id, amount: t.amount })))),
+    ]))
+  })
+  return out
+}
