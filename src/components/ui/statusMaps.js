@@ -7,9 +7,9 @@ import { STATUS as TASK_STATUS } from '../../lib/tasks'
 
 export const TONES = {
   neutral: { bg: '#f3f4f6', fg: '#374151' },
-  progress: { bg: '#dbeafe', fg: '#1d4ed8' },
+  progress: { bg: '#e6edf3', fg: '#28486a' },   // приглушений синьо-сірий — не сперечається із зеленим акцентом
   attention: { bg: '#fef3c7', fg: '#92400e' },
-  success: { bg: '#dcfce7', fg: '#166534' },
+  success: { bg: '#e3f4ec', fg: '#0b5e45' },
   danger: { bg: '#fee2e2', fg: '#b91c1c' },
 }
 

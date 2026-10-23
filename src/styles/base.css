@@ -6,7 +6,7 @@ html { overflow-x: hidden; max-width: 100vw; }
 /* кнопки й поля успадковують шрифт сторінки (браузер сам не передає розмір і гарнітуру) */
 button, input, textarea, select { font: inherit; }
 body {
-  font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--font);
   background: var(--bg);
   color: var(--text);
   font-size: 14px;
@@ -61,7 +61,7 @@ html, body { height: 100%; }
   transition: all .15s ease; margin: 2px 0; user-select: none; text-decoration: none;
 }
 .nav-item:hover { background: var(--surface2); color: var(--text); }
-.nav-item.active { background: var(--blue-soft); color: var(--blue-hover); font-weight: 600; box-shadow: inset 3px 0 0 var(--blue); }
+.nav-item.active { background: var(--primary-soft); color: var(--primary-hover); font-weight: 600; }
 .nav-item.active i { color: var(--blue); }
 .nav-item i { font-size: 18px; width: 20px; text-align: center; }
 .sidebar-footer { padding: 16px 20px; border-top: 1px solid var(--border); }
@@ -70,7 +70,7 @@ html, body { height: 100%; }
 .main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; padding-bottom: 88px; }   /* місце під «+ Задача» */
 .page-inner { padding: 32px; flex: 1; max-width: 1400px; width: 100%; margin: 0 auto; }
 .page-header { margin-bottom: 28px; }
-.page-header h1 { font-size: 28px; font-weight: 700; color: var(--text); letter-spacing: -.01em; line-height: 1.2; }
+.page-header h1 { font-size: 30px; font-weight: 700; color: var(--text); letter-spacing: -.02em; line-height: 1.15; }
 /* H2 секцій сторінки */
 .section-title, .card > h2 { font-size: 15px; font-weight: 600; color: var(--text); }
 .page-header p { font-size: 14px; color: var(--text2); margin-top: 6px; }
@@ -103,7 +103,7 @@ html, body { height: 100%; }
   padding: 24px;
 }
 .kpi-label { font-size: 13px; color: var(--text2); margin-bottom: 8px; font-weight: 500; }
-.kpi-value { font-size: 24px; font-weight: 500; letter-spacing: -.3px; color: var(--text); }
+.kpi-value { font-size: 26px; font-weight: 700; letter-spacing: -.02em; color: var(--text); font-variant-numeric: tabular-nums; }
 .kpi-value.blue { color: var(--text); }
 .kpi-value.green { color: var(--green); }
 .kpi-value.red { color: var(--red); }
@@ -140,7 +140,7 @@ textarea.form-input { height: auto; min-height: var(--h-control); padding: 8px 1
 .cell-name:focus { border-color: var(--blue); background: var(--surface); outline: none; }
 
 /* ═══ BUTTONS ═══ */
-/* Ієрархія: primary (синя) — одна головна дія екрана; dark — підтвердження у формах і модальних вікнах;
+/* Ієрархія: primary (зелена) — одна головна дія екрана; dark — підтвердження у формах і модальних вікнах;
    secondary — біла з рамкою; ghost — без фону; danger — лише в меню «⋯» або діалозі підтвердження.
    .btn без варіанта виглядає як secondary. */
 .btn {
@@ -158,6 +158,13 @@ textarea.form-input { height: auto; min-height: var(--h-control); padding: 8px 1
 .btn > .ti { font-size: 16px; }
 .btn-primary { background: var(--blue); color: #fff; border-color: var(--blue); }
 .btn-primary:hover:not(:disabled) { background: var(--blue-hover); border-color: var(--blue-hover); }
+/* brand — зелена (позитивна дія: «Розподілити», «Підтвердити»); у новому інтерфейсі primary — ink (ТЗ, розділ 2) */
+.btn-brand { background: var(--brand); color: #fff; border-color: var(--brand); }
+.btn-brand:hover:not(:disabled) { background: var(--brand-dark); border-color: var(--brand-dark); }
+[data-ui="new"] .btn-primary { background: var(--ink); border-color: var(--ink); }
+[data-ui="new"] .btn-primary:hover:not(:disabled) { background: var(--dark-hover); border-color: var(--dark-hover); }
+[data-ui="new"] .btn:focus-visible { outline-color: var(--brand); }
+[data-ui="new"] .tbl-wrap thead th { background: var(--surface-sunken); }
 .btn-dark { background: var(--dark); color: #fff; border-color: var(--dark); }
 .btn-dark:hover:not(:disabled) { background: var(--dark-hover); border-color: var(--dark-hover); }
 .btn-secondary { background: var(--surface); color: var(--text); border-color: var(--border-strong); }
@@ -202,8 +209,8 @@ textarea.form-input { height: auto; min-height: var(--h-control); padding: 8px 1
 .tbl-wrap thead th {
   background: var(--surface); padding: 10px 12px;
   text-align: left; color: var(--text2);
-  font-weight: 600; font-size: 12px; text-transform: none;
-  letter-spacing: 0;
+  font-weight: 600; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .06em;
   border-bottom: 1px solid var(--border);
   white-space: nowrap; position: sticky; top: 0; z-index: 1;
 }
@@ -431,7 +438,9 @@ textarea.form-input { height: auto; min-height: var(--h-control); padding: 8px 1
   }
   .mobile-nav-item:active { transform: scale(.92); }
   /* активний пункт — як у бічному меню: синій значок і підпис */
-  .mobile-nav-item.active { color: var(--blue); }
+  .mobile-nav-item.active { color: var(--primary-hover); font-weight: 600; }
+  /* як у макеті: активний пункт — зелена «пігулка» під іконкою */
+  .mobile-nav-item.active > .ti { background: var(--primary-soft); border-radius: var(--radius-pill); padding: 2px 14px; }
   .mobile-nav-icon { font-size: 22px; line-height: 1; }
   .mobile-nav-label { font-size: 10px; font-weight: 600; letter-spacing: .2px; }
 

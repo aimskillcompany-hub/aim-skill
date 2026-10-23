@@ -11,7 +11,7 @@
 .orders-pills { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 
 .orders-task-badge { margin-left: 6px; border: none; cursor: pointer; border-radius: var(--radius-sm); padding: 1px 6px; font-size: 11px; font-weight: 700;
-  background: var(--blue-soft); color: #3730a3; display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; }
+  background: var(--primary-soft); color: var(--primary-hover); display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; }
 .orders-task-badge .ti { font-size: 13px; }
 .orders-task-badge.is-late { background: var(--danger-bg); color: var(--danger); }
 .orders-task-badge:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
@@ -22,10 +22,12 @@
 .orders-flags button:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 .orders-flags .ti { font-size: 16px; color: var(--border-strong); }
 
-@media (max-width: 768px) {
-  /* таблиця прокручується вбік, а не стискає назви клієнтів до стовпчика літер */
+/* таблиця прокручується вбік у своїй картці, а не стискає назви клієнтів до стовпчика літер */
+@media (max-width: 1023px) {
   .orders-table { min-width: 860px; }
   .orders-table td .trunc { min-width: 180px; }
+}
+@media (max-width: 768px) {
   .orders-search { max-width: none; flex-basis: 100%; }
   .orders-views { margin-left: 0; }
   .orders-flags button { min-width: var(--h-touch); min-height: var(--h-touch); line-height: 1; }

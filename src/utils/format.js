@@ -1,16 +1,32 @@
 // Форматування для дизайн-системи: гроші й дати в одному стилі на всіх сторінках.
 // Київський час: дата «сьогодні / завтра / вчора» рахується за Europe/Kyiv, а не за часовим поясом браузера.
 
-const MONEY = new Intl.NumberFormat('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// ТЗ редизайну, розділ 2: роздільник тисяч — вузький нерозривний пробіл (U+202F), мінус — «−» (U+2212),
+// цифри — tabular-nums (у CSS). Знак ніколи не губиться і не замінюється дужками.
+export const MINUS = '\u2212'
+export const NNBSP = '\u202F'
+const fmtCache = new Map()
+const nf = (d) => {
+  if (!fmtCache.has(d)) fmtCache.set(d, new Intl.NumberFormat('uk-UA', { minimumFractionDigits: d, maximumFractionDigits: d }))
+  return fmtCache.get(d)
+}
+// Число → рядок: абсолютне значення з вузькими пробілами (будь-які пробіли uk-UA → U+202F)
+const abs = (n, d) => nf(d).format(Math.abs(n)).replace(/[\s\u00A0\u202F]/g, NNBSP)
 
-// 2816143.75 → «2 816 143,75»; завжди 2 знаки після коми. null / '' / нечислове → «—».
-export function formatMoney(v) {
+// Сума у стилі ТЗ.
+//   decimals — 2 (за замовчуванням) або 0; sign: 'auto' (лише «−» для від'ємних) | 'always' (ще й «+» для додатних);
+//   currency — додати « ₴». null / '' / нечислове → «—».
+export function formatAmount(v, { decimals = 2, sign = 'auto', currency = false } = {}) {
   if (v === null || v === undefined || v === '') return '—'
   const n = Number(v)
   if (!Number.isFinite(n)) return '—'
-  // uk-UA розділяє тисячі нерозривним пробілом (U+00A0 / U+202F) — лишаємо як є: так сума не переноситься
-  return MONEY.format(n)
+  const r = Math.round(n * 10 ** decimals) / 10 ** decimals          // −0,00 → 0,00
+  const pre = r < 0 ? MINUS : (sign === 'always' && r > 0 ? '+' : '')
+  return pre + abs(r, decimals) + (currency ? NNBSP + '₴' : '')
 }
+
+// 2816143.75 → «2 816 143,75»; завжди 2 знаки після коми; від'ємні — з «−».
+export const formatMoney = (v) => formatAmount(v)
 
 const KYIV = 'Europe/Kyiv'
 const ymd = new Intl.DateTimeFormat('en-CA', { timeZone: KYIV })        // YYYY-MM-DD

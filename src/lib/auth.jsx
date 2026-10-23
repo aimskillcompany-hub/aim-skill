@@ -31,7 +31,9 @@ export function AuthProvider({ children }) {
   }
 
   const user = session ? { ...session.user, ...profile, role: profile?.role || 'viewer' } : null
-  return <UserCtx.Provider value={{ user, session, loading }}>{children}</UserCtx.Provider>
+  // Перечитати профіль (після зміни власних налаштувань, напр. «Новий інтерфейс»)
+  const refreshProfile = () => session?.user?.id && loadProfile(session.user.id)
+  return <UserCtx.Provider value={{ user, session, loading, refreshProfile }}>{children}</UserCtx.Provider>
 }
 
 export const useUser = () => useContext(UserCtx)

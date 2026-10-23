@@ -31,8 +31,16 @@ export const ROLE_SECTIONS = {
 
 const sectionsFor = (role) => ROLE_SECTIONS[role] || ROLE_SECTIONS.viewer
 
+// Зведені розділи нового інтерфейсу (етап 1 редизайну):
+//   «Звіти» — доступні, якщо є хоч один зі звітів; «Ще» (мобільне меню) — усім.
+const REPORT_PARTS = ['receivables', 'accountant', 'profitability']
+
 // Чи має роль доступ до розділу
-export const canAccess = (role, section) => sectionsFor(role).includes(section)
+export const canAccess = (role, section) => {
+  if (section === 'more') return true
+  if (section === 'reports') return REPORT_PARTS.some(p => sectionsFor(role).includes(p))
+  return sectionsFor(role).includes(section)
+}
 
 // Перший доступний розділ (куди вести після входу / при спробі відкрити заборонене)
 export const firstSection = (role) => sectionsFor(role)[0] || 'orders'
