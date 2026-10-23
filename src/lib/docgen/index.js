@@ -75,7 +75,7 @@ export async function generateOrderDoc(docTypeKey, contractor, items, options, {
   const buyer = dt.direction === 'incoming' ? company : enriched
   const clean = cleanItems(items)
   const docDef = dt.template.pdf(seller, buyer, clean, docOptions(options, company))
-  const { total, vatAmount } = calcTotals(clean)
+  const { subtotal, total, vatAmount } = calcTotals(clean)
   const fileName = `${dt.label}_${options.docNumber}${options.docDate ? '_' + options.docDate : ''}.pdf`
 
   // 1) Завантажуємо PDF одразу (перевірений шлях) — користувач завжди отримує файл
@@ -89,7 +89,7 @@ export async function generateOrderDoc(docTypeKey, contractor, items, options, {
   await qc('documents').delete().eq('order_id', orderId).eq('type', docTypeKey).eq('doc_number', options.docNumber)
   const { error: insErr } = await qc('documents').insert(withCompany({
     type: docTypeKey, order_id: orderId, contractor_id: contractorId || contractor?.id || null,
-    doc_number: options.docNumber, doc_date: options.docDate || null, amount: total || null, vat_amount: noVatType(docTypeKey) ? 0 : (vatAmount || null),
+    doc_number: options.docNumber, doc_date: options.docDate || null, amount: (noVatType(docTypeKey) ? (subtotal ?? total) : total) || null, vat_amount: noVatType(docTypeKey) ? 0 : (vatAmount || null),
     file_name: fileName, storage_path: path, direction: dt.direction === 'incoming' ? 'payable' : 'receivable',
   }))
   if (insErr) throw insErr
@@ -237,7 +237,7 @@ export async function saveDoc({ docType, docNumber, docDate, contractorId, contr
     ...(id ? { id, file_path: `generated/${id}.pdf` } : {}),
     type: docType, doc_number: docNumber, doc_date: docDate || null,
     contractor_id: contractorId || null, order_id: orderId || null,
-    amount: total ?? null, vat_amount: noVatType(docType) ? 0 : (vatAmount ?? null), subtotal: subtotal ?? null,
+    amount: (noVatType(docType) ? (subtotal ?? total) : total) ?? null, vat_amount: noVatType(docType) ? 0 : (vatAmount ?? null), subtotal: subtotal ?? null,
     direction: dt?.direction === 'incoming' ? 'payable' : 'receivable',
     doc_role: dt?.direction === 'incoming' ? 'incoming' : 'outgoing',
     file_name: `${dt?.label || 'Документ'}_${docNumber}.pdf`,
@@ -451,7 +451,7 @@ export async function updateDoc(id, { docNumber, docDate, items, subtotal, vatAm
     if (v == null || v === '') delete pd[k]
   })
   const { error } = await qc('documents').update({
-    doc_number: docNumber, doc_date: docDate || null, amount: total ?? null, vat_amount: noVatType(d.type) ? 0 : (vatAmount ?? null), subtotal: subtotal ?? null,
+    doc_number: docNumber, doc_date: docDate || null, amount: (noVatType(d.type) ? (subtotal ?? total) : total) ?? null, vat_amount: noVatType(d.type) ? 0 : (vatAmount ?? null), subtotal: subtotal ?? null,
     items: cleanItems(items), print_data: pd,
   }).eq('id', d.id)
   if (error) throw new Error('Не збережено: ' + cleanErr(error.message))
