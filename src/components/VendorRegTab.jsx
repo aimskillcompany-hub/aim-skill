@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { VENDORS, getVendor, fillVendorForm } from '../lib/vendorForms'
 import { fmt } from '../lib/fmt'
+import { Button, Switch, TableSkeleton } from './ui'
 
 // Позиція за замовч. увімкнена: для дистриб'ютора (selectAll) — усі; інакше — ті, що містять назву вендора.
 const matchInclude = (vendor, x) => vendor?.selectAll
@@ -127,7 +128,7 @@ export default function VendorRegTab({ o }) {
     } finally { setBusy(false) }
   }
 
-  if (!ctx) return <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
+  if (!ctx) return <TableSkeleton rows={4} cols={3} label="Завантаження…" />
 
   return (
     <div className="card">
@@ -138,11 +139,9 @@ export default function VendorRegTab({ o }) {
             {VENDORS.map(v => <option key={v.key} value={v.key}>{v.name}</option>)}
           </select>
         </div>
-        <button className="btn btn-primary" onClick={generate} disabled={busy || selectedItems.length === 0}>
-          {busy ? 'Формування…' : <><i className="ti ti-file-spreadsheet" /> Сформувати {vendor?.name}</>}
-        </button>
+        <Button variant="primary" icon="ti-file-spreadsheet" onClick={generate} loading={busy} disabled={selectedItems.length === 0}>Сформувати {vendor?.name}</Button>
       </div>
-      {msg && <div style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 13 }}><i className="ti ti-alert-circle" /> {msg}</div>}
+      {msg && <div role="alert" style={{ background: 'var(--danger-bg)', color: 'var(--danger)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 13 }}><i className="ti ti-alert-circle" aria-hidden="true" /> {msg}</div>}
 
       {vendor.fields.some(f => f.key === 'dealerCode' || f.key === 'distributor') && (
       <div className="form-group" style={{ marginBottom: 14 }}>
@@ -173,9 +172,7 @@ export default function VendorRegTab({ o }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
           <span style={{ fontSize: 12, color: 'var(--text3)' }}>{vendor.selectAll ? 'Обрано всі товари закупівлі — зніміть зайві за потреби.' : 'Позначте позиції цього вендора (авто-підбір за назвою — перевірте).'}</span>
           {!isJoin && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--text2)', marginLeft: 'auto', cursor: 'pointer' }}>
-            <input type="checkbox" checked={includePrice} onChange={e => setIncludePrice(e.target.checked)} style={{ width: 15, height: 15 }} /> Вказувати ціну
-          </label>
+          <span style={{ marginLeft: 'auto' }}><Switch checked={includePrice} onChange={setIncludePrice} label="Вказувати ціну" /></span>
           )}
         </div>
         <div className="tbl-wrap" style={{ border: 'none' }}>
@@ -185,14 +182,14 @@ export default function VendorRegTab({ o }) {
               const over = on && !isJoin && items.slice(0, i + 1).filter(y => y.include).length > maxRows // понад ліміт → не увійде
               return (
                 <tr key={i} style={{ opacity: on ? 1 : 0.55 }}>
-                  <td style={{ textAlign: 'center', verticalAlign: 'top', paddingTop: 16 }}><input type="checkbox" checked={on} onChange={() => toggle(i)} style={{ width: 16, height: 16, cursor: 'pointer' }} /></td>
+                  <td style={{ textAlign: 'center', verticalAlign: 'top', paddingTop: 16 }}><input type="checkbox" checked={on} onChange={() => toggle(i)} aria-label={`Включити «${x.name || 'позицію'}» у форму`} style={{ width: 16, height: 16, cursor: 'pointer' }} /></td>
                   <td>
                     <input className="form-input" value={x.name} onChange={e => setItem(i, { name: e.target.value })} placeholder="Назва позиції" style={{ width: '100%', fontSize: 13.5, padding: '8px 10px' }} />
-                    {(x.sku || over) && <div style={{ fontSize: 11, marginTop: 3 }}>{x.sku && <span style={{ color: 'var(--text3)' }}>арт. {x.sku}</span>}{over && <span style={{ color: 'var(--amber, #b45309)' }}>{x.sku ? ' · ' : ''}понад ліміт</span>}</div>}
+                    {(x.sku || over) && <div style={{ fontSize: 11, marginTop: 3 }}>{x.sku && <span style={{ color: 'var(--text3)' }}>арт. {x.sku}</span>}{over && <span style={{ color: '#92400e' }}>{x.sku ? ' · ' : ''}понад ліміт</span>}</div>}
                   </td>
                   <td style={{ textAlign: 'right', verticalAlign: 'top' }}><input className="form-input" type="number" min="0" value={x.qty} onChange={e => setItem(i, { qty: e.target.value })} style={{ width: 90, fontSize: 13.5, padding: '8px 10px', textAlign: 'right' }} /></td>
                   {includePrice && <td style={{ textAlign: 'right' }}>{fmt(x.price)}</td>}
-                  <td style={{ textAlign: 'center', verticalAlign: 'top', paddingTop: 10 }}><button className="btn-icon" onClick={() => removeItem(i)} title="Видалити позицію" style={{ color: 'var(--text3)' }}><i className="ti ti-x" /></button></td>
+                  <td style={{ textAlign: 'center', verticalAlign: 'top', paddingTop: 10 }}><Button size="sm" variant="ghost" iconOnly icon="ti-x" aria-label="Видалити позицію" title="Видалити позицію" onClick={() => removeItem(i)} /></td>
                 </tr>
               )
             })}
@@ -200,8 +197,8 @@ export default function VendorRegTab({ o }) {
             </tbody>
           </table>
         </div>
-        <button className="btn" onClick={addItem} style={{ marginTop: 8, fontSize: 12.5 }}><i className="ti ti-plus" /> Додати позицію</button>
-        {!isJoin && overflow > 0 && <p style={{ fontSize: 12, color: 'var(--amber, #b45309)', marginTop: 6 }}>⚠ Обрано {selectedItems.length}, у шаблон {vendor.name} увійде лише перші {maxRows}. Решту {overflow} надішліть окремо (як зазначено у формі) або зменшіть вибір.</p>}
+        <div style={{ marginTop: 8 }}><Button size="sm" variant="secondary" icon="ti-plus" onClick={addItem}>Додати позицію</Button></div>
+        {!isJoin && overflow > 0 &&  <p role="status" style={{ fontSize: 12, color: '#92400e', marginTop: 6 }}><i className="ti ti-alert-triangle" aria-hidden="true" /> Обрано {selectedItems.length}, у шаблон {vendor.name} увійде лише перші {maxRows}. Решту {overflow} надішліть окремо (як зазначено у формі) або зменшіть вибір.</p>}
       </div>
     </div>
   )

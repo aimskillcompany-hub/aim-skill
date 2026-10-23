@@ -7,6 +7,7 @@ import { paymentCandidates, clientPayments, unlinkOrderPayment } from '../lib/or
 import { useCompany } from '../lib/company'
 import { computeOrderPlan } from '../lib/orderPlan'
 import OrderPaymentPlan from './OrderPaymentPlan'
+import { Modal, Button, Switch, TableSkeleton, useToast } from './ui'
 
 // Вкладка «Прибутковість» картки замовлення: касовий, РЕАЛЬНИЙ прибуток за
 // фактичними банківськими транзакціями. Оплата клієнта прив'язується тут (замість
@@ -17,6 +18,7 @@ const d = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('.') : ''
 
 export default function OrderFinanceTab({ o, onOrderChange }) {
   const { user } = useUser()
+  const toast = useToast()
   const [items, setItems] = useState(null)
   const [missing, setMissing] = useState(false) // міграція 057 ще не застосована
   const [picker, setPicker] = useState(null)     // 'income' | 'expense'
@@ -51,12 +53,12 @@ export default function OrderFinanceTab({ o, onOrderChange }) {
     setPayBusy(true)
     const { error } = await qc('orders').update({ paid_transaction_id: txId }).eq('id', o.id)
     setPayBusy(false)
-    if (error) { alert('Не вдалося прив\'язати оплату: ' + (/paid_transaction_id/.test(error.message || '') ? 'запустіть міграцію 056' : error.message)); return }
+    if (error) { toast('Не вдалося прив\'язати оплату: ' + (/paid_transaction_id/.test(error.message || '') ? 'запустіть міграцію 056' : error.message), { type: 'error' }); return }
     setPickList(null); onOrderChange?.()
   }
   const unlinkPayment = async () => {
     setPayBusy(true)
-    try { await unlinkOrderPayment(o) } catch (e) { alert('Не вдалося відв\'язати: ' + e.message) }   // і більше не пропонувати її
+    try { await unlinkOrderPayment(o) } catch (e) { toast('Не вдалося відв\'язати: ' + e.message, { type: 'error' }) }   // і більше не пропонувати її
     setPayBusy(false); onOrderChange?.()
   }
   const openPayPicker = async () => setPickList(await clientPayments(o).catch(() => []))
@@ -72,7 +74,7 @@ export default function OrderFinanceTab({ o, onOrderChange }) {
   const profit = income - expense
   const marginPct = income > 0 ? (profit / income * 100) : 0
 
-  if (items == null) return <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
+  if (items == null) return <TableSkeleton rows={4} cols={4} label="Завантаження прибутковості…" />
 
   // Блок прив'язки оплати показуємо ЛИШЕ поки оплату не прив'язано (кандидати/ручний вибір).
   // Після прив'язки оплата живе єдиним рядком у «Надходженнях» (без дублювання).
@@ -83,7 +85,7 @@ export default function OrderFinanceTab({ o, onOrderChange }) {
           {recommended && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--green)', fontWeight: 600 }}>рекомендовано (сума збігається)</span>}</div>
         <div className="trunc" style={{ fontSize: 12, color: 'var(--text2)' }}>{t.description || t.counterparty || ''}</div>
       </div>
-      <button className="btn" disabled={payBusy} onClick={() => linkPayment(t.id)} style={{ fontSize: 12, padding: '4px 12px' }}>Прив'язати</button>
+      <Button size="sm" variant="secondary" disabled={payBusy} onClick={() => linkPayment(t.id)}>Прив'язати</Button>
     </div>
   )
   const paymentBlock = (
@@ -100,12 +102,12 @@ export default function OrderFinanceTab({ o, onOrderChange }) {
             : cands.length ? (<><p style={{ fontSize: 13, color: 'var(--text2)', margin: 0 }}>Знайдено оплату від цього клієнта на суму замовлення:</p>{cands.map(t => <PayRow key={t.id} t={t} recommended />)}</>)
             : <p style={{ fontSize: 13, color: 'var(--text3)', margin: 0 }}>Оплати з таким контрагентом і сумою не знайдено. Можна прив'язати вручну.</p>}
           {pickList === null ? (
-            <button className="btn" onClick={openPayPicker} style={{ alignSelf: 'flex-start', fontSize: 12 }}><i className="ti ti-link" /> Прив'язати вручну</button>
+            <span><Button size="sm" variant="secondary" icon="ti-link" onClick={openPayPicker}>Прив'язати вручну</Button></span>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: 12, color: 'var(--text2)' }}>Вхідні оплати клієнта:</span>
-                <button className="btn" onClick={() => setPickList(null)} style={{ fontSize: 12, padding: '2px 10px' }}>Сховати</button>
+                <Button size="sm" variant="ghost" onClick={() => setPickList(null)}>Сховати</Button>
               </div>
               {pickList.length ? pickList.map(t => <PayRow key={t.id} t={t} recommended={cands?.some(c => c.id === t.id)} />)
                 : <p style={{ fontSize: 13, color: 'var(--text3)', margin: 0 }}>У клієнта немає вхідних банківських оплат.</p>}
@@ -123,7 +125,7 @@ export default function OrderFinanceTab({ o, onOrderChange }) {
       <div className="card" style={{ marginBottom: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 8, flexWrap: 'wrap' }}>
           <div style={{ fontWeight: 600, color }}>{label} <span style={{ color: 'var(--text3)', fontWeight: 400, fontSize: 13 }}>· {fmt(sum)} грн</span></div>
-          <button className="btn" onClick={() => setPicker(kind)}><i className="ti ti-plus" /> Додати транзакцію</button>
+          <Button variant="secondary" size="sm" icon="ti-plus" onClick={() => setPicker(kind)}>Додати транзакцію</Button>
         </div>
         {empty ? <p style={{ color: 'var(--text3)', fontSize: 13, margin: 0 }}>Немає транзакцій.</p> : (
           <div className="tbl-wrap" style={{ border: 'none' }}>
@@ -135,7 +137,7 @@ export default function OrderFinanceTab({ o, onOrderChange }) {
                     <td style={{ whiteSpace: 'nowrap', fontSize: 13 }}>{d(t.date)}</td>
                     <td><div className="trunc" style={{ maxWidth: 340 }}>{t.counterparty || t.description || (it.transaction_id ? '—' : 'транзакцію видалено')}{it.note ? <span style={{ color: 'var(--text3)' }}> · {it.note}</span> : null}</div></td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 500 }}>{fmt(it.amount)}</td>
-                    <td style={{ textAlign: 'right' }}><button className="btn" onClick={() => removeItem(it)} style={{ padding: '2px 8px', color: 'var(--red)' }}><i className="ti ti-x" /></button></td>
+                    <td style={{ textAlign: 'right' }}><Button size="sm" variant="ghost" iconOnly icon="ti-x" aria-label="Прибрати транзакцію із замовлення" onClick={() => removeItem(it)} /></td>
                   </tr>
                 )})}
               </tbody>
@@ -152,7 +154,7 @@ export default function OrderFinanceTab({ o, onOrderChange }) {
       <td style={{ whiteSpace: 'nowrap', fontSize: 13 }}>{d(payTx.date)}</td>
       <td><div className="trunc" style={{ maxWidth: 340 }}><span style={{ color: 'var(--green)', fontWeight: 600 }}>Оплата клієнта</span> · {payTx.counterparty || payTx.description || '—'}</div></td>
       <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 500 }}>{fmt(payAmount)}</td>
-      <td style={{ textAlign: 'right' }}><button className="btn" disabled={payBusy} onClick={unlinkPayment} title="Відв'язати оплату клієнта" style={{ padding: '2px 8px', color: 'var(--red)' }}><i className="ti ti-unlink" /></button></td>
+      <td style={{ textAlign: 'right' }}><Button size="sm" variant="ghost" iconOnly icon="ti-unlink" aria-label="Відв'язати оплату клієнта" title="Відв'язати оплату клієнта" disabled={payBusy} onClick={unlinkPayment} /></td>
     </tr>
   ) : null
 
@@ -194,6 +196,7 @@ export default function OrderFinanceTab({ o, onOrderChange }) {
 // Розрахунок — єдиний computeOrderPlan (lib/orderPlan.js), той самий, що й у «Прогнозі».
 function PlannedProfit({ o, userId }) {
   const { active } = useCompany()
+  const toast = useToast()
   const vatOn = active?.is_vat_payer !== false
   const [rows, setRows] = useState(null)       // позиції замовлення
   const [exp, setExp] = useState([])           // інші витрати
@@ -217,7 +220,7 @@ function PlannedProfit({ o, userId }) {
   const addExp = async () => {
     if (!(Number(add.amount) > 0)) return
     const { error } = await supabase.from('order_expenses').insert({ order_id: o.id, name: add.name.trim() || 'Інша витрата', amount: Number(add.amount), created_by: userId || null })
-    if (error) { alert(/order_expenses/.test(error.message || '') ? 'Запустіть міграцію 065' : error.message); return }
+    if (error) { toast(/order_expenses/.test(error.message || '') ? 'Запустіть міграцію 065' : error.message, { type: 'error' }); return }
     setAdd({ name: '', amount: '' }); loadExp()
   }
   const rmExp = async (id) => { await supabase.from('order_expenses').delete().eq('id', id); loadExp() }
@@ -249,20 +252,20 @@ function PlannedProfit({ o, userId }) {
 
       {/* Інші витрати */}
       <div style={{ marginTop: 14 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 8 }}>Інші витрати</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>Інші витрати</div>
         {missing && <p style={{ fontSize: 13, color: 'var(--amber,#b45309)' }}>Запустіть міграцію 065, щоб додавати інші витрати.</p>}
         {exp.map(e => (
           <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 14 }}>
             <span style={{ flex: 1 }}>{e.name}</span>
             <span style={{ fontFamily: 'monospace' }}>{fmt(e.amount)} грн</span>
-            <button className="btn" onClick={() => rmExp(e.id)} style={{ padding: '2px 8px' }}><i className="ti ti-x" /></button>
+            <Button size="sm" variant="ghost" iconOnly icon="ti-x" aria-label={`Видалити витрату «${e.name}»`} onClick={() => rmExp(e.id)} />
           </div>
         ))}
         {!missing && (
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
             <input className="form-input" placeholder="Назва (доставка, монтаж, комісія, податок…)" value={add.name} onChange={e => setAdd(a => ({ ...a, name: e.target.value }))} style={{ flex: '1 1 240px' }} />
             <input className="form-input" type="number" placeholder="Сума, грн" value={add.amount} onChange={e => setAdd(a => ({ ...a, amount: e.target.value }))} style={{ width: 140 }} onKeyDown={e => e.key === 'Enter' && addExp()} />
-            <button className="btn btn-primary" onClick={addExp}><i className="ti ti-plus" /> Додати</button>
+            <Button variant="secondary" icon="ti-plus" onClick={addExp}>Додати</Button>
           </div>
         )}
       </div>
@@ -275,6 +278,7 @@ function PlannedProfit({ o, userId }) {
 
 // Вибір банківської транзакції + сума частки
 function TxPicker({ kind, orderId, clientId, userId, onClose, onAdded }) {
+  const toast = useToast()
   const [q, setQ] = useState('')
   const [rows, setRows] = useState(null)
   const [chosen, setChosen] = useState(null)
@@ -328,33 +332,30 @@ function TxPicker({ kind, orderId, clientId, userId, onClose, onAdded }) {
       amount: Math.abs(Number(amount) || 0), note: note.trim() || null, created_by: userId || null,
     })
     setBusy(false)
-    if (error) { alert('Не вдалося: ' + (/order_transactions/.test(error.message || '') ? 'запустіть міграцію 057' : error.message)); return }
+    if (error) { toast('Не вдалося: ' + (/order_transactions/.test(error.message || '') ? 'запустіть міграцію 057' : error.message), { type: 'error' }); return }
     onAdded()
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={onClose}>
-      <div className="card" style={{ width: 640, maxWidth: '100%', maxHeight: '85vh', overflow: 'auto' }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div style={{ fontWeight: 600 }}>Додати {kind === 'income' ? 'надходження' : 'витрату'} з банку</div>
-          <button className="btn" onClick={onClose}><i className="ti ti-x" /></button>
-        </div>
+    <Modal open onClose={onClose} size="lg" title={`Додати ${kind === 'income' ? 'надходження' : 'витрату'} з банку`}
+      footer={chosen ? <>
+        <Button variant="secondary" icon="ti-arrow-left" onClick={() => setChosen(null)}>Інша транзакція</Button>
+        <Button variant="dark" loading={busy} onClick={add}>Додати</Button>
+      </> : null}>
+      <div>
         {!chosen ? (
           <>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
-              <input className="form-input" placeholder="Пошук: контрагент / опис / ЄДРПОУ…" value={q} onChange={e => setQ(e.target.value)} style={{ flex: '1 1 240px' }} autoFocus />
-              {kind === 'income' && clientId && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--text2)', whiteSpace: 'nowrap' }}>
-                  <input type="checkbox" checked={onlyClient} onChange={e => setOnlyClient(e.target.checked)} style={{ width: 16, height: 16 }} /> лише від клієнта
-                </label>
-              )}
+              <input className="form-input" type="search" aria-label="Пошук транзакції" placeholder="Пошук: контрагент / опис / ЄДРПОУ…" value={q} onChange={e => setQ(e.target.value)} style={{ flex: '1 1 240px' }} />
+              {kind === 'income' && clientId && <Switch checked={onlyClient} onChange={setOnlyClient} label="Лише від клієнта" />}
             </div>
-            {rows == null ? <p style={{ color: 'var(--text3)' }}>Завантаження…</p>
+            {rows == null ? <TableSkeleton rows={5} cols={3} />
               : rows.length === 0 ? <p style={{ color: 'var(--text3)', fontSize: 13 }}>Транзакцій не знайдено.</p> : (
                 <div className="tbl-wrap" style={{ border: 'none' }}>
                   <table><thead><tr><th>Дата</th><th>Контрагент / опис</th><th style={{ textAlign: 'right' }}>Сума</th></tr></thead>
                     <tbody>{rows.map(t => (
-                      <tr key={t.id} style={{ cursor: 'pointer' }} onClick={() => pick(t)}>
+                      <tr key={t.id} style={{ cursor: 'pointer' }} onClick={() => pick(t)} tabIndex={0}
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(t) } }}>
                         <td style={{ whiteSpace: 'nowrap', fontSize: 13 }}>{d(t.date)}</td>
                         <td><div className="trunc" style={{ maxWidth: 340 }}>{t.counterparty || t.description || '—'}</div></td>
                         <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{fmt(t.amount)}</td>
@@ -370,24 +371,20 @@ function TxPicker({ kind, orderId, clientId, userId, onClose, onAdded }) {
               <div>{d(chosen.date)} · <b>{chosen.counterparty || chosen.description || '—'}</b></div>
               <div style={{ color: 'var(--text3)', marginTop: 2 }}>Сума транзакції: {fmt(chosen.amount)} грн{allocated > 0.005 && <> · уже розподілено на замовлення: <b>{fmt(allocated)}</b> грн</>}</div>
             </div>
-            {pickErr && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 10 }}>{pickErr}</div>}
+            {pickErr && <div role="alert" style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 10 }}>{pickErr}</div>}
             <div className="form-grid">
-              <div className="form-group"><label>Сума частки на замовлення (грн)</label>
-                <input className="form-input" type="number" value={amount} onChange={e => setAmount(e.target.value)} />
-                <span style={{ fontSize: 11, color: 'var(--text3)' }}>За замовч. — вся сума транзакції; зменште, якщо ділиться між замовленнями.</span>
+              <div className="form-group"><label className="form-label" htmlFor="tx-share">Сума частки на замовлення, грн</label>
+                <input id="tx-share" className="form-input" type="number" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} aria-describedby="tx-share-hint" />
+                <span id="tx-share-hint" style={{ fontSize: 12, color: 'var(--text2)' }}>За замовчуванням — вся вільна сума транзакції; зменште, якщо вона ділиться між замовленнями.</span>
               </div>
-              <div className="form-group"><label>Примітка (необов'язково)</label>
-                <input className="form-input" value={note} onChange={e => setNote(e.target.value)} />
+              <div className="form-group"><label className="form-label" htmlFor="tx-note">Примітка (необов'язково)</label>
+                <input id="tx-note" className="form-input" value={note} onChange={e => setNote(e.target.value)} />
               </div>
-            </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button className="btn btn-primary" onClick={add} disabled={busy}>{busy ? '…' : 'Додати'}</button>
-              <button className="btn" onClick={() => setChosen(null)}>← Інша транзакція</button>
             </div>
           </>
         )}
       </div>
-    </div>
+    </Modal>
   )
 }
 
