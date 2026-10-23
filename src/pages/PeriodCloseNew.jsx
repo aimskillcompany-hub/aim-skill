@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react'
 import { Button, Modal, Segmented, TableSkeleton, Callout } from '../components/ui'
 import { listCloseLog } from '../lib/periodClose'
+import { formatAmount, plural } from '../utils/format'
 import './Reports.css'
 import './PeriodCloseNew.css'
 
@@ -25,6 +26,12 @@ export default function PeriodCloseNew({ year, setYear, sel, openMonth, statusOf
   const isClosed = st === 'closed'
   const row = sel ? rowFor(sel) : null
   useEffect(() => { if (sel) listCloseLog(year, sel).then(setLog); else setLog([]) }, [sel, year, st])
+  // без вибору — одразу відкриваємо найпізніший минулий місяць, який ще не закрито (макет PeriodClose)
+  useEffect(() => {
+    if (sel) return
+    const cand = MONTHS.map((_, i) => i + 1).filter(m => !isFuture(m) && statusOf(m) !== 'closed').pop()
+    if (cand) openMonth(cand)
+  }, [year, sel, statusOf])   // statusOf оновлюється після завантаження закриттів — тоді й обираємо
 
   const checks = check ? [
     ['Мінусові залишки складу', check.negativeStock.length],
@@ -75,17 +82,45 @@ export default function PeriodCloseNew({ year, setYear, sel, openMonth, statusOf
         </section>
 
         {!isClosed && <>
+          <div className="pcn-row1">
           <section className="cfn-card pcn-step" aria-label="Крок 1">
             <div className="pcn-step-h"><span className="pcn-n">1</span><div><h2>Перевірки</h2><small className="rpt-muted">Натисніть рядок — відкриються конкретні записи, які треба виправити.</small></div></div>
             {check ? <>
-              <ul className="pcn-checks">{checks.map(([l, n, warn]) => <li key={l} className={n ? (warn ? 'is-warn' : 'is-bad') : 'is-ok'}><i className={`ti ${n ? 'ti-alert-circle' : 'ti-circle-check'}`} aria-hidden="true" />{l}<b>{n ? `${n}${warn ? ' · не блокує' : ''}` : 'усе гаразд'}</b></li>)}
-                {presold.length > 0 && <li className="is-warn"><i className="ti ti-info-circle" aria-hidden="true" />Продано під замовлення — мінус покрито пізнішим приходом<b>{presold.length} · не блокує</b></li>}</ul>
+              <ul className="pcn-checks">{checks.map(([l, n, warn]) => <li key={l} className={n ? (warn ? 'is-warn' : 'is-bad') : 'is-ok'}><span className="pcn-ci" aria-hidden="true">{n ? '!' : <i className="ti ti-check" />}</span><span className="pcn-cl">{l}</span><b className="pcn-badge">{n ? `${n}${warn ? ' · не блокує' : ''}` : 'усе гаразд'}</b></li>)}
+                {presold.length > 0 && <li className="is-warn"><span className="pcn-ci" aria-hidden="true"><i className="ti ti-info-small" /></span><span className="pcn-cl">Продано під замовлення — мінус покрито пізнішим приходом</span><b className="pcn-badge">{presold.length} · не блокує</b></li>}</ul>
               <details className="pcn-details"><summary>Розкрити записи</summary>{renderChecklist()}</details>
             </> : <TableSkeleton rows={4} cols={2} label="Перевіряю…" />}
           </section>
+          <section className="cfn-card pcn-after" aria-label="Що станеться після закриття">
+            <h2>Що станеться після закриття</h2>
+            <ul>
+              <li><span className="pcn-ai is-lock"><i className="ti ti-lock" aria-hidden="true" /></span>Транзакції, документи й склад за {MONTHS[sel - 1].toLowerCase()} не можна буде змінити — ні в інтерфейсі, ні прямим запитом.</li>
+              <li><span className="pcn-ai is-chart"><i className="ti ti-chart-bar" aria-hidden="true" /></span>Баланс і P&L за місяць фіксуються — саме ці цифри бачить інвестор.</li>
+              <li><span className="pcn-ai is-warn"><i className="ti ti-lock-open" aria-hidden="true" /></span>Переоткрити місяць може лише адміністратор, із причиною; система запише, хто і чому.</li>
+            </ul>
+          </section>
+          </div>
           <section className="cfn-card pcn-step" aria-label="Крок 2">
             <div className="pcn-step-h"><span className="pcn-n">2</span><div><h2>Чи всі гроші потрапили у звіти</h2><small className="rpt-muted">Рухи місяця: у P&L · ПФД і перекази · без статті · ігноровані.</small></div></div>
-            {comp ? renderCompleteness() : <TableSkeleton rows={3} cols={2} label="Рахую…" />}
+            {comp ? <>
+              {comp.active?.sum > 0 && (() => {
+                const tiles = [
+                  ['inpl', 'Увійшло в P&L', comp.inPL, `${comp.inPL.n} ${plural(comp.inPL.n, ['транзакція', 'транзакції', 'транзакцій'])}`],
+                  ['fin', 'Поза P&L свідомо: ПФД, ОЗ, перекази', comp.otherFin, `${comp.otherFin.n} тр. · враховані в Cash Flow і Балансі — це нормально`],
+                  ['bad', 'Випали з P&L: без статті або не валідовані', { n: comp.noArticle.n + comp.unvalidated.n, sum: comp.noArticle.sum + comp.unvalidated.sum }, comp.noArticle.n + comp.unvalidated.n ? 'призначте статтю й підтвердьте — нижче' : 'нічого не випало'],
+                  ['ign', 'Ігноровані', comp.ignored, comp.ignored.n ? 'приховані з усіх звітів — перевірте нижче' : 'нічого не приховано зі звітів'],
+                ]
+                const total = tiles.reduce((a, t) => a + t[2].sum, 0) || 1
+                return <>
+                  <div className="pcn-prop" aria-hidden="true">{tiles.map(t => t[2].sum > 0 && <span key={t[0]} className={`is-${t[0]}`} style={{ flexGrow: t[2].sum / total }} />)}</div>
+                  <div className="pcn-tiles">{tiles.map(t => (
+                    <div key={t[0]} className={`pcn-tile is-${t[0]}${t[0] === 'bad' && !t[2].n ? ' is-zero' : ''}`}>
+                      <span>{t[1]}</span><b>{t[0] === 'ign' ? `${formatAmount(t[2].sum, { decimals: 0 })} ₴ · ${t[2].n}` : `${formatAmount(t[2].sum, { decimals: 0 })} ₴`}</b><small>{t[3]}</small>
+                    </div>))}</div>
+                </>
+              })()}
+              <details className="pcn-details"><summary>Розкрити записи</summary>{renderCompleteness()}</details>
+            </> : <TableSkeleton rows={3} cols={2} label="Рахую…" />}
           </section>
         </>}
 
