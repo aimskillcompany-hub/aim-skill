@@ -240,7 +240,10 @@ function AccountsSection() {
   const [rows, setRows] = useState(null)
   const [bal, setBal] = useState({})
   const [edit, setEdit] = useState(null)
+  const [ob, setOb] = useState({})   // правки початкового залишку прямо в картці: id → { opening_balance, opening_balance_date }
+  const { active } = useCompany()
   const load = () => {
+    setOb({})
     qc('accounts').select('*').order('sort_order').then(({ data }) => setRows(data || []))
     getAccountBalances().then(l => setBal(Object.fromEntries(l.map(a => [a.id, a.balance])))).catch(() => {})
   }
@@ -258,20 +261,39 @@ function AccountsSection() {
   }
   return (
     <div className="stn-col">
-      <div className="stn-bar"><p className="rpt-sub">Залишок = початковий + рухи від дати старту.</p><Button variant="primary" icon="ti-plus" onClick={() => setEdit({ name: '', type: 'bank', bank_name: '', opening_balance: 0, opening_balance_date: '' })}>Додати рахунок</Button></div>
+      <section className="cfn-card stn-team-head">
+        <div><h2>Рахунки {active?.short_name || active?.name || ''}</h2><small className="rpt-muted">Залишок зараз = початковий залишок + усі рухи після дати старту</small></div>
+        <Button variant="primary" icon="ti-plus" onClick={() => setEdit({ name: '', type: 'bank', bank_name: '', opening_balance: 0, opening_balance_date: '' })}>Рахунок або каса</Button>
+      </section>
       {spread > 60 && <Callout tone="warn" title="Дати старту рахунків сильно розходяться."
         text={`${late.map(a => `«${a.name}» стартує ${dmy(a.opening_balance_date)}`).join(', ')}, а найраніший рахунок — ${dmy(dates[0])} (різниця ${spread} дн.). Рухи до дати старту не враховуються, тож залишок групи на ранні місяці неповний. Звірте початкові залишки.`} />}
       <div className="stn-accs">
         {rows.map(a => (
           <div key={a.id} className={`cfn-card stn-acc${a.is_active === false ? ' is-off' : ''}`}>
-            <div className="stn-acc-h"><i className={`ti ${a.type === 'cash' ? 'ti-cash' : 'ti-building-bank'}`} aria-hidden="true" /><b>{a.name}</b>
+            <div className="stn-acc-h">
+              <span className={`stn-acc-av${a.type === 'cash' ? ' is-cash' : ''}`} aria-hidden="true">{a.type === 'cash' ? '₴' : (a.name || '?').replace(/[^A-Za-zА-Яа-яІіЇїЄєҐґ]/g, '').slice(0, 2).toUpperCase()}</span>
+              <span className="stn-acc-t"><b>{a.name}</b><small>{a.type === 'cash' ? 'Каса' : `Банк${a.bank_name ? ' · ' + a.bank_name : ''}`}</small></span>
+              <em className={`stn-co-st${a.is_active === false ? '' : ' is-ok'}`}>{a.is_active === false ? 'вимкнено' : 'активний'}</em>
               <Menu trigger={<Button variant="ghost" size="sm" iconOnly icon="ti-dots" aria-label={`Дії: ${a.name}`} />} items={[
                 { label: 'Змінити', icon: 'ti-pencil', onClick: () => setEdit({ ...a }) },
                 { label: a.is_active === false ? 'Увімкнути' : 'Вимкнути', icon: a.is_active === false ? 'ti-eye' : 'ti-eye-off', onClick: () => qc('accounts').update({ is_active: a.is_active === false }).eq('id', a.id).then(load) },
               ]} /></div>
-            <span className="rpt-muted">{a.type === 'cash' ? 'Каса' : a.bank_name || 'Банк'}{a.is_active === false ? ' · вимкнено' : ''}</span>
             <div className="stn-acc-b"><small>Зараз</small><b className={bal[a.id] < 0 ? 'rpt-late' : ''}>{bal[a.id] == null ? '…' : `${n0(bal[a.id])} ₴`}</b></div>
-            <div className={`stn-acc-s${late.includes(a) && spread > 60 ? ' is-warn' : ''}`}>Старт {dmy(a.opening_balance_date)} · {n0(a.opening_balance || 0)} ₴</div>
+            <div className="stn-acc-ob">
+              <label><span>Початковий залишок</span><input className="form-input" inputMode="decimal" value={ob[a.id]?.opening_balance ?? a.opening_balance ?? 0}
+                onChange={e => setOb(o => ({ ...o, [a.id]: { ...o[a.id], opening_balance: e.target.value } }))} /></label>
+              <label><span>Станом на</span><input className="form-input" type="date" value={ob[a.id]?.opening_balance_date ?? a.opening_balance_date ?? ''}
+                onChange={e => setOb(o => ({ ...o, [a.id]: { ...o[a.id], opening_balance_date: e.target.value } }))} /></label>
+            </div>
+            {ob[a.id] && <div className="stn-acc-save">
+              <Button size="sm" variant="secondary" onClick={() => setOb(o => { const n = { ...o }; delete n[a.id]; return n })}>Скасувати</Button>
+              <Button size="sm" variant="brand" icon="ti-check" onClick={async () => {
+                const e = ob[a.id]
+                const { error } = await qc('accounts').update({ opening_balance: Number(String(e.opening_balance ?? a.opening_balance ?? 0).replace(/\s/g, '').replace(',', '.')) || 0, opening_balance_date: (e.opening_balance_date ?? a.opening_balance_date) || null }).eq('id', a.id)
+                if (error) return toast(error.message, { type: 'error' })
+                toast('Початковий залишок збережено'); load()
+              }}>Зберегти</Button></div>}
+            {late.includes(a) && spread > 60 && <div className="stn-acc-s is-warn">Дата старту {dmy(a.opening_balance_date)} пізніша, ніж у найранішого рахунку ({dmy(dates[0])}) — рухи до неї в залишок не потрапляють.</div>}
           </div>
         ))}
       </div>

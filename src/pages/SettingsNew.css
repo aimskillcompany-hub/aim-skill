@@ -113,3 +113,16 @@
 .stn-gdot.is-revenue { background: var(--brand); } .stn-gdot.is-cogs { background: var(--expense-chart); } .stn-gdot.is-opex { background: var(--warn-mark); }
 .stn-gdot.is-otherincome { background: var(--info-fg); } .stn-gdot.is-belowline { background: var(--danger-fg); }
 .stn-sim { padding: 1px 8px; border-radius: 999px; background: var(--warn-bg); color: var(--warn-fg); font-size: 11px; font-weight: 700; }
+/* Рахунки (макет SettingsAccounts): аватар, статус, початковий залишок прямо в картці */
+.stn-acc { gap: 10px; }
+.stn-acc-av { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; flex: none; background: var(--expense-bg); color: var(--expense-fg); font-size: 12px; font-weight: 800; }
+.stn-acc-av.is-cash { background: var(--brand-soft); color: var(--brand-dark); font-size: 16px; }
+.stn-acc-t { flex: 1; min-width: 0; display: flex; flex-direction: column; } .stn-acc-t small { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stn-acc-h .stn-co-st { margin-top: 0; }
+.stn-acc-ob { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stn-acc-ob label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.stn-acc-ob .form-input { height: 38px; text-align: right; font-variant-numeric: tabular-nums; }
+.stn-acc-ob label:last-child .form-input { text-align: left; }
+.stn-acc-save { display: flex; justify-content: flex-end; gap: 6px; }
+.stn-acc-ob label { min-width: 0; } .stn-acc-ob .form-input { width: 100%; min-width: 0; padding-left: 8px; padding-right: 8px; }
+.stn-accs { grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); }
