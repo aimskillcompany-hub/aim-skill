@@ -20,6 +20,16 @@ import { loadBatches } from '../lib/batches'
 import GeneratedDocModal from '../components/GeneratedDocModal'
 import { useSort, SortTh } from '../components/Sort'
 import { todayKyiv } from '../lib/dates'
+import { useNewUi } from '../lib/uiPrefs'
+import { Button, Menu, Tabs, Switch, KpiTile, EmptyState, TableSkeleton, Callout, Segmented } from '../components/ui'
+import { formatAmount, plural } from '../utils/format'
+import './WarehouseNew.css'
+const POS = ['позиція', 'позиції', 'позицій']
+
+// Одиниця з різним написанням («ШТ», «Штука», «шт.») → канонічна; нестандартна — показуємо позначку
+const UNIT_CANON = { 'шт': 'шт', 'штука': 'шт', 'штук': 'шт', 'штуки': 'шт', 'пак': 'пак', 'пакет': 'пак', 'упак': 'уп', 'упаковка': 'уп', 'уп': 'уп', 'компл': 'компл', 'комплект': 'компл' }
+const canonUnit = (u) => { const k = String(u || '').trim().toLowerCase().replace(/\.$/, ''); return UNIT_CANON[k] || k }
+const unitOdd = (u) => !!u && String(u).trim() !== canonUnit(u)
 
 // поля документа-джерела, потрібні для модалки DocModal / GeneratedDocModal
 const DOC_EMBED = 'documents(id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, source, generated_doc_id, contractors(name))'
@@ -27,6 +37,7 @@ const SRC_LABEL = { document: 'з документа', manual: 'вручну', a
 const srcLabel = (s) => SRC_LABEL[s] || s || '—'
 
 export default function Warehouse() {
+  const newUi = useNewUi()
   const [params, setParams] = useSearchParams()
   const [tab, setTabState] = useState(() => params.get('tab') || 'goods')
   const setTab = (t) => { setTabState(t); setParams(t === 'goods' ? {} : { tab: t }, { replace: true }) }
@@ -35,6 +46,33 @@ export default function Warehouse() {
   const [xls, setXls] = useState(false)
   const [rev, setRev] = useState(0)
   const { user } = useUser()
+  if (newUi) return (
+    <div className="whn">
+      <div className="whn-head">
+        <h1 className="whn-h1">Склад</h1>
+        <div className="whn-actions">
+          <Link className="btn btn-secondary whn-hide-sm" to="/inventory/recon">Звірка видаткових</Link>
+          <Menu trigger={<Button variant="secondary" icon="ti-calculator">Собівартість</Button>} items={[
+            { label: 'Діагностика собівартості', icon: 'ti-stethoscope', onClick: () => setDiag(true) },
+            { label: 'Перерахувати за період (FIFO)', icon: 'ti-calculator', onClick: () => setRecalc(true) },
+          ]} />
+          {['admin', 'accountant'].includes(user?.role) && <Button variant="secondary" icon="ti-file-spreadsheet" onClick={() => setXls(true)}>Excel</Button>}
+        </div>
+      </div>
+      {recalc && <RecalcCostModal onClose={() => setRecalc(false)} />}
+      {diag && <CostDiagnosticsModal onClose={() => setDiag(false)} />}
+      {xls && <StockExcelModal onClose={() => setXls(false)} onDone={() => { setXls(false); setRev(r => r + 1) }} />}
+      {tab === 'goods' && <StockTab key={rev} newUi onExcel={['admin', 'accountant'].includes(user?.role) ? () => setXls(true) : null}
+        tabs={<Tabs ariaLabel="Розділи складу" idPrefix="whn-tab" value={tab} onChange={setTab} tabs={WH_TABS} />} />}
+      {tab !== 'goods' && <section className="whn-card"><Tabs ariaLabel="Розділи складу" idPrefix="whn-tab" value={tab} onChange={setTab} tabs={WH_TABS} />
+        <div className="whn-pad">
+          {tab === 'services' && <ServicesTab key={rev} />}
+          {tab === 'consumables' && <ConsumablesTab key={rev} />}
+          {tab === 'movements' && <MovementsTab />}
+          {tab === 'assemblies' && <AssembliesTab />}
+        </div></section>}
+    </div>
+  )
   return (
     <div>
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
@@ -67,9 +105,10 @@ const tabStyle = (active) => ({
   fontSize: 13, fontWeight: 500, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6,
   borderBottom: active ? '2px solid var(--blue)' : '2px solid transparent', color: active ? 'var(--blue)' : 'var(--text2)',
 })
+const WH_TABS = [{ id: 'goods', label: 'Товари' }, { id: 'services', label: 'Послуги' }, { id: 'consumables', label: 'Розхідні матеріали' }, { id: 'movements', label: 'Рухи' }, { id: 'assemblies', label: 'Збірки' }]
 
 // ───────── Залишки (довідник товарів) ─────────
-function StockTab() {
+function StockTab({ newUi = false, tabs = null, onExcel = null }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
@@ -81,6 +120,8 @@ function StockTab() {
   const [bulkCat, setBulkCat] = useState('')
   const [bulkBusy, setBulkBusy] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
+  const [quality, setQuality] = useState(null)   // новий інтерфейс: 'minus' | 'nosku' | 'unit'
+  const [shown, setShown] = useState(50)
 
   const load = async () => {
     setLoading(true)
@@ -109,12 +150,15 @@ function StockTab() {
     const t = q.trim().toLowerCase()
     return rows.filter(r => {
       if (onlyStock && (Number(r.computed_stock) || 0) <= 0) return false
+      if (quality === 'minus' && !((Number(r.computed_stock) || 0) < 0)) return false
+      if (quality === 'nosku' && (r.sku || '').trim()) return false
+      if (quality === 'unit' && !unitOdd(r.unit)) return false
       if (cat === '__none__' && (r.category || '').trim()) return false
       if (cat && cat !== '__none__' && (r.category || '').trim() !== cat) return false
       if (!t) return true
       return (r.name || '').toLowerCase().includes(t) || (r.sku || '').toLowerCase().includes(t)
     })
-  }, [rows, q, onlyStock, cat])
+  }, [rows, q, onlyStock, cat, quality])
 
   const totalValue = useMemo(() => filtered.reduce((s, r) => s + valueOf(r), 0), [filtered, stockAt])
   const { sort, onSort, sorted } = useSort('name', 'asc')
@@ -174,6 +218,97 @@ function StockTab() {
         <td style={{ textAlign: 'right', color: 'var(--text2)' }} title="Середня ціна партій, що лишились на складі (без ПДВ)">{unitPrice(r) ? fmt(unitPrice(r)) : '—'}</td>
         <td style={{ textAlign: 'right', color: 'var(--text2)' }}>{r.sell_price ? fmt(r.sell_price) : '—'}</td>
       </tr>
+    )
+  }
+
+  if (newUi) {
+    const inStock = rows.filter(r => (Number(r.computed_stock) || 0) > 0).length
+    const minus = rows.filter(r => (Number(r.computed_stock) || 0) < 0).length
+    const noSku = rows.filter(r => !(r.sku || '').trim()).length
+    const oddUnits = rows.filter(r => unitOdd(r.unit))
+    const oddSpellings = [...new Set(oddUnits.map(r => String(r.unit).trim()))].slice(0, 6)
+    const page = grouped ? view : view.slice(0, shown)
+    const row = (r) => {
+      const stock = Number(r.computed_stock) || 0
+      const up = unitPrice(r), val = valueOf(r)
+      return (
+        <tr key={r.id} className={sel.has(r.id) ? 'is-sel' : undefined} onClick={() => openProduct(r, 'goods')} tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') openProduct(r, 'goods') }}>
+          <td className="whn-cbcell" onClick={e => e.stopPropagation()}><input type="checkbox" className="whn-cb" checked={sel.has(r.id)} onChange={() => toggleSel(r.id)} aria-label={`Вибрати «${r.name}»`} /></td>
+          <td><span className="whn-prod">
+            <span className={`whn-ico${stock > 0 ? ' is-on' : ''}`} aria-hidden="true"><i className="ti ti-box" /></span>
+            <span className="whn-prod-text"><b>{r.name}{r.status === 'archived' && <span className="whn-tag">архів</span>}</b>
+              <span className="whn-sku">{(r.sku || '').trim() ? <code>{r.sku}</code> : <><span className="whn-muted">артикул не вказано</span><span className="whn-tag is-warn">без артикулу</span></>}
+                {unitOdd(r.unit) && <span className="whn-tag is-warn">одиниця «{r.unit}»</span>}</span></span></span></td>
+          <td className="r"><span className={`whn-stock${stock > 0 ? ' is-pos' : stock < 0 ? ' is-neg' : ''}`}>{stock < 0 ? '−' : ''}{fmt(Math.abs(stock))} {r.unit || 'шт'}</span></td>
+          <td className="r whn-num">{up ? `${formatAmount(up)} ₴` : '—'}</td>
+          <td className="r whn-num"><b>{val ? `${formatAmount(val)} ₴` : '—'}</b></td>
+        </tr>
+      )
+    }
+    return (
+      <div className="whn">
+        <div className="whn-kpis">
+          <section className="whn-value"><span>Вартість запасу</span><b>≈ {formatAmount(totalValue, { decimals: 0 })} ₴</b><small>за собівартістю партій (FIFO), без ПДВ{cat || onlyStock || q || quality ? ' · з урахуванням фільтра' : ''}</small></section>
+          <KpiTile label="У наявності" tone="brand" value={`${inStock} ${plural(inStock, POS)}`} hint={`ще ${rows.length - inStock - minus} — 0 шт`} onClick={() => setOnlyStock(true)} />
+          {minus > 0 && <KpiTile label="Мінусові залишки" tone="danger" value={`${minus} ${plural(minus, POS)}`} hint="продано більше, ніж прийшло — перевірити" onClick={() => setQuality(quality === 'minus' ? null : 'minus')} />}
+          {(noSku > 0 || oddUnits.length > 0) && (
+            <section className="whn-quality">
+              <div className="whn-quality-head"><span>Якість довідника</span>{onExcel && <button type="button" className="whn-link" onClick={onExcel}>Виправити в Excel →</button>}</div>
+              {noSku > 0 && <button type="button" className="whn-qchip" aria-pressed={quality === 'nosku'} onClick={() => setQuality(quality === 'nosku' ? null : 'nosku')}><b>{noSku}</b> без артикулу</button>}
+              {oddUnits.length > 0 && <button type="button" className="whn-qchip" aria-pressed={quality === 'unit'} onClick={() => setQuality(quality === 'unit' ? null : 'unit')}><b>{oddUnits.length}</b> з одиницею в різному написанні: {oddSpellings.join(' / ')}</button>}
+            </section>
+          )}
+        </div>
+
+        <section className="whn-card">
+          {tabs}
+          <div className="whn-toolbar">
+            <label className="whn-search"><i className="ti ti-search" aria-hidden="true" /><input type="search" className="form-input" placeholder="Назва або артикул" aria-label="Пошук товарів" value={q} onChange={e => setQ(e.target.value)} /></label>
+            <select className="form-input whn-cat" aria-label="Категорія" value={cat} onChange={e => setCat(e.target.value)}>
+              <option value="">Усі категорії · {categories.length}</option>
+              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+              <option value="__none__">Без категорії</option>
+            </select>
+            <Switch checked={onlyStock} onChange={setOnlyStock} label="Тільки в наявності" />
+            <Switch checked={grouped} onChange={setGrouped} label="За категоріями" />
+            <Switch checked={showArchived} onChange={setShowArchived} label="Архівні" />
+          </div>
+          {quality && <div className="whn-filter">Фільтр: <b>{{ minus: 'мінусові залишки', nosku: 'без артикулу', unit: 'одиниця в різному написанні' }[quality]}</b><button type="button" className="whn-link" onClick={() => setQuality(null)}>Скинути</button></div>}
+          {sel.size > 0 && (
+            <div className="whn-bulk">
+              <b>Вибрано {sel.size}</b>
+              <input className="form-input" list="wh-categories-bulk" placeholder="Категорія для вибраних" aria-label="Категорія для вибраних" value={bulkCat} onChange={e => setBulkCat(e.target.value)} />
+              <datalist id="wh-categories-bulk">{categories.map(c => <option key={c} value={c} />)}</datalist>
+              <Button size="sm" variant="brand" onClick={assignBulk} loading={bulkBusy} disabled={!bulkCat.trim()}>Присвоїти категорію</Button>
+              <Button size="sm" variant="ghost" onClick={assignBulk} disabled={bulkBusy || !!bulkCat.trim()}>Очистити категорію</Button>
+              <button type="button" className="whn-bulk-cancel" onClick={() => setSel(new Set())}>Скасувати</button>
+            </div>
+          )}
+          {loading ? <TableSkeleton rows={8} cols={4} label="Завантаження складу…" />
+            : view.length === 0 ? <EmptyState icon="ti-box" title="Нічого не знайдено" text="Змініть пошук або фільтр." />
+            : <>
+              <div className="whn-table-wrap"><table className="whn-table">
+                <thead><tr>
+                  <th className="whn-cbcell"><input type="checkbox" className="whn-cb" checked={allVisibleSelected} onChange={toggleAll} aria-label="Вибрати всі видимі" /></th>
+                  <th><button type="button" className="whn-sort" onClick={() => onSort('name')}>Товар</button></th>
+                  <th className="r"><button type="button" className="whn-sort" onClick={() => onSort('computed_stock')}>Залишок</button></th>
+                  <th className="r"><button type="button" className="whn-sort" onClick={() => onSort('buy_price')}>Собівартість, од. <small>без ПДВ</small></button></th>
+                  <th className="r">Вартість залишку</th>
+                </tr></thead>
+                <tbody>
+                  {!grouped && page.map(row)}
+                  {grouped && groups.map(g => (
+                    <Fragment key={g.key}>
+                      <tr className="whn-group"><td colSpan={3}>{g.label} <span>· {g.items.length}</span></td><td colSpan={2} className="r">запас ≈ {formatAmount(g.value, { decimals: 0 })} ₴</td></tr>
+                      {g.items.map(row)}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table></div>
+              {!grouped && <div className="whn-foot"><span>Показано {page.length} з {view.length}</span>{page.length < view.length && <Button variant="secondary" onClick={() => setShown(n => n + 50)}>Показати ще</Button>}</div>}
+            </>}
+        </section>
+      </div>
     )
   }
 
@@ -443,6 +578,8 @@ function ProductModal({ product, onClose, asPage = false, backTo = '/inventory' 
   const [showSplit, setShowSplit] = useState(false)
   const [view, setView] = useState('batches')   // «Партії» | «Рухи»
   const [pur, setPur] = useState(null)          // ціни закупівлі за партіями
+  const newUi = useNewUi()
+  const [pdTab, setPdTab] = useState('main')   // новий інтерфейс: Основне | Партії | Синоніми | Рухи
   useEffect(() => { loadPurchaseSummary(product.id).then(setPur).catch(() => setPur(null)) }, [product.id])
   const openAnyDoc = (id) => loadDocFull(id).then(d => d && (d.source === 'generated' ? setGenDoc(d) : setOpenDoc(d)))
   const loadStock = () => qc('product_stock').select('computed_stock, total_in, total_out, unit, product_type').eq('id', product.id).maybeSingle().then(({ data }) => setStock(data))
@@ -508,6 +645,128 @@ function ProductModal({ product, onClose, asPage = false, backTo = '/inventory' 
     loadMovs(); loadStock()
   }
 
+  if (asPage && newUi) {
+    const isService = (form?.product_type || stock?.product_type) === 'service'
+    const st = Number(stock?.computed_stock) || 0
+    const sell = form && form.sell_price !== '' && form.sell_price != null ? Number(form.sell_price) : null
+    const last = pur?.last?.unit || null
+    const markup = sell && last ? (sell - last) / last * 100 : null
+    const below = sell != null && last && sell < last
+    const copySku = async () => { try { await navigator.clipboard.writeText(form?.sku || '') } catch {} }
+    const quick = last ? [10, 20, 30].map(p => ({ p, v: Math.round(last * (1 + p / 100) * 100) / 100 })) : []
+    return (
+      <div className="pdn">
+        <Link to={backTo} className="pdn-back"><i className="ti ti-chevron-left" aria-hidden="true" />Склад</Link>
+        <section className="pdn-head">
+          <span className="pdn-ico" aria-hidden="true"><i className={`ti ${isService ? 'ti-briefcase' : 'ti-box'}`} /></span>
+          <div className="pdn-head-main">
+            <h1 className="pdn-h1">{form?.name || product.name}</h1>
+            <div className="pdn-meta">
+              {form?.category && <span className="pdn-chip">{form.category}</span>}
+              <span>{(PRODUCT_TYPES.find(([v]) => v === (form?.product_type || 'goods')) || [, 'Товар'])[1]} · {form?.unit || stock?.unit || 'шт'}</span>
+              {form?.sku && <span className="pdn-sku"><code>{form.sku}</code><button type="button" className="pdn-copy" onClick={copySku} aria-label="Скопіювати артикул"><i className="ti ti-copy" aria-hidden="true" /></button></span>}
+            </div>
+          </div>
+          <div className="pdn-actions">
+            {!isService && <Button variant="secondary" icon="ti-arrows-up-down" onClick={() => setShowMove(true)}>Ручний рух</Button>}
+            <Menu trigger={<Button variant="secondary" iconOnly icon="ti-dots" aria-label="Інші дії" />} items={[
+              { label: 'Об\'єднати з товаром', icon: 'ti-arrows-join', onClick: () => setShowMerge(true) },
+              ...(['admin', 'accountant'].includes(user?.role) ? [{ label: 'Розділити картку', icon: 'ti-arrows-split-2', onClick: () => setShowSplit(true) }] : []),
+              { divider: true },
+              { label: 'Архівувати', icon: 'ti-archive', onClick: archive },
+              { label: 'Видалити', icon: 'ti-trash', danger: true, onClick: del },
+            ]} />
+          </div>
+        </section>
+
+        {below && (
+          <Callout tone="danger" title={`Ціна продажу ${formatAmount(sell)} ₴ нижча за останню закупку ${formatAmount(last)} ₴ (обидві без ПДВ).`}
+            text="Наступний продаж за цією ціною буде збитковим." action={{ label: 'Оновити ціну', onClick: () => { setPdTab('main'); setTimeout(() => document.getElementById('pdn-sell')?.focus(), 0) } }} />
+        )}
+
+        <div className="pdn-kpis">
+          {isService
+            ? <KpiTile label="Послуга" value="без залишку" />
+            : <KpiTile label="Залишок" tone={st < 0 ? 'danger' : st > 0 ? 'brand' : 'neutral'} value={`${st < 0 ? '−' : ''}${fmt(Math.abs(st))} ${stock?.unit || form?.unit || 'шт'}`} hint={`мін. залишок ${form?.min_stock ?? 0}`} />}
+          <KpiTile label="Прийшло / вийшло" value={`${fmt(stock?.total_in || 0)} / ${fmt(stock?.total_out || 0)}`} hint={`${pur?.lots?.length || 0} партій · ${movs.length} рухів`} />
+          <KpiTile label="Закупка за од., без ПДВ" value={last ? `${formatAmount(last)} ₴` : '—'} hint={pur?.lots?.length > 1 ? `середня ${formatAmount(pur.avg)} · від ${formatAmount(pur.min)} до ${formatAmount(pur.max)}` : 'остання партія'} />
+          {pur?.stockAvg != null && <section className="pdn-dark"><span>Вартість залишку</span><b>{formatAmount(pur.stockValue, { decimals: 0 })} ₴</b><small>по {formatAmount(pur.stockAvg)} за од. (FIFO), без ПДВ</small></section>}
+        </div>
+
+        <section className="pdn-body">
+          <Tabs ariaLabel="Розділи товару" idPrefix="pdn-tab" value={pdTab} onChange={setPdTab} tabs={[
+            { id: 'main', label: 'Основне' }, { id: 'batches', label: 'Партії', count: pur?.lots?.length || undefined },
+            { id: 'aliases', label: 'Синоніми', count: aliases.length || undefined }, { id: 'movs', label: 'Рухи', count: movs.length || undefined }]} />
+          {pdTab === 'main' && (!form ? <TableSkeleton rows={4} cols={2} /> : (
+            <div className="pdn-main">
+              <div className="pdn-form">
+                <div className="form-group"><label className="form-label" htmlFor="pdn-name">Назва</label><input id="pdn-name" className="form-input" value={form.name || ''} onChange={e => setF('name', e.target.value)} /></div>
+                <div className="form-group"><span className="form-label">Тип</span>
+                  <Segmented ariaLabel="Тип" value={form.product_type || 'goods'} onChange={v => setF('product_type', v)} options={PRODUCT_TYPES.map(([value, label]) => ({ value, label }))} /></div>
+                <div className="pdn-grid2">
+                  <div className="form-group"><label className="form-label" htmlFor="pdn-sku">Артикул</label><input id="pdn-sku" className="form-input" value={form.sku || ''} onChange={e => setF('sku', e.target.value)} /></div>
+                  <div className="form-group"><label className="form-label" htmlFor="pdn-cat">Категорія</label><input id="pdn-cat" className="form-input" list="wh-categories" value={form.category || ''} onChange={e => setF('category', e.target.value)} />
+                    <datalist id="wh-categories">{allCats.map(c => <option key={c} value={c} />)}</datalist></div>
+                  <div className="form-group"><label className="form-label" htmlFor="pdn-unit">Одиниця</label><input id="pdn-unit" className="form-input" value={form.unit || ''} onChange={e => setF('unit', e.target.value)} /></div>
+                  <div className="form-group"><label className="form-label" htmlFor="pdn-min">Мінімальний залишок</label><input id="pdn-min" className="form-input" type="number" step="any" value={form.min_stock ?? ''} onChange={e => setF('min_stock', e.target.value)} /></div>
+                </div>
+              </div>
+              <aside className="pdn-side">
+                <section className="pdn-price">
+                  <h2>Ціна продажу</h2>
+                  <label className={`pdn-price-field${below ? ' is-bad' : ''}`}><input id="pdn-sell" type="number" step="any" inputMode="decimal" aria-label="Ціна продажу, без ПДВ" value={form.sell_price ?? ''} onChange={e => setF('sell_price', e.target.value)} /><span>₴ без ПДВ</span></label>
+                  {markup != null && <div className="pdn-row"><span>Націнка до ост. закупки</span><b className={markup < 0 ? 'is-neg' : 'is-pos'}>{markup > 0 ? '+' : markup < 0 ? '−' : ''}{Math.abs(markup).toFixed(1).replace('.', ',')}%</b></div>}
+                  {quick.length > 0 && <>
+                    <span className="pdn-small">Швидко підставити:</span>
+                    <div className="pdn-quick">{quick.map(x => <button key={x.p} type="button" onClick={() => setF('sell_price', String(x.v))}><small>+{x.p}% до ост. закупки</small><b>{formatAmount(x.v)}</b></button>)}</div>
+                  </>}
+                </section>
+                <section className="pdn-buy">
+                  <h2>Закупівля <small>без ПДВ</small></h2>
+                  {!pur ? <p className="pdn-small">…</p> : !pur.last ? <p className="pdn-small">Приходів ще не було.</p> : (
+                    <dl>
+                      <div><dt>Остання</dt><dd>{formatAmount(pur.last.unit)} ₴</dd></div>
+                      {pur.lots.length > 1 && <div><dt>Середня ({pur.lots.length} партій)</dt><dd>{formatAmount(pur.avg)} ₴</dd></div>}
+                      {pur.lots.length > 1 && <div><dt>Мінімум</dt><dd>{formatAmount(pur.min)} ₴</dd></div>}
+                      <div><dt>Останній постачальник</dt><dd>{pur.last.supplier || '—'}</dd></div>
+                      <div><dt>Документ</dt><dd>{pur.last.docNo ? `№${pur.last.docNo}, ` : ''}{dmy(pur.last.date)}</dd></div>
+                    </dl>
+                  )}
+                </section>
+              </aside>
+              <div className="pdn-save">
+                {err && <div role="alert" className="pdn-err">{err}</div>}
+                {dirty && <span className="pdn-small">Є незбережені зміни</span>}
+                <Button variant="brand" onClick={save} loading={busy} disabled={!dirty}>Зберегти зміни</Button>
+              </div>
+            </div>
+          ))}
+          {pdTab === 'batches' && <ProductBatches productId={product.id} unit={form?.unit || stock?.unit} productName={form?.name || product.name} onOpenDoc={openAnyDoc} />}
+          {pdTab === 'aliases' && (aliases.length
+            ? <div className="pdn-aliases">{aliases.map((a, i) => <span key={i}>{a.alias}</span>)}</div>
+            : <EmptyState icon="ti-tags" title="Синонімів немає" text="Назви з документів постачальників, за якими розпізнається цей товар, з'являться тут." />)}
+          {pdTab === 'movs' && <div className="tbl-wrap" style={{ border: 'none' }}>
+            <table><thead><tr><th>Дата</th><th>Тип</th><th style={{ textAlign: 'right' }}>К-сть</th><th style={{ textAlign: 'right' }}>Ціна за од., без ПДВ</th><th>Опис</th><th>Документ</th><th aria-label="Дії" /></tr></thead>
+              <tbody>{movs.map(m => <tr key={m.id}><td className="pdn-nowrap">{dmy(m.date)}</td><td>{m.type === 'in' ? 'Прихід' : m.type === 'out' ? 'Видаток' : m.type}</td><td style={{ textAlign: 'right' }}>{fmt(m.quantity)}</td>
+                <td style={{ textAlign: 'right' }} title={m.type === 'in' ? 'ціна партії' : 'собівартість (FIFO)'}>{m.type === 'in' ? (pur?.units[m.id]?.unit ? formatAmount(pur.units[m.id].unit) : '—') : m.cost_price ? formatAmount(m.cost_price) : '—'}</td>
+                <td><div className="trunc">{m.description}</div></td>
+                <td>{m.documents
+                  ? <button type="button" className="pdn-doc" onClick={() => m.documents.source === 'generated' ? setGenDoc(m.documents) : setOpenDoc(m.documents)}><i className="ti ti-file" aria-hidden="true" /> {getDocType(m.documents.type)?.label || 'документ'}</button>
+                  : <span className="pdn-small">{srcLabel(m.source)} <button type="button" className="pdn-doc" onClick={() => setLinkMov(m)}>прив'язати</button></span>}</td>
+                <td style={{ textAlign: 'right' }}><Button size="sm" variant="ghost" iconOnly icon="ti-trash" aria-label="Видалити рух" onClick={() => delMov(m)} /></td></tr>)}</tbody>
+            </table>
+          </div>}
+        </section>
+        {openDoc && <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />}
+        {genDoc && <GeneratedDocModal doc={genDoc} onClose={() => setGenDoc(null)} />}
+        {linkMov && <DocPickerModal title="Прив'язати документ до руху" match={{ date: linkMov.date }} onClose={() => setLinkMov(null)} onPick={linkDoc} />}
+        {showMove && <ManualMoveModal product={product} stock={stock} user={user} onClose={() => setShowMove(false)} onDone={() => { setShowMove(false); loadMovs(); loadStock() }} />}
+        {showSplit && <SplitProductModal product={product} onClose={() => setShowSplit(false)} onDone={() => { setShowSplit(false); loadMovs(); loadStock(); supabase.from('product_aliases').select('alias').eq('product_id', product.id).then(({ data }) => setAliases(data || [])) }} />}
+        {showMerge && <MergeProductModal product={product} onClose={() => setShowMerge(false)} onDone={() => { setShowMerge(false); loadMovs(); loadStock() }} />}
+      </div>
+    )
+  }
+
   return (
     <div className={asPage ? undefined : 'modal-bg'} onClick={asPage ? undefined : onClose}>
       <div className={asPage ? undefined : 'modal modal-lg'} onClick={e => e.stopPropagation()}>
@@ -549,7 +808,7 @@ function ProductModal({ product, onClose, asPage = false, backTo = '/inventory' 
                 </>}
               </div>
             </div>
-            <div className="form-group"><label>Ціна продажу</label><input className="form-input" type="number" step="any" value={form.sell_price ?? ''} onChange={e => setF('sell_price', e.target.value)} /></div>
+            <div className="form-group"><label>Ціна продажу (без ПДВ)</label><input className="form-input" type="number" step="any" value={form.sell_price ?? ''} onChange={e => setF('sell_price', e.target.value)} /></div>
             <div className="form-group"><label>Мін. залишок</label><input className="form-input" type="number" step="any" value={form.min_stock ?? ''} onChange={e => setF('min_stock', e.target.value)} /></div>
           </div>
         )}

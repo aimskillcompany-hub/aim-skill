@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatMoney, formatAmount, formatShort, formatDate, MINUS, NNBSP } from './format'
+import { formatMoney, formatAmount, formatShort, formatDate, plural, MINUS, NNBSP } from './format'
 
 // нерозривні пробіли uk-UA (U+00A0 / U+202F) → звичайні, щоб порівнювати з текстом ТЗ
 const plain = (s) => s.replace(/[  ]/g, ' ')
@@ -77,5 +77,13 @@ describe('formatDate', () => {
   it('порожнє / зіпсоване → «—»', () => {
     expect(formatDate(null)).toBe('—')
     expect(formatDate('не дата')).toBe('—')
+  })
+})
+
+describe('plural', () => {
+  const f = ['позиція', 'позиції', 'позицій']
+  it('1 / 2–4 / 5+ / 11–14 / 21', () => {
+    expect(plural(1, f)).toBe('позиція'); expect(plural(3, f)).toBe('позиції'); expect(plural(5, f)).toBe('позицій')
+    expect(plural(11, f)).toBe('позицій'); expect(plural(14, f)).toBe('позицій'); expect(plural(21, f)).toBe('позиція'); expect(plural(0, f)).toBe('позицій')
   })
 })

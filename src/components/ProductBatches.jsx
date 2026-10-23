@@ -127,9 +127,9 @@ export default function ProductBatches({ productId, unit, productName, onOpenDoc
             </tr>
             <tr style={{ fontSize: 11 }}>
               <th style={TH}>Прихідна · постачальник</th><th style={{ ...TH, textAlign: 'right' }}>Дата</th><th style={{ ...TH, textAlign: 'right' }}>К-сть</th>
-              <th style={{ ...TH, textAlign: 'right' }} title="без ПДВ">Ціна прих.</th><th style={{ ...TH, textAlign: 'right' }}>Залиш.</th>
+              <th style={{ ...TH, textAlign: 'right' }} title="Ціна партії за одиницю — без ПДВ (як собівартість)">Ціна прих., без ПДВ</th><th style={{ ...TH, textAlign: 'right' }}>Залиш.</th>
               <th style={{ ...TH, ...sepL }} title="днів на складі">дн.</th><th style={TH}>Видаткова · клієнт</th><th style={{ ...TH, textAlign: 'right' }}>Дата</th><th style={{ ...TH, textAlign: 'right' }}>К-сть</th>
-              <th style={{ ...TH, textAlign: 'right' }} title="без ПДВ">Ціна вих.</th>
+              <th style={{ ...TH, textAlign: 'right' }} title="Ціна продажу за одиницю — без ПДВ">Ціна вих., без ПДВ</th>
               <th style={{ ...TH, textAlign: 'right' }} title="маржа на одиницю · % · сума">Маржа / од.</th><th style={TH}>Розбіжності</th>
             </tr>
           </thead>
@@ -154,7 +154,7 @@ export default function ProductBatches({ productId, unit, productName, onOpenDoc
                   </td>
                   <td rowSpan={span} style={{ ...td, ...r, background: 'var(--surface2)' }}>{dmy(b.whDate)}{b.whDate !== b.docDate && <div style={{ fontSize: 11, color: 'var(--text3)' }}>док. {dmy(b.docDate)}</div>}</td>
                   <td rowSpan={span} style={{ ...td, ...r, background: 'var(--surface2)' }}>{qtyf(b.qty)}</td>
-                  <td rowSpan={span} style={{ ...td, ...r, background: 'var(--surface2)', fontWeight: 600 }} title={`${b.basis}; ПДВ у прихідній: ${b.vat == null ? '—' : b.vat ? 'так' : 'ні'}`}>{num(b.unit)}<div style={{ fontSize: 10.5, color: 'var(--text3)', fontWeight: 400 }}>{b.vat == null ? '' : b.vat ? 'з ПДВ' : 'без ПДВ'}</div></td>
+                  <td rowSpan={span} style={{ ...td, ...r, background: 'var(--surface2)', fontWeight: 600 }} title={`${b.basis}; ПДВ у прихідній: ${b.vat == null ? '—' : b.vat ? 'так' : 'ні'}`}>{num(b.unit)}<div style={{ fontSize: 10.5, color: 'var(--text3)', fontWeight: 400 }}>{b.vat == null ? '' : b.vat ? 'прихідна з ПДВ' : 'прихідна без ПДВ'}</div></td>
                   <td rowSpan={span} style={{ ...td, ...r, background: 'var(--surface2)', ...(leftIssue(b) ? AMB : {}) }}>{showLeft ? <>{qtyf(b.left)}<div style={{ fontSize: 11 }}>{money(b.leftValue)}</div></> : <span style={{ color: 'var(--text3)' }}>0</span>}</td>
                 </>
               )
