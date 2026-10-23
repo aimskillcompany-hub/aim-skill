@@ -10,6 +10,10 @@ import { DOCUMENT_TYPES, getDocType } from '../lib/docgen'
 import { fmt } from '../lib/fmt'
 import ContractorSelect from './ui/ContractorSelect'
 import { kyivDateOfTs, todayKyiv } from '../lib/dates'
+import { useNewUi } from '../lib/uiPrefs'
+import { Button, Menu, Switch, Segmented, InfoTip } from './ui'
+import { formatAmount } from '../utils/format'
+import './DocEditNew.css'
 
 export const dirFromType = (key) => {
   const t = getDocType(key)
@@ -87,6 +91,17 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
   const [whDate, setWhDate] = useState(null) // дата оприбуткування прихідної (076; змінюється лише в «Звірці видаткових»)
   const navigate = useNavigate()
   const [stockMsg, setStockMsg] = useState(null) // результат ручного «Оприбуткувати на склад зараз»
+  const newUi = useNewUi()
+  const [linked, setLinked] = useState(null)   // новий інтерфейс: «Пов'язане» — замовлення й прив'язані оплати
+  useEffect(() => {
+    if (!newUi || !existingDoc?.id) return
+    ;(async () => {
+      const { data: d } = await qc('documents').select('order_id').eq('id', existingDoc.id).maybeSingle()
+      const { data: o } = d?.order_id ? await qc('orders').select('id, order_number').eq('id', d.order_id).maybeSingle() : { data: null }
+      const { data: td } = await supabase.from('transaction_documents').select('bank_transactions(id, date, amount, counterparty, description)').eq('document_id', existingDoc.id)
+      setLinked({ order: o || null, pays: (td || []).map(x => x.bank_transactions).filter(Boolean) })
+    })().catch(() => setLinked({ order: null, pays: [] }))
+  }, [newUi, existingDoc?.id])
 
   useEffect(() => { if (existingDoc) recognizeExisting(autoOcr) }, [])
 
@@ -428,6 +443,178 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
     setBusy(false)
   }
 
+  // ── Новий інтерфейс (ТЗ 4.6; макети DocumentEdit / DocumentEditMobile): повноекранний редактор.
+  // Стан, розпізнавання, збереження й склад — ті самі, що в модалці нижче; тут лише розкладка.
+  function renderNew() {
+    const t = form ? getDocType(form.type) : null
+    const title = existingDoc || form ? `№ ${form?.doc_number || existingDoc?.doc_number || '—'}${form?.date ? ` від ${form.date.split('-').reverse().join('.')}` : ''}` : (autoOcr ? 'Завантажити документ' : 'Прикріпити файл')
+    const gross = Number(form?.amount) || 0, vat = Number(form?.vat_amount) || 0, net = gross - vat
+    const incoming = form && ((form.doc_role || existingDoc?.doc_role) === 'incoming' || t?.direction === 'incoming')
+    const items = form?.items || []
+    const itemsSum = items.reduce((a, it) => { const q = Number(it.quantity ?? it.qty) || 0, pr = Number(it.unit_price ?? it.unitPrice ?? it.price) || 0; return a + (Number(it.amount) || q * pr) }, 0)
+    const sumOk = items.length > 0 && gross > 0 && Math.abs(itemsSum - gross) < 1
+    const need = (v) => !String(v ?? '').trim()   // жовтим — порожні обов'язкові поля
+    const n2 = (v) => formatAmount(v, { decimals: 2 })
+    const mismatch = docMovements?.some(m => m.source !== 'assembly' && form?.date && (m.date || '').slice(0, 10) !== movTarget(m))
+    const verifyBtn = existingDoc && <Button variant="secondary" onClick={toggleVerified} disabled={busy} className={verified ? 'den-ok' : ''} icon={verified ? 'ti-circle-check' : undefined}>{verified ? 'Перевірено' : <><span className="den-lg-t">Позначити перевіреним</span><span className="den-sm-t">Перевірено?</span></>}</Button>
+    const saveBtn = form && <Button variant="brand" onClick={save} loading={busy} disabled={busy}>Зберегти документ</Button>
+    return (
+      <div className="den" role="dialog" aria-modal="true" aria-label={`Документ ${title}`}>
+        <header className="den-top">
+          <button type="button" className="den-back" onClick={onClose} aria-label="Закрити документ"><i className="ti ti-arrow-left" aria-hidden="true" /></button>
+          <div className="den-title"><small>Документи{t ? ` / ${t.label}` : ''}</small>
+            <h1>{title}{form && <>{form.posted !== false ? <span className="den-chip is-ok">Проведено</span> : <span className="den-chip">Чернетка</span>}
+              {existingDoc && (verified ? <span className="den-chip is-ok">Перевірено</span> : <span className="den-chip is-warn">Не перевірено</span>)}</>}</h1></div>
+          <div className="den-acts">
+            {existingDoc && <Button variant="secondary" icon="ti-scan" onClick={() => { setForm(null); recognizeExisting(true) }} disabled={busy} className="den-lg">{autoOcr ? 'Розпізнати знову' : 'Розпізнати'}</Button>}
+            {!existingDoc && form && <Button variant="secondary" onClick={() => setForm(null)} className="den-lg">Інший файл</Button>}
+            {existingDoc && <Menu trigger={<Button variant="secondary" iconOnly icon="ti-dots" aria-label="Інші дії" />} items={[
+              { label: autoOcr ? 'Розпізнати знову' : 'Розпізнати', icon: 'ti-scan', onClick: () => { setForm(null); recognizeExisting(true) } },
+              ...(previewUrl ? [{ label: 'Відкрити файл у новій вкладці', icon: 'ti-external-link', onClick: () => window.open(previewUrl, '_blank') }] : []),
+              { divider: true },
+              { label: 'Видалити документ', icon: 'ti-trash', danger: true, onClick: del },
+            ]} />}
+            <span className="den-lg">{verifyBtn}</span>
+            <span className="den-lg">{saveBtn}</span>
+          </div>
+        </header>
+
+        {!form ? (
+          <div className="den-empty">
+            {!existingDoc ? (
+              <label className="den-drop">
+                <i className={`ti ${autoOcr ? 'ti-scan' : 'ti-upload'}`} aria-hidden="true" />
+                <b>{busy ? 'Розпізнавання…' : (autoOcr ? 'Оберіть скан або фото' : 'Оберіть файл')}</b>
+                <small>{autoOcr ? 'PDF, JPG, PNG — розпізнаємо тип, номер, суму й позиції' : 'Договір, ТТН, акт тощо · PDF, фото, DOCX'}</small>
+                <input type="file" multiple={autoOcr} accept={autoOcr ? 'image/*,.pdf,.heic' : '.pdf,image/*,.doc,.docx,.xls,.xlsx'} hidden onChange={e => (autoOcr ? runOcr : attachFile)(e.target.files)} disabled={busy} />
+              </label>
+            ) : !error && <div className="den-loading"><i className="ti ti-loader-2" aria-hidden="true" />{autoOcr ? 'Завантаження файлу і розпізнавання…' : 'Завантаження документа…'}</div>}
+            {error && <p className="den-err" role="alert">{error}</p>}
+          </div>
+        ) : (
+          <div className="den-body">
+            {previewUrl && (
+              <details className="den-prev" open>
+                <summary><span>Оригінал документа</span><a href={previewUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}>Нова вкладка <i className="ti ti-arrow-up-right" aria-hidden="true" /></a></summary>
+                <div className="den-sheet">{previewType === 'pdf'
+                  ? <iframe src={previewUrl} title="Оригінал документа" />
+                  : <img src={previewUrl} alt="Оригінал документа" />}</div>
+              </details>
+            )}
+
+            <div className="den-side">
+              {autoOcr && !error && <div className="den-ocr"><i className="ti ti-scan" aria-hidden="true" /><span><b>Розпізнано автоматично.</b> Перевірте поля, позначені жовтим, і збережіть.</span></div>}
+              {error && <p className="den-err" role="alert">{error}</p>}
+
+              <section className="den-card">
+                <h2>Реквізити</h2>
+                <div className="den-grid">
+                  <label className={need(form.doc_number) ? 'is-need' : ''}><span>Номер документа</span><input className="form-input" value={form.doc_number || ''} onChange={e => setForm(f => ({ ...f, doc_number: e.target.value }))} /></label>
+                  <label className={need(form.date) ? 'is-need' : ''}><span>Дата</span><input className="form-input" type="date" value={form.date || ''} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
+                    {whDate && <small className="den-hint">Оприбуткування: <b>{whDate.split('-').reverse().join('.')}</b><InfoTip label="Дата оприбуткування">Змінюється лише в «Склад → Звірка видаткових»; не скидається при перезбереженні.</InfoTip></small>}</label>
+                  <label><span>Тип документа</span>
+                    <select className="form-input" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
+                      {DOCUMENT_TYPES.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
+                    </select></label>
+                  <div className={`den-f${!form.contractor_id ? ' is-need' : ''}`}><span>Контрагент{form.edrpou ? ` · ЄДРПОУ ${form.edrpou}` : ''}</span>
+                    <ContractorSelect value={form.contractorName} placeholder="Контрагент"
+                      onChange={(v) => setForm(f => ({ ...f, contractorName: v, contractor_id: null }))}
+                      onContractorSelect={(c) => setForm(f => ({ ...f, contractor_id: c.id, contractorName: c.name }))} />
+                    {form.contractor_id && <small className="den-found"><i className="ti ti-check" aria-hidden="true" /> є в довіднику</small>}</div>
+                  {['serviceAct', 'invoice', 'other'].includes(form.type) && (
+                    <div className="den-f is-wide"><span>Напрям</span>
+                      <Segmented ariaLabel="Напрям документа" value={form.doc_role === 'outgoing' ? 'outgoing' : 'incoming'} onChange={v => setForm(f => ({ ...f, doc_role: v }))}
+                        options={[{ value: 'incoming', label: 'Вхідний — ми винні' }, { value: 'outgoing', label: 'Вихідний — нам винні' }]} /></div>
+                  )}
+                  <label className="is-wide"><span>Назва файлу</span>
+                    <span className="den-row"><input className="form-input" value={form.file_name || ''} onChange={e => setForm(f => ({ ...f, file_name: e.target.value }))} />
+                      <Button variant="secondary" onClick={() => setForm(f => ({ ...f, file_name: buildDocFileName({ type: f.type, docNumber: f.doc_number, contractorName: f.contractorName, date: f.date }, f.file_name) }))}>Оновити за реквізитами</Button></span></label>
+                </div>
+              </section>
+
+              <section className="den-card">
+                <div className="den-card-h"><h2>Суми<InfoTip label="Суми">На склад іде ціна без ПДВ, борг і гроші — з ПДВ. {incoming ? 'Вхідний ПДВ — податковий кредит, зменшує ПДВ до сплати.' : 'ПДВ — податкове зобов’язання.'}</InfoTip></h2>
+                  {items.length > 0 && gross > 0 && (sumOk ? <span className="den-okline"><i className="ti ti-check" aria-hidden="true" /> сума позицій = сума документа</span>
+                    : <span className="den-badline">сума позицій {n2(itemsSum)} ≠ {n2(gross)}</span>)}</div>
+                <div className="den-sums">
+                  <label><span>Без ПДВ · собівартість</span><b>{n2(net)}</b></label>
+                  <label><span>у т. ч. ПДВ{form.type === 'loanAgreement' ? ' · позика не обкладається' : ''}</span>
+                    <input className="form-input den-num" inputMode="decimal" value={form.vat_amount} onChange={e => setForm(f => ({ ...f, vat_amount: e.target.value }))} /></label>
+                  <label className={`is-dark${need(form.amount) ? ' is-need' : ''}`}><span>З ПДВ · {incoming ? 'до сплати' : 'до отримання'}</span>
+                    <input className="form-input den-num" inputMode="decimal" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} /></label>
+                </div>
+              </section>
+
+              {items.length > 0 && (
+                <section className="den-card">
+                  <h2>Позиції · {items.length}</h2>
+                  <ul className="den-items">{items.map((it, i) => {
+                    const q = Number(it.quantity ?? it.qty) || 0, pr = Number(it.unit_price ?? it.unitPrice ?? it.price) || 0, amt = Number(it.amount) || q * pr
+                    return (
+                      <li key={i}><b>{it.name || '—'}</b>{(it.sku || it.brand) && <small>{[it.sku, it.brand].filter(Boolean).join(' · ')}</small>}
+                        <span className="den-it-n"><span><small>К-сть</small>{q} {it.unit || 'шт'}</span><span><small>Ціна</small>{n2(pr)}</span><span><small>Сума</small><b>{n2(amt)}</b></span></span></li>)
+                  })}</ul>
+                </section>
+              )}
+
+              <section className="den-card">
+                <h2>Проведення</h2>
+                <div className={`den-tog${form.posted !== false ? ' is-on' : ''}`}>
+                  <Switch checked={form.posted !== false} onChange={v => setForm(f => ({ ...f, posted: v }))} label="Провести по системі" />
+                  <InfoTip label="Провести по системі">Увімкнено — документ з’явиться в розділі «Документи» й потрапить у звіти.<br />Вимкнено — лишається чернеткою в замовленні.</InfoTip></div>
+                <div className={`den-tog${form.is_signed ? ' is-on' : ''}`}>
+                  <Switch checked={!!form.is_signed} onChange={toggleSigned} label="Підписаний" />
+                  {existingDoc && signedSaved && <small className="den-found"><i className="ti ti-check" aria-hidden="true" /> збережено</small>}</div>
+                {items.length > 0 && (
+                  <div className={`den-tog is-col${stockOn ? ' is-on' : ''}`}>
+                    <Switch checked={stockOn} onChange={setStockOn} label={`Рух на складі · ${items.length} ${items.length === 1 ? 'позиція' : 'позицій'}`} />
+                    {stockOn && <div className="den-row">
+                      <select className="form-input" value={stockDir} onChange={e => setStockDir(e.target.value)} aria-label="Тип руху"><option value="in">Прихід (оприбуткування)</option><option value="out">Видача (списання за FIFO)</option></select>
+                      <span className="den-hint">при збереженні</span></div>}
+                  </div>
+                )}
+                {existingDoc && (
+                  <div className="den-movs">
+                    <div className="den-card-h"><b>Складські рухи{docMovements ? ` · ${docMovements.length}` : ''}</b>
+                      <span className="den-row">
+                        {mismatch && <Button size="sm" variant="secondary" icon="ti-calendar" onClick={fixMovementDates} disabled={busy}>Дата рухів = {(whDate || form.date || '').split('-').reverse().join('.')}</Button>}
+                        {docMovements?.some(m => m.type === 'out') && <Button size="sm" variant="secondary" icon="ti-arrows-exchange" onClick={() => { onClose?.(); navigate(`/inventory/recon?doc=${existingDoc.id}`) }}>Звірка</Button>}
+                        {items.length > 0 && t?.stockEffect && <Button size="sm" variant="secondary" icon="ti-package-import" onClick={postStockNow} disabled={busy}>{stockDir === 'out' ? 'Списати зараз' : 'Оприбуткувати зараз'}</Button>}
+                      </span></div>
+                    {stockMsg && <p className={stockMsg.err ? 'den-err' : 'den-okline'}>{stockMsg.err || stockMsg.ok}</p>}
+                    {docMovements === null ? <p className="den-hint">Завантаження…</p>
+                      : docMovements.length === 0 ? <p className="den-warn">Рухів на складі з цього документа немає.</p>
+                      : <ul className="den-mlist">{docMovements.map(m => {
+                          const md = (m.date || '').slice(0, 10), dd = (movTarget(m) || '').slice(0, 10)
+                          return <li key={m.id}><span className={`den-mi ${m.type === 'in' ? 'is-in' : 'is-out'}`} aria-hidden="true"><i className={`ti ${m.type === 'in' ? 'ti-arrow-up' : 'ti-arrow-down'}`} /></span>
+                            <span><b>{m.productName || 'товар не прив’язаний'}{m.source === 'assembly' ? ' · збірка' : ''}</b>
+                              <small className={md && dd && md !== dd ? 'is-bad' : ''}>{m.type === 'in' ? '+' : '−'}{Number(m.quantity) || 0} × {n2(Number(m.price) || 0)} · {md ? md.split('-').reverse().join('.') : '—'}</small></span></li>
+                        })}</ul>}
+                  </div>
+                )}
+              </section>
+
+              {existingDoc && linked && (linked.order || linked.pays.length > 0) && (
+                <section className="den-card">
+                  <h2>Пов’язане</h2>
+                  {linked.pays.map(p => (
+                    <div key={p.id} className="den-link is-paid"><i className="ti ti-check" aria-hidden="true" />
+                      <span><b>Оплачено {String(p.date || '').split('-').reverse().join('.')}</b><small>{p.counterparty || p.description || 'Банк'}</small></span>
+                      <b className="den-link-sum">{formatAmount(p.amount, { decimals: 0, sign: 'always' })} ₴</b></div>))}
+                  {linked.order && <button type="button" className="den-link" onClick={() => { onClose?.(); navigate(`/orders/${linked.order.id}`) }}><i className="ti ti-clipboard-list" aria-hidden="true" />
+                    <span><b>Замовлення №{linked.order.order_number}</b><small>відкрити картку</small></span><i className="ti ti-chevron-right" aria-hidden="true" /></button>}
+                </section>
+              )}
+              {existingDoc && <button type="button" className="den-del" onClick={del} disabled={busy}>Видалити документ</button>}
+            </div>
+          </div>
+        )}
+        {form && <div className="den-sticky">{verifyBtn}{saveBtn}</div>}
+      </div>
+    )
+  }
+
+  if (newUi) return renderNew()
 
   return (
     <>

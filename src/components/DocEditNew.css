@@ -1,0 +1,109 @@
+/* Редактор документа — новий інтерфейс (ТЗ 4.6; макети DocumentEdit / DocumentEditMobile). Лише токени. */
+.den { position: fixed; inset: 0; z-index: 240; display: flex; flex-direction: column; background: var(--bg); overflow: hidden; }
+.den-top { display: flex; align-items: center; gap: 12px; padding: 12px 24px; padding-top: calc(12px + env(safe-area-inset-top, 0px)); background: var(--surface); border-bottom: 1px solid var(--border); flex: none; }
+.den-back { width: 40px; height: 40px; border-radius: 12px; border: 0; background: none; display: grid; place-items: center; font-size: 22px; color: var(--text); cursor: pointer; flex: none; }
+.den-back:hover { background: var(--surface-sunken); }
+.den-title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.den-title small { font-size: 12px; color: var(--muted); }
+.den-title h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.02em; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.den-chip { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--surface2); color: var(--text-strong2, var(--text)); letter-spacing: 0; }
+.den-chip.is-ok { background: var(--brand-soft); color: var(--brand-dark); }
+.den-chip.is-warn { background: var(--warn-bg); color: var(--warn-fg); }
+.den-acts { display: flex; align-items: center; gap: 8px; flex: none; }
+.den-ok { color: var(--brand-dark) !important; border-color: var(--brand) !important; }
+
+.den-empty { flex: 1; display: grid; place-items: center; align-content: center; gap: 12px; padding: 24px; }
+.den-drop { display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(520px, 100%); padding: 40px 24px; border: 2px dashed var(--border); border-radius: 22px; background: var(--surface); text-align: center; cursor: pointer; }
+.den-drop .ti { font-size: 40px; color: var(--brand); }
+.den-drop small { font-size: 13px; color: var(--muted); }
+.den-loading { display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--muted); }
+.den-loading .ti { font-size: 32px; color: var(--brand); animation: den-spin 1s linear infinite; }
+@keyframes den-spin { to { transform: rotate(360deg); } }
+
+.den-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(420px, 1fr); gap: 20px; padding: 20px 24px; overflow: hidden; }
+.den-prev { min-height: 0; display: flex; flex-direction: column; border-radius: 20px; overflow: hidden; background: var(--surface-sunken); }
+.den-prev summary { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 16px; background: var(--ink); color: #fff; font-size: 13px; font-weight: 600; list-style: none; cursor: default; }
+.den-prev summary::-webkit-details-marker { display: none; }
+.den-prev summary a { color: var(--on-dark-muted); text-decoration: none; font-weight: 500; }
+.den-prev summary a:hover { color: #fff; }
+.den-sheet { flex: 1; min-height: 0; display: grid; place-items: start center; padding: 16px; overflow: auto; }
+.den-sheet iframe { width: 100%; height: 100%; min-height: 70vh; border: 0; border-radius: 8px; background: #fff; }
+.den-sheet img { max-width: 100%; border-radius: 6px; box-shadow: 0 2px 10px rgba(0, 0, 0, .08); background: #fff; }
+
+.den-side { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding-bottom: 24px; }
+.den-ocr { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 16px; background: var(--brand-soft); color: var(--brand-dark); font-size: 13px; }
+.den-ocr .ti { font-size: 20px; }
+.den-err { margin: 0; padding: 10px 14px; border-radius: 12px; background: var(--danger-soft-bg); color: var(--danger-fg); font-size: 13px; white-space: pre-wrap; }
+.den-warn { margin: 0; padding: 10px 14px; border-radius: 12px; background: var(--warn-bg); color: var(--warn-fg); font-size: 13px; }
+.den-card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; }
+.den-card h2 { margin: 0; font-size: 16px; font-weight: 700; display: flex; align-items: center; }
+.den-card-h { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.den-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+.den-grid > label, .den-f { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.den-grid > label > span:first-child, .den-f > span:first-child, .den-sums span { font-size: 12px; font-weight: 600; color: var(--muted); }
+.den-grid .is-wide { grid-column: 1 / -1; }
+.den-grid .is-need .form-input, .den-f.is-need .form-input, .den-sums .is-need .form-input { background: var(--warn-bg); border-color: var(--warn-mark); }
+.den-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.den-row .form-input { flex: 1 1 200px; min-width: 0; }
+.den-hint { font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 4px; }
+.den-found, .den-okline { font-size: 12px; font-weight: 600; color: var(--brand-dark); display: inline-flex; align-items: center; gap: 4px; margin: 0; }
+.den-badline { font-size: 12px; font-weight: 600; color: var(--danger-fg); }
+.den-sums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.den-sums > label { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; min-width: 0; }
+.den-sums > label + label { border-left: 1px solid var(--divider); }
+.den-sums b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.den-sums .is-dark { background: var(--ink); } .den-sums .is-dark span { color: var(--on-dark-muted); }
+.den-num { height: 36px; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; padding: 0 8px; }
+.den-sums .is-dark .den-num { background: var(--ink-field); border-color: var(--ink-line); color: #fff; }
+.den-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.den-items li { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 14px; }
+.den-items li > small { font-size: 12px; color: var(--muted); }
+.den-it-n { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 6px; font-size: 14px; font-variant-numeric: tabular-nums; }
+.den-it-n > span { display: flex; flex-direction: column; } .den-it-n small { font-size: 11px; color: var(--muted); }
+.den-it-n > span:last-child { text-align: right; }
+.den-tog { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface-sunken); }
+.den-tog.is-on { background: var(--brand-soft); border-color: transparent; }
+.den-tog.is-col { flex-direction: column; align-items: stretch; }
+.den-movs { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.den-mlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.den-mlist li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; font-size: 13px; }
+.den-mlist li > span:last-child { display: flex; flex-direction: column; min-width: 0; }
+.den-mlist small { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; } .den-mlist small.is-bad { color: var(--danger-fg); }
+.den-mi { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; flex: none; }
+.den-mi.is-in { background: var(--brand-soft); color: var(--brand-dark); } .den-mi.is-out { background: var(--expense-bg); color: var(--expense-fg); }
+.den-link { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface); font: inherit; color: var(--text); text-align: left; cursor: pointer; }
+.den-link > span { flex: 1; min-width: 0; display: flex; flex-direction: column; } .den-link small { font-size: 12px; color: var(--muted); }
+.den-link.is-paid { background: var(--brand-soft); border-color: transparent; cursor: default; } .den-link.is-paid > .ti { color: var(--brand-dark); }
+.den-link-sum { font-variant-numeric: tabular-nums; }
+.den-del { align-self: flex-start; border: 0; background: none; padding: 4px 0; font: inherit; font-size: 13px; font-weight: 600; color: var(--danger-fg); cursor: pointer; }
+.den-sticky { display: none; }
+
+@media (max-width: 1023px) {
+  .den-body { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
+  .den-side { overflow: visible; }
+  .den-prev { max-height: 60vh; }
+}
+@media (max-width: 767px) {
+  .den-top { padding: 10px 12px; padding-top: calc(10px + env(safe-area-inset-top, 0px)); gap: 6px; }
+  .den-title h1 { font-size: 17px; }
+  .den-lg { display: none !important; }
+  .den-body { padding: 12px 12px 96px; gap: 12px; }
+  .den-prev:not([open]) .den-sheet { display: none; }
+  .den-prev summary { cursor: pointer; }
+  .den-prev summary::after { content: '\25BE'; margin-left: 4px; }
+  .den-prev { max-height: 46vh; }
+  .den-sheet iframe { min-height: 38vh; }
+  .den-card { padding: 14px; border-radius: 18px; }
+  .den-grid { grid-template-columns: minmax(0, 1fr); }
+  .den-sums { grid-template-columns: minmax(0, 1fr); }
+  .den-sums > label + label { border-left: 0; border-top: 1px solid var(--divider); }
+  .den-sticky { display: flex; gap: 8px; position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)); background: var(--surface); border-top: 1px solid var(--border); box-shadow: var(--shadow-pop); z-index: 2; }
+  .den-sticky > * { flex: 1 1 0; justify-content: center; }
+}
+.den-sheet > * { min-width: 0; max-width: 100%; justify-self: center; }
+.den-sheet img { height: auto; }
+@media (max-width: 767px) { .den-sticky .btn { white-space: nowrap; font-size: 14px; padding: 0 10px; } .den-prev { max-height: 38vh; } }
+.den-sm-t { display: none; }
+@media (max-width: 767px) { .den-sticky .den-lg-t { display: none; } .den-sticky .den-sm-t { display: inline; } }
+.den-sheet { display: block; text-align: center; }
+.den-sheet img { display: inline-block; width: auto; max-width: 100%; }
