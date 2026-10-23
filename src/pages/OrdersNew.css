@@ -163,3 +163,6 @@
   .on-stages-sm .on-tile-head { overflow: visible; }
   .on-mcard .on-stage-row { display: flex; }
 }
+/* «сплачено N% · лишилось …» — два рядки, щоб не розширювати колонку суми */
+.on-table .on-paid { white-space: normal; line-height: 1.3; }
+.on-table .on-paid > span { display: block; white-space: nowrap; }

@@ -37,7 +37,7 @@ function PaidNote({ o }) {
   const t = Number(o.total) || 0, p = o.clientPaid || 0
   if (!(p > 0.5) || !(t > 0)) return null
   if (p >= t - 0.5) return <span className="on-paid is-full">сплачено повністю</span>
-  return <span className="on-paid">сплачено {Math.floor((p / t) * 100)}% · лишилось {formatAmount(left(o), { decimals: 0 })} ₴</span>
+  return <span className="on-paid"><span>сплачено {Math.floor((p / t) * 100)}%</span> <span>лишилось {formatAmount(left(o), { decimals: 0 })} ₴</span></span>
 }
 
 function Person({ name }) {
