@@ -8,6 +8,7 @@ import { qc } from '../lib/companyScope'
 import { getDocType } from '../lib/docgen'
 import { todayKyiv } from '../lib/dates'
 import { loadPayablesAsOf, groupPayables } from '../lib/payables'
+import { useGroupContractors } from '../lib/group'
 import { BUCKETS } from '../lib/receivables'
 import { formatAmount, plural } from '../utils/format'
 import { KpiTile, StackBar, EmptyState, TableSkeleton, Button, Callout } from './ui'
@@ -15,7 +16,8 @@ import { KpiTile, StackBar, EmptyState, TableSkeleton, Button, Callout } from '.
 const dmy = (iso) => iso ? iso.split('-').reverse().join('.') : '—'
 const BUCKET_COLORS = { '0-7': 'var(--brand)', '8-14': 'var(--warn-mark)', '15-30': 'var(--expense-chart)', '30+': 'var(--danger-fg)' }
 
-export default function PayablesReport() {
+export default function PayablesReport({ showGroup = true } = {}) {
+  const grp = useGroupContractors()
   const { companies } = useCompany()
   const navigate = useNavigate()
   const [data, setData] = useState(null)
@@ -27,7 +29,8 @@ export default function PayablesReport() {
     setData(null); setErr(null)
     loadPayablesAsOf(companies, todayKyiv()).then(r => setData(r)).catch(e => setErr(e.message))
   }, [companies])
-  const g = useMemo(() => data ? groupPayables(data.docs) : null, [data])
+  // ТЗ 6.4: без операцій усередині групи — прибираємо борги перед нашими компаніями
+  const g = useMemo(() => data ? groupPayables(showGroup ? data.docs : data.docs.filter(d => !grp.has(d.contractorId))) : null, [data, showGroup, grp.ready])
   // номери замовлень для документів
   useEffect(() => {
     const ids = [...new Set((data?.docs || []).map(d => d.order_id).filter(Boolean))]
@@ -38,7 +41,8 @@ export default function PayablesReport() {
   if (err) return <Callout tone="danger" title="Не вдалося порахувати кредиторку." text={err} />
   if (!g) return <TableSkeleton rows={6} cols={5} label="Рахую кредиторку…" />
   const s = g.summary
-  const overdue = data.docs.filter(d => d.overdueDays > 0).reduce((a, d) => a + d.outstanding, 0)
+  const docs = showGroup ? data.docs : data.docs.filter(d => !grp.has(d.contractorId))
+  const overdue = docs.filter(d => d.overdueDays > 0).reduce((a, d) => a + d.outstanding, 0)
   const prepaid = (data.overpaid || []).reduce((a, x) => a + x.over, 0)
   const toggle = (id) => setOpen(o => { const n = new Set(o); n.has(id) ? n.delete(id) : n.add(id); return n })
   const pay = (d, name) => navigate(`/bank?pay=${d.docId}&amount=${d.outstanding}&contractor=${d.contractorId}&cname=${encodeURIComponent(name || '')}&label=${encodeURIComponent(`${getDocType(d.type)?.label || 'документ'} № ${d.doc_number}`)}`)
@@ -67,7 +71,7 @@ export default function PayablesReport() {
                   <Fragment key={c.contractorId}>
                     <tr className="is-click" onClick={() => toggle(c.contractorId)}>
                       <td className="rpt-x"><button type="button" aria-expanded={isOpen} aria-label={isOpen ? 'Згорнути' : 'Розкрити'} onClick={e => { e.stopPropagation(); toggle(c.contractorId) }}><i className={`ti ${isOpen ? 'ti-chevron-down' : 'ti-chevron-right'}`} aria-hidden="true" /></button></td>
-                      <td className="c-name"><b>{c.name}</b>{c.edrpou && <small className="rpt-muted"> · {c.edrpou}</small>}</td>
+                      <td className="c-name"><b>{c.name}</b>{grp.has(c.contractorId) && <span className="grp-chip">група</span>}{c.edrpou && <small className="rpt-muted"> · {c.edrpou}</small>}</td>
                       <td className="r c-docs">{c.docs.length}</td>
                       <td className="r rpt-num c-sum"><b>{formatAmount(c.total)}</b></td>
                       <td className="c-due">{dmy(due)}</td>

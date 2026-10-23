@@ -24,7 +24,8 @@ const ALL = ['orders', 'tasks', 'contractors', 'bank', 'inventory', 'prices', 'd
 
 export const ROLE_SECTIONS = {
   admin: ALL,
-  accountant: ['orders', 'tasks', 'contractors', 'bank', 'inventory', 'prices', 'documents', 'analytics', 'investor', 'finance', 'loans', 'forecast', 'receivables', 'cashflow', 'accountant', 'profitability', 'period-close'],
+  // «Інвестору» — лише адміністратор (рішення власника 23.10.2026, ТЗ 6.5)
+  accountant: ['orders', 'tasks', 'contractors', 'bank', 'inventory', 'prices', 'documents', 'analytics', 'finance', 'loans', 'forecast', 'receivables', 'cashflow', 'accountant', 'profitability', 'period-close'],
   manager: ['orders', 'tasks', 'contractors', 'inventory', 'prices', 'documents'],
   viewer: ['orders', 'contractors', 'analytics'],
 }

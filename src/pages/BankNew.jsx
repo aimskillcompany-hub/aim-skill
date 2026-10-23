@@ -3,6 +3,7 @@
 //   операції по днях, чипи «Потребує уваги», підтвердження однієї операції кнопкою, напрям і стаття прямо в рядку,
 //   масове редагування з липкою панеллю й «Скасувати» в тості, режим вибору довгим натисканням на телефоні.
 import { useMemo, useRef, useState } from 'react'
+import { useGroupContractors } from '../lib/group'
 import { Button, Menu, Segmented, EmptyState, TableSkeleton } from '../components/ui'
 import { formatAmount } from '../utils/format'
 import './BankNew.css'
@@ -26,6 +27,7 @@ function TxIcon({ r }) {
 }
 
 export default function BankNew(p) {
+  const grp = useGroupContractors()
   const { rows, loading, status, setStatus, q, setQ, acc, setAcc, accounts, art, setArt, grouped, typeLabels, directions,
     sel, toggleSel, setSel, onOpen, onLink, onAdd, autoLink, linking, linkMsg, autoFill, onCheck,
     quickUpdate, bulkUpdate, unignore, hasMore, onMore } = p
@@ -143,7 +145,7 @@ export default function BankNew(p) {
                           <input type="checkbox" className="bkn-cb" checked={on} onChange={() => toggleSel(r.id)} aria-label={`Вибрати операцію ${name || ''} ${formatAmount(r.amount)}`} />
                           <TxIcon r={r} />
                           <button type="button" className="bkn-main" onClick={() => selectMode ? toggleSel(r.id) : onOpen(r)}>
-                            <span className={`bkn-name${name ? '' : ' is-none'}`}>{name || (/^Переказ (на|з) /.test(r.description || '') ? 'Внутрішній переказ' : 'Контрагента не вказано')}</span>
+                            <span className={`bkn-name${name ? '' : ' is-none'}`}>{name || (/^Переказ (на|з) /.test(r.description || '') ? 'Внутрішній переказ' : 'Контрагента не вказано')}</span>{r.contractor_id && grp.has(r.contractor_id) && <span className="grp-chip">група</span>}
                             {r.description && <span className="bkn-desc">{r.description}</span>}
                             <span className="bkn-mobile-meta">{r.article || 'без статті'}
                               {i.noDoc && <span className="bkn-tag is-warn">Без документа</span>}

@@ -154,3 +154,4 @@
   .prf-table tfoot td:nth-child(2), .prf-table tfoot td:nth-child(3), .prf-table tfoot td:nth-child(5), .prf-table tfoot td:nth-child(6), .prf-table tfoot td:nth-child(7) { display: none; }
   .prf-table tfoot td:first-child, .prf-table tfoot td:last-child { display: block; }
 }
+.rpt-group { display: flex; justify-content: flex-end; }

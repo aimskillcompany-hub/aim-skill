@@ -16,7 +16,7 @@ const MONO = { fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontVari
 const firstDay = (y, m) => `${y}-${String(m).padStart(2, '0')}-01`
 const lastDay = (y, m) => `${y}-${String(m).padStart(2, '0')}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`
 
-export default function ProfitabilityReport() {
+export default function ProfitabilityReport({ showGroup = true } = {}) {
   const { companies } = useCompany()
   const { user } = useUser()
   const [companyId, setCompanyId] = useState(null)
@@ -43,7 +43,7 @@ export default function ProfitabilityReport() {
 
   const newUi = useNewUi()
   if (newUi) return <ProfitabilityNew data={data} loading={loading} err={err} from={from} to={to} setFrom={setFrom} setTo={setTo}
-    companies={companies} companyId={companyId} setCompanyId={setCompanyId} userId={user?.id} onChanged={() => setTick(t => t + 1)} />
+    companies={companies} companyId={companyId} setCompanyId={setCompanyId} userId={user?.id} showGroup={showGroup} onChanged={() => setTick(t => t + 1)} />
 
   return (
     <div style={{ fontFamily: 'Manrope, system-ui, sans-serif', color: '#17151F', display: 'flex', flexDirection: 'column', gap: 22 }}>

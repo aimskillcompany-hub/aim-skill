@@ -93,7 +93,7 @@ export async function computeProfitability(companyId, companyIsVat, from, to) {
         const net = r2(profit - commission)
         return {
           id: d.id, doc_number: d.doc_number || '(без №)', doc_date: d.doc_date,
-          client: cName[d.contractor_id] || 'Без контрагента',
+          client: cName[d.contractor_id] || 'Без контрагента', contractorId: d.contractor_id || null,
           items, sellSum, buySum, profit, vatToPay,
           margin: sellSum > 0 ? profit / sellSum : null,
           agentName: ag?.agent_name || '', percent, commission, net,
@@ -132,7 +132,7 @@ async function computeInputVat(prodIds) {
 }
 
 function emptyTotals() { return { count: 0, sellSum: 0, profit: 0, vatToPay: 0, commission: 0, net: 0, margin: null, lossCount: 0, lossSum: 0 } }
-function computeTotals(invoices) {
+export function computeTotals(invoices) {
   const t = emptyTotals()
   t.count = invoices.length
   invoices.forEach(v => {

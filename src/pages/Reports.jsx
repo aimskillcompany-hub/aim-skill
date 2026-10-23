@@ -11,7 +11,7 @@ import { loadPayablesAsOf, groupPayables } from '../lib/payables'
 import { computeProfitability } from '../lib/profitability'
 import { listOutgoingDocs } from '../lib/accountantReport'
 import { formatAmount, formatShort, plural } from '../utils/format'
-import { useTabParam, TableSkeleton } from '../components/ui'
+import { useTabParam, TableSkeleton, Switch } from '../components/ui'
 import './Reports.css'
 
 const ReceivablesReport = lazy(() => import('../components/ReceivablesReport'))
@@ -58,6 +58,7 @@ export default function Reports() {
   const { user } = useUser()
   const { companies, active } = useCompany()
   const tabs = TABS.filter(t => canAccess(user?.role, t.section))
+  const [showGroup, setShowGroup] = useState(true)   // ТЗ 6.4: операції всередині групи (типово показуємо)
   const [tab, setTab] = useTabParam(tabs[0]?.id || 'receivables', tabs.map(t => t.id))
   const fig = useTileFigures(companies, active)
   return (
@@ -80,9 +81,12 @@ export default function Reports() {
       </div>
       <div id="rpt-panel" className="reports-panel" role="tabpanel" aria-labelledby={`rpt-tab-${tab}`}>
         <Suspense fallback={<TableSkeleton rows={6} cols={5} />}>
-          {tab === 'receivables' && <ReceivablesReport />}
-          {tab === 'payables' && <PayablesReport />}
-          {tab === 'profit' && <ProfitabilityReport />}
+          {tab !== 'accountant' && (
+            <div className="rpt-group"><Switch checked={showGroup} onChange={setShowGroup} label="Показувати операції всередині групи" description="Вимкніть, щоб прибрати продажі й борги між нашими компаніями (позначені «група»)" /></div>
+          )}
+          {tab === 'receivables' && <ReceivablesReport showGroup={showGroup} />}
+          {tab === 'payables' && <PayablesReport showGroup={showGroup} />}
+          {tab === 'profit' && <ProfitabilityReport showGroup={showGroup} />}
           {tab === 'accountant' && <AccountantReport />}
         </Suspense>
       </div>

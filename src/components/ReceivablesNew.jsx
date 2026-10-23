@@ -13,7 +13,7 @@ const n0 = (v) => formatAmount(v, { decimals: 0 })
 const n2 = (v) => formatAmount(v)
 const dmy = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('.') : '—'
 
-export default function ReceivablesNew({ raw, filtered, shown, loading, err, year, setYear, month, setMonth, years, scope, setScope, companies, q, setQ, reminders, onReport, onPdf }) {
+export default function ReceivablesNew({ raw, filtered, shown, loading, err, year, setYear, month, setMonth, years, scope, setScope, companies, q, setQ, reminders, onReport, onPdf, isGroup = () => false }) {
   const s = filtered?.summary
   const oldest = filtered ? Math.max(0, ...filtered.contractors.map(c => c.oldest || 0)) : 0
   // скільки найбільших боржників дають ≥ 80% боргу
@@ -55,7 +55,7 @@ export default function ReceivablesNew({ raw, filtered, shown, loading, err, yea
           {shown.length === 0 ? <EmptyState icon="ti-receipt-2" title={q ? 'Нікого не знайдено' : 'Нам ніхто не винен'} text={q ? 'Змініть пошук.' : 'Усі видаткові й акти оплачено.'} />
             : <div className="tbl-wrap rpt-table rcv-table"><table>
               <thead><tr><th aria-label="Розкрити" /><th>Боржник</th>{scope === 'all' && <th className="c-via">Через кого</th>}<th className="r">Борг</th><th className="c-share">Частка</th><th className="r">З них 30+</th><th className="r">Найстаріший</th><th aria-label="Дії" /></tr></thead>
-              <tbody>{shown.map(c => <Row key={c.contractorId} c={c} max={max} showCompany={scope === 'all'} last={reminders?.[c.contractorId]} onReport={onReport} />)}</tbody>
+              <tbody>{shown.map(c => <Row key={c.contractorId} c={c} group={isGroup(c.contractorId)} max={max} showCompany={scope === 'all'} last={reminders?.[c.contractorId]} onReport={onReport} />)}</tbody>
               <tfoot><tr><td /><td>Разом</td>{scope === 'all' && <td className="c-via" />}<td className="r rpt-num">{n0(s.total)}</td><td className="c-share" /><td className="r rpt-num rpt-late">{n0(s.over30)}</td><td colSpan={2} /></tr></tfoot>
             </table></div>}
         </section>
@@ -65,7 +65,7 @@ export default function ReceivablesNew({ raw, filtered, shown, loading, err, yea
   )
 }
 
-function Row({ c, max, showCompany, last, onReport }) {
+function Row({ c, group, max, showCompany, last, onReport }) {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [openDoc, setOpenDoc] = useState({})
@@ -85,7 +85,7 @@ function Row({ c, max, showCompany, last, onReport }) {
     <>
       <tr className="is-click" onClick={() => setOpen(o => !o)}>
         <td className="rpt-x"><button type="button" aria-expanded={open} aria-label={open ? 'Згорнути' : 'Розкрити'} onClick={e => { e.stopPropagation(); setOpen(o => !o) }}><i className={`ti ${open ? 'ti-chevron-down' : 'ti-chevron-right'}`} aria-hidden="true" /></button></td>
-        <td className="c-name"><b>{c.name}</b><small className="rpt-muted">{c.docs.length} док.{last ? ` · нагадування ${dmy(last.created_at)}` : ''}</small></td>
+        <td className="c-name"><b>{c.name}</b>{group && <span className="grp-chip">група</span>}<small className="rpt-muted">{c.docs.length} док.{last ? ` · нагадування ${dmy(last.created_at)}` : ''}</small></td>
         {showCompany && <td className="c-via rpt-muted">{via}</td>}
         <td className="r rpt-num c-sum"><b>{n0(c.total)}</b></td>
         <td className="c-share"><span className="rcv-share"><i style={{ width: `${(c.total / max) * 100}%` }} /></span></td>

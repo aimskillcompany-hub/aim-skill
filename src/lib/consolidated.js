@@ -5,15 +5,19 @@
 // Логіка балансу однакова з BalanceView: Активи = гроші + склад + дебіторка + ОЗ;
 // Пасиви = кредиторка + ПФД (чиста, знакова); Капітал = Активи − Кредиторка − ПФД.
 // ПФД сумується ЧИСТОЮ → внутрішньогрупова ПФД (одна наша компанія позичила іншій) самознищується.
-// УВАГА: внутрішньогрупові дебіторка/кредиторка НЕ елімінуються (показані «грос»); на Капітал це не впливає.
+// Внутрішньогрупові дебіторка/кредиторка показані «грос»; ig — їхня частка по юрособах, щоб звіт міг їх прибрати
+// (eliminateIntragroup у lib/group; капітал групи при цьому не змінюється, якщо обидві сторони обліковані однаково).
 import { computeSnapshot } from './periodClose'
 import { setReportScope, runExclusive } from './companyScope'
 import { clearCompanyCache } from './companyConfig'
+import { loadGroupContractors } from './group'
 
 
 export async function computeConsolidated(year, month, companies) {
   const run = async () => {
     const rows = []
+    const ig = {}   // ТЗ 6.4: частина дебіторки / кредиторки кожної юрособи перед іншими компаніями групи
+    const grp = await loadGroupContractors().catch(() => null)
     try {
       for (const c of companies) {
         setReportScope(c.id)
@@ -29,6 +33,8 @@ export async function computeConsolidated(year, month, companies) {
         const loans = s?.loansNet || 0
         const assets = cash + stock + recv + fa
         const equity = assets - pay - loans
+        const igSum = (docs) => (docs || []).filter(d => { const g = grp?.byContractor.get(d.contractor_id); return g && g.companyId !== c.id }).reduce((t, d) => t + (Number(d.amount) || 0), 0)
+        ig[c.id] = { recv: igSum(s?.receivableDocs), pay: igSum(s?.payableDocs) }
         rows.push({ id: c.id, name: c.short_name || c.name, cash, stock, recv, fa, assets, pay, loans, equity, error })
       }
     } finally {
@@ -40,7 +46,7 @@ export async function computeConsolidated(year, month, companies) {
       cash: sum('cash'), stock: sum('stock'), recv: sum('recv'), fa: sum('fa'),
       assets: sum('assets'), pay: sum('pay'), loans: sum('loans'), equity: sum('equity'),
     }
-    return { rows, total }
+    return { rows, total, ig }
   }
   // Ланцюжимо за попереднім викликом (навіть якщо той впав), щоб скоуп не перетинався.
   return runExclusive(run)

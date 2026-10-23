@@ -7,6 +7,7 @@ import { lastReminders } from '../lib/clientStatement'
 import ClientStatementModal from './ClientStatementModal'
 import ReceivablesNew from './ReceivablesNew'
 import { useNewUi } from '../lib/uiPrefs'
+import { useGroupContractors } from '../lib/group'
 
 // Звіт «Дебіторка»: підсумок + старіння + контрагенти (розгортаються до документів). PDF-експорт.
 const MONTHS = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень', 'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень']
@@ -18,7 +19,8 @@ const n2 = (v) => _dec.format(Number(v) || 0)
 const d = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('.') : '—'
 const MONO = { fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }
 
-export default function ReceivablesReport() {
+export default function ReceivablesReport({ showGroup = true } = {}) {
+  const grp = useGroupContractors()
   const { companies } = useCompany()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
@@ -45,9 +47,10 @@ export default function ReceivablesReport() {
 
   const filtered = useMemo(() => {
     if (!raw) return null
-    const docs = scope === 'all' ? raw.docs : raw.docs.filter(x => x.companyId === scope)
+    let docs = scope === 'all' ? raw.docs : raw.docs.filter(x => x.companyId === scope)
+    if (!showGroup) docs = docs.filter(x => !grp.has(x.contractorId))   // ТЗ 6.4: без операцій усередині групи
     return groupReceivables(docs)
-  }, [raw, scope])
+  }, [raw, scope, showGroup, grp.ready])
   const shown = useMemo(() => {
     if (!filtered) return null
     const t = q.trim().toLowerCase()
@@ -64,7 +67,7 @@ export default function ReceivablesReport() {
   if (newUi) return (
     <>
       <ReceivablesNew raw={raw} filtered={filtered} shown={shown} loading={loading} err={err} year={year} setYear={setYear} month={month} setMonth={setMonth}
-        years={years} scope={scope} setScope={setScope} companies={companies} q={q} setQ={setQ} reminders={reminders} onReport={report} onPdf={pdf} />
+        years={years} scope={scope} setScope={setScope} companies={companies} q={q} setQ={setQ} reminders={reminders} onReport={report} onPdf={pdf} isGroup={grp.has} />
       {stmt && <ClientStatementModal group={stmt} defaultAsOf={raw?.asOf} onClose={() => setStmt(null)} onLogged={reloadReminders} />}
     </>
   )
