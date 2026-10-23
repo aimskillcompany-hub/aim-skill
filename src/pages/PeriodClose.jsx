@@ -8,6 +8,8 @@ import { listClosings, periodStatus, runChecklist, closePeriod, reopenPeriod, co
 import { getDocType } from '../lib/docgen'
 import DocModal from '../components/DocModal'
 import GeneratedDocModal from '../components/GeneratedDocModal'
+import { useNewUi } from '../lib/uiPrefs'
+import PeriodCloseNew from './PeriodCloseNew'
 
 // Згенерований документ без прикріпленого реального скана → GeneratedDocModal (рендер з даних),
 // інакше DocModal намагається завантажити файл зі Storage і падає «Object not found».
@@ -47,6 +49,7 @@ export default function PeriodClose() {
   const [err, setErr] = useState(null)
   const [grouped, setGrouped] = useState({})
   const [openDoc, setOpenDoc] = useState(null) // документ для звірки (DocModal)
+  const newUi = useNewUi()
 
   const load = async () => setClosings(await listClosings())
   const { activeId } = useCompany()
@@ -94,11 +97,31 @@ export default function PeriodClose() {
   }
 
   const doReopen = async () => {
-    if (!confirm(`Переоткрити ${MONTHS[sel - 1]} ${year}? Блокування знімається, дані знову можна редагувати.`)) return
+    const reason = (prompt(`Переоткрити ${MONTHS[sel - 1]} ${year}? Блокування знімається, дані знову можна редагувати.\n\nПричина (обов'язково):`) || '').trim()
+    if (!reason) return
     setBusy('reopen'); setErr(null)
-    try { await reopenPeriod(year, sel, user?.id); await load() } catch (e) { setErr(e.message) }
+    try { await reopenPeriod(year, sel, user?.id, reason); await load() } catch (e) { setErr(e.message) }
     setBusy('')
   }
+
+  const docModal = openDoc && (isPureGenerated(openDoc)
+    ? <GeneratedDocModal doc={openDoc} onClose={() => setOpenDoc(null)} onDeleted={() => { setOpenDoc(null); doCheck() }} />
+    : <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => { setOpenDoc(null); doCheck() }} />)
+  if (newUi) return (
+    <>
+      <PeriodCloseNew year={year} setYear={(y) => { setYear(y); setSel(null) }} sel={sel} openMonth={openMonth}
+        statusOf={(m) => periodStatus(closings, year, m)} rowFor={rowFor} check={check} comp={comp} busy={busy} err={err} isAdmin={isAdmin}
+        onClose={async () => { if (!canClose) return; setBusy('close'); setErr(null); try { await closePeriod(year, sel, user?.id); await load() } catch (e) { setErr(e.message) } setBusy('') }}
+        onReopen={async (reason) => { setBusy('reopen'); setErr(null); try { await reopenPeriod(year, sel, user?.id, reason); await load(); await reloadGates(sel) } catch (e) { setErr(e.message) } setBusy('') }}
+        renderChecklist={() => <Checklist check={check} grouped={grouped} onClassified={doCheck} onOpenDoc={setOpenDoc} />}
+        renderCompleteness={() => <CompletenessPanel comp={comp} grouped={grouped} onChanged={doCheck} />}
+        renderReport={(k) => k === 'cashflow' ? <CashFlowView key={refreshKey} fixedYear={year} fixedMonth={sel} />
+          : k === 'pl' ? <PLView key={refreshKey} fixedYear={year} fixedMonth={sel} />
+          : k === 'balance' ? <BalanceView key={refreshKey} fixedYear={year} fixedMonth={sel} />
+          : <GoodsReportView key={refreshKey} year={year} month={sel} />} />
+      {docModal}
+    </>
+  )
 
   return (
     <div>
@@ -282,6 +305,14 @@ function GoodsReportView({ year, month }) {
         <Col title={`Залишок на кінець (${d.remaining.length})`} color="var(--text)" sub={`на ${fmtInt(t.remainingValue)} грн`} rows={d.remaining}
           render={r => <>{fmt(r.qty)} шт · {fmt(r.unitCost)} грн/од · Σ <b style={{ color: 'var(--text2)' }}>{fmtInt(r.value)}</b></>} />
       </div>
+      {(d.assembled?.length > 0 || d.consumed?.length > 0) && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14, alignItems: 'start', marginTop: 14 }}>
+          <Col title={`Зібрано комплектів (${d.assembled.length})`} color="var(--text)" sub={`за собівартістю компонентів ${fmtInt(t.assembledSum)} грн — не закупівля`} rows={d.assembled}
+            render={r => <>{fmt(r.qty)} шт · {fmt(r.price)} грн/од · Σ <b style={{ color: 'var(--text2)' }}>{fmtInt(r.sum)}</b></>} />
+          <Col title={`Використано у збірках (${d.consumed.length})`} color="var(--text)" sub="компоненти списані в комплект — не продаж" rows={d.consumed}
+            render={r => <>{fmt(r.qty)} шт</>} />
+        </div>
+      )}
       <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 10, marginBottom: 0 }}>
         <i className="ti ti-paperclip" /> Клік по товару відкриває документ: у «Куплено» й «Залишок» — прихідну накладну, у «Продано» — вашу видаткову. Щоб звірити ціни з оригіналом. Ціни без ПДВ.
       </p>
@@ -310,6 +341,15 @@ function Checklist({ check, grouped, onClassified, onOpenDoc }) {
       {check.negativeStock.slice(0, 8).map(n => (
         <div key={n.id} style={{ fontSize: 12, color: 'var(--red)', marginLeft: 24 }}>• {n.name?.slice(0, 55)} = {n.qty}</div>
       ))}
+      {(check.presoldStock || []).length > 0 && <>
+        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13 }}>
+          <span><i className="ti ti-info-circle" style={{ color: 'var(--amber, #d97706)', marginRight: 6 }} />Продано під замовлення (мінус покрито пізнішим приходом — не блокує)</span>
+          <b style={{ color: 'var(--amber, #d97706)' }}>{check.presoldStock.length} товар(ів)</b>
+        </div>
+        {check.presoldStock.slice(0, 8).map(n => (
+          <div key={n.id} style={{ fontSize: 12, color: 'var(--text2)', marginLeft: 24 }}>• {n.name?.slice(0, 55)} = {n.qty} на кінець місяця · прихід {n.coveredOn ? n.coveredOn.split('-').reverse().join('.') : 'пізніше'}</div>
+        ))}
+      </>}
       <Row bad={check.docsNoAmount.length > 0} label="Документи без суми"
         val={check.docsNoAmount.length ? `${check.docsNoAmount.length} шт` : 'немає'} />
 

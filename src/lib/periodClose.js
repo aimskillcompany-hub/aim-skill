@@ -33,6 +33,15 @@ export async function runChecklist(year, month) {
     const pm = {}; (prods || []).forEach(p => pm[p.id] = p)
     negativeStock = negIds.filter(id => (pm[id]?.product_type || 'goods') === 'goods').map(id => ({ id, name: pm[id]?.name || id, qty: bal[id] }))
   }
+  // ТЗ 6.6, помилка 9 (рішення власника 23.10.2026): продаж «під замовлення» — продано раніше, ніж датовано прихід.
+  // Мінус на кінець місяця, який пізніше покрито приходом, — попередження, не блокер; непокритий мінус блокує, як і раніше.
+  let presoldStock = []
+  if (negativeStock.length) {
+    const later = await fetchAll('stock_movements', 'product_id, quantity, date', q => q.gt('date', to).eq('type', 'in').in('product_id', negativeStock.map(n => n.id))).catch(() => [])
+    const inAfter = {}; later.forEach(m => { inAfter[m.product_id] = (inAfter[m.product_id] || 0) + (Number(m.quantity) || 0); if (!inAfter['d' + m.product_id] || m.date < inAfter['d' + m.product_id]) inAfter['d' + m.product_id] = m.date })
+    presoldStock = negativeStock.filter(n => (inAfter[n.id] || 0) >= -n.qty - 0.0001).map(n => ({ ...n, coveredOn: inAfter['d' + n.id] }))
+    negativeStock = negativeStock.filter(n => !presoldStock.some(p => p.id === n.id))
+  }
 
   // 2. Документи періоду без суми
   const { data: docsNoAmount } = await qc('documents')
@@ -82,7 +91,7 @@ export async function runChecklist(year, month) {
   const unclassifiedTx = (unclassifiedList || []).length
   const blockers = negativeStock.length + (docsNoAmount?.length || 0) + unverifiedList.length + unclassifiedTx
   return {
-    negativeStock, docsNoAmount: docsNoAmount || [],
+    negativeStock, presoldStock, docsNoAmount: docsNoAmount || [],
     unclassifiedTx, unclassifiedList: unclassifiedList || [],
     unverifiedDocs: unverifiedList.length, unverifiedList,
     unpostedStock,
@@ -383,11 +392,25 @@ export async function closePeriod(year, month, userId, { notes, reportsConfirmed
 }
 
 // ── Переоткрити період ──
-export async function reopenPeriod(year, month, userId) {
-  const { error } = await supabase.from('period_closings')
-    .update({ status: 'reopened', reopened_at: new Date().toISOString(), reopened_by: userId || null })
+// reason — обов'язкова з міграції 100 (переоткриває лише адміністратор; перевіряє сервер, пише журнал)
+export async function reopenPeriod(year, month, userId, reason = null) {
+  const q = (patch) => supabase.from('period_closings').update(patch)
     .eq('company_id', getActiveCompanyId()).eq('period_year', year).eq('period_month', month)
-  if (error) throw new Error(error.message)
+  const base = { status: 'reopened', reopened_at: new Date().toISOString(), reopened_by: userId || null }
+  let { error } = await q(reason ? { ...base, reopen_reason: reason } : base)
+  if (error && /reopen_reason/.test(error.message || '')) ({ error } = await q(base))   // до міграції 100
+  if (error) throw new Error(/PERIOD_REOPEN_ADMIN/.test(error.message) ? 'Переоткрити закритий місяць може лише адміністратор.'
+    : /PERIOD_REOPEN_REASON/.test(error.message) ? 'Вкажіть причину переоткриття.' : error.message)
+}
+
+// Журнал закриттів / переоткриттів місяця (міграція 100); до міграції — порожньо
+export async function listCloseLog(year, month) {
+  const { data, error } = await qc('period_close_log').select('action, reason, user_id, at').eq('period_year', year).eq('period_month', month).order('at', { ascending: false })
+  if (error) return []
+  const ids = [...new Set((data || []).map(x => x.user_id).filter(Boolean))]
+  const names = {}
+  if (ids.length) { const { data: ps } = await supabase.from('profiles').select('id, full_name').in('id', ids); (ps || []).forEach(p => names[p.id] = p.full_name) }
+  return (data || []).map(x => ({ ...x, who: names[x.user_id] || '—' }))
 }
 
 // ── Чи закрито період для дати (для м'якого блокування в UI) ──
@@ -485,12 +508,21 @@ export async function computePeriodDetail(year, month) {
 // Залишкова вартість = к-сть на кінець × buy_price (остання закупівля) — як у знімку/балансі.
 export async function computeGoodsReport(year, month) {
   const { from, to } = periodRange(year, month)
-  const sm = await fetchAll('stock_movements', 'product_id, type, quantity, price, cost_price, date, document_id', q => q.lte('date', to))
+  // ТЗ 6.6, помилка 8: рухи збірки (source = 'assembly') — не закупівля і не продаж. Компоненти списуються у збірку
+  // за 0 ₴, а комплект оприбутковується за собівартістю компонентів; раніше це показувалось як «продано за 0» і
+  // «куплено на суму комплекту». Тепер — окремо: «Зібрано» (комплекти) і «Використано у збірках» (компоненти).
+  let sm = await fetchAll('stock_movements', 'product_id, type, quantity, price, cost_price, date, document_id, source', q => q.lte('date', to)).catch(() => null)
+  if (!sm) sm = await fetchAll('stock_movements', 'product_id, type, quantity, price, cost_price, date, document_id', q => q.lte('date', to))
+  const isAsm = (m) => m.source === 'assembly'
   const agg = {}
   sm.forEach(m => {
     const q = Number(m.quantity) || 0, price = Number(m.price) || 0, cost = Number(m.cost_price) || 0
-    const a = (agg[m.product_id] ||= { openQ: 0, inQ: 0, inSum: 0, outQ: 0, outSum: 0, outCost: 0, lastIn: null, lastOut: null })
+    const a = (agg[m.product_id] ||= { openQ: 0, inQ: 0, inSum: 0, outQ: 0, outSum: 0, outCost: 0, asmInQ: 0, asmInSum: 0, asmOutQ: 0, lastIn: null, lastOut: null })
     const inPeriod = m.date >= from && m.date <= to
+    if (inPeriod && isAsm(m)) {                       // збірка: рух залишку є, але не закупівля / продаж
+      if (m.type === 'in') { a.asmInQ += q; a.asmInSum += q * price } else a.asmOutQ += q
+      return
+    }
     if (m.type === 'in') {
       if (m.date < from) a.openQ += q
       else if (inPeriod) { a.inQ += q; a.inSum += q * price }
@@ -515,7 +547,7 @@ export async function computeGoodsReport(year, month) {
   const goods = pids.filter(id => (prodMap[id]?.product_type || 'goods') === 'goods')
   const rows = goods.map(id => {
     const a = agg[id], p = prodMap[id] || {}
-    const closeQ = a.openQ + a.inQ - a.outQ, unitCost = Number(p.buy_price) || 0
+    const closeQ = a.openQ + a.inQ - a.outQ + a.asmInQ - a.asmOutQ, unitCost = Number(p.buy_price) || 0
     return { product_id: id, name: p.name || id, ...a, closeQ, unitCost, closeVal: closeQ * unitCost, docId: a.lastIn?.id || null, saleDocId: a.lastOut?.id || null }
   })
 
@@ -529,14 +561,18 @@ export async function computeGoodsReport(year, month) {
     .map(r => ({ product_id: r.product_id, name: r.name, qty: r.closeQ, unitCost: r.unitCost, value: r.closeVal, docId: r.docId }))
     .sort((a, b) => b.value - a.value)
 
+  const assembled = rows.filter(r => r.asmInQ > 0.0001)
+    .map(r => ({ product_id: r.product_id, name: r.name, qty: r.asmInQ, price: r.asmInQ ? r.asmInSum / r.asmInQ : 0, sum: r.asmInSum, docId: null }))
+  const consumed = rows.filter(r => r.asmOutQ > 0.0001).map(r => ({ product_id: r.product_id, name: r.name, qty: r.asmOutQ, docId: null }))
   const totals = {
+    assembledSum: assembled.reduce((s, r) => s + r.sum, 0),
     purchasedSum: purchased.reduce((s, r) => s + r.sum, 0),
     soldRevenue: sold.reduce((s, r) => s + r.revenue, 0),
     soldCost: sold.reduce((s, r) => s + r.costSum, 0),
     soldMargin: sold.reduce((s, r) => s + r.margin, 0),
     remainingValue: remaining.reduce((s, r) => s + r.value, 0),
   }
-  return { purchased, sold, remaining, totals }
+  return { purchased, sold, remaining, assembled, consumed, totals }
 }
 
 // ── Безперервність залишків: на початок + рух = на кінець (склад + гроші) ──
