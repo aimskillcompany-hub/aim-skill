@@ -4,7 +4,7 @@
 import { Fragment, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { formatAmount } from '../utils/format'
-import { Button, Switch, Sheet, TableSkeleton } from '../components/ui'
+import { Button, Switch, Sheet, TableSkeleton, InfoTip } from '../components/ui'
 import './AnalyticsNew.css'
 
 export const MONTHS_SHORT = ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Лип', 'Сер', 'Вер', 'Жов', 'Лис', 'Гру']
@@ -148,9 +148,8 @@ export function CashFlowNew({ d, debt, year, month, setMonth, openDrill }) {
           </button>
           {recv > 0 && (
             <div className="cfn-card cfn-with">
-              <span className="cfn-with-t">З урахуванням дебіторки</span>
+              <span className="cfn-with-t">З урахуванням дебіторки<InfoTip label="З урахуванням дебіторки">Гроші вже зароблені за виписаними видатковими й актами, але ще не надійшли на рахунок.</InfoTip></span>
               <b>{signed(d.netTotal + recv)} ₴</b>
-              <span className="cfn-sm">гроші вже зароблені за видатковими й актами — просто ще не надійшли на рахунок</span>
             </div>
           )}
         </div>
@@ -170,7 +169,7 @@ export function CashFlowNew({ d, debt, year, month, setMonth, openDrill }) {
 
       <section className="cfn-card cfn-report" aria-label="Звіт по статтях">
         <div className="cfn-report-head">
-          <div><h2>Звіт по статтях</h2><p className="cfn-muted cfn-sm">Стаття × {month ? 'день' : 'місяць'} · прямий метод · натисніть на цифру, щоб відкрити транзакції</p></div>
+          <div><h2>Звіт по статтях<InfoTip label="Звіт по статтях">Стаття × {month ? 'день' : 'місяць'}, прямий метод: усі фактичні рухи коштів (валідовані й ні), на відміну від P&L.<br />Залишок на початок періоду — {formatAmount(d.openingCash, { decimals: 0 })} ₴; «Залишок на кінець» рахується накопичувально.</InfoTip></h2></div>
           <div className="cfn-report-tools">
             {noArt > 0 && <button type="button" className="cfn-pill is-neg cfn-pill-btn" onClick={() => navigate('/bank?article=__none__')}>{plain(noArt)} ₴ без статті · <u>розподілити</u></button>}
             <Switch checked={heat} onChange={setHeat} label="Теплова карта" />
@@ -193,10 +192,8 @@ export function CashFlowNew({ d, debt, year, month, setMonth, openDrill }) {
             </tfoot>
           </table>
         </div>
-        <p className="cfn-muted cfn-sm cfn-foot">Залишок на початок періоду: {formatAmount(d.openingCash, { decimals: 0 })} ₴. Прямий метод: усі фактичні рухи коштів (валідовані й ні), на відміну від P&L. «Залишок на кінець» — накопичувально.</p>
       </section>
 
-      <p className="cfn-muted cfn-sm cfn-mob-note">Прямий метод: усі фактичні рухи коштів. Натисніть на місяць на графіку, щоб побачити деталі.</p>
 
       <Sheet open={sheet} title="Статті руху коштів" onClose={() => setSheet(false)}>
           {[['in', 'Надходження', d.inflow], ['out', 'Витрати', d.outflow]].map(([k, label, sec]) => (
@@ -332,7 +329,9 @@ export function PLNew({ bd, acc, recon, plErr, year, month, setMonth, accrual, m
       )}
 
       <section className="cfn-card cfn-report" aria-label="Звіт про прибутки та збитки">
-        <div className="cfn-report-head"><h2>Звіт про прибутки та збитки</h2><span className="cfn-muted cfn-sm">від'ємні значення — зі знаком «−» · натисніть на цифру, щоб побачити операції</span></div>
+        <div className="cfn-report-head"><h2>Звіт про прибутки та збитки<InfoTip label="Звіт про прибутки та збитки">{accrual
+          ? <>Нарахування: виручка — видаткові й акти за датою документа, без ПДВ; собівартість — відвантажених позицій.<br />Закупівлі до відвантаження — запас, не витрата. Операційні витрати — підтверджені оплати за датою оплати.{acc?.excludedVat?.length ? <><br />ПДВ ({acc.excludedVat.map(x => `${x.label} ${plain(x.total)} ₴`).join(', ')}) — не витрата.</> : null}</>
+          : <>Касовий: лише підтверджені транзакції за датою оплати.</>}</InfoTip></h2></div>
         {cols.length > 1 && <div className="pln-mchips" role="group" aria-label="Період у списку">
           {[{ key: 'total', label: 'Разом' }, ...cols].map(c => <button key={c.key} type="button" aria-pressed={mCol === c.key} onClick={() => setMCol(c.key)}>{c.label}</button>)}
         </div>}
@@ -356,9 +355,6 @@ export function PLNew({ bd, acc, recon, plErr, year, month, setMonth, accrual, m
             </tbody>
           </table>
         </div>
-        <p className="cfn-muted cfn-sm cfn-foot">{accrual
-          ? <>Нарахування: виручка — видаткові й акти за датою документа, без ПДВ; собівартість — відвантажених позицій. Закупівлі до відвантаження — запас, не витрата. Операційні витрати — підтверджені оплати за датою оплати{acc?.excludedVat?.length ? `; ПДВ (${acc.excludedVat.map(x => `${x.label} ${plain(x.total)} ₴`).join(', ')}) — не витрата` : ''}.</>
-          : <>Касовий: лише підтверджені транзакції за датою оплати.</>}</p>
       </section>
 
       {accrual && <ReconBridge recon={recon} />}
@@ -419,8 +415,7 @@ function ReconBridge({ recon: r }) {
   return (
     <section className={`cfn-card pln-bridge${shut ? ' is-shut' : ''}`} aria-label="Звірка прибутку з грошима">
       <button type="button" className="pln-br-head" aria-expanded={!shut} onClick={() => setShut(x => !x)}>
-        <span><h2>Чому прибуток {short(r.netProfit)}, а грошей {short(r.cashFlow)}</h2>
-          <span className="cfn-muted cfn-sm">Звірка прибутку за нарахуванням із фактичним рухом грошей</span></span>
+        <span><h2>Чому прибуток {short(r.netProfit)}, а грошей {short(r.cashFlow)}<InfoTip label="Чому прибуток не дорівнює грошам">Звірка прибутку за нарахуванням із фактичним рухом грошей.</InfoTip></h2></span>
         <i className={`ti ti-chevron-${shut ? 'down' : 'up'}`} aria-hidden="true" /></button>
       {!shut && <>
       <ul>
@@ -446,14 +441,14 @@ export function ForecastHero({ f0, accrualNet }) {
   const expected = isAcc ? accrualNet + (f0.pipelineMargin || 0) : f0.expected
   return (
     <section className="pln-fc" aria-label="Очікуваний результат">
-      <span className="pln-fc-t">Очікуваний результат · оцінка</span>
+      <span className="pln-fc-t">Очікуваний результат · оцінка<InfoTip tone="onDark" label="Очікуваний результат">Оцінка, не факт: до фактичного результату {isAcc ? 'додано' : 'додано виписані, але не оплачені документи й'} очікувану маржу замовлень без видаткової.</InfoTip></span>
       <b className={`pln-fc-v${expected < 0 ? ' is-neg' : ''}`}>≈ {formatAmount(expected, { decimals: 0 })} ₴</b>
       <dl>
         <div><dt>Фактичний результат{isAcc ? ' (нарахування)' : ''}</dt><dd>{formatAmount(fact, { decimals: 0 })}</dd></div>
         {!isAcc && <div><dt>+ дебіторка, чекає оплати</dt><dd className="is-warn">{formatAmount(recv, { decimals: 0, sign: 'always' })}</dd></div>}
         <div><dt>+ маржа {f0.pipelineCount} відкритих замовлень</dt><dd className="is-pos">{formatAmount(f0.pipelineMargin || 0, { decimals: 0, sign: 'always' })}</dd></div>
       </dl>
-      <span className="pln-fc-note">Не факт: {isAcc ? 'додано' : 'додано виписані, але не оплачені документи й'} очікувану маржу замовлень без видаткової.{f0.pipelineNoItems > 0 ? ` У ${f0.pipelineNoItems} зам. немає позицій — їхня маржа не врахована.` : ''}</span>
+      {f0.pipelineNoItems > 0 && <span className="pln-fc-note">У {f0.pipelineNoItems} зам. немає позицій — їхня маржа не врахована.</span>}
     </section>
   )
 }
@@ -488,7 +483,7 @@ export function BalanceSnapshotNew({ s, asOf, onDrill }) {
       </section>
       <div className="bln-cols">
         <section className="cfn-card bln-list" aria-label="Активи">
-          <h2>Активи <span>{formatAmount(assets, { decimals: 0 })} ₴</span></h2>
+          <h2>Активи<InfoTip label="Як рахується управлінський баланс"><b>Активи</b> = гроші + склад за собівартістю + основні засоби за ціною купівлі, без амортизації + дебіторка.<br /><b>Зобов’язання</b> = кредиторка (неоплачені документи з ПДВ) + залишок фін. допомоги.<br /><b>Капітал</b> = активи − зобов’язання.</InfoTip> <span>{formatAmount(assets, { decimals: 0 })} ₴</span></h2>
           <ul>
             <Line label="Гроші на рахунках і в касі" v={cash} />
             {accounts.map(a => <Line key={a.id} label={a.name} v={a.balance} sub />)}
@@ -507,7 +502,6 @@ export function BalanceSnapshotNew({ s, asOf, onDrill }) {
           <div className="bln-eq"><span>Власний капітал = активи − зобов'язання</span><b className={equity < 0 ? 'is-neg' : ''}>{formatAmount(equity, { decimals: 0 })} ₴</b></div>
         </section>
       </div>
-      <p className="cfn-muted cfn-sm">Управлінський баланс: склад — товари за собівартістю; основні засоби — за вартістю купівлі, без амортизації; борги — неоплачені документи з ПДВ. Натисніть на рядок зі стрілкою — побачите склад суми.</p>
     </div>
   )
 }
@@ -556,7 +550,7 @@ export function BalanceTrendNew({ trend, range, onCell, busyCell }) {
       </section>
 
       <section className="cfn-card" aria-label="Структура балансу по місяцях">
-        <div className="pln-months-head"><h2>Структура балансу по місяцях</h2>
+        <div className="pln-months-head"><h2>Структура балансу по місяцях<InfoTip label="Структура балансу по місяцях">Кожен місяць — стан на кінець місяця; майбутні не показуються. Над стовпцем — капітал.<br />Капітал = гроші + склад + ОЗ + дебіторка − кредиторка − ПФД.</InfoTip></h2>
           <div className="pln-legend bln-legend">{[['cash', 'Гроші'], ['stock', 'Склад'], ['fa', 'Основні засоби'], ['recv', 'Дебіторка'], ['pay', 'Кредиторка'], ['loans', 'Позики (ПФД)']].map(([k, l]) => <span key={k}><i className={`bln-c-${k}`} />{l}</span>)}<span><i className="bln-c-eq" />Капітал</span></div></div>
         <div className="bln-scroll">
           <div className="bln-bars" style={{ '--up': `${upH}%` }}>
@@ -575,8 +569,8 @@ export function BalanceTrendNew({ trend, range, onCell, busyCell }) {
 
       <div className="bln-mid">
         <section className="cfn-card pln-bridge" aria-label="Що змінило капітал">
-          <h2>{sel ? `Що змінило капітал: ${monthName(sel)}` : `Що змінило капітал ${range === 'ytd' ? 'з початку року' : 'з початку діяльності'}`}</h2>
-          <p className="cfn-muted cfn-sm">Ріст активу або зменшення боргу збільшує капітал, і навпаки{sel ? ' · натисніть місяць ще раз, щоб повернутися до всього періоду' : ' · натисніть на місяць на графіку — покаже саме його'}</p>
+          <h2>{sel ? `Що змінило капітал: ${monthName(sel)}` : `Що змінило капітал ${range === 'ytd' ? 'з початку року' : 'з початку діяльності'}`}<InfoTip label="Що змінило капітал">Ріст активу або зменшення боргу збільшує капітал, і навпаки.</InfoTip></h2>
+          {sel && <button type="button" className="rpt-link" onClick={() => setPick(null)}>← увесь період</button>}
           <ul>
             {contrib.map(([k, v]) => (
               <li key={k}><span className="pln-br-l">{k}</span><span className="pln-br-track"><span className={`pln-br-bar${v < 0 ? ' is-neg' : ''}`} style={{ width: `${(Math.abs(v) / cMax) * 50}%` }} /></span>
@@ -612,7 +606,6 @@ export function BalanceTrendNew({ trend, range, onCell, busyCell }) {
             </tbody>
           </table>
         </div>
-        <p className="cfn-muted cfn-sm cfn-foot">Кожен рядок — стан на кінець місяця. Капітал = гроші + склад + ОЗ + дебіторка − кредиторка − ПФД. Натисніть на цифру — побачите, з чого вона складається; на місяць — що змінило капітал. Майбутні місяці не показуються.</p>
       </section>
     </div>
   )

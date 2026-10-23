@@ -12,7 +12,7 @@ import { getDocType } from '../lib/docgen'
 import { supabase } from '../lib/supabase'
 import DocModal from '../components/DocModal'
 import { useUser } from '../lib/auth'
-import { useTabParam, Tabs, Button, Segmented, Switch, PeriodMenu } from '../components/ui'
+import { useTabParam, Tabs, Button, Segmented, Switch, PeriodMenu, InfoTip } from '../components/ui'
 import { useNewUi } from '../lib/uiPrefs'
 import { todayKyiv } from '../lib/dates'
 import { canAccess } from '../lib/permissions'
@@ -468,7 +468,7 @@ export function PLView({ fixedYear = null, fixedMonth = null } = {}) {
         {!accrual && <Segmented ariaLabel="Факт чи план" value={mode} onChange={setMode}
           options={[{ value: 'fact', label: 'Факт' }, { value: 'plan', label: 'План' }, { value: 'compare', label: 'План vs факт' }]} />}
         {!accrual && mode === 'fact' && <Switch checked={showPending} onChange={setShowPending} label="Показати непідтверджені" />}
-        <span className="cfn-muted cfn-sm">{accrual ? 'Виручка й собівартість — за датою документа. План — у касовому методі.' : 'Лише підтверджені оплати, за датою оплати.'}</span>
+        <InfoTip label="Нарахування чи касовий метод">{accrual ? 'Виручка й собівартість — за датою документа. План — у касовому методі.' : 'Тільки фактичні гроші — підтверджені оплати за датою оплати.'}</InfoTip>
         <span className="an-right"><PeriodMenu year={year} month={month} onChange={p => { setYear(p.year); setMonth(p.month) }} years={YEARS} /></span>
       </div>
       <PLNew bd={bd} acc={acc} recon={recon} plErr={plErr} year={year} month={month} setMonth={setMonth} accrual={accrual} mode={mode}
@@ -889,7 +889,7 @@ export function BalanceView({ fixedYear = null, fixedMonth = null } = {}) {
         <div className="an-toolbar pln-switches">
           <Segmented ariaLabel="Вигляд балансу" value={view} onChange={setView} options={[{ value: 'snapshot', label: 'Поточний стан' }, { value: 'trend', label: 'Динаміка' }]} />
           {view === 'trend' && <Segmented ariaLabel="Діапазон" value={range} onChange={setRange} options={[{ value: 'ytd', label: 'З початку року' }, { value: 'all', label: 'З початку діяльності' }]} />}
-          <span className="cfn-muted cfn-sm">{view === 'trend' ? 'Стан на кінець кожного місяця; майбутні місяці не показуються.' : `Станом ${asOf}`}</span>
+          {view !== 'trend' && <span className="cfn-muted cfn-sm">Станом {asOf}</span>}
           <span className="an-right"><PeriodMenu year={year} month={month} onChange={p => { setYear(p.year); setMonth(p.month) }} years={YEARS} /></span>
         </div>
         {view === 'trend'
