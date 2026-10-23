@@ -174,9 +174,11 @@ function StockTab({ newUi = false, tabs = null, onExcel = null, onStats = null }
     // усі товари (раніше .limit(2000) мовчки обрізався сервером до 1000)
     const make = () => { let q = qc('product_stock')
       .select('id, name, sku, unit, category, buy_price, sell_price, computed_stock, total_in, total_out, status')
-      .eq('product_type', 'goods'); return showArchived ? q : q.eq('status', 'active') }
+      .eq('product_type', 'goods'); return q }
     const { data } = await fetchAllData(make).then(r => ({ ...r, data: [...(r.data || [])].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'uk')) }))
-    setRows(data || [])
+    // архівні — лише з перемикачем «Архівні»; але архівна картка з ненульовим залишком показується завжди (позначка «архів»):
+    // інакше мінус від продажу з заархівованої картки ховається (ВН-0036, 23.10.2026)
+    setRows((data || []).filter(r => showArchived || r.status === 'active' || r.status == null || Math.abs(Number(r.computed_stock) || 0) > 0.00001))
     setLoading(false)
   }
   useEffect(() => { load() }, [showArchived])
@@ -692,6 +694,8 @@ function ProductModal({ product, onClose, asPage = false, backTo = '/inventory' 
   }
 
   const archive = async () => {
+    const left = Number(stock?.computed_stock) || 0
+    if (Math.abs(left) > 0.00001) { alert(`Не можна архівувати: на складі ${left > 0 ? 'залишок' : 'мінус'} ${left} ${stock?.unit || 'шт'}. Спершу обнуліть залишок або об'єднайте картку з іншою («Об'єднати з товаром»).`); return }
     if (!confirm('Архівувати? Зникне зі списків складу, історія рухів збережеться.')) return
     setBusy(true)
     await supabase.from('products').update({ status: 'archived' }).eq('id', product.id)
@@ -1017,7 +1021,7 @@ function MergeProductModal({ product, onClose, onDone }) {
   useEffect(() => {
     const t = q.trim()
     if (t.length < 2) { setRows([]); return }
-    qc('product_stock').select('id, name, sku, computed_stock').eq('status', 'active').or(`name.ilike.%${t}%,sku.ilike.%${t}%`).limit(15)
+    qc('product_stock').select('id, name, sku, computed_stock, status').or(`name.ilike.%${t}%,sku.ilike.%${t}%`).limit(20)
       .then(({ data }) => setRows((data || []).filter(r => r.id !== product.id)))
   }, [q])
 
@@ -1041,7 +1045,7 @@ function MergeProductModal({ product, onClose, onDone }) {
             <div style={{ border: q.trim().length >= 2 ? '1px solid var(--border)' : 'none', borderRadius: 8, marginTop: 6, maxHeight: 260, overflow: 'auto' }}>
               {rows.map(r => (
                 <div key={r.id} onClick={() => setPick(r)} style={{ padding: '8px 10px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                  <span className="trunc">{r.name} {r.sku ? <span style={{ color: 'var(--text3)', fontSize: 11 }}>· {r.sku}</span> : ''}</span>
+                  <span className="trunc">{r.name} {r.sku ? <span style={{ color: 'var(--text3)', fontSize: 11 }}>· {r.sku}</span> : ''}{r.status === 'archived' && <span style={{ color: 'var(--text3)', fontSize: 11 }}> · архів</span>}</span>
                   <span style={{ color: r.computed_stock < 0 ? 'var(--red)' : 'var(--green)', flexShrink: 0 }}>{fmt(r.computed_stock)}</span>
                 </div>
               ))}
