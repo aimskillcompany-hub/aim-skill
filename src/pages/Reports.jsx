@@ -78,8 +78,8 @@ export default function Reports() {
         </div>
         <div className="rpt-head-acts">
           <PeriodMenu year={period.year} month={period.month} allowYear={tab === 'profit'} onChange={p => setPeriod({ year: p.year, month: p.month || (tab === 'profit' ? 0 : now.getMonth() + 1) })} />
-          <Button variant="secondary" icon="ti-file-spreadsheet" disabled={!exp?.xlsx} onClick={() => exp?.xlsx?.()}>Excel</Button>
-          <Button variant="primary" icon="ti-file-download" disabled={!exp?.pdf} onClick={() => exp?.pdf?.()}>PDF</Button>
+          <Button variant="secondary" icon="ti-file-spreadsheet" disabled={!exp?.xlsx} onClick={() => exp?.xlsx?.()} aria-label="Excel" className="rpt-exp"><span className="rpt-exp-t">Excel</span></Button>
+          <Button variant="primary" icon="ti-file-download" disabled={!exp?.pdf} onClick={() => exp?.pdf?.()} aria-label="PDF" className="rpt-exp"><span className="rpt-exp-t">PDF</span></Button>
         </div>
       </div>
       <div className="rpt-tiles" role="tablist" aria-label="Звіти">

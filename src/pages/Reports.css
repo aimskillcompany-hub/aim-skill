@@ -203,3 +203,22 @@
 .acc-detail > .card { border: 0; padding: 0; margin-bottom: 16px !important; box-shadow: none; background: none; }
 .acc-empty { margin: 0; padding: 24px 16px; font-size: 13px; color: var(--muted); text-align: center; }
 @media (max-width: 1023px) { .acc-split { grid-template-columns: minmax(0, 1fr); } .acc-detail { position: static; } }
+/* «Звіти» на телефоні (макет ReportsMobile): компактна шапка, темний підсумок дебіторки, картки боржників зі смужкою частки */
+@media (max-width: 767px) {
+  .rpt-head-row { flex-wrap: nowrap; align-items: center; }
+  .rpt-head-row .rpt-sub { display: none; }
+  .rpt-head-acts { flex-wrap: nowrap; gap: 6px; width: auto !important; }
+  .rpt-head-acts .rpt-exp { width: var(--h-touch) !important; min-width: var(--h-touch); padding: 0 !important; justify-content: center; flex: none; }
+  .rpt-exp-t { display: none; }
+  .rcv-sum { background: var(--ink) !important; border-color: var(--ink) !important; color: #fff; }
+  .rcv-sum span, .rcv-sum small { color: var(--on-dark-muted) !important; }
+  .rcv-sum b { color: #fff; } .rcv-sum b.is-neg { color: var(--on-dark-neg) !important; }
+  .rcv-sum .rpt-muted { color: var(--on-dark-muted) !important; }
+  .rcv-table .c-share { display: block !important; grid-area: share; width: auto; min-width: 0; }
+  .rcv-table tbody tr.is-click { grid-template-areas: "x name sum" "x name age" "x share share" "x over act"; }
+  .rcv-table .c-sum { grid-area: sum; text-align: right; }
+  .rcv-table .c-over { grid-area: over; text-align: left !important; font-size: 12px; }
+  .rcv-table .c-act { grid-area: act; text-align: right !important; margin-top: 0; }
+  .rcv-table .c-act .btn { height: 28px; min-height: 28px; padding: 0 10px; font-size: 12px; width: auto; }
+}
+@media (max-width: 767px) { .rcv-table .c-sum, .rcv-table .c-age, .rcv-table .c-act { justify-self: end; } .rcv-table .c-sum b { font-size: 15px; } .rcv-table tfoot td:nth-child(3) { text-align: right; } }
