@@ -5,7 +5,7 @@
 //   додавання: Товар → Кількість і ціни → Постачальник останнім кроком.
 import { useMemo, useState } from 'react'
 import ProductSelect from '../components/ui/ProductSelect'
-import { Button, Menu, Segmented, Callout, EmptyState } from '../components/ui'
+import { Button, Menu, Segmented, Callout, EmptyState, InfoTip } from '../components/ui'
 import { formatAmount } from '../utils/format'
 import './ItemsNew.css'
 
@@ -213,16 +213,15 @@ function AddItem({ no, vatOn, defVat, incl, suppliers, usedSupplierIds, createSu
             <label>Код<input className="form-input" value={item.sku} onChange={e => setItem(it => ({ ...it, sku: e.target.value }))} /></label>
             <label>Од.<input className="form-input" value={item.unit} onChange={e => setItem(it => ({ ...it, unit: e.target.value }))} /></label>
           </div>}
-      {src === 'catalog' && <p className="itn-note">Немає в довіднику? <button type="button" className="itn-link" onClick={() => setSrc('manual')}>Створити вручну</button> — товар збережеться в довідник.</p>}
+      {src === 'catalog' && <p className="itn-note">Немає в довіднику? <button type="button" className="itn-link" onClick={() => setSrc('manual')}>Створити вручну</button><InfoTip label="Створити вручну">Новий товар збережеться в довідник.</InfoTip></p>}
 
       <div className="itn-step"><span className="itn-step-n">2</span><b>Кількість і ціна</b></div>
       <div className="itn-prices">
         <label>Кількість, {item.unit || 'шт'}<input className="form-input" type="number" inputMode="decimal" value={qty} onChange={e => setQty(e.target.value)} /></label>
         <label>Закупка{vatOn ? (incl ? ', з ПДВ' : ', без ПДВ') : ''}<input className="form-input" type="number" inputMode="decimal" value={cost} onChange={e => onCost(e.target.value)} /></label>
         <label>Націнка, %<input className="form-input" type="number" inputMode="decimal" value={markup} onChange={e => onMarkup(e.target.value)} /></label>
-        <label>Ціна продажу{vatOn ? (incl ? ', з ПДВ' : ', без ПДВ') : ''}<input className="form-input is-sale" type="number" inputMode="decimal" value={price} onChange={e => onPriceIn(e.target.value)} /></label>
+        <label>Ціна продажу{vatOn ? (incl ? ', з ПДВ' : ', без ПДВ') : ''}<InfoTip label="Ціна продажу">Ціна продажу = закупка × (1 + націнка). Змініть націнку — ціна перерахується, або введіть ціну напряму.</InfoTip><input className="form-input is-sale" type="number" inputMode="decimal" value={price} onChange={e => onPriceIn(e.target.value)} /></label>
       </div>
-      <p className="itn-note">Ціна продажу = закупка × (1 + націнка). Змініть націнку — ціна перерахується; ціну можна ввести і напряму.</p>
       <div className="itn-live">
         {vatOn && <div><span>Сума без ПДВ</span><b>{formatAmount(sumNet)}</b></div>}
         {vatOn && <div><span>ПДВ {rate}%</span><b>{formatAmount(sumGross - sumNet)}</b></div>}
@@ -231,7 +230,7 @@ function AddItem({ no, vatOn, defVat, incl, suppliers, usedSupplierIds, createSu
       </div>
 
       <div className={`itn-supplier-step${sup === undefined ? ' is-required' : ''}`}>
-        <div className="itn-step"><span className="itn-step-n">3</span><b>Постачальник</b>{sup === undefined && <span className="itn-req" aria-hidden="true">*</span>}</div>
+        <div className="itn-step"><span className="itn-step-n">3</span><b>Постачальник</b>{sup === undefined && <span className="itn-req" aria-hidden="true">*</span>}<InfoTip label="Постачальник">Без постачальника позицію не додати. Він збережеться в позиції й наступного разу підставиться сам.</InfoTip></div>
         <div className="itn-chips" role="group" aria-label="Постачальник">
           {chips.map(s => <button key={s.id} type="button" className="itn-chip" aria-pressed={sup === s.id} onClick={() => setSup(s.id)}>{s.name}</button>)}
           {sup && !chips.some(c => c.id === sup) && <button type="button" className="itn-chip" aria-pressed="true">{supName}</button>}
@@ -245,7 +244,6 @@ function AddItem({ no, vatOn, defVat, incl, suppliers, usedSupplierIds, createSu
             <button type="button" className="is-new" onClick={newSupplier}>＋ Новий постачальник «{supSearch.trim()}»</button>
           </div>
         )}
-        {sup === undefined && <p className="itn-note is-warn">Останній крок: оберіть, у кого закуповуємо, — після цього позицію можна додати.</p>}
       </div>
 
       <div className="itn-add-foot">
