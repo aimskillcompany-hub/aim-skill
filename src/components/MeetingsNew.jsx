@@ -7,6 +7,7 @@ import { CATEGORIES, catOf, isMissingTable, listDecisions, createDecision, updat
   groupAccountBalances, findPaymentCandidates, linkPayment } from '../lib/decisions'
 import { formatAmount, plural } from '../utils/format'
 import { todayKyiv } from '../lib/dates'
+import { exportReportPdf } from '../lib/reportExport'
 import { Button, Modal, Menu, Callout, EmptyState, TableSkeleton, useToast } from './ui'
 import '../pages/Reports.css'
 import './MeetingsNew.css'
@@ -21,6 +22,7 @@ export default function MeetingsNew({ list, onEdit, onNew }) {
   const { companies } = useCompany()
   const toast = useToast()
   const [dec, setDec] = useState(null)
+  const [mOpen, setMOpen] = useState(false)   // телефон: окремий екран наради (макет ProtocolsMobile)
   const [missing, setMissing] = useState(false)
   const [accounts, setAccounts] = useState([])
   const [orders, setOrders] = useState({})
@@ -64,6 +66,28 @@ export default function MeetingsNew({ list, onEdit, onNew }) {
     catch (e) { toast(`Не прив'язано: ${e.message}`, { type: 'error' }) }
   }
 
+  // PDF протоколу: рішення (категорія, кому, за що, з рахунку, сума, стан) + обговорення
+  const exportPdf = (m) => {
+    const ds = (dec || []).filter(d => d.protocol_id === m.id)
+    const catLabel = Object.fromEntries(CATEGORIES.map(c => [c.key, c.label]))
+    const rows = ds.map(d => ({
+      cat: catLabel[d.category] || '', who: d.recipient || '—',
+      what: (d.order_ids || []).length ? `за замовленнями ${(d.order_ids || []).map(id => '№' + (orders[id] || '…')).join(', ')}` : (d.note || ''),
+      acc: accById[d.source_account_id]?.name || '—', amount: Number(d.amount) || 0,
+      st: d.status === 'cancelled' ? 'скасовано' : d.status === 'paid' ? 'виплачено' : d.due_date ? `до ${dmy(d.due_date)}` : 'заплановано',
+    }))
+    const live = ds.filter(d => d.status !== 'cancelled')
+    exportReportPdf({
+      fileName: `Протокол наради ${dmy(m.meeting_date)}`, title: m.title || 'Протокол наради',
+      subtitle: `Нарада ${dmy(m.meeting_date)}${m.participants ? ` · учасники: ${m.participants}` : ''} · ухвалено ${n0(sum(live))} ₴, виплачено ${n0(sum(live.filter(d => d.status === 'paid')))} ₴`,
+      columns: [{ key: 'cat', label: 'Категорія' }, { key: 'who', label: 'Кому' }, { key: 'what', label: 'За що' }, { key: 'acc', label: 'З рахунку' }, { key: 'amount', label: 'Сума, ₴', num: true }, { key: 'st', label: 'Стан' }],
+      rows, total: rows.length ? { cat: 'Разом', amount: sum(live) } : null,
+      after: [
+        { heading: 'Записані текстом', text: Array.isArray(m.decisions) ? m.decisions.map((x, i) => `${i + 1}. ${x.text}${x.owner ? ` — ${x.owner}` : ''}${x.due ? `, до ${dmy(x.due)}` : ''}`).join('\n') : '' },
+        { heading: 'Обговорення', text: m.notes || '' },
+      ],
+    })
+  }
   if (!list.length) return <EmptyState icon="ti-clipboard-text" title="Протоколів ще немає" text="Створіть першу нараду." action={{ label: 'Нова нарада', onClick: onNew }} />
   return (
     <div className="mtn">
@@ -79,7 +103,7 @@ export default function MeetingsNew({ list, onEdit, onNew }) {
         <div className="mtn-kpi is-warn"><span>Ще треба виплатити</span><b>{n0(left)} ₴</b><small>{cash > 0 ? `${Math.round((left / cash) * 100)}% грошей групи` : ''}</small></div>
       </div>
 
-      <div className="mtn-body">
+      <div className={`mtn-body${mOpen ? ' is-open' : ''}`}>
         <aside className="mtn-list" aria-label="Наради">
           {byMonth.map(b => (
             <Fragment key={b.k}>
@@ -89,7 +113,7 @@ export default function MeetingsNew({ list, onEdit, onNew }) {
                 const tot = sum(ds), pd = sum(ds.filter(d => d.status === 'paid')), np = ds.filter(d => d.status === 'paid').length
                 const st = !ds.length ? ['Без рішень', ''] : np === ds.length ? ['Виконано', 'is-ok'] : np ? ['Частково', 'is-part'] : ['Не виконано', 'is-none']
                 return (
-                  <button key={m.id} type="button" className="mtn-card" aria-pressed={cur?.id === m.id} onClick={() => setSel(m.id)}>
+                  <button key={m.id} type="button" className="mtn-card" aria-pressed={cur?.id === m.id} onClick={() => { setSel(m.id); setMOpen(true); window.scrollTo?.(0, 0) }}>
                     <span className="mtn-card-h"><small>{dmy(m.meeting_date)}{m.participants ? ` · ${m.participants}` : ''}</small><span className={`mtn-st ${st[1]}`}>{st[0]}</span></span>
                     <b className="mtn-card-t">{m.title}</b>
                     {ds.length > 0 && <>
@@ -106,12 +130,16 @@ export default function MeetingsNew({ list, onEdit, onNew }) {
 
         {cur && (
           <section className="cfn-card mtn-detail" aria-label={cur.title}>
+            <button type="button" className="mtn-back" onClick={() => setMOpen(false)}><i className="ti ti-arrow-left" aria-hidden="true" />Усі наради</button>
             <div className="mtn-d-head">
               <div>
                 <span className="rpt-muted">Нарада · {dmy(cur.meeting_date)}{initials(cur.participants).map(p => <span key={p} className="mtn-who">{p}</span>)}</span>
                 <h2>{cur.title}</h2>
               </div>
-              <Button variant="secondary" icon="ti-pencil" onClick={() => onEdit(cur)}>Редагувати</Button>
+              <div className="mtn-d-acts">
+                <Button variant="secondary" icon="ti-pencil" onClick={() => onEdit(cur)}>Редагувати</Button>
+                <Button variant="secondary" icon="ti-file-type-pdf" onClick={() => exportPdf(cur)} disabled={!dec}>PDF</Button>
+              </div>
             </div>
             {curLive.length > 0 && (() => {
               const t = sum(curLive), p = sum(curLive.filter(d => d.status === 'paid'))

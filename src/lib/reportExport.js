@@ -17,7 +17,8 @@ export function exportReportXlsx({ fileName, sheet = 'Звіт', columns, rows, 
   XLSX.writeFile(wb, `${safe(fileName)}.xlsx`)
 }
 
-export function exportReportPdf({ fileName, title, subtitle, columns, rows, total }) {
+// after — довільні блоки під таблицею: [{ heading, text }] (напр. «Обговорення» в протоколі наради)
+export function exportReportPdf({ fileName, title, subtitle, columns, rows, total, after = [] }) {
   const head = columns.map(c => ({ text: c.label, bold: true, fontSize: 8, color: '#5B655F', alignment: c.num ? 'right' : 'left', fillColor: '#F7F8F6' }))
   const body = rows.map(r => columns.map(c => ({ text: String(cell(r[c.key], c.num)), fontSize: 8.5, alignment: c.num ? 'right' : 'left' })))
   if (total) body.push(columns.map(c => ({ text: String(cell(total[c.key], c.num)), fontSize: 8.5, bold: true, alignment: c.num ? 'right' : 'left', fillColor: '#F7F8F6' })))
@@ -27,6 +28,7 @@ export function exportReportPdf({ fileName, title, subtitle, columns, rows, tota
       { text: title, fontSize: 15, bold: true },
       subtitle ? { text: subtitle, fontSize: 9, color: '#5B655F', margin: [0, 2, 0, 10] } : { text: '', margin: [0, 0, 0, 8] },
       { table: { headerRows: 1, widths: columns.map(c => c.num ? 'auto' : '*'), body: [head, ...body] }, layout: { hLineColor: () => '#EEF0EC', vLineWidth: () => 0, hLineWidth: () => 0.6, paddingTop: () => 4, paddingBottom: () => 4 } },
+      ...after.filter(b => b?.text).flatMap(b => [{ text: b.heading, fontSize: 11, bold: true, margin: [0, 14, 0, 4] }, { text: b.text, fontSize: 9.5 }]),
     ],
     defaultStyle: { font: 'Roboto' },
   }, `${safe(fileName)}.pdf`)
