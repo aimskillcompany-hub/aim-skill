@@ -144,3 +144,6 @@ a.ocn-meta-item:hover { color: var(--brand-dark); }
   .ocn-head .ocn-step.is-done .ocn-step-bar { background: var(--on-dark-pos); }
   .ocn-head .ocn-step.is-current .ocn-step-label { color: var(--surface); }
 }
+.ocn-plan-label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.ocn-plan-pdf { width: 30px; height: 30px; border-radius: 9px; border: 1px solid var(--ink-line); background: var(--ink-field); color: var(--on-dark-muted); display: grid; place-items: center; font-size: 16px; cursor: pointer; flex: none; }
+.ocn-plan-pdf:hover, .ocn-plan-pdf:focus-visible { color: #fff; border-color: var(--on-dark-pos); outline: none; }

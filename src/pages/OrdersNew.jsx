@@ -1,7 +1,9 @@
 // Реєстр замовлень у новому інтерфейсі (ТЗ редизайну 4.1; макети Orders / OrdersMobile).
 // Дані, фільтри й обробники приходять з Orders.jsx — тут лише подача. Логіка не змінюється.
-import { useMemo } from 'react'
-import { Segmented, EmptyState, TableSkeleton, Button, Menu } from '../components/ui'
+import { useEffect, useMemo, useState } from 'react'
+import { Segmented, EmptyState, TableSkeleton, Button, Menu, InfoTip } from '../components/ui'
+import { loadOrderPlans } from '../lib/forecast'
+import { useCompany } from '../lib/company'
 import { ORDER_STATUS_TONE } from '../components/ui/statusMaps'
 import { formatAmount, formatShort } from '../utils/format'
 import { STATUS_ORDER, OUTCOME, statusLabel, labelForStatus } from '../lib/orders'
@@ -77,13 +79,28 @@ export default function OrdersNew({
   // «у роботі» — не архівні; плитки етапів рахуються з них (незалежно від пошуку)
   const open = useMemo(() => orders.filter(o => !o.archived_at), [orders])
   const openSum = open.reduce((s, o) => s + (Number(o.total) || 0), 0)
+  // Плитки етапів — скільки можна заробити (плановий чистий прибуток з позицій, як у картці замовлення), а не сума замовлень
+  const { companies } = useCompany()
+  const [plans, setPlans] = useState(null)
+  const openKey = open.map(o => o.id).join(',')
+  useEffect(() => {
+    let alive = true
+    const vat = Object.fromEntries((companies || []).map(c => [c.id, c.is_vat_payer !== false]))
+    loadOrderPlans(open.map(o => ({ id: o.id, agent_commission_pct: o.agent_commission_pct, vatOn: vat[o.company_id] ?? true })))
+      .then(p => alive && setPlans(p)).catch(() => alive && setPlans({}))
+    return () => { alive = false }
+  }, [openKey, companies])
+  const earnOf = (o) => plans?.[o.id]?.net || 0
+  const openEarn = open.reduce((s, o) => s + earnOf(o), 0)
   const stages = useMemo(() => STATUS_ORDER.map(s => {
     const list = open.filter(o => o.status === s)
-    // «Потребує оплати» — залишок до оплати: сума замовлення мінус уже сплачене клієнтом (часткові оплати)
-    const sum = list.reduce((a, o) => a + (s === 'needs_payment' ? left(o) : (Number(o.total) || 0)), 0)
-    const paid = s === 'needs_payment' ? list.reduce((a, o) => a + Math.min(Number(o.total) || 0, o.clientPaid || 0), 0) : 0
-    return { s, n: list.length, sum, paid }
-  }).filter(x => x.n > 0), [open])
+    const sum = list.reduce((a, o) => a + (Number(o.total) || 0), 0)
+    const earn = list.reduce((a, o) => a + earnOf(o), 0)
+    const noItems = plans ? list.filter(o => !plans[o.id]?.hasItems).length : 0
+    // «Потребує оплати» — ще й залишок до оплати: сума замовлення мінус уже сплачене клієнтом (часткові оплати)
+    const due = s === 'needs_payment' ? list.reduce((a, o) => a + left(o), 0) : 0
+    return { s, n: list.length, sum, earn, noItems, due }
+  }).filter(x => x.n > 0), [open, plans])
   const managers = useMemo(() => [...new Set(orders.map(o => o.managerName).filter(n => n && n !== '—'))].sort((a, b) => a.localeCompare(b, 'uk')), [orders])
   const total = rows.reduce((s, o) => s + (Number(o.total) || 0), 0)
   const sortBtn = (k, label, align) => (
@@ -97,7 +114,8 @@ export default function OrdersNew({
       <div className="on-head">
         <div>
           <h1 className="on-h1">Замовлення</h1>
-          <p className="on-sub">{open.length} в роботі · {formatAmount(openSum)} ₴ з ПДВ</p>
+          <p className="on-sub">{open.length} в роботі · {formatAmount(openSum)} ₴ з ПДВ{plans && <> · заробимо ≈ <b className={openEarn < 0 ? 'on-neg' : 'on-pos'}>{formatAmount(openEarn, { decimals: 0 })} ₴</b>
+            <InfoTip label="Заробимо">Плановий чистий прибуток замовлень у роботі: виручка − собівартість (без ПДВ) − податок 18% − агентські − інші витрати, з позицій кожного замовлення. Замовлення без позицій дають 0.</InfoTip></>}</p>
         </div>
         <div className="on-actions">
           <Button variant="secondary" icon="ti-refresh" onClick={autoLinkPayments} loading={linking} aria-label="Підтягнути оплати" className="on-hide-sm">{linking ? 'Підбір…' : 'Підтягнути оплати'}</Button>
@@ -113,10 +131,11 @@ export default function OrdersNew({
             const on = stage === x.s
             return (
               <button key={x.s} type="button" className={`on-tile is-${tone}`} aria-pressed={on} onClick={() => setStage(on ? null : x.s)}
-                title={`${labelForStatus(x.s)}: ${x.n} · ${x.s === 'needs_payment' ? 'до оплати ' : ''}${formatAmount(x.sum)} ₴${x.paid > 0.5 ? ` (уже сплачено ${formatAmount(x.paid)} ₴)` : ''}`}>
+                title={`${labelForStatus(x.s)}: ${x.n} · заробимо ${formatAmount(x.earn, { decimals: 0 })} ₴ · замовлень на ${formatAmount(x.sum)} ₴ з ПДВ${x.s === 'needs_payment' ? ` · до оплати ${formatAmount(x.due)} ₴` : ''}${x.noItems ? ` · без позицій: ${x.noItems}` : ''}`}>
                 <span className="on-tile-head"><span className="on-tile-dot" aria-hidden="true" />{labelForStatus(x.s)}<span className="on-tile-n">{x.n}</span></span>
-                <span className="on-tile-sum">{formatShort(x.sum)} <small>₴{x.s === 'needs_payment' ? ' до оплати' : ''}</small></span>
-                <span className="on-tile-bar" aria-hidden="true"><span style={{ width: `${openSum > 0 ? Math.max(2, x.sum / openSum * 100) : 0}%` }} /></span>
+                <span className={`on-tile-sum${x.earn < 0 ? ' is-neg' : ''}`}>{plans ? formatShort(x.earn) : '…'} <small>₴ заробимо</small></span>
+                <span className="on-tile-sub">з {formatShort(x.s === 'needs_payment' ? x.due : x.sum)} ₴{x.s === 'needs_payment' ? ' до оплати' : ' замовлень'}</span>
+                <span className="on-tile-bar" aria-hidden="true"><span style={{ width: `${openEarn > 0 ? Math.max(2, Math.max(0, x.earn) / openEarn * 100) : 0}%` }} /></span>
               </button>
             )
           })}
