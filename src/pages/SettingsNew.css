@@ -31,3 +31,40 @@
 .stn-acc-s.is-warn { background: var(--warn-bg); color: var(--warn-fg); font-weight: 600; }
 .stn-matrix .c { text-align: center; } .stn-yes { color: var(--brand); font-size: 18px; } .stn-no { color: var(--muted-2); }
 @media (max-width: 1023px) { .stn-body { grid-template-columns: minmax(0, 1fr); } .stn-nav { position: static; flex-direction: row; overflow-x: auto; } .stn-nav button { flex: 0 0 auto; } .stn-nav small { display: none; } }
+/* «Команда» (макет SettingsUsers) */
+.stn-team-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.stn-team-head h2 { margin: 0 0 2px; }
+.stn-team { padding: 0 !important; overflow: hidden; }
+.stn-team ul { list-style: none; margin: 0; padding: 0; }
+.stn-team li { display: flex; align-items: center; gap: 12px; padding: 14px 20px; }
+.stn-team li + li { border-top: 1px solid var(--divider); }
+.stn-av { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; flex: none; background: var(--info-bg); color: var(--info-fg); font-weight: 700; font-size: 14px; }
+.stn-av.is-admin { background: var(--brand-soft); color: var(--brand-dark); }
+.stn-who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.stn-who b { font-size: 15px; } .stn-who b small { font-weight: 500; color: var(--muted); font-size: 12px; }
+.stn-who > span { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stn-role { height: 36px; padding: 0 30px 0 12px; border: 1px solid var(--border); border-radius: 10px; background-color: var(--surface); font: inherit; font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer; }
+.stn-role:disabled { cursor: default; opacity: 1; background-image: none; padding-right: 12px; }
+.stn-add { display: flex; flex-direction: column; gap: 10px; } .stn-add-acts { display: flex; gap: 8px; }
+.stn-err { color: var(--danger-fg); font-size: 13px; } .stn-hint { margin: 0; font-size: 12px; color: var(--muted); }
+.stn-mx-h { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.stn-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--brand); vertical-align: middle; }
+/* мобільний головний екран (макет SettingsMobile) */
+.stn-top { display: flex; align-items: center; gap: 8px; }
+.stn-back, .stn-chev, .stn-h-sm { display: none; }
+@media (max-width: 767px) {
+  .stn-body { display: block; }
+  .stn-body:not(.is-open) .stn-main { display: none; }
+  .stn-body.is-open .stn-nav { display: none; }
+  .stn-nav { position: static !important; flex-direction: column !important; overflow: visible !important; gap: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card-mobile); }
+  .stn-nav button { flex: none !important; border-radius: 0; padding: 14px 16px; align-items: center; }
+  .stn-nav button + button { border-top: 1px solid var(--divider); }
+  .stn-nav button[aria-current="page"] { border-color: transparent; border-top-color: var(--divider); }
+  .stn-nav small { display: block !important; }
+  .stn-nav span { flex: 1; }
+  .stn-chev { display: inline; font-size: 18px !important; color: var(--muted-2) !important; }
+  .stn-back { display: grid; place-items: center; width: 36px; height: 36px; border: 0; background: none; color: var(--text); font-size: 22px; cursor: pointer; }
+  .stn-h-sm { display: inline; } .stn-h-lg { display: none; }
+  .stn-team li { padding: 12px 14px; flex-wrap: wrap; }
+}
+@media (max-width: 767px) { .stn-nav button:first-child { border-top: 0 !important; } }

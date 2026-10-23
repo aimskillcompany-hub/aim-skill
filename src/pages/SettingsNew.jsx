@@ -28,14 +28,19 @@ const SECTIONS = [
 
 export default function SettingsNew({ CompanyTab, UsersTab }) {
   const [tab, setTab] = useTabParam('company', SECTIONS.map(s => s.id))
+  const [mOpen, setMOpen] = useState(() => /[?&]tab=/.test(window.location.hash))   // телефон: спершу список розділів (макет SettingsMobile), потім розділ
+  const cur = SECTIONS.find(s => s.id === tab)
   return (
     <div className="rpt-page stn">
-      <div><h1 className="rpt-h1">Налаштування</h1></div>
-      <div className="stn-body">
+      <div className="stn-top">
+        {mOpen && <button type="button" className="stn-back" onClick={() => setMOpen(false)} aria-label="До розділів налаштувань"><i className="ti ti-arrow-left" aria-hidden="true" /></button>}
+        <h1 className="rpt-h1">{mOpen ? <span className="stn-h-sm">{cur?.label}</span> : null}<span className={mOpen ? 'stn-h-lg' : ''}>Налаштування</span></h1>
+      </div>
+      <div className={`stn-body${mOpen ? ' is-open' : ''}`}>
         <nav className="stn-nav" aria-label="Розділи налаштувань">
           {SECTIONS.map(s => (
-            <button key={s.id} type="button" aria-current={tab === s.id ? 'page' : undefined} onClick={() => setTab(s.id)}>
-              <i className={`ti ${s.icon}`} aria-hidden="true" /><span><b>{s.label}</b><small>{s.hint}</small></span>
+            <button key={s.id} type="button" aria-current={tab === s.id ? 'page' : undefined} onClick={() => { setTab(s.id); setMOpen(true) }}>
+              <i className={`ti ${s.icon}`} aria-hidden="true" /><span><b>{s.label}</b><small>{s.hint}</small></span><i className="ti ti-chevron-right stn-chev" aria-hidden="true" />
             </button>
           ))}
         </nav>
@@ -43,7 +48,7 @@ export default function SettingsNew({ CompanyTab, UsersTab }) {
           {tab === 'company' && <CompaniesSection CompanyTab={CompanyTab} />}
           {tab === 'articles' && <ArticlesSection />}
           {tab === 'accounts' && <AccountsSection />}
-          {tab === 'users' && <><UsersTab /><RoleMatrix /></>}
+          {tab === 'users' && <><UsersTab newUi /><RoleMatrix /></>}
         </div>
       </div>
     </div>
@@ -265,12 +270,11 @@ const SECTION_LABELS = { orders: 'Замовлення', tasks: 'Задачі', 
 function RoleMatrix() {
   return (
     <section className="cfn-card stn-matrix" aria-label="Доступ до розділів">
-      <h2>Доступ до розділів</h2>
-      <p className="rpt-muted rpt-note">Поки лише перегляд — змінювати доступи будемо окремо.</p>
+      <div className="stn-mx-h"><h2>Хто що бачить</h2><span className="rpt-muted rpt-note"><i className="stn-dot" aria-hidden="true" /> є доступ · поки лише перегляд — змінювати доступи будемо окремо</span></div>
       <div className="tbl-wrap rpt-table"><table>
         <thead><tr><th>Розділ</th>{ROLES.map(r => <th key={r} className="c">{ROLE_LABELS[r]}</th>)}</tr></thead>
         <tbody>{Object.keys(SECTION_LABELS).map(k => (
-          <tr key={k}><td>{SECTION_LABELS[k]}</td>{ROLES.map(r => { const on = (ROLE_SECTIONS[r] || []).includes(k); return <td key={r} className="c">{on ? <i className="ti ti-check stn-yes" aria-label="є доступ" /> : <span className="stn-no" aria-label="немає">—</span>}</td> })}</tr>
+          <tr key={k}><td>{SECTION_LABELS[k]}</td>{ROLES.map(r => { const on = (ROLE_SECTIONS[r] || []).includes(k); return <td key={r} className="c">{on ? <i className="stn-dot" role="img" aria-label="є доступ" /> : <span className="stn-no" aria-label="немає">—</span>}</td> })}</tr>
         ))}</tbody>
       </table></div>
     </section>

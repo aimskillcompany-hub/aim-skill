@@ -324,7 +324,7 @@ function AccountsTab() {
 }
 
 // ───────── Користувачі ─────────
-function UsersTab() {
+function UsersTab({ newUi = false } = {}) {
   const { user } = useUser()
   const [rows, setRows] = useState([])
   const [adding, setAdding] = useState(false)
@@ -356,6 +356,48 @@ function UsersTab() {
       load()
     } catch (e) { setMsg(e.message) }
     setBusy(false)
+  }
+  const addForm = adding && (
+    <div className="stn-add">
+      <div className="form-grid">
+        <div className="form-group"><label>Email *</label><input className="form-input" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="person@company.com" /></div>
+        <div className="form-group"><label>Пароль * (мін. 6)</label><input className="form-input" type="text" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder="тимчасовий пароль" /></div>
+        <div className="form-group"><label>Ім'я</label><input className="form-input" value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} placeholder="Іван Іванов" /></div>
+        <div className="form-group"><label>Роль</label>
+          <select className="form-input" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+            {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+          </select>
+        </div>
+      </div>
+      {msg && <div className="stn-err">{msg}</div>}
+      <div className="stn-add-acts">
+        <button className="btn btn-primary" onClick={createUser} disabled={busy}>{busy ? '…' : 'Створити'}</button>
+        <button className="btn" onClick={() => { setAdding(false); setMsg(null) }} disabled={busy}>Скасувати</button>
+      </div>
+      <p className="stn-hint">Акаунт створюється одразу (без листа-підтвердження). Передайте користувачу email і пароль — він зможе увійти й змінити пароль.</p>
+    </div>
+  )
+  // Новий інтерфейс (макет SettingsUsers): «Команда» — аватар, ім'я, «це ви», email, роль
+  if (newUi) {
+    const ini = (u) => (u.full_name || u.email || '?').split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(x => x[0]).join('').toUpperCase()
+    return <>
+      <section className="cfn-card stn-team-head">
+        <div><h2>Команда · {rows.length} {rows.length === 1 ? 'людина' : rows.length < 5 ? 'людини' : 'людей'}</h2>
+          <small className="rpt-muted">Самореєстрація вимкнена: акаунти створює лише адміністратор. Свою роль змінити не можна.</small></div>
+        {isAdmin && !adding && <button type="button" className="btn btn-primary" onClick={() => { setMsg(null); setAdding(true) }}><i className="ti ti-plus" aria-hidden="true" /> Запросити</button>}
+      </section>
+      {addForm && <section className="cfn-card">{addForm}</section>}
+      <section className="cfn-card stn-team">
+        <ul>{rows.map(u => (
+          <li key={u.id}>
+            <span className={`stn-av${u.role === 'admin' ? ' is-admin' : ''}`} aria-hidden="true">{ini(u)}</span>
+            <span className="stn-who"><b>{u.full_name || u.email}{u.id === user?.id && <small> · це ви</small>}</b><span>{u.email}</span></span>
+            <select className="stn-role" aria-label={`Роль: ${u.full_name || u.email}`} value={u.role || 'viewer'} onChange={e => setRole(u.id, e.target.value)} disabled={u.id === user?.id} title={ROLE_HINTS[u.role || 'viewer']}>
+              {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+            </select>
+          </li>))}</ul>
+      </section>
+    </>
   }
   return (
     <div className="card">
