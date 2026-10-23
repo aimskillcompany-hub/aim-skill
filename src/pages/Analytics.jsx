@@ -210,14 +210,14 @@ export function CashFlowView({ fixedYear = null, fixedMonth = null } = {}) {
                     <DrillCell value={d.netTotal} signed color={signColor(d.netTotal)} bold onClick={() => openDrill(null, 'total', null, 'Чистий потік', 'Разом')} />
                   </tr>
                   <tr style={{ color: 'var(--text2)' }}>
-                    <td style={{ position: 'sticky', left: 0, background: 'var(--surface)', whiteSpace: 'nowrap' }}>Залишок на кінець</td>
+                    <td style={{ position: 'sticky', left: 0, background: 'var(--surface)', whiteSpace: 'nowrap' }}>Залишок на кінець{newUi && <InfoTip label="Залишок на кінець">Залишок на початок періоду — {si(d.openingCash)} грн.<br />Прямий метод: усі фактичні рухи коштів (валідовані й ні), на відміну від P&L (лише підтверджені). «Залишок на кінець» — накопичувально.</InfoTip>}</td>
                     {d.cols.map(c => <td key={c.key} style={{ textAlign: 'right' }}>{si(d.closingByCol[c.key])}</td>)}
                     <td style={{ textAlign: 'right', fontWeight: 700, color: signColor(d.closingCash) }}>{si(d.closingCash)}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
-            <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>Залишок на початок періоду: <b>{si(d.openingCash)} грн</b>. Прямий метод: усі фактичні рухи коштів (валідовані й ні), на відміну від P&L (лише підтверджені). Натисніть на цифру — побачите й зможете відредагувати транзакції. «Залишок на кінець» — накопичувально.</p>
+            {!newUi && <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>Залишок на початок періоду: <b>{si(d.openingCash)} грн</b>. Прямий метод: усі фактичні рухи коштів (валідовані й ні), на відміну від P&L (лише підтверджені). Натисніть на цифру — побачите й зможете відредагувати транзакції. «Залишок на кінець» — накопичувально.</p>}
           </div>
         </>
       )}
@@ -490,6 +490,9 @@ export function PLView({ fixedYear = null, fixedMonth = null } = {}) {
             <button key={k} onClick={() => { setBasis(k); if (k === 'accrual') setMode('fact') }} style={{ border: 'none', padding: '6px 12px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', background: basis === k ? 'var(--text)' : 'var(--surface)', color: basis === k ? 'var(--surface)' : 'var(--text2)', fontWeight: basis === k ? 600 : 400 }}>{lbl}</button>
           ))}
         </div>
+        {newUi && <InfoTip label="Нарахування чи касовий метод">{accrual
+          ? <>Нарахування: виручка — видаткові накладні й акти за датою документа (без ПДВ); собівартість — відвантажених позицій. Закупівлі до відвантаження — запас, не витрата. Операційні витрати — підтверджені оплати за датою оплати.</>
+          : <>Касовий: лише підтверджені транзакції за датою оплати.</>}</InfoTip>}
         {!accrual && mode === 'fact' && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: AMBER, cursor: 'pointer', userSelect: 'none' }}>
             <input type="checkbox" checked={showPending} onChange={e => setShowPending(e.target.checked)} />
@@ -574,11 +577,11 @@ export function PLView({ fixedYear = null, fixedMonth = null } = {}) {
             </table>
           </div>
         )}
-        <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>
+        {!newUi && <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>
           {accrual
             ? <>Нарахування: виручка — видаткові накладні й акти за датою документа (без ПДВ); собівартість — саме відвантажених позицій (склад, інакше частка з замовлення). Закупівлі товару до відвантаження — запас, у витрати не йдуть. Операційні витрати — підтверджені оплати за датою оплати; статті ПДВ не є витратою (виручка вже без ПДВ){acc?.excludedVat?.length ? ` — не враховано: ${acc.excludedVat.map(x => x.label + ' ' + fmtInt(x.total)).join(', ')}` : ''}.</>
             : <>Касовий: враховуються лише підтверджені (is_validated) транзакції за датою оплати. Натисніть на цифру, щоб побачити операції.</>}
-        </p>
+        </p>}
       </div>
       {accrual && acc?.missing?.length > 0 && <MissingCostCard missing={acc.missing} />}
       {accrual && (acc?.estimated?.length > 0 || acc?.writeoffs?.length > 0) && <EstimateWriteoffCard estimated={acc.estimated || []} writeoffs={acc.writeoffs || []} />}

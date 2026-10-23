@@ -2,7 +2,7 @@
 // Логіка, перевірки й звіти — ті самі (runChecklist, computeCompleteness, CashFlowView / PLView / BalanceView, товари);
 // тут лише каркас. Переоткриття — лише адміністратор, з причиною (міграція 100 перевіряє на сервері й пише журнал).
 import { useEffect, useState } from 'react'
-import { Button, Modal, Segmented, TableSkeleton, Callout } from '../components/ui'
+import { Button, Modal, Segmented, TableSkeleton, Callout, InfoTip } from '../components/ui'
 import { listCloseLog } from '../lib/periodClose'
 import { computeCashFlow } from '../lib/cashflow'
 import { formatAmount, plural } from '../utils/format'
@@ -49,7 +49,7 @@ export default function PeriodCloseNew({ year, setYear, sel, openMonth, statusOf
   return (
     <div className="rpt-page pcn">
       <div className="pcn-head">
-        <div><h1 className="rpt-h1">Закриття періоду</h1><p className="rpt-sub">Закритий місяць не можна змінити — ні в інтерфейсі, ні прямим запитом. Переоткриває лише адміністратор, з причиною.</p></div>
+        <div><h1 className="rpt-h1">Закриття періоду<InfoTip label="Закриття періоду">Перевіряємо місяць і блокуємо його від змін. Закритий місяць не можна змінити — ні в інтерфейсі, ні прямим запитом. Переоткриває лише адміністратор, з причиною.</InfoTip></h1></div>
         <div className="pcn-year"><Button variant="secondary" iconOnly icon="ti-chevron-left" aria-label="Попередній рік" onClick={() => setYear(year - 1)} /><b>{year}</b><Button variant="secondary" iconOnly icon="ti-chevron-right" aria-label="Наступний рік" onClick={() => setYear(year + 1)} /></div>
       </div>
 
@@ -63,7 +63,7 @@ export default function PeriodCloseNew({ year, setYear, sel, openMonth, statusOf
           )
         })}
       </div>
-      <ul className="pcn-legend" aria-label="Позначення"><li><i className="is-closed" />Закритий</li><li><i className="is-reopened" />Переоткритий: був закритий, зараз можна змінювати</li><li><i />Відкритий</li></ul>
+      <ul className="pcn-legend" aria-label="Позначення"><li><i className="is-closed" />Закритий</li><li><i className="is-reopened" />Переоткритий<InfoTip label="Переоткритий">Був закритий, зараз його знову можна змінювати.</InfoTip></li><li><i />Відкритий</li></ul>
       {reopenedList.length > 0 && <Callout tone="warn" title={`Переоткриті місяці: ${reopenedList.map(m => MONTHS[m - 1].toLowerCase()).join(', ')}.`} text="Їхні дані знову можна змінювати — закрийте їх повторно після виправлень." />}
       {err && <Callout tone="danger" title="Помилка." text={err} />}
 
@@ -77,38 +77,30 @@ export default function PeriodCloseNew({ year, setYear, sel, openMonth, statusOf
           </> : <>
             <svg className="pcn-ring" viewBox="0 0 72 72" aria-hidden="true"><circle cx="36" cy="36" r={R} className="pcn-ring-bg" /><circle cx="36" cy="36" r={R} className="pcn-ring-fg" strokeDasharray={`${(passed / 5) * C} ${C}`} transform="rotate(-90 36 36)" /><text x="36" y="41" textAnchor="middle">{check ? `${passed}/5` : '…'}</text></svg>
             <div className="pcn-hero-t"><span>{MONTHS[sel - 1]} {year} · {check ? `${passed} з 5 перевірок пройдено` : 'перевіряю…'}</span>
-              <b>{!check ? 'Перевіряю готовність…' : ready ? 'Готовий до закриття' : 'Ще не можна закрити'}</b>
-              <small>{!check ? '' : ready ? 'Блокерів немає. Перегляньте звіти місяця й закривайте.' : `Блокерів: ${check.blockers}. Виправте їх у кроці 1.`}</small></div>
-            <Button variant="primary" icon="ti-lock" disabled={!ready || busy === 'close'} loading={busy === 'close'} onClick={onClose}>Закрити місяць</Button>
+              <b>{!check ? 'Перевіряю готовність…' : ready ? 'Готовий до закриття' : 'Ще не можна закрити'}<InfoTip tone="onDark" label="Що станеться після закриття"><b>Після закриття:</b><br />• транзакції, документи й склад за {MONTHS[sel - 1].toLowerCase()} не можна змінити;<br />• баланс і P&L фіксуються — саме ці цифри бачить інвестор;<br />• переоткрити може лише адміністратор, система запише, хто і чому.</InfoTip></b>
+              <small>{!check ? '' : ready ? 'Блокерів немає.' : `Блокерів: ${check.blockers}.`}</small></div>
+            <span title={check && !ready ? `Спершу усуньте блокери якості (${check.blockers}) у перевірках нижче` : undefined}><Button variant="primary" icon="ti-lock" disabled={!ready || busy === 'close'} loading={busy === 'close'} onClick={onClose}>Закрити місяць</Button></span>
           </>}
         </section>
 
         {!isClosed && <>
           <div className="pcn-row1">
           <section className="cfn-card pcn-step" aria-label="Крок 1">
-            <div className="pcn-step-h"><span className="pcn-n">1</span><div><h2>Перевірки</h2><small className="rpt-muted">Натисніть рядок — відкриються конкретні записи, які треба виправити.</small></div></div>
+            <div className="pcn-step-h"><span className="pcn-n">1</span><div><h2>Перевірки<InfoTip label="Перевірки">Червоні пункти блокують закриття. У «Розкрити записи» — що саме виправити.</InfoTip></h2></div></div>
             {check ? <>
               <ul className="pcn-checks">{checks.map(([l, n, warn]) => <li key={l} className={n ? (warn ? 'is-warn' : 'is-bad') : 'is-ok'}><span className="pcn-ci" aria-hidden="true">{n ? '!' : <i className="ti ti-check" />}</span><span className="pcn-cl">{l}</span><b className="pcn-badge">{n ? `${n}${warn ? ' · не блокує' : ''}` : 'усе гаразд'}</b></li>)}
                 {presold.length > 0 && <li className="is-warn"><span className="pcn-ci" aria-hidden="true"><i className="ti ti-info-small" /></span><span className="pcn-cl">Продано під замовлення — мінус покрито пізнішим приходом</span><b className="pcn-badge">{presold.length} · не блокує</b></li>}</ul>
               <details className="pcn-details"><summary>Розкрити записи</summary>{renderChecklist()}</details>
             </> : <TableSkeleton rows={4} cols={2} label="Перевіряю…" />}
           </section>
-          <section className="cfn-card pcn-after" aria-label="Що станеться після закриття">
-            <h2>Що станеться після закриття</h2>
-            <ul>
-              <li><span className="pcn-ai is-lock"><i className="ti ti-lock" aria-hidden="true" /></span>Транзакції, документи й склад за {MONTHS[sel - 1].toLowerCase()} не можна буде змінити — ні в інтерфейсі, ні прямим запитом.</li>
-              <li><span className="pcn-ai is-chart"><i className="ti ti-chart-bar" aria-hidden="true" /></span>Баланс і P&L за місяць фіксуються — саме ці цифри бачить інвестор.</li>
-              <li><span className="pcn-ai is-warn"><i className="ti ti-lock-open" aria-hidden="true" /></span>Переоткрити місяць може лише адміністратор, із причиною; система запише, хто і чому.</li>
-            </ul>
-          </section>
           </div>
           <section className="cfn-card pcn-step" aria-label="Крок 2">
-            <div className="pcn-step-h"><span className="pcn-n">2</span><div><h2>Чи всі гроші потрапили у звіти</h2><small className="rpt-muted">Рухи місяця: у P&L · ПФД і перекази · без статті · ігноровані.</small></div></div>
+            <div className="pcn-step-h"><span className="pcn-n">2</span><div><h2>Чи всі гроші потрапили у звіти<InfoTip label="Чи всі гроші потрапили у звіти">Рухи місяця: у P&L · ПФД і перекази · без статті · ігноровані. Червона частка — те, що випало з P&L і варто виправити.</InfoTip></h2></div></div>
             {comp ? <>
               {comp.active?.sum > 0 && (() => {
                 const tiles = [
                   ['inpl', 'Увійшло в P&L', comp.inPL, `${comp.inPL.n} ${plural(comp.inPL.n, ['транзакція', 'транзакції', 'транзакцій'])}`],
-                  ['fin', 'Поза P&L свідомо: ПФД, ОЗ, перекази', comp.otherFin, `${comp.otherFin.n} тр. · враховані в Cash Flow і Балансі — це нормально`],
+                  ['fin', <>Поза P&L свідомо: ПФД, ОЗ, перекази<InfoTip label="Поза P&L свідомо">Враховані в Cash Flow і Балансі, але не в P&L. Це нормально: ПФД і перекази не є доходом чи витратою.</InfoTip></>, comp.otherFin, `${comp.otherFin.n} тр.`],
                   ['bad', 'Випали з P&L: без статті або не валідовані', { n: comp.noArticle.n + comp.unvalidated.n, sum: comp.noArticle.sum + comp.unvalidated.sum }, comp.noArticle.n + comp.unvalidated.n ? 'призначте статтю й підтвердьте — нижче' : 'нічого не випало'],
                   ['ign', 'Ігноровані', comp.ignored, comp.ignored.n ? 'приховані з усіх звітів — перевірте нижче' : 'нічого не приховано зі звітів'],
                 ]
@@ -127,7 +119,7 @@ export default function PeriodCloseNew({ year, setYear, sel, openMonth, statusOf
         </>}
 
         <section className="cfn-card pcn-step" aria-label="Крок 3">
-          <div className="pcn-step-h"><span className="pcn-n">{isClosed ? <i className="ti ti-file-analytics" aria-hidden="true" /> : 3}</span><div><h2>Звіти місяця</h2><small className="rpt-muted">{isClosed ? 'Цифри закритого місяця.' : 'Кожну цифру можна розкрити до операцій і виправити.'}</small></div></div>
+          <div className="pcn-step-h"><span className="pcn-n">{isClosed ? <i className="ti ti-file-analytics" aria-hidden="true" /> : 3}</span><div><h2>Звіти місяця{isClosed && <InfoTip label="Звіти місяця">Цифри закритого місяця.</InfoTip>}</h2></div></div>
           <div className="pcn-r3">
             <CashMini year={year} month={sel} onOpen={() => { setRep('cashflow'); document.getElementById('pcn-report')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }} />
             <section className="pcn-other" aria-label="Інші звіти за місяць">
@@ -151,7 +143,7 @@ export default function PeriodCloseNew({ year, setYear, sel, openMonth, statusOf
         {!isClosed && (
           <div className="pcn-sticky">
             <span>{!check ? 'Перевіряю…' : ready ? <><i className="ti ti-circle-check" aria-hidden="true" /> Готовий до закриття</> : <><i className="ti ti-alert-circle" aria-hidden="true" /> Блокерів: {check.blockers}</>}</span>
-            <Button variant="primary" icon="ti-lock" disabled={!ready || busy === 'close'} loading={busy === 'close'} onClick={onClose}>Закрити {MONTHS[sel - 1].toLowerCase()}</Button>
+            <span title={check && !ready ? `Спершу усуньте блокери якості (${check.blockers}) у перевірках вище` : undefined}><Button variant="primary" icon="ti-lock" disabled={!ready || busy === 'close'} loading={busy === 'close'} onClick={onClose}>Закрити {MONTHS[sel - 1].toLowerCase()}</Button></span>
           </div>
         )}
       </>}
