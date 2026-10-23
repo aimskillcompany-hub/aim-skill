@@ -77,3 +77,4 @@
   .mtn-sum3 span { font-size: 11px; }
   .mtn-sum3 b { font-size: 15px; white-space: nowrap; }
 }
+.mtn-h { margin: 0; font-size: 17px; font-weight: 700; display: flex; align-items: center; }
