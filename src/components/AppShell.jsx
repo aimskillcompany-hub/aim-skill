@@ -197,11 +197,11 @@ export default function AppShell() {
 
   return (
     <div className={`shell${collapsed ? ' is-collapsed' : ''}${drawer ? ' is-drawer-open' : ''}${reduce ? ' no-motion' : ''}`}>
-      <a href="#shell-main" className="shell-skip">До вмісту</a>
+      <a href="#shell-main" className="shell-skip" onClick={e => { e.preventDefault(); const m = document.getElementById('shell-main'); m?.focus(); m?.scrollIntoView() }}>До вмісту</a>
       {side}
       {drawer && <div className="shell-scrim" onClick={() => setDrawer(false)} aria-hidden="true" />}
 
-      <div className="shell-main" id="shell-main" ref={mainRef}>
+      <div className="shell-main" id="shell-main" ref={mainRef} tabIndex={-1}>
         <header className="shell-bar">
           <button type="button" className="shell-icon-btn shell-burger" onClick={() => setDrawer(true)} aria-label="Відкрити меню" aria-expanded={drawer}>
             <i className="ti ti-menu-2" aria-hidden="true" />

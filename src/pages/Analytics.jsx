@@ -148,7 +148,7 @@ export function CashFlowView({ fixedYear = null, fixedMonth = null } = {}) {
       <div className="an-toolbar">
         <PeriodChips year={year} setYear={setYear} month={month} setMonth={setMonth} years={YEARS} noYear />
         <span className="an-right"><PeriodMenu yearOnly year={year} onChange={p => { setYear(p.year); setMonth(0) }} years={YEARS} />
-          <Button variant="primary" icon="ti-download" onClick={exportXlsx} disabled={!d}>Експорт Excel</Button></span>
+          <Button variant="primary" icon="ti-download" onClick={exportXlsx} disabled={!d} aria-label="Експорт Excel" className="an-export"><span className="an-export-t">Експорт Excel</span></Button></span>
       </div>
       <CashFlowNew d={d} debt={debt} year={year} month={month} setMonth={setMonth} openDrill={openDrill} />
       {modals}
@@ -594,7 +594,7 @@ function MissingCostCard({ missing }) {
   const items = missing.reduce((n, m) => n + m.items.length, 0)
   return (
     <div className="card" style={{ marginTop: 14, borderLeft: '4px solid ' + AMBER, background: '#FFF8E6' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => setOpen(o => !o)}>
+      <div data-toggle role="button" tabIndex={0} aria-expanded={open} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => setOpen(o => !o)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o) } }}>
         <i className="ti ti-alert-triangle" style={{ color: AMBER }} />
         <b>Немає собівартості: {items} поз. у {missing.length} документах</b>
         <span style={{ fontSize: 12, color: 'var(--text3)' }}>— собівартість по них не врахована, прибуток завищений</span>

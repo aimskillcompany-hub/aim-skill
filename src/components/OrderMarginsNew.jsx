@@ -82,8 +82,8 @@ export default function OrderMarginsNew({ rows, err, from, to, setFrom, setTo, t
             <div className="mgn-hero"><span>Маржа</span><b className={tot.margin < 0 ? 'is-neg' : ''}>{n0(tot.margin)} ₴</b><small>{tot.revenue ? pctTxt(tot.margin / tot.revenue) : '—'} від виручки</small></div>
             <div className="cfn-card mgn-kpi"><span>Виручка без ПДВ</span><b>{n0(tot.revenue)} ₴</b><small>{rows.length} замовл. відвантажено</small></div>
             <div className="cfn-card mgn-kpi"><span>Сер. днів до оплати</span><b>{tot.avgDays ?? '—'}{tot.avgDays != null && ' дн.'}</b><small>від поставки до грошей</small></div>
-            <button type="button" className={`cfn-card mgn-kpi${counts.risky ? ' is-warn' : ''}`} onClick={() => { setFilter('risky'); setLimit(PAGE) }}>
-              <span>Потребують уваги</span><b>{counts.risky} замовл.</b><small>маржа &lt; 5%, збиток або без собівартості</small></button>
+            <button type="button" className={`cfn-card mgn-kpi mgn-risk${counts.risky ? ' is-warn' : ' is-none'}`} onClick={() => { setFilter('risky'); setLimit(PAGE) }}>
+              <span>Потребують уваги</span><b>{counts.risky} замовл.</b><small>маржа &lt; 5%, збиток або без собівартості</small><em className="mgn-risk-go">Показати</em></button>
           </div>
 
           <section className="cfn-card mgn-clients" aria-label="Маржа по клієнтах">
@@ -102,7 +102,7 @@ export default function OrderMarginsNew({ rows, err, from, to, setFrom, setTo, t
 
           <section className="cfn-card cfn-report" aria-label="Замовлення">
             <div className="cfn-report-head">
-              <Segmented ariaLabel="Відбір" value={filter} onChange={f => { setFilter(f); setLimit(PAGE) }}
+              <Segmented ariaLabel="Відбір" className="is-chips-sm" value={filter} onChange={f => { setFilter(f); setLimit(PAGE) }}
                 options={[{ value: 'all', label: 'Усі', count: counts.all }, { value: 'unpaid', label: 'Не оплачені', count: counts.unpaid }, { value: 'risky', label: 'Ризикові', count: counts.risky }, { value: 'late', label: 'Оплата > 30 днів', count: counts.late }]} />
             </div>
             <div className="cfn-tbl mgn-tbl">
