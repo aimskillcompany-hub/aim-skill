@@ -292,7 +292,9 @@ function StockTab({ newUi = false, tabs = null, onExcel = null, onStats = null }
           <td className="r whn-num whn-up">{up ? <>{formatAmount(up)} ₴<small className="whn-only-sm"> / од.</small></> : '—'}
             {!(r.sku || '').trim() && <span className="whn-tag is-warn whn-only-sm">без артикулу</span>}
             {unitOdd(r.unit) && <span className="whn-tag is-warn whn-only-sm">«{r.unit}»</span>}</td>
-          <td className="r whn-num"><b>{val ? `${formatAmount(val)} ₴` : '—'}</b></td>
+          <td className="r whn-num">{val ? <b>{formatAmount(val)} ₴</b> : stock > 0 && stockAt
+            ? <span className="whn-nobatch" title="Кількість є, але партій (прихідних із ціною) немає — вартість не рахуємо. Оприбуткуйте прихідну накладну.">—<small>немає партій</small></span>
+            : <b>—</b>}</td>
         </tr>
       )
     }
@@ -640,6 +642,24 @@ function ProductModal({ product, onClose, asPage = false, backTo = '/inventory' 
   const newUi = useNewUi()
   const [pdTab, setPdTab] = useState('main')   // новий інтерфейс: Основне | Партії | Синоніми | Рухи
   useEffect(() => { loadPurchaseSummary(product.id).then(setPur).catch(() => setPur(null)) }, [product.id])
+  // Маржа продажів і розбіжності (макет Product) — те саме правило, що звіт «Товари» в закритті періоду:
+  // продажі = рухи «out» без збірок; виручка = к-сть × ціна, собівартість = к-сть × cost_price (обидві без ПДВ)
+  const [sales, setSales] = useState(null)
+  useEffect(() => {
+    if (!newUi) return
+    qc('stock_movements').select('type, quantity, price, cost_price, source, document_id').eq('product_id', product.id).limit(5000).then(({ data, error }) => {
+      if (error) { setSales(false); return }
+      const out = (data || []).filter(m => m.type !== 'in' && m.source !== 'assembly')
+      const rev = out.reduce((a, m) => a + (Number(m.quantity) || 0) * (Number(m.price) || 0), 0)
+      const cost = out.reduce((a, m) => a + (Number(m.quantity) || 0) * (Number(m.cost_price) || 0), 0)
+      setSales({
+        rev, cost, n: out.length,
+        noCost: out.filter(m => !(Number(m.cost_price) > 0)).length,                                       // продаж без собівартості (немає партії)
+        noPrice: (data || []).filter(m => m.type === 'in' && m.source !== 'assembly' && !(Number(m.price) > 0)).length, // прихід без ціни
+        noDoc: (data || []).filter(m => !m.document_id && !['manual', 'assembly'].includes(m.source)).length,          // автоматичний рух без документа
+      })
+    })
+  }, [product.id, newUi])
   const openAnyDoc = (id) => loadDocFull(id).then(d => d && (d.source === 'generated' ? setGenDoc(d) : setOpenDoc(d)))
   const loadStock = () => qc('product_stock').select('computed_stock, total_in, total_out, unit, product_type').eq('id', product.id).maybeSingle().then(({ data }) => setStock(data))
   const loadMovs = () => qc('stock_movements').select(`id, type, quantity, cost_price, date, description, source, document_id, ${DOC_EMBED}`).eq('product_id', product.id).order('date', { ascending: false }).limit(50).then(({ data }) => setMovs(data || []))
@@ -749,7 +769,18 @@ function ProductModal({ product, onClose, asPage = false, backTo = '/inventory' 
             : <KpiTile label="Залишок" tone={st < 0 ? 'danger' : st > 0 ? 'brand' : 'neutral'} value={`${st < 0 ? '−' : ''}${fmt(Math.abs(st))} ${stock?.unit || form?.unit || 'шт'}`} hint={`мін. залишок ${form?.min_stock ?? 0}`} />}
           <KpiTile label="Прийшло / вийшло" value={`${fmt(stock?.total_in || 0)} / ${fmt(stock?.total_out || 0)}`} hint={`${pur?.lots?.length || 0} партій · ${movs.length} рухів`} />
           <KpiTile label="Закупка за од., без ПДВ" value={last ? `${formatAmount(last)} ₴` : '—'} hint={pur?.lots?.length > 1 ? `середня ${formatAmount(pur.avg)} · від ${formatAmount(pur.min)} до ${formatAmount(pur.max)}` : 'остання партія'} />
-          {pur?.stockAvg != null && <section className="pdn-dark"><span>Вартість залишку</span><b>{formatAmount(pur.stockValue, { decimals: 0 })} ₴</b><small>по {formatAmount(pur.stockAvg)} за од. (FIFO), без ПДВ</small></section>}
+          {sales && sales.n > 0 && (
+            <section className="pdn-dark"><span>Маржа продажів</span>
+              <b className={sales.rev - sales.cost < 0 ? 'is-neg' : ''}>{formatAmount(sales.rev - sales.cost, { decimals: 0 })} ₴</b>
+              <small>{sales.rev > 0 ? `${((sales.rev - sales.cost) / sales.rev * 100).toFixed(1).replace('.', ',')}% від виручки ${formatAmount(sales.rev, { decimals: 0 })} ₴` : 'виручки ще немає'} · без ПДВ{sales.noCost ? ` · завищена: ${sales.noCost} продаж без собівартості` : ''}</small></section>
+          )}
+          {sales && (() => {
+            const issues = [st < 0 && `мінусовий залишок ${fmt(st)}`, sales.noCost && `${sales.noCost} продаж без собівартості`, sales.noPrice && `${sales.noPrice} прихід без ціни`, sales.noDoc && `${sales.noDoc} рух без документа`].filter(Boolean)
+            const n = (st < 0 ? 1 : 0) + sales.noCost + sales.noPrice + sales.noDoc
+            return <KpiTile label="Розбіжності" tone={n ? 'danger' : 'neutral'} value={n ? String(n) : 'немає'}
+              hint={n ? `${issues.join(' · ')} · переглянути →` : 'рухи складу узгоджені'} onClick={n ? () => setPdTab('movs') : undefined} />
+          })()}
+          {pur?.stockAvg != null && !(sales && sales.n > 0) && <section className="pdn-dark"><span>Вартість залишку</span><b>{formatAmount(pur.stockValue, { decimals: 0 })} ₴</b><small>по {formatAmount(pur.stockAvg)} за од. (FIFO), без ПДВ</small></section>}
         </div>
 
         <section className="pdn-body">
