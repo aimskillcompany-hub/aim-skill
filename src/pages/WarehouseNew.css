@@ -186,3 +186,8 @@
   .whn-foot > span { display: none; }
   .whn-foot .ui-btn, .whn-foot .btn { width: 100%; justify-content: center; }
 }
+.pdn-dark b.is-neg { color: var(--on-dark-neg); }
+.pdn-kpis { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.whn-nobatch { display: inline-flex; flex-direction: column; align-items: flex-end; color: var(--muted); cursor: help; }
+.whn-nobatch small { font-size: 11px; color: var(--warn-fg); }
+@media (max-width: 767px) { .whn-nobatch { align-items: flex-end; } }
