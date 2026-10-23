@@ -151,7 +151,13 @@ export function OrderAside({ o, plan, payment, onTab }) {
   return (
     <aside className="ocn-aside" aria-label="Підсумок замовлення">
       <section className="ocn-plan">
-        <span className="ocn-plan-label">Чистий прибуток (план)</span>
+        <span className="ocn-plan-label">Чистий прибуток (план)
+          {plan?.count > 0 && <button type="button" className="ocn-plan-pdf" title="Розрахунок (PDF)" aria-label="Розрахунок рентабельності, PDF"
+            onClick={async () => {
+              const { data: rows } = await supabase.from('order_items').select('*, contractors(name)').eq('order_id', o.id).order('created_at')
+              const { investorReportPdf } = await import('../lib/docgen')
+              investorReportPdf(o, rows || [])
+            }}><i className="ti ti-file-type-pdf" aria-hidden="true" /></button>}</span>
         {p ? <>
           <div className={`ocn-plan-value${p.net < 0 ? ' is-neg' : ''}`}>{formatAmount(p.net, { decimals: 0, sign: p.net > 0 ? 'always' : 'auto' })} ₴</div>
           <span className="ocn-plan-hint">{p.revenueNet > 0 ? `маржа ${(p.net / p.revenueNet * 100).toFixed(1).replace('.', ',')}% після податку` : 'додайте позиції у «Товари»'}</span>

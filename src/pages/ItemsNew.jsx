@@ -150,7 +150,7 @@ export default function ItemsNew(p) {
         {dirty && <span className="itn-dirty"><i className="ti ti-point-filled" aria-hidden="true" />Є незбережені зміни</span>}
         {saved && <span className="itn-saved" role="status">Збережено</span>}
         <span className="itn-tools-spacer" />
-        {rows.length > 0 && <Button variant="secondary" icon="ti-chart-pie" onClick={onReport}>Розрахунок (PDF)</Button>}
+        {/* «Розрахунок (PDF)» — значок на темній картці «Чистий прибуток (план)» (рішення власника 23.10.2026) */}
         <Button variant="primary" onClick={save} loading={saving} disabled={!dirty && !saving}>Зберегти</Button>
       </div>
     </div>
