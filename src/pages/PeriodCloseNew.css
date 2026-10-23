@@ -49,7 +49,7 @@
 @media (min-width: 768px) { .pcn-sticky { margin-right: 150px; } }
 .pcn-m span { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 /* звірка з макетом PeriodClose: чек-лист з іконками й бейджами, «Що станеться після закриття», крок 2 — смуга й плитки */
-.pcn-row1 { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr); gap: 16px; align-items: start; }
+.pcn-row1 { display: block; }
 .pcn-checks li { min-height: 52px; }
 .pcn-ci { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; flex: none; font-weight: 800; font-size: 14px; }
 .pcn-checks .is-bad .pcn-ci { background: var(--danger-soft-bg); color: var(--danger-fg); }
@@ -103,3 +103,4 @@
 .pcn-legend li { display: inline-flex; align-items: center; gap: 6px; }
 .pcn-legend i { width: 14px; height: 5px; border-radius: 3px; background: var(--muted-2); }
 .pcn-legend i.is-closed { background: var(--brand); } .pcn-legend i.is-reopened { background: var(--warn-mark); }
+.pcn-goods-h { margin: 0 0 10px; font-size: 15px; font-weight: 700; display: flex; align-items: center; }

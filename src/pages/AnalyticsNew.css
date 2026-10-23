@@ -468,3 +468,4 @@ button.pln-warn { width: 100%; text-align: left; font: inherit; cursor: pointer;
   .mgn-risk-go { display: block; grid-column: 2; grid-row: 1 / span 2; font-style: normal; font-weight: 600; font-size: 13px; }
 }
 @media (max-width: 767px) { .an-export { width: var(--h-touch) !important; min-width: var(--h-touch); padding: 0 !important; justify-content: center; } .an-export-t { display: none; } }
+@media (max-width: 767px) { .pln-fc .ui-tip.is-dark { border-color: var(--tip-ring); color: var(--muted); } }

@@ -8,7 +8,7 @@ import { CATEGORIES, catOf, isMissingTable, listDecisions, createDecision, updat
 import { formatAmount, plural } from '../utils/format'
 import { todayKyiv } from '../lib/dates'
 import { exportReportPdf } from '../lib/reportExport'
-import { Button, Modal, Menu, Callout, EmptyState, TableSkeleton, useToast } from './ui'
+import { Button, Modal, Menu, Callout, EmptyState, TableSkeleton, useToast, InfoTip } from './ui'
 import '../pages/Reports.css'
 import './MeetingsNew.css'
 
@@ -92,14 +92,14 @@ export default function MeetingsNew({ list, onEdit, onNew }) {
   return (
     <div className="mtn">
       <div className="mtn-top">
-        <p className="rpt-sub">Наради власників: на що й з якого рахунку витрачаємо гроші.</p>
+        <h2 className="mtn-h">Протоколи нарад<InfoTip label="Протоколи нарад">Наради власників: на що й з якого рахунку витрачаємо гроші.</InfoTip></h2>
         <Button variant="primary" icon="ti-plus" onClick={onNew}>Нова нарада</Button>
       </div>
       {missing && <Callout tone="warn" title="Рішення про витрати ще не доступні" text="— потрібна міграція 098 (таблиця рішень). Протоколи й обговорення працюють як раніше." />}
       <div className="mtn-kpis">
         <div className="mtn-kpi is-dark"><span>Гроші групи зараз</span><b>{n0(cash)} ₴</b><small>на всіх рахунках {companies?.length || 0} {plural(companies?.length || 0, ['юрособи', 'юросіб', 'юросіб'])}</small></div>
         <div className="mtn-kpi"><span>Ухвалено витрат</span><b>{n0(approved)} ₴</b><small>у {live.length} {plural(live.length, ['рішенні', 'рішеннях', 'рішеннях'])} за {protos} {plural(protos, ['нараду', 'наради', 'нарад'])}</small></div>
-        <div className="mtn-kpi"><span>Вже виплачено</span><b className="is-pos">{n0(paid)} ₴</b><small>позначено сплаченим</small></div>
+        <div className="mtn-kpi"><span>Вже виплачено<InfoTip label="Вже виплачено">Позначено сплаченим — вручну або прив’язкою платежу з банку.</InfoTip></span><b className="is-pos">{n0(paid)} ₴</b></div>
         <div className="mtn-kpi is-warn"><span>Ще треба виплатити</span><b>{n0(left)} ₴</b><small>{cash > 0 ? `${Math.round((left / cash) * 100)}% грошей групи` : ''}</small></div>
       </div>
 
@@ -154,7 +154,7 @@ export default function MeetingsNew({ list, onEdit, onNew }) {
               </>
             })()}
 
-            <div className="mtn-dec-h"><h3>Рішення: куди йдуть гроші</h3><small className="rpt-muted">поставте позначку «виплачено» або прив'яжіть знайдений платіж із банку</small></div>
+            <div className="mtn-dec-h"><h3>Рішення: куди йдуть гроші<InfoTip label="Рішення: куди йдуть гроші">Позначка «виплачено» — кружком або прив’язкою знайденого платежу з банку.</InfoTip></h3></div>
             {!dec ? <TableSkeleton rows={3} cols={4} label="Завантаження рішень…" /> : CATEGORIES.map(c => {
               const ds = curDec.filter(d => d.category === c.key)
               if (!ds.length) return null

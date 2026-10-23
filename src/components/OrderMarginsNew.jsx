@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { formatAmount } from '../utils/format'
-import { Segmented, TableSkeleton, EmptyState, Button } from './ui'
+import { Segmented, TableSkeleton, EmptyState, Button, InfoTip } from './ui'
 
 const d = (s) => s ? s.split('-').reverse().join('.') : '—'
 const dm = (s) => s ? s.slice(8, 10) + '.' + s.slice(5, 7) : ''
@@ -81,13 +81,13 @@ export default function OrderMarginsNew({ rows, err, from, to, setFrom, setTo, t
           <div className="mgn-kpis">
             <div className="mgn-hero"><span>Маржа</span><b className={tot.margin < 0 ? 'is-neg' : ''}>{n0(tot.margin)} ₴</b><small>{tot.revenue ? pctTxt(tot.margin / tot.revenue) : '—'} від виручки</small></div>
             <div className="cfn-card mgn-kpi"><span>Виручка без ПДВ</span><b>{n0(tot.revenue)} ₴</b><small>{rows.length} замовл. відвантажено</small></div>
-            <div className="cfn-card mgn-kpi"><span>Сер. днів до оплати</span><b>{tot.avgDays ?? '—'}{tot.avgDays != null && ' дн.'}</b><small>від поставки до грошей</small></div>
+            <div className="cfn-card mgn-kpi"><span>Сер. днів до оплати<InfoTip label="Сер. днів до оплати">Середня кількість днів від поставки до моменту, коли оплати клієнта покрили суму документів.</InfoTip></span><b>{tot.avgDays ?? '—'}{tot.avgDays != null && ' дн.'}</b><small>від поставки до грошей</small></div>
             <button type="button" className={`cfn-card mgn-kpi mgn-risk${counts.risky ? ' is-warn' : ' is-none'}`} onClick={() => { setFilter('risky'); setLimit(PAGE) }}>
               <span>Потребують уваги</span><b>{counts.risky} замовл.</b><small>маржа &lt; 5%, збиток або без собівартості</small><em className="mgn-risk-go">Показати</em></button>
           </div>
 
           <section className="cfn-card mgn-clients" aria-label="Маржа по клієнтах">
-            <div className="pln-months-head"><h2>Маржа по клієнтах</h2><span className="cfn-muted cfn-sm">за всіма замовленнями періоду</span></div>
+            <div className="pln-months-head"><h2>Маржа по клієнтах<InfoTip label="Маржа по клієнтах">Рахується за всіма замовленнями періоду.</InfoTip></h2></div>
             <ul>
               {clients.slice(0, 8).map(c => (
                 <li key={c.name}>
@@ -104,6 +104,7 @@ export default function OrderMarginsNew({ rows, err, from, to, setFrom, setTo, t
             <div className="cfn-report-head">
               <Segmented ariaLabel="Відбір" className="is-chips-sm" value={filter} onChange={f => { setFilter(f); setLimit(PAGE) }}
                 options={[{ value: 'all', label: 'Усі', count: counts.all }, { value: 'unpaid', label: 'Не оплачені', count: counts.unpaid }, { value: 'risky', label: 'Ризикові', count: counts.risky }, { value: 'late', label: 'Оплата > 30 днів', count: counts.late }]} />
+              <InfoTip label="Як рахується маржа замовлень" placement="left">Виручка й собівартість — відвантаженого (видаткові й акти замовлення), без ПДВ, як у P&L за нарахуванням.<br />Поставка — дата останнього документа відвантаження.<br />Оплата — коли оплати клієнта покрили суму документів з ПДВ.</InfoTip>
             </div>
             <div className="cfn-tbl mgn-tbl">
               <table>
@@ -140,7 +141,6 @@ export default function OrderMarginsNew({ rows, err, from, to, setFrom, setTo, t
               {list.length > limit && <Button variant="secondary" onClick={() => setLimit(l => l + PAGE)}>Показати ще</Button>}
             </div>
           </section>
-          <p className="cfn-muted cfn-sm">Виручка й собівартість — відвантаженого (видаткові й акти замовлення), без ПДВ, як у P&L за нарахуванням. Поставка — дата останнього документа відвантаження. Оплата — коли оплати клієнта покрили суму документів з ПДВ.</p>
         </>}
     </div>
   )

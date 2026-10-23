@@ -2,7 +2,7 @@
 // перевірки прав — з TaskPanel у Tasks.jsx (передаються в x). Підзадачі — той самий компонент Subtasks.
 import { Link } from 'react-router-dom'
 import { STATUS, PRIORITY, RESULT, ACTIVE, personName, initials, shortDate, kyivTime, describeActivity, updateTask, addWatcher, removeWatcher, deleteTask, remindMe } from '../lib/tasks'
-import { Button, Menu } from '../components/ui'
+import { Button, Menu, InfoTip } from '../components/ui'
 import { useState } from 'react'
 
 const STEPS = ['new', 'in_progress', 'review', 'done']
@@ -108,7 +108,7 @@ export default function TaskPanelNew({ x }) {
                 <option value="">обрати…</option>{people.filter(p => !t.watchers.includes(p.id)).map(p => <option key={p.id} value={p.id}>{personName(p)}</option>)}</select>
                 : <button type="button" className="tpn-add" aria-label="Додати спостерігача" onClick={() => setAddW(true)}>+</button>)}
             </div></div>
-          <div className="tpn-prop"><span>Нагадування</span>
+          <div className="tpn-prop"><span>Нагадування<InfoTip label="Нагадування">{t.due_at ? 'Нагадування надходять у додаток і Telegram відповідальному. Якщо задачу прострочено — щодня о 09:00.' : 'Задайте термін, щоб працювали нагадування до терміну.'}</InfoTip></span>
             <div className="tpn-val tpn-rem">
               {[[1440, 'за 24 год'], [60, 'за 1 год']].map(([m, l]) => <button key={m} type="button" aria-pressed={offs.includes(m)} disabled={!canEdit || busy || !t.due_at} onClick={() => toggleRem(m)}>{l}</button>)}
               <span className={t.due_at ? 'is-on' : ''}>у термін</span>
@@ -117,7 +117,6 @@ export default function TaskPanelNew({ x }) {
                   <Button size="sm" variant="secondary" disabled={!remAt || busy} onClick={() => run(() => remindMe(t.id, remAt), 'Нагадаю в додатку та Telegram').then(ok => ok && setRemAt(null))}>OK</Button></span>)}
             </div></div>
         </div>
-        <p className="tpn-muted tpn-sm">{t.due_at ? 'Нагадування — у додаток і Telegram відповідальному. Якщо прострочено — щодня о 09:00.' : 'Задайте термін, щоб працювали нагадування до терміну.'}</p>
 
         <section className="tpn-desc">
           <div className="tpn-h"><h2>Опис</h2>{canEdit && <button type="button" className="tpn-link" onClick={onEdit}>Редагувати</button>}</div>
@@ -137,7 +136,7 @@ export default function TaskPanelNew({ x }) {
               <div className="tpn-box">
                 <textarea value={cmt} onChange={e => setCmt(e.target.value)} rows={3} placeholder="Напишіть коментар… @ — згадати колегу" aria-label="Коментар"
                   onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sendComment() } }} />
-                <div><small>Ctrl + Enter — надіслати</small><Button variant="primary" size="sm" disabled={!cmt.trim() || busy} onClick={sendComment}>Надіслати</Button></div>
+                <div><Button variant="primary" size="sm" disabled={!cmt.trim() || busy} onClick={sendComment}>Надіслати</Button></div>
               </div></div>
           </> : <ol className="tpn-hist">
             {history.map(h => <li key={h.id}><b>{h.who ? personName(P(h.who)) : 'Система'}</b> {describeActivity(h, people)} <span className="tpn-muted">· {when(h.created_at)}</span></li>)}

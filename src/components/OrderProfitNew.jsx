@@ -11,7 +11,7 @@ import { paymentCandidates, unlinkOrderPayment } from '../lib/orderPayments'
 import { qc } from '../lib/companyScope'
 import { todayKyiv } from '../lib/dates'
 import { formatAmount } from '../utils/format'
-import { Button, Modal, Callout, TableSkeleton, EmptyState, Menu, useToast } from './ui'
+import { Button, Modal, Callout, TableSkeleton, EmptyState, Menu, useToast, InfoTip } from './ui'
 import ContractorSelect from './ui/ContractorSelect'
 import { TxPicker } from './OrderFinanceTab'
 import './OrderProfitNew.css'
@@ -99,8 +99,7 @@ export default function OrderProfitNew({ o, onOrderChange }) {
               <b>{d.verdict.loss ? 'Замовлення збиткове' : d.verdict.acc >= 95 && d.verdict.acc <= 105 ? `Прогноз справдився · ${d.verdict.acc}%` : `Справдилось ${d.verdict.acc}% прогнозу`}</b>
               <p>{d.verdict.worst ? `${d.verdict.worst.d < 0 ? 'Прибуток зменшила' : 'Прибуток збільшила'} стаття «${d.verdict.worst.l}»: ${formatAmount(d.verdict.worst.d, { decimals: 0, sign: 'always' })} ₴ проти плану` : 'Усі статті збіглися з планом'}{d.verdict.delay ? `, а клієнт оплатив на ${d.verdict.delay} дн. пізніше` : ''}.{d.planFrom === 'live' ? ' Знімок прогнозу не зберігся — порівняння з поточним планом.' : ''}</p>
             </> : d.snap ? <>
-              <b>Прогноз збережено {dm(d.snap.taken_at?.slice(0, 10))}</b>
-              <p>{closed ? 'Висновок з\'явиться, коли клієнт і постачальники оплатять усе.' : 'Після закриття замовлення план зафіксується з цього знімка й порівняється з фактом.'}</p>
+              <b>Прогноз збережено {dm(d.snap.taken_at?.slice(0, 10))}<InfoTip label="Знімок прогнозу">{closed ? 'Висновок з’явиться, коли клієнт і постачальники оплатять усе.' : 'Коли замовлення закриється, тут з’явиться порівняння плану з фактом — як у «Точності прогнозу».'}</InfoTip></b>
             </> : <>
               <b>Прогноз ще не збережено</b>
               <p>Знімок плану зберігається, коли замовлення позначають «в прогноз» у реєстрі. Без нього після закриття порівняння буде з поточним планом.</p>
@@ -108,7 +107,7 @@ export default function OrderProfitNew({ o, onOrderChange }) {
           </div>
         </div>
         <div className="opn-tbl"><table>
-          <thead><tr><th>Без ПДВ</th><th className="r">План{d.planFrom === 'snapshot' ? ` · від ${dm(d.snap.taken_at?.slice(0, 10))}` : ''}</th><th className="r">Факт · за оплатами</th><th className="r">Різниця</th></tr></thead>
+          <thead><tr><th>Без ПДВ</th><th className="r">План{d.planFrom === 'snapshot' ? ` · від ${dm(d.snap.taken_at?.slice(0, 10))}` : ''}</th><th className="r">Факт · за оплатами<InfoTip label="Факт" placement="left">Факт рахується за рухом грошей: прив’язані оплати клієнта й постачальників, без ПДВ.</InfoTip></th><th className="r">Різниця</th></tr></thead>
           <tbody>{rows.map(([k, label, hint, s, kind]) => {
             const p = s * pl[k], f = s * fact[k], diff = hasFact ? (f - p) : null
             const better = diff == null ? null : diff > 0.5 ? true : diff < -0.5 ? false : null
@@ -140,7 +139,7 @@ export default function OrderProfitNew({ o, onOrderChange }) {
         <div className="opn-head">
           <h2>Рух грошей по замовленню</h2>
           <div className="opn-ship">
-            <label>Відвантаження <input type="date" className="form-input" value={ship.plan_date || (d.shipEst ? '' : d.shipDate) || ''} onChange={e => savePlan('ship', { planDate: e.target.value || null })} aria-describedby="opn-ship-h" /></label>
+            <label>Відвантаження<InfoTip label="Дати графіка платежів">Дати не обов’язкові: якщо поле порожнє, дата ставиться за правилом і позначається «орієнтовно».</InfoTip> <input type="date" className="form-input" value={ship.plan_date || (d.shipEst ? '' : d.shipDate) || ''} onChange={e => savePlan('ship', { planDate: e.target.value || null })} aria-describedby="opn-ship-h" /></label>
             <label>· клієнт платить через <input type="number" className="form-input opn-days" defaultValue={client.days ?? ''} key={'d' + (client.days ?? '')} placeholder={String(DEFAULT_CLIENT_DAYS)} onBlur={e => { const v = e.target.value; if (String(v) !== String(client.days ?? '')) savePlan('client', { days: v === '' ? null : Number(v) }) }} /> дн.</label>
             {d.shipEst && !ship.plan_date && <small id="opn-ship-h">орієнтовно: {dmy(d.shipDate)}</small>}
           </div>
@@ -164,7 +163,7 @@ export default function OrderProfitNew({ o, onOrderChange }) {
           {d.frozen ? <span className="opn-frozen">{d.closed
             ? `Гроші були заморожені з ${dm(d.frozen.from)} по ${dm(d.frozen.to)} — ${d.frozen.days ?? '…'} дн. по ${n0(d.frozen.amount)} ₴.`
             : `З ${dm(d.frozen.from)}${d.frozen.to ? ` по ${dm(d.frozen.to)}` : ''} замовлення тримає ${n0(d.frozen.amount)} ₴ ваших грошей${d.frozen.days != null ? ` — ${d.frozen.days} дн.` : ''}`}</span> : <span />}
-          {d.flow && <span className={d.flow.ok ? '' : 'is-neg'}>чистий потік <b>{sg2(d.flow.planNet)} ₴</b> {d.flow.ok ? <span className="is-pos">✓ сходиться з планом</span> : `не сходиться з планом на ${n2(d.flow.planNet - d.flow.check)} ₴`} <span className="opn-muted">(податок 18% у потік не входить)</span></span>}
+          {d.flow && <span className={d.flow.ok ? '' : 'is-neg'}>чистий потік <b>{sg2(d.flow.planNet)} ₴</b> {d.flow.ok ? <span className="is-pos">✓ сходиться з планом</span> : `не сходиться з планом на ${n2(d.flow.planNet - d.flow.check)} ₴`} <InfoTip label="Чистий потік" placement="left">Податок 18% у грошовий потік не входить, тому потік = чистий прибуток + податок.</InfoTip></span>}
         </div>
       </section>
 
@@ -179,7 +178,7 @@ export default function OrderProfitNew({ o, onOrderChange }) {
             <div key={t.id}><span>Знайдено оплату від клієнта: <b>{n2(Math.abs(t.amount))} ₴</b> · {dmy(t.date)}</span><Button size="sm" variant="brand" onClick={() => linkClient(t)}>Прив'язати</Button></div>
           ))}</div>
         )}
-        {d.payments.length === 0 ? <p className="opn-empty">Оплат ще немає. Оплату від {o.contractors?.name || 'клієнта'} шукаємо у виписці автоматично за контрагентом і сумою {n2(o.total)} ₴.{cands.length ? '' : ' Поки нічого не знайдено.'}</p> : (
+        {d.payments.length === 0 ? <p className="opn-empty">Оплат ще немає.<InfoTip label="Пошук оплати">Оплату від {o.contractors?.name || 'клієнта'} шукаємо у виписці автоматично за контрагентом і сумою {n2(o.total)} ₴.{cands.length ? '' : ' Поки нічого не знайдено.'}</InfoTip></p> : (
           <ul className="opn-pays">{d.payments.map(p => (
             <li key={p.txId}>
               <span className="opn-p-d">{dmy(p.date)}</span>
@@ -225,11 +224,10 @@ function ExpenseForm({ o, kind, userId, onClose, onSaved }) {
         <div className="form-group"><label>Сума, ₴ *</label><input className="form-input" inputMode="decimal" value={f.amount} onChange={e => set('amount', e.target.value)} autoFocus /></div>
         <div className="form-group"><label>ПДВ</label>
           <div className="opn-seg" role="group" aria-label="ПДВ"><button type="button" aria-pressed={!f.vat} onClick={() => set('vat', false)}>без ПДВ</button><button type="button" aria-pressed={f.vat} onClick={() => set('vat', true)}>з ПДВ</button></div></div>
-        <div className="form-group full"><label>Що це</label><input className="form-input" value={f.name} onChange={e => set('name', e.target.value)} /></div>
+        <div className="form-group full"><label>Що це<InfoTip label="Нова витрата">Витрата одразу зменшує план. У «Факт» вона потрапить, коли прив’яжете оплату з виписки («Оплати по замовленню» → «Витрата»).</InfoTip></label><input className="form-input" value={f.name} onChange={e => set('name', e.target.value)} /></div>
         <div className="form-group"><label>Контрагент (необов'язково)</label><ContractorSelect value={f.cname} placeholder="Кому платимо" onChange={v => setF(s => ({ ...s, cname: v, contractor_id: null }))} onContractorSelect={c => setF(s => ({ ...s, cname: c.name, contractor_id: c.id }))} /></div>
         <div className="form-group"><label>Дата</label><input type="date" className="form-input" value={f.date} onChange={e => set('date', e.target.value)} /></div>
       </div>
-      <p className="opn-muted">Витрата одразу зменшує план. У «Факт» вона потрапить, коли прив'яжете оплату з виписки («Оплати по замовленню» → «Витрата»).</p>
       {err && <p className="is-neg">{err}</p>}
     </Modal>
   )

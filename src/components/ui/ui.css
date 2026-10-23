@@ -256,3 +256,16 @@
 .ui-dd-btn .ti { color: var(--muted); }
 .ui-dd-btn:hover { background: var(--surface-sunken); }
 .ui-dd-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+/* Підказка ⓘ (ТЗ «Підказки», розд. 2) */
+.ui-tip { display: inline-grid; place-items: center; width: 18px; height: 18px; flex: none; margin-left: 6px; padding: 0; border-radius: 50%;
+  border: 1.5px solid var(--tip-ring); background: transparent; color: var(--muted); font-size: 11px; font-weight: 700; line-height: 1; font-style: normal; box-sizing: border-box; user-select: none;
+  letter-spacing: 0; text-transform: none; vertical-align: middle; cursor: help; position: relative; }
+.ui-tip::before { content: ''; position: absolute; inset: -13px; }   /* зона дотику ≥ 44 px */
+.ui-tip:hover, .ui-tip:focus-visible, .ui-tip.is-open { border-color: var(--brand); color: var(--brand); outline: none; }
+.ui-tip.is-dark { border-color: var(--tip-ring-dark); color: var(--on-dark-muted); }
+.ui-tip.is-dark:hover, .ui-tip.is-dark:focus-visible, .ui-tip.is-dark.is-open { border-color: var(--on-dark-pos); color: var(--on-dark-pos); }
+.ui-tip-pop { position: fixed; z-index: 1000; border: 1px solid var(--ink-line); max-width: 300px; width: max-content; padding: 10px 12px; border-radius: 12px; background: var(--ink); color: var(--tip-text);
+  font-size: 12.5px; font-weight: 400; line-height: 1.45; letter-spacing: 0; text-transform: none; text-align: left; white-space: normal; box-shadow: var(--shadow-pop); }
+.ui-tip-pop b { color: #fff; }
+@media (max-width: 767px) { .ui-tip-pop { max-width: 260px; } }

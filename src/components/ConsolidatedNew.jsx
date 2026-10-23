@@ -6,7 +6,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { eliminateIntragroup } from '../lib/group'
 import { formatAmount } from '../utils/format'
-import { Button, Switch, TableSkeleton, Callout, PeriodMenu } from './ui'
+import { Button, Switch, TableSkeleton, Callout, PeriodMenu, InfoTip } from './ui'
 import '../pages/Reports.css'
 import '../pages/AnalyticsNew.css'
 import './ConsolidatedNew.css'
@@ -86,7 +86,7 @@ export default function ConsolidatedNew({ data, forecast, loading, err, year, mo
 
       <div className="csn-mid">
         <section className="cfn-card csn-ent" aria-label="Хто формує капітал групи">
-          <div className="pln-months-head"><h2>Хто формує капітал групи</h2><span className="rpt-muted rpt-note">натисніть — підсвітимо колонку в таблиці</span></div>
+          <div className="pln-months-head"><h2>Хто формує капітал групи</h2></div>
           <div className="csn-ent-bar" aria-hidden="true">{rows.map((r, i) => <span key={r.id} style={{ flexGrow: Math.max(0, r.equity), background: ENT[i % ENT.length] }} />)}</div>
           <div className="csn-ent-cards">
             {rows.map((r, i) => (
@@ -103,11 +103,10 @@ export default function ConsolidatedNew({ data, forecast, loading, err, year, mo
           <h2>Чим забезпечений капітал</h2>
           {[['Основні засоби', t.fa, 'var(--brand)'], ['Гроші', t.cash, 'var(--info-fg)'], ['Інші чисті активи', other, 'var(--muted-2)']].map(([l, v, c]) => (
             <div key={l} className="csn-back-row">
-              <div><span>{l}</span><b>{n0(v)}{t.equity ? <small> · {pct(v / t.equity)}</small> : null}</b></div>
+              <div><span>{l}{l === 'Інші чисті активи' && <InfoTip label="Інші чисті активи">склад + дебіторка − зобов’язання</InfoTip>}</span><b>{n0(v)}{t.equity ? <small> · {pct(v / t.equity)}</small> : null}</b></div>
               <span className="csn-back-track"><i style={{ width: `${t.equity > 0 ? Math.max(0, Math.min(100, (v / t.equity) * 100)) : 0}%`, background: c }} /></span>
             </div>
           ))}
-          <small className="rpt-muted">інші чисті активи = склад + дебіторка − зобов'язання</small>
         </section>
       </div>
 

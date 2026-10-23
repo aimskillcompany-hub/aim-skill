@@ -74,6 +74,9 @@
 :root {
   --font-sans: var(--font);
   --ink: #0F1A14;
+  --tip-ring: #A6AEA8;           /* обводка значка ⓘ */
+  --tip-ring-dark: #7E8A83;      /* ⓘ на темних картках */
+  --tip-text: #E6EBE8;           /* текст попапа ⓘ */
   --ground: #F4F5F2;
   --surface-sunken: #F7F8F6;          /* заголовки таблиць, рядки підсумків */
   --divider: #EEF0EC;

@@ -9,6 +9,7 @@ import { getDocType } from '../lib/docgen'
 import DocModal from '../components/DocModal'
 import GeneratedDocModal from '../components/GeneratedDocModal'
 import { useNewUi } from '../lib/uiPrefs'
+import { InfoTip } from '../components/ui'
 import PeriodCloseNew from './PeriodCloseNew'
 
 // Згенерований документ без прикріпленого реального скана → GeneratedDocModal (рендер з даних),
@@ -269,6 +270,7 @@ function ReportCard({ icon, title, hint, confirmed, onConfirm, readOnly, childre
 // Три колонки руху товарів поряд: куплено / продано / залишок (клік по товару → документ приходу)
 function GoodsReportView({ year, month }) {
   const { user } = useUser()
+  const newUi = useNewUi()
   const [d, setD] = useState(null)
   const [openDoc, setOpenDoc] = useState(null)
   useEffect(() => { setD(null); computeGoodsReport(year, month).then(setD) }, [year, month])
@@ -297,6 +299,7 @@ function GoodsReportView({ year, month }) {
 
   return (
     <>
+      {newUi && <h3 className="pcn-goods-h">Товари: куплено → продано → лишилось<InfoTip label="Товари за місяць">Що куплено, що продано і що лишилось на складі. Ціни — без ПДВ (базова облікова). Залишкова вартість = к-сть × остання ціна закупівлі. Рядок з документом відкриває його для звірки.</InfoTip></h3>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14, alignItems: 'start' }}>
         <Col title={`Куплено (${d.purchased.length})`} color="var(--red)" sub={`на ${fmtInt(t.purchasedSum)} грн`} rows={d.purchased}
           render={r => <>{fmt(r.qty)} шт · {fmt(r.price)} грн/од · Σ <b style={{ color: 'var(--text2)' }}>{fmtInt(r.sum)}</b></>} />
@@ -313,9 +316,9 @@ function GoodsReportView({ year, month }) {
             render={r => <>{fmt(r.qty)} шт</>} />
         </div>
       )}
-      <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 10, marginBottom: 0 }}>
+      {!newUi && <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 10, marginBottom: 0 }}>
         <i className="ti ti-paperclip" /> Клік по товару відкриває документ: у «Куплено» й «Залишок» — прихідну накладну, у «Продано» — вашу видаткову. Щоб звірити ціни з оригіналом. Ціни без ПДВ.
-      </p>
+      </p>}
       {openDoc && (isPureGenerated(openDoc)
         ? <GeneratedDocModal doc={openDoc} onClose={() => setOpenDoc(null)} onDeleted={() => setOpenDoc(null)} />
         : <DocModal user={user} existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => setOpenDoc(null)} />)}
@@ -479,6 +482,7 @@ function CompletenessPanel({ comp, grouped, onChanged }) {
 }
 
 function CompBucket({ title, hint, bucket, color, grouped, onChanged, txProps }) {
+  const newUi = useNewUi()
   const [open, setOpen] = useState(false)
   const n = bucket?.n || 0
   return (
@@ -488,7 +492,7 @@ function CompBucket({ title, hint, bucket, color, grouped, onChanged, txProps })
         <span>
           <i className={`ti ${n ? 'ti-alert-circle' : 'ti-check'}`} style={{ color: n ? color : 'var(--green)', marginRight: 6 }} />
           {title}
-          <span style={{ color: 'var(--text3)', fontSize: 12, marginLeft: 6 }}>{hint}</span>
+          {newUi ? <InfoTip label={title}>{hint}</InfoTip> : <span style={{ color: 'var(--text3)', fontSize: 12, marginLeft: 6 }}>{hint}</span>}
         </span>
         <b style={{ color: n ? color : undefined, whiteSpace: 'nowrap' }}>
           {n ? `${n} тр · ${fmtInt(bucket.sum)} грн ${open ? '▴' : '▾'}` : 'немає'}

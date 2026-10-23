@@ -10,7 +10,7 @@ import { loadOrderProfit } from '../lib/orderProfit'
 import { ORDER_TYPES, OUTCOME, flowFor, statusLabel } from '../lib/orders'
 import { STATUS as TASK_STATUS, ACTIVE, isOverdue, shortDate, kyivTime } from '../lib/tasks'
 import { formatAmount } from '../utils/format'
-import { Button, Menu, StatusPill } from '../components/ui'
+import { Button, Menu, StatusPill, InfoTip } from '../components/ui'
 import { initials } from '../components/AppShell'
 import './OrderCardNew.css'
 
@@ -172,7 +172,7 @@ export function OrderAside({ o, plan, payment, onTab }) {
         </div>
         {o.paid_transaction_id && payment
           ? <p className="ocn-box-text">{fmtD(payment.date)} · <b>{formatAmount(Math.abs(payment.amount))} ₴</b><br />{payment.counterparty || payment.description || ''}</p>
-          : <p className="ocn-box-text">Платежу з таким контрагентом і сумою у виписці поки немає.</p>}
+          : <p className="ocn-box-text">Оплату ще не знайдено<InfoTip label="Оплата від клієнта">Платежу з таким контрагентом і сумою у виписці поки немає. Прив’яжіть оплату вручну.</InfoTip></p>}
         {!o.paid_transaction_id && <Button variant="secondary" onClick={() => onTab('finance')} className="ocn-wide">Прив'язати вручну</Button>}
       </section>
 

@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom'
 import { addForecastItem, removeForecastItem } from '../lib/forecast'
 import { todayKyiv } from '../lib/dates'
 import { formatAmount, plural } from '../utils/format'
-import { Button, Modal, Segmented, EmptyState, Callout, Menu } from './ui'
+import { Button, Modal, Segmented, EmptyState, Callout, Menu, InfoTip } from './ui'
 import '../pages/Reports.css'
 import '../pages/AnalyticsNew.css'
 import './ForecastNew.css'
@@ -40,6 +40,28 @@ export default function ForecastNew({ months, orders, manual, flags, co, setCo, 
     <div className="rpt fcn">
       {(flags.no057 || flags.no065 || flags.no067) && <Callout tone="warn" title="Прогноз неповний" text={`— не застосовані міграції: ${[flags.no057 && '057', flags.no065 && '065', flags.no067 && '067'].filter(Boolean).join(', ')}.`} />}
       {coList.length > 1 && <Segmented ariaLabel="Юрособа" value={co} onChange={setCo} options={[{ value: 'all', label: 'Усі' }, ...coList.map(c => ({ value: c.id, label: c.short_name || c.name }))]} />}
+
+      {/* веб (ТЗ 5.3, рішення 23.10.2026): три картки залишку — зараз → найнижчий місяць → кінець прогнозу */}
+      <section className="rpt-card fcn-three" aria-label="Гроші на рахунках по місяцях">
+        <div className="fcn-three-h"><h2 className="rpt-h3">Гроші на рахунках по місяцях</h2>
+          <span className="rpt-muted">прийде <b className="fcn-in">+{n0(income)}</b> · піде <b className="fcn-out">−{n0(expense)}</b> · {orders.length} {plural(orders.length, ['замовлення', 'замовлення', 'замовлень'])}</span></div>
+        <div className="fcn-three-c">
+          <div className="fcn-mc"><span>Зараз</span><b>{n0(months.startCash)} ₴</b><small>на всіх рахунках</small></div>
+          {low && last && low !== last && <>
+            <i className="ti ti-arrow-right" aria-hidden="true" />
+            <div className={`fcn-mc is-low${low.balance < 0 ? ' is-neg' : ''}`}><span>{MNOM[mIdx(low.ym)][0].toUpperCase() + MNOM[mIdx(low.ym)].slice(1)}<em>найнижча точка</em></span>
+              <b>{n0(low.balance)} ₴</b><small>{formatAmount(low.net, { decimals: 0, sign: 'always' })} · прийде {n0(low.income)}, піде {n0(low.expense)}</small></div>
+          </>}
+          {last && <>
+            <i className="ti ti-arrow-right" aria-hidden="true" />
+            <div className="fcn-mc is-end"><span>{MNOM[mIdx(last.ym)][0].toUpperCase() + MNOM[mIdx(last.ym)].slice(1)}<em>після прогнозу</em></span>
+              <b className={after < 0 ? 'is-neg' : ''}>{n0(after)} ₴</b><small>{formatAmount(after - months.startCash, { decimals: 0, sign: 'always' })} за весь прогноз</small></div>
+          </>}
+        </div>
+        {gap && <p className="fcn-three-gap">У {MLOC[mIdx(low.ym)]} піде {n0(low.expense)} ₴, а прийде {n0(low.income)} ₴ — у найнижчій точці {low.balance < 0 ? <>бракуватиме <b>{n0(-low.balance)} ₴</b></> : <>залишиться {n0(low.balance)} ₴</>}.</p>}
+        {manual.length === 0 && <p className="fcn-three-note"><i aria-hidden="true" />Оренда, зарплата й податки без замовлення в прогноз не входять, тому залишок завищений.
+          <button type="button" className="rpt-link" onClick={() => setAdding({ kind: 'expense', amount: '', date: todayKyiv(), note: '', companyId: co !== 'all' ? co : (companies?.[0]?.id || '') })}>Додати постійні витрати</button></p>}
+      </section>
 
       <section className="fcn-hero" aria-label="Гроші після прогнозу">
         <div className="fcn-eq">
@@ -92,22 +114,13 @@ export default function ForecastNew({ months, orders, manual, flags, co, setCo, 
               ))}
             </ul>) })()}
         </section>
-        <section className="cfn-card fcn-src" aria-label="Звідки цифри">
-          <h2>Звідки цифри</h2>
-          <ol>
-            <li><b>Сума</b> — план з позицій замовлення мінус уже оплачене</li>
-            <li><b>Дата</b> — з «Графіка платежів» у замовленні</li>
-            <li><b>Знімок прогнозу</b> зберігається, коли замовлення позначають «в прогноз»; після закриття його порівнюємо з фактом — <Link to="/forecast?tab=accuracy">Точність прогнозу</Link></li>
-          </ol>
-          <p><i className="ti ti-arrow-right" aria-hidden="true" /> Підсумок потрапляє в <Link to="/investor?tab=balance">Зведений баланс групи</Link></p>
-        </section>
       </div>
 
       <section className="rpt-card is-flush">
-        <div className="cfn-report-head"><h2 className="rpt-h3">Замовлення в прогнозі · {orders.length}</h2><span className="rpt-muted rpt-note">натисніть рядок — побачите графік платежів</span></div>
+        <div className="cfn-report-head"><h2 className="rpt-h3">Замовлення в прогнозі · {orders.length}</h2></div>
         {orders.length === 0 ? <EmptyState icon="ti-trending-up" title="Немає замовлень у прогнозі" text="Позначте замовлення «в прогноз» у реєстрі «Замовлення» — суми й дати візьмуться з нього." />
           : <div className="tbl-wrap rpt-table fcn-table"><table>
-            <thead><tr><th>Замовлення</th><th>Клієнт</th><th className="r">Прийде</th><th className="r">Піде</th><th className="r">Нетто</th><th className="r">Маржа</th><th>Що заважає</th></tr></thead>
+            <thead><tr><th>Замовлення</th><th>Клієнт</th><th className="r">Прийде</th><th className="r">Піде</th><th className="r">Заробимо</th><th className="r">Маржа</th><th>Що заважає</th></tr></thead>
             <tbody>
               {[...orders].sort((x, y) => (y.lines.some(l => l.remaining > 0.5) ? 1 : 0) - (x.lines.some(l => l.remaining > 0.5) ? 1 : 0)).map(o => {
                 const pend = o.lines.filter(l => l.remaining > 0.5)
@@ -138,7 +151,7 @@ export default function ForecastNew({ months, orders, manual, flags, co, setCo, 
                             ))}
                           </div>
                         )}
-                        <p className="rpt-muted rpt-note">Суми — з позицій, дати — з «Графіка платежів» замовлення. <Link to={`/orders/${o.id}?tab=profit`}>Змінити в замовленні →</Link></p>
+                        <p className="rpt-muted rpt-note"><Link to={`/orders/${o.id}?tab=profit`}>Змінити в замовленні →</Link><InfoTip label="Звідки суми й дати">Суми — з позицій, дати — з «Графіка платежів» замовлення.</InfoTip></p>
                       </td></tr>
                     )}
                   </Fragment>
@@ -149,7 +162,7 @@ export default function ForecastNew({ months, orders, manual, flags, co, setCo, 
           </table></div>}
       </section>
 
-      <section className="rpt-card fcn-manual" aria-label="Без замовлення">
+      <section className={`rpt-card fcn-manual${manual.length ? '' : ' is-empty'}`} aria-label="Без замовлення">
         <div className="fcn-manual-h">
           <div><h2 className="rpt-h3">Без замовлення: оренда, зарплата, податки</h2>
             <span className="rpt-muted rpt-note">{manual.length ? `${manual.length} ${plural(manual.length, ['рядок', 'рядки', 'рядків'])} · −${n0(manual.filter(m => m.kind !== 'income').reduce((s, m) => s + Number(m.amount || 0), 0))} ₴ / +${n0(manual.filter(m => m.kind === 'income').reduce((s, m) => s + Number(m.amount || 0), 0))} ₴` : 'Поки немає жодного рядка — прогноз не враховує постійних витрат компанії'}</span></div>

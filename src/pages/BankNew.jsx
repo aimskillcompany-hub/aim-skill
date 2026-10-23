@@ -4,7 +4,7 @@
 //   масове редагування з липкою панеллю й «Скасувати» в тості, режим вибору довгим натисканням на телефоні.
 import { useMemo, useRef, useState } from 'react'
 import { useGroupContractors } from '../lib/group'
-import { Button, Menu, Segmented, EmptyState, TableSkeleton } from '../components/ui'
+import { Button, Menu, Segmented, EmptyState, TableSkeleton, InfoTip } from '../components/ui'
 import PeriodMenu from '../components/ui/PeriodMenu'
 import { formatAmount } from '../utils/format'
 import './BankNew.css'
@@ -118,7 +118,7 @@ export default function BankNew(p) {
             <label className="bkn-check"><input type="checkbox" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(list.map(r => r.id)))} /> Вибрати всі на екрані ({list.length})</label>
             {ready.length > 0 && <Button size="sm" variant="secondary" icon="ti-check" onClick={() => bulkUpdate(ready.map(r => r.id), { is_validated: true }, 'Підтверджено')}
               title="Готові: є контрагент, напрям, стаття і документ (або він не потрібен)">Підтвердити готові ({ready.length})</Button>}
-            <span className="bkn-hint">готові = є контрагент, напрям, стаття і документ (або він не потрібен)</span>
+            <InfoTip label="Що таке «готові»">Готові — операції, де вказано контрагента, напрям, статтю і документ (або документ не потрібен).</InfoTip>
             <button type="button" className="bkn-link bkn-mobile-only" onClick={() => setSelectMode(m => !m)}>{selectMode ? 'Готово' : 'Вибрати'}</button>
           </div>
         )}

@@ -11,7 +11,7 @@ import { loadPayablesAsOf, groupPayables } from '../lib/payables'
 import { computeProfitability } from '../lib/profitability'
 import { listOutgoingDocs } from '../lib/accountantReport'
 import { formatAmount, formatShort, plural } from '../utils/format'
-import { useTabParam, TableSkeleton, Button, PeriodMenu } from '../components/ui'
+import { useTabParam, TableSkeleton, Button, PeriodMenu, InfoTip } from '../components/ui'
 import './Reports.css'
 
 const ReceivablesReport = lazy(() => import('../components/ReceivablesReport'))
@@ -74,8 +74,7 @@ export default function Reports() {
     <div className="rpt-page">
       <div className="rpt-head rpt-head-row">
         <div>
-          <h1 className="rpt-h1">Звіти</h1>
-          <p className="rpt-sub">Хто нам винен, кому винні ми, на чому заробили, і пакет документів для бухгалтера</p>
+          <h1 className="rpt-h1">Звіти<InfoTip label="Звіти">Хто нам винен, кому винні ми, на чому заробили, і пакет документів для бухгалтера.</InfoTip></h1>
         </div>
         <div className="rpt-head-acts">
           <PeriodMenu year={period.year} month={period.month} allowYear={tab === 'profit'} onChange={p => setPeriod({ year: p.year, month: p.month || (tab === 'profit' ? 0 : now.getMonth() + 1) })} />

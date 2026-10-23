@@ -4,7 +4,7 @@ import ConsolidatedBalance from '../components/ConsolidatedBalance'
 import MeetingMinutes from '../components/MeetingMinutes'
 import { useNewUi } from '../lib/uiPrefs'
 import { useCompany } from '../lib/company'
-import { Tabs, useTabParam } from '../components/ui'
+import { Tabs, useTabParam, InfoTip } from '../components/ui'
 import './Reports.css'
 
 // Розділ «Інвестору»: (1) по-замовленнєвий прибуток/агентські по всіх компаніях;
@@ -28,15 +28,14 @@ function InvestorNew() {
   return (
     <div className="rpt-page">
       <div>
-        <h1 className="rpt-h1">Інвестору</h1>
-        <p className="rpt-sub">Група компаній · {companies?.length || 0} {(companies?.length || 0) === 1 ? 'юрособа' : 'юрособи'} · звіт для власників та інвесторів</p>
+        <h1 className="rpt-h1">Інвестору<InfoTip label="Інвестору">Група компаній: {companies?.length || 0} {(companies?.length || 0) === 1 ? 'юрособа' : 'юрособи'}. Звіт для власників та інвесторів.</InfoTip></h1>
       </div>
       <Tabs ariaLabel="Розділи" idPrefix="inv" value={tab} onChange={setTab} tabs={[
         { id: 'report', label: 'Прибуток / агентські', icon: 'ti-report-money' },
         { id: 'balance', label: 'Зведений баланс групи', icon: 'ti-scale' },
         { id: 'minutes', label: 'Протоколи нарад', icon: 'ti-clipboard-text' },
       ]} />
-      {tab === 'report' && <><p className="rpt-sub">Прибуток та агентські по всіх юрособах — лише замовлення з відміткою «Інвестор» (у реєстрі або картці замовлення).</p><OwnerReport /></>}
+      {tab === 'report' && <><h2 className="rpt-h3">Прибуток / агентські<InfoTip label="Прибуток / агентські">Прибуток та агентські по всіх юрособах — лише замовлення з відміткою «Інвестор» (у реєстрі або картці замовлення).</InfoTip></h2><OwnerReport /></>}
       {tab === 'balance' && <ConsolidatedBalance />}
       {tab === 'minutes' && <MeetingMinutes />}
     </div>

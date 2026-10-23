@@ -191,3 +191,4 @@
 .whn-nobatch { display: inline-flex; flex-direction: column; align-items: flex-end; color: var(--muted); cursor: help; }
 .whn-nobatch small { font-size: 11px; color: var(--warn-fg); }
 @media (max-width: 767px) { .whn-nobatch { align-items: flex-end; } }
+.pb-legend { margin: 10px 0 0; font-size: 12px; color: var(--muted); display: flex; align-items: center; }

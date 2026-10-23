@@ -121,3 +121,42 @@
 @media (max-width: 767px) { .fcn-eq > div:not(.is-res) b { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } }
 /* плашка касового розриву — суцільний теплий фон на темній картці (макет Forecast) */
 .fcn-gap, .fcn-gap.is-bad { background: color-mix(in srgb, var(--on-dark-neg) 14%, var(--ink)); box-shadow: none; }
+/* «Угоди в роботі» (ТЗ 5.3, 23.10.2026): веб — три картки залишку замість hero й графіка; телефон — як було (hero + місяці) */
+.fcn-three { display: flex; flex-direction: column; gap: 14px; }
+.fcn-three-h { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+.fcn-three-c { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; }
+.fcn-three-c > .ti { color: var(--muted-2); font-size: 18px; }
+.fcn-mc { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; border-radius: 18px; background: var(--surface-sunken); min-width: 0; }
+.fcn-mc span { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.fcn-mc em { font-style: normal; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+.fcn-mc b { font-size: 30px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.fcn-mc small { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.fcn-mc.is-low { background: var(--warn-bg); } .fcn-mc.is-low span { color: var(--warn-fg); } .fcn-mc.is-low em { background: var(--warn-fg); color: #fff; }
+.fcn-mc.is-low.is-neg b { color: var(--danger-fg); }
+.fcn-mc.is-end { background: var(--ink); color: #fff; } .fcn-mc.is-end span, .fcn-mc.is-end small { color: var(--on-dark-muted); }
+.fcn-mc.is-end em { background: var(--ink-field); color: var(--on-dark-pos); } .fcn-mc.is-end b.is-neg { color: var(--on-dark-neg); }
+.fcn-three-gap { margin: 0; font-size: 13px; color: var(--danger-fg); }
+.fcn-three-note { margin: 0; padding-top: 12px; border-top: 1px solid var(--divider); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; color: var(--muted); }
+.fcn-three-note > i { width: 8px; height: 8px; border-radius: 50%; background: var(--warn-mark); }
+.fcn-three-note .rpt-link { text-decoration: underline; text-underline-offset: 3px; }
+.fcn-manual.is-empty { display: none; }
+@media (min-width: 768px) { .fcn-hero, .fcn-mid { display: none !important; } }
+@media (max-width: 767px) { .fcn-three { display: none; } .fcn-manual.is-empty { display: block; } }
+/* «Точність прогнозу» (макет 23.10.2026) */
+.fca-one { display: flex; align-items: center; gap: 32px; flex-wrap: wrap; }
+.fca-one-n { display: flex; flex-direction: column; gap: 2px; }
+.fca-one-n span { font-size: 13px; color: var(--muted); }
+.fca-one-n b { font-size: 52px; font-weight: 700; letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+.fca-one-n b.is-ok { color: var(--brand-dark); } .fca-one-n b.is-fair { color: var(--warn-fg); } .fca-one-n b.is-bad { color: var(--danger-fg); }
+.fca-one p { margin: 0; font-size: 15px; line-height: 1.6; }
+.fca-where { display: flex; flex-direction: column; gap: 10px; }
+.fca-bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; gap: 2px; }
+.fca-bar .is-0, .fca-leg i.is-0 { background: var(--danger-fg); } .fca-bar .is-1, .fca-leg i.is-1 { background: var(--expense-chart); }
+.fca-bar .is-2, .fca-leg i.is-2 { background: var(--warn-mark); } .fca-bar span:nth-child(n+4), .fca-leg li:nth-child(n+4) i { background: var(--muted-2); }
+.fca-leg { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; }
+.fca-leg li { display: inline-flex; align-items: center; gap: 6px; } .fca-leg i { width: 8px; height: 8px; border-radius: 2px; } .fca-leg b { font-variant-numeric: tabular-nums; }
+.fca-row { display: flex; flex-direction: column; gap: 6px; padding: 4px 0 4px 22px; }
+.fca-row .fca-concl { margin: 0; font-size: 14px; }
+.fca-lines { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.fca-lines em { font-style: normal; }
+@media (max-width: 767px) { .fca-one { gap: 12px; } .fca-one-n b { font-size: 40px; } .fca-row { padding-left: 0; } }

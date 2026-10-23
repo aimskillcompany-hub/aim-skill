@@ -14,7 +14,7 @@ import { BUCKETS } from '../lib/receivables'
 import { loadPfd } from '../lib/pfd'
 import { getAccountBalances } from '../lib/accounts'
 import { formatAmount, plural } from '../utils/format'
-import { KpiTile, StackBar, EmptyState, TableSkeleton, Button, Callout } from './ui'
+import { KpiTile, StackBar, EmptyState, TableSkeleton, Button, Callout, InfoTip } from './ui'
 
 const dmy = (iso) => iso ? iso.split('-').reverse().join('.') : '—'
 const BUCKET_COLORS = { '0-7': 'var(--brand)', '8-14': 'var(--warn-mark)', '15-30': 'var(--expense-chart)', '30+': 'var(--danger-fg)' }
@@ -71,7 +71,7 @@ export default function PayablesReport({ showGroup = true, ctl = null } = {}) {
       <section className="rpt-paysum" aria-label="Підсумок кредиторки">
         <div className="rpt-ps-main"><span>Ми винні постачальникам · {dmy(data.asOf)}</span><b>{formatAmount(s.total, { decimals: 0 })} ₴</b>
           <small>у т. ч. ПДВ {formatAmount(s.vat, { decimals: 0 })} ₴ · {s.debtors} {plural(s.debtors, ['постачальник', 'постачальники', 'постачальників'])}</small></div>
-        <div><span>Позики отримані (ПФД)</span><b className="is-out">{side?.loans == null ? '…' : `${formatAmount(side.loans, { decimals: 0 })} ₴`}</b>
+        <div><span>Позики отримані (ПФД)<InfoTip label="Позики отримані">Поворотна фінансова допомога у кредиторку не входить — її показано окремо.</InfoTip></span><b className="is-out">{side?.loans == null ? '…' : `${formatAmount(side.loans, { decimals: 0 })} ₴`}</b>
           <button type="button" className="rpt-link" onClick={() => navigate('/loans')}>Поворотна фін. допомога →</button></div>
         <div><span>Гроші на рахунках зараз</span><b className="is-in">{side?.cash == null ? '…' : `${formatAmount(side.cash, { decimals: 0 })} ₴`}</b>
           <small>{side?.cash != null && s.total > 0 ? (side.cash >= s.total ? `покривають кредиторку в ${Math.floor(side.cash / s.total)} ${plural(Math.floor(side.cash / s.total), ['раз', 'рази', 'разів'])}` : `покривають ${Math.round(Math.max(0, side.cash) / s.total * 100)}% кредиторки`) : ' '}</small></div>
@@ -129,7 +129,6 @@ export default function PayablesReport({ showGroup = true, ctl = null } = {}) {
           <ul className="rpt-list">{data.overpaid.map(x => <li key={x.docId}><span>{x.contractorName} · {getDocType(x.type)?.label || 'документ'} № {x.doc_number}</span><b className="rpt-num">{formatAmount(x.over)} ₴</b></li>)}</ul>
         </section>
       )}
-      <p className="rpt-muted rpt-note">Позики отримані (поворотна фінансова допомога) у кредиторку не входять — вони окремо, у картці вище.</p>
     </div>
   )
 }

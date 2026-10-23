@@ -1,6 +1,6 @@
 import ForecastBalance from '../components/ForecastBalance'
 import { useNewUi } from '../lib/uiPrefs'
-import { Tabs, useTabParam } from '../components/ui'
+import { Tabs, useTabParam, InfoTip } from '../components/ui'
 import ForecastAccuracy from '../components/ForecastAccuracy'
 import './Reports.css'
 
@@ -30,10 +30,10 @@ function ForecastNewPage() {
   return (
     <div className="rpt-page">
       <div>
-        <h1 className="rpt-h1">Прогноз <span className="fcn-badge"><i className="ti ti-lock" aria-hidden="true" />Звіт · тільки перегляд</span></h1>
-        <p className="rpt-sub">{tab === 'accuracy'
-          ? 'Наскільки справдився прогноз у закритих замовленнях: план на момент позначки «в прогноз» проти факту з банку й складу.'
-          : 'Цифри беруться із замовлень з позначкою «в прогноз». Щоб змінити прогноз, змініть замовлення.'}</p>
+        <h1 className="rpt-h1">Прогноз<InfoTip label="Прогноз">{tab === 'accuracy'
+          ? <>Що планували при позначці «в прогноз» і що вийшло після закриття замовлення: план проти факту з банку й складу.</>
+          : <>Звіт із замовлень «в прогнозі». Змінюється в самому замовленні.<br /><b>Сума</b> — план з позицій мінус уже оплачене.<br /><b>Дата</b> — з «Графіка платежів» у замовленні.<br />Підсумок іде в Зведений баланс групи.</>}</InfoTip>
+          <span className="fcn-badge"><i className="ti ti-lock" aria-hidden="true" />тільки перегляд</span></h1>
       </div>
       <Tabs ariaLabel="Розділи прогнозу" idPrefix="fc" value={tab} onChange={setTab}
         tabs={[{ id: 'deals', label: 'Угоди в роботі' }, { id: 'accuracy', label: 'Точність прогнозу' }]} />

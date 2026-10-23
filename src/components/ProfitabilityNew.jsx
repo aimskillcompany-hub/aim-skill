@@ -6,7 +6,7 @@ import { useGroupContractors } from '../lib/group'
 import { exportReportXlsx, exportReportPdf } from '../lib/reportExport'
 import { listDecisions } from '../lib/decisions'
 import { formatAmount, plural } from '../utils/format'
-import { TableSkeleton, EmptyState, Callout, useToast, PeriodMenu } from './ui'
+import { TableSkeleton, EmptyState, Callout, useToast, PeriodMenu, InfoTip } from './ui'
 import '../pages/AnalyticsNew.css'
 
 const n0 = (v) => formatAmount(v, { decimals: 0 })
@@ -71,13 +71,12 @@ export default function ProfitabilityNew({ data, loading, err, from, to, setFrom
         <section className="rpt-card is-flush">
           {invoices.length === 0 ? <EmptyState icon="ti-receipt" title="Немає видаткових за період" text="Змініть період або юрособу." />
             : <>
-              <div className="cfn-report-head"><h2 className="rpt-h3">Видаткові накладні · від найприбутковішої</h2><span className="rpt-muted rpt-note">усі суми без ПДВ</span></div>
+              <div className="cfn-report-head"><h2 className="rpt-h3">Видаткові накладні · від найприбутковішої<InfoTip label="Як рахується прибутковість"><b>Прибуток</b> = реалізація − закупка (FIFO).<br /><b>Маржа</b> = прибуток ÷ реалізація.<br /><b>Агентські</b> = прибуток × % (при збитку не нараховуються).<br /><b>ПДВ до сплати</b> = ПДВ з реалізації − вхідний ПДВ (кредит лише по закупках у платника ПДВ).</InfoTip></h2><span className="rpt-muted rpt-note">усі суми без ПДВ</span></div>
               <div className="tbl-wrap rpt-table prf-table"><table>
                 <thead><tr><th>Накладна</th><th>Клієнт</th><th className="r">Реалізація</th><th className="r">Прибуток</th><th className="c-scale">Маржа</th><th className="r">ПДВ до сплати</th><th className="r">Агент, %</th><th className="r">Чистий</th></tr></thead>
                 <tbody>{invoices.map(inv => <Row key={inv.id} inv={inv} group={grp.has(inv.contractorId)} userId={userId} onChanged={onChanged} />)}</tbody>
                 <tfoot><tr><td>Разом · {t.count} накл.</td><td /><td className="r rpt-num">{n0(t.sellSum)}</td><td className="r rpt-num">{n0(t.profit)}</td><td className="c-scale r">{pct(t.margin)}</td><td className="r rpt-num">{n0(t.vatToPay)}</td><td className="r rpt-num">{t.commission ? `−${n0(t.commission)}` : ''}</td><td className="r rpt-num prf-net">{n0(t.net)}</td></tr></tfoot>
               </table></div>
-              <p className="rpt-muted rpt-note prf-note">Прибуток = реалізація − закупка (FIFO). Маржа = прибуток ÷ реалізація. Агентські = прибуток × % (при збитку не нараховуються). ПДВ до сплати = ПДВ з реалізації − вхідний ПДВ (кредит лише по закупках у платника ПДВ). Клік по накладній — товари.</p>
             </>}
         </section>
       </>}
