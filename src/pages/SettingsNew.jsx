@@ -78,6 +78,22 @@ function CompaniesSection({ CompanyTab }) {
 // ── Статті P&L ──
 const GROUPS = [...PL_ORDER.filter(k => !k.startsWith('_')), '_none']
 const groupOf = (a) => a.pl_level && PL_ORDER.includes(a.pl_level) ? a.pl_level : '_none'
+// «Схожі статті» (макет SettingsArticles): у межах групи назви збігаються за змістовним словом
+// або одна містить іншу (без «інші / інше»). Лише підказка — об'єднання вручну через «⋯ → Об'єднати».
+const GENERIC = new Set(['інші', 'інше', 'інших', 'виручка', 'податки', 'пфд', 'витрати', 'доходи', 'оплата', 'послуги', 'товари', 'за', 'з', 'на', 'та', 'і', 'нами', 'повернено', 'надано', 'отримано', 'для'])
+const words = (n) => String(n || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9 ]+/gi, ' ').split(/\s+/).filter(w => w.length > 1)
+function similarIds(list) {
+  const out = new Map()
+  for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+    const a = words(list[i].name).filter(w => !['інші', 'інше', 'інших'].includes(w)), b = words(list[j].name).filter(w => !['інші', 'інше', 'інших'].includes(w))
+    const sub = a.length && b.length && (a.every(w => b.includes(w)) || b.every(w => a.includes(w)))
+    const share = a.some(w => !GENERIC.has(w) && b.includes(w))
+    if (sub || share) { out.set(list[i].id, list[i]); out.set(list[j].id, list[j]) }
+  }
+  return out
+}
+const GROUP_NOTE = { revenue: 'перший рядок P&L', cogs: 'прямі витрати на замовлення', opex: 'витрати компанії', other_income: 'не від основної діяльності', below_line: 'податки й обов’язкові платежі', _none: 'рух грошей без впливу на прибуток: у Cash Flow і Балансі' }
+const plain = (l) => String(l || '').replace(/\s*\([^)]*\)\s*$/, '')
 const TYPE_LABEL = { income: 'дохід', expense: 'витрата', transfer: 'переказ / ПФД', other: 'інше' }
 
 function ArticlesSection() {
@@ -111,20 +127,30 @@ function ArticlesSection() {
     invalidateCache(); toast(`Статтю «${a.name}» видалено`); load()
   }
 
+  const similar = useMemo(() => new Map(GROUPS.flatMap(g => [...similarIds(byGroup[g] || [])])), [byGroup])
+  const simGroups = useMemo(() => GROUPS.map(g => (byGroup[g] || []).filter(a => similar.has(a.id))).filter(l => l.length > 1), [byGroup, similar])
   if (!rows) return <TableSkeleton rows={10} cols={3} label="Завантаження статей…" />
   return (
     <div className="stn-col">
-      <div className="stn-bar"><p className="rpt-sub">Порядок у групі — перетягуванням (або стрілками). Правка, об'єднання й видалення — у меню «⋯».</p>
-        <Button variant="primary" icon="ti-plus" onClick={() => setEdit({ name: '', type: 'expense', pl_level: 'opex' })}>Нова стаття</Button></div>
+      <section className="cfn-card stn-plan">
+        <h2>План статей</h2>
+        <p className="rpt-muted">Згруповано так, як статті складаються в P&L: зверху вниз від виручки до податків. Порядок у групі — перетягуванням або стрілками; правка, об'єднання й видалення — у меню «⋯».</p>
+        <Button variant="primary" icon="ti-plus" onClick={() => setEdit({ name: '', type: 'expense', pl_level: 'opex' })}>Нова стаття</Button>
+      </section>
+      {simGroups.length > 0 && (
+        <div className="stn-similar" role="note"><i className="ti ti-alert-triangle" aria-hidden="true" />
+          <span><b>Схожі статті:</b> {simGroups.map(l => l.map(a => `«${a.name}»`).join(', ')).join('; а також ')}. Через це однакові витрати розносяться по різних статтях. Можна об'єднати через «⋯ → Об'єднати з іншою» — транзакції перейдуть на одну статтю.</span></div>
+      )}
       {GROUPS.map(g => byGroup[g].length > 0 && (
         <section key={g} className="cfn-card stn-group" aria-label={g === '_none' ? 'Поза P&L' : PL_LABELS[g]}>
-          <h2>{g === '_none' ? 'Поза P&L' : PL_LABELS[g]} <small>{byGroup[g].length}</small></h2>
+          <h2><i className={`stn-gdot is-${g.replace('_', '')}`} aria-hidden="true" />{g === '_none' ? 'Поза P&L' : plain(PL_LABELS[g])} <small>{GROUP_NOTE[g]}</small><span className="stn-gcount">{byGroup[g].length} {plural(byGroup[g].length, ['стаття', 'статті', 'статей'])}</span></h2>
           <ul>
             {byGroup[g].map((a, i) => (
               <li key={a.id} draggable onDragStart={() => setDrag({ g, id: a.id })} onDragOver={e => e.preventDefault()} onDrop={() => drop(g, a.id)}
                 className={drag?.id === a.id ? 'is-drag' : ''}>
                 <i className="ti ti-grip-vertical stn-grip" aria-hidden="true" />
                 <span className="stn-a-name">{a.name}<small>{TYPE_LABEL[a.type] || a.type}</small></span>
+                {similar.has(a.id) && <span className="stn-sim">схожа</span>}
                 <span className="stn-arrows">
                   <Button variant="ghost" size="sm" iconOnly icon="ti-arrow-up" aria-label={`Вище: ${a.name}`} disabled={i === 0} onClick={() => move(g, a.id, -1)} />
                   <Button variant="ghost" size="sm" iconOnly icon="ti-arrow-down" aria-label={`Нижче: ${a.name}`} disabled={i === byGroup[g].length - 1} onClick={() => move(g, a.id, 1)} />
