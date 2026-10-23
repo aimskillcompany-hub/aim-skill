@@ -276,6 +276,23 @@ export default function AccountantReport({ ctl = null } = {}) {
       {report && (
         <>
           {/* Шапка видаткової */}
+          {newUi ? (
+            <div className="acc-dh">
+              <div className="acc-dh-top">
+                <div><span className="rpt-muted">{report.doc.isAct ? 'Акт наданих послуг' : 'Видаткова накладна'}</span>
+                  <h3>№ {report.doc.doc_number} від {d(report.doc.doc_date)}</h3></div>
+                <div className="acc-dh-acts">
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => exportOutgoingReportPdf(report)}>Звіт PDF</button>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={downloadArchive} disabled={zipping}>{zipping ? 'Архівую…' : 'Архів .zip'}</button>
+                </div>
+              </div>
+              <div className="acc-dh-boxes">
+                <div><span>Покупець</span><b>{report.doc.contractorName}</b>{report.doc.contractorEdrpou && <small>ЄДРПОУ {report.doc.contractorEdrpou}</small>}</div>
+                <div><span>Сума з ПДВ</span><b className="is-big">{formatAmount(report.doc.amount)} ₴</b>{report.doc.vat_amount ? <small>у т. ч. ПДВ {formatAmount(report.doc.vat_amount)} ₴</small> : null}</div>
+              </div>
+              {report.doc.storage_path && <button type="button" className="rpt-link acc-open" onClick={() => openFile(report.doc.storage_path)}><i className="ti ti-file" aria-hidden="true" /> Відкрити документ</button>}
+            </div>
+          ) : (
           <div className="card" style={{ marginBottom: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
               <div style={{ fontSize: 15, fontWeight: 700 }}>
@@ -292,6 +309,7 @@ export default function AccountantReport({ ctl = null } = {}) {
             {report.doc.storage_path && <a onClick={() => openFile(report.doc.storage_path)} style={{ color: 'var(--blue)', cursor: 'pointer', fontSize: 13 }}><i className="ti ti-file" /> Відкрити документ</a>}
           </div>
 
+          )}
           {/* Нестача — окремий блок */}
           {report.shortages?.length > 0 && (
             <div className="card" style={{ marginBottom: 14, borderLeft: '4px solid var(--red)', background: '#FFF6F6' }}>
