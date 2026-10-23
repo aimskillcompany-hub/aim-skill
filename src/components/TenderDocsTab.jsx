@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { extractTenderDoc } from '../lib/ai'
 import { todayKyiv } from '../lib/dates'
-import { Button, Switch, ConfirmDialog, EmptyState, TableSkeleton } from './ui'
+import { Button, Switch, ConfirmDialog, EmptyState, TableSkeleton, InfoTip } from './ui'
 
 // Вкладка «Тендерна документація» — файли зберігаються ЛИШЕ в замовленні (не в загальних Документах),
 // з прив'язкою до ідентифікатора закупівлі. Авто-нумерація: останні 6 цифр закупівлі/N.
@@ -183,11 +183,8 @@ export default function TenderDocsTab({ o }) {
           <Switch checked={autoOcr} onChange={setAutoOcr} disabled={bulkBusy} label="Розпізнавати найменування й дату" description="Повільніше, але менше ручного введення" />
           <span style={{ marginLeft: 'auto' }}><Button variant="secondary" icon="ti-upload" onClick={bulkUpload} loading={bulkBusy} disabled={!bulkFiles.length}>
             {bulkBusy ? `Завантаження ${bulkDone}/${bulkFiles.length}…` : `Завантажити ${bulkFiles.length ? `(${bulkFiles.length})` : 'усі'}`}
-          </Button></span>
+          </Button><InfoTip label="Завантаження кількох файлів" placement="left">Оберіть одразу кілька файлів — кожен отримає свій номер {base ? `(${base}/N)` : '(N)'} у порядку вибору. Найменування — з розпізнавання або з імені файлу.</InfoTip></span>
         </div>
-        <p style={{ fontSize: 12, color: 'var(--text2)', margin: '8px 0 0' }}>
-          Оберіть одразу кілька файлів — кожен отримає свій номер {base ? `(${base}/N)` : '(N)'} у порядку вибору. Найменування — з розпізнавання або з імені файлу.
-        </p>
       </div>
 
       {/* Форма додавання одного (з ручними полями) */}

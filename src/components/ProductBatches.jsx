@@ -4,6 +4,8 @@ import { fmtInt } from '../lib/fmt'
 import { loadProductBatches, dropBatchesCache, dmy } from '../lib/productBatches'
 import { linkAdd, linkRemove, setWarehouseDate, batchLock, batchUnlock } from '../lib/shipmentRecon'
 import { useUser } from '../lib/auth'
+import { useNewUi } from '../lib/uiPrefs'
+import { InfoTip } from './ui'
 
 // Вкладка «Партії» в картці товару — «прихід ліворуч ↔ вихід праворуч»: кожна партія (прихідна) навпроти
 // відвантажень, що з неї взяли; ціна приходу і ціна виходу в одному рядку; залишок партії; відвантаження без
@@ -43,6 +45,7 @@ const DocName = ({ name, card }) => name && name.trim().toLowerCase() !== String
   ? <div style={{ fontSize: 11.5, color: 'var(--text2)', fontStyle: 'italic', ...ell }} title={`Як товар називається в цьому документі: ${name}`}>«{name}»</div> : null
 
 export default function ProductBatches({ productId, unit, productName, onOpenDoc }) {
+  const newUi = useNewUi()
   const [data, setData] = useState(null)
   const [err, setErr] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -192,10 +195,11 @@ export default function ProductBatches({ productId, unit, productName, onOpenDoc
       {toast && <div style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', background: 'var(--text)', color: 'var(--bg, #fff)', borderRadius: 10, padding: '8px 14px', fontSize: 13, zIndex: 50, display: 'flex', gap: 10 }}>{toast}<button className="btn btn-sm" onClick={() => setToast(null)}>✕</button></div>}
       {relink && <RelinkDialog s={relink.s} fromInId={relink.fromInId} batches={data.batches} unit={unit} productName={productName}
         onClose={() => setRelink(null)} onDone={async (text) => { setRelink(null); setToast(text); await reload() }} />}
-      <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 8 }}>
+      {newUi ? <p className="pb-legend">Як читати партії<InfoTip label="Як читати партії"><b>Червоне</b> — продано раніше приходу, без партії, збиток або ціна виходу = ціні приходу.<br /><b>Жовте</b> — маржа нижче 5% або вище 60%, оцінка, залишок партії при відвантаженнях без партії.<br /><i>Курсивом</i> — як товар названо в документі постачальника.<br />FIFO: ручна прив’язка → прихідна того ж замовлення → найстаріша партія.</InfoTip></p>
+        : <p style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 8 }}>
         Курсивом «…» — як товар названо в самому документі (якщо назва відрізняється від картки). Ліворуч — партія (прихідна), праворуч — куди її відвантажено, з ціною приходу і ціною виходу в одному рядку. Розподіл — як буде після «Застосувати FIFO»: ручна прив'язка → прихідна того ж замовлення → найстаріші партії на дату оприбуткування.
         Червоне — продано раніше приходу, без партії, збиток, ціна виходу = ціні приходу; жовте — маржа &lt;5% або &gt;60%, оцінка, залишок партії при відвантаженнях без партії.
-      </p>
+      </p>}
     </div>
   )
 }

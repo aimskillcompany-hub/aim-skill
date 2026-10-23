@@ -21,7 +21,7 @@ import GeneratedDocModal from '../components/GeneratedDocModal'
 import { useSort, SortTh } from '../components/Sort'
 import { todayKyiv } from '../lib/dates'
 import { useNewUi } from '../lib/uiPrefs'
-import { Button, Menu, Modal, Tabs, Switch, KpiTile, EmptyState, TableSkeleton, Callout, Segmented, useToast } from '../components/ui'
+import { Button, Menu, Modal, Tabs, Switch, KpiTile, EmptyState, TableSkeleton, Callout, Segmented, useToast, InfoTip } from '../components/ui'
 import { formatAmount, plural } from '../utils/format'
 import './WarehouseNew.css'
 const POS = ['позиція', 'позиції', 'позицій']
@@ -142,14 +142,13 @@ function NewProductModal({ userId, onClose, onCreated }) {
       <Button variant="secondary" onClick={onClose}>Скасувати</Button>
       <Button variant="brand" onClick={save} loading={busy} disabled={!f.name.trim()}>Створити</Button></>}>
       <div className="form-grid">
-        <div className="form-group full"><label htmlFor="np-name">Назва</label>
+        <div className="form-group full"><label htmlFor="np-name">Назва<InfoTip label="Новий товар">Якщо товар із таким артикулом або назвою вже є — відкриємо наявну картку, дубль не створюється.</InfoTip></label>
           <input id="np-name" className="form-input" value={f.name} onChange={e => setF({ ...f, name: e.target.value })} onKeyDown={e => { if (e.key === 'Enter') save() }} /></div>
         <div className="form-group"><label htmlFor="np-sku">Артикул</label>
           <input id="np-sku" className="form-input" value={f.sku} onChange={e => setF({ ...f, sku: e.target.value })} /></div>
         <div className="form-group"><label htmlFor="np-unit">Одиниця</label>
           <input id="np-unit" className="form-input" value={f.unit} onChange={e => setF({ ...f, unit: e.target.value })} /></div>
       </div>
-      <p className="whn-hint">Якщо товар із таким артикулом або назвою вже є — відкриємо наявну картку.</p>
     </Modal>
   )
 }
@@ -308,7 +307,7 @@ function StockTab({ newUi = false, tabs = null, onExcel = null, onStats = null }
           {minus > 0 && <KpiTile className="whn-kpi-lg" label="Мінусові залишки" tone="danger" value={`${minus} ${plural(minus, POS)}`} hint="продано більше, ніж прийшло — перевірити" onClick={() => setQuality(quality === 'minus' ? null : 'minus')} />}
           {(noSku > 0 || oddUnits.length > 0) && (
             <section className="whn-quality">
-              <div className="whn-quality-head"><span>Якість довідника</span>{onExcel && <button type="button" className="whn-link" onClick={onExcel}>Виправити в Excel →</button>}</div>
+              <div className="whn-quality-head"><span>Якість довідника<InfoTip label="Якість довідника">Товари, які заважають точному обліку: без артикулу або з однією одиницею, записаною по-різному. Чип відфільтровує список.</InfoTip></span>{onExcel && <button type="button" className="whn-link" onClick={onExcel}>Виправити в Excel →</button>}</div>
               {noSku > 0 && <button type="button" className="whn-qchip" aria-pressed={quality === 'nosku'} onClick={() => setQuality(quality === 'nosku' ? null : 'nosku')}><b>{noSku}</b> без артикулу</button>}
               {oddUnits.length > 0 && <button type="button" className="whn-qchip" aria-pressed={quality === 'unit'} onClick={() => setQuality(quality === 'unit' ? null : 'unit')}><b>{oddUnits.length}</b> з одиницею в різному написанні: {oddSpellings.join(' / ')}</button>}
             </section>

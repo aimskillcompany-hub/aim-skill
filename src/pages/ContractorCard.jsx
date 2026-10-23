@@ -13,7 +13,7 @@ import { ORDER_TYPES, TYPE_COLORS, statusLabel } from '../lib/orders'
 import DocModal from '../components/DocModal'
 import GeneratedDocModal from '../components/GeneratedDocModal'
 import { useNewUi } from '../lib/uiPrefs'
-import { Tabs, Button, KpiTile, Menu, useToast } from '../components/ui'
+import { Tabs, Button, KpiTile, Menu, useToast, InfoTip } from '../components/ui'
 import { formatAmount } from '../utils/format'
 import { initials } from '../components/AppShell'
 import { NewOrderModal } from './Orders'
@@ -506,7 +506,7 @@ function DetailsCards({ form, c, onEdit, openExtract }) {
         {form.edr_extract_path && <button type="button" className="ccd-link" onClick={openExtract}><i className="ti ti-file-check" aria-hidden="true" />Витяг з ЄДР: {form.edr_extract_name || 'переглянути'}</button>}
       </section>
       <section className={`ccd-card${hasAddr ? '' : ' is-empty'}`}>
-        <div className="ccd-h"><b>Адреса</b>{hasAddr && edit}</div>
+        <div className="ccd-h"><b>Адреса{!hasAddr && <InfoTip label="Адреса">Юридична адреса потрапить у рахунки й договори.</InfoTip>}</b>{hasAddr && edit}</div>
         {hasAddr ? <div className="ccd-grid">
           <Field label="Юридична адреса" v={form.legal_address} wide />
           <Field label="Місто" v={form.city} />
@@ -515,25 +515,25 @@ function DetailsCards({ form, c, onEdit, openExtract }) {
           <Field label="Телефон" v={form.phone} />
           <Field label="Email" v={form.email} />
           <Field label="Сайт" v={form.website} />
-        </div> : <><p className="ccd-hint">Додайте юридичну адресу — вона потрапить у рахунки й договори.</p>
+        </div> : <>
           <button type="button" className="ccd-add" onClick={onEdit}>+ Адреса</button></>}
       </section>
       <section className={`ccd-card${contacts?.length ? '' : ' is-empty'}`}>
-        <div className="ccd-h"><b>Контактні особи</b>{contacts?.length > 0 && edit}</div>
+        <div className="ccd-h"><b>Контактні особи<InfoTip label="Контактні особи">Відповідальну особу замовника підставимо в КП і листи.</InfoTip></b>{contacts?.length > 0 && edit}</div>
         {contacts == null ? <p className="ccd-hint">Завантаження…</p>
           : contacts.length ? <ul className="ccd-people">{contacts.map(r => (
               <li key={r.id}><b>{r.name}</b>{r.role && <span>{r.role}</span>}
                 {(r.phone || r.email) && <small>{[r.phone, r.email].filter(Boolean).join(' · ')}</small>}</li>))}</ul>
-          : <><p className="ccd-hint">Додайте відповідальну особу замовника — її підставимо в КП і листи.</p>
+          : <>
             <button type="button" className="ccd-add" onClick={onEdit}>+ Контакт</button></>}
       </section>
       <section className={`ccd-card${hasBank ? '' : ' is-empty'}`}>
-        <div className="ccd-h"><b>Банківські рахунки</b>{hasBank && edit}</div>
+        <div className="ccd-h"><b>Банківські рахунки<InfoTip label="Банківські рахунки">IBAN контрагента підставимо в рахунки й платіжки.</InfoTip></b>{hasBank && edit}</div>
         {hasBank ? <div className="ccd-grid">
           <Field label="IBAN" v={form.iban} wide />
           <Field label="Банк" v={form.bank_name} />
           <Field label="МФО" v={form.mfo} />
-        </div> : <><p className="ccd-hint">Додайте IBAN — підставимо його в рахунки й платіжки.</p>
+        </div> : <>
           <button type="button" className="ccd-add" onClick={onEdit}>+ Рахунок</button></>}
       </section>
     </div>

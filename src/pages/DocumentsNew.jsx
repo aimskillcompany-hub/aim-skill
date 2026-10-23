@@ -89,7 +89,7 @@ export default function DocumentsNew({ rows, loading, q, setQ, typeFilter, setTy
     <div className="dcn">
       <div className="dcn-head">
         <div><h1 className="dcn-h1">Документи</h1>
-          <p className="dcn-sub">{rows.length} {plural(rows.length, ['документ', 'документи', 'документів'])}<span className="dcn-hide-sm"> · рахунки, накладні, акти, договори</span></p></div>
+          <p className="dcn-sub">{rows.length} {plural(rows.length, ['документ', 'документи', 'документів'])}</p></div>
         <div className="dcn-actions">
           <Link className="btn btn-secondary dcn-hide-sm" to="/documents/gen-recon">Звірка з PDF</Link>
           <button type="button" className="dcn-cam" onClick={onUploadScan} aria-label="Сфотографувати або завантажити скан"><i className="ti ti-camera" aria-hidden="true" /></button>
@@ -230,7 +230,6 @@ function QuickView({ d, dupe, onClose, onOpen, onRecognize, reload }) {
           : <div className="dcn-preview-empty"><i className="ti ti-file-text" aria-hidden="true" /><span>{d.source === 'generated' || d.generated_doc_id ? 'Документ сформовано в системі — друкована форма у вікні документа' : 'Скан не завантажено'}</span></div>}
       </div>
       <Button variant="primary" className="dcn-wide" onClick={onOpen}>Відкрити документ повністю <i className="ti ti-arrow-right" aria-hidden="true" /></Button>
-      <p className="dcn-note">Скан поруч із розпізнаними полями, позиції, склад і проведення</p>
       <div className="dcn-qv-acts">
         <Button variant="secondary" size="sm" loading={busy === 'v'} onClick={() => setVerified(!d.is_verified)} className={d.is_verified ? '' : 'dcn-go'}>{d.is_verified ? 'Зняти «перевірено»' : 'Позначити перевіреним'}</Button>
         {!isIncoming(d) && <Button variant="secondary" size="sm" loading={busy === 's'} onClick={() => setSigned(!d.is_signed)} className={d.is_signed ? '' : 'dcn-warn'}>{d.is_signed ? 'Зняти «підписано»' : 'Позначити підписаним'}</Button>}
