@@ -6,6 +6,9 @@ import { fmtInt } from '../lib/fmt'
 import { labelForStatus, statusAccent } from '../lib/orders'
 import { loadForecast, flattenForecast, currentCashByCompany, addForecastItem, removeForecastItem } from '../lib/forecast'
 import { todayKyiv } from '../lib/dates'
+import { useNewUi } from '../lib/uiPrefs'
+import ForecastNew from './ForecastNew'
+import { TableSkeleton, Callout } from './ui'
 
 // «Прогноз»: рядки генеруються із замовлень (план − факт), тут лише перегляд.
 // Вручну — тільки надходження/витрати без замовлення (оренда, зарплата…).
@@ -22,6 +25,7 @@ export default function ForecastBalance() {
   const [err, setErr] = useState(null)
   const [co, setCo] = useState('all')
   const [open, setOpen] = useState({})
+  const newUi = useNewUi()
 
   const reload = () => {
     setErr(null)
@@ -48,8 +52,8 @@ export default function ForecastBalance() {
     return { startCash, rows: Object.values(map).sort((a, b) => a.ym.localeCompare(b.ym)).map(m => { bal += m.income - m.expense; return { ...m, net: m.income - m.expense, balance: bal } }) }
   }, [flat, cash, co])
 
-  if (err) return <div className="card" style={{ color: 'var(--red)' }}>Помилка: {err}</div>
-  if (!data) return <p style={{ color: 'var(--text3)' }}>Завантаження…</p>
+  if (err) return newUi ? <Callout tone="danger" title="Не вдалося порахувати прогноз." text={err} /> : <div className="card" style={{ color: 'var(--red)' }}>Помилка: {err}</div>
+  if (!data) return newUi ? <TableSkeleton rows={8} cols={6} label="Рахую прогноз…" /> : <p style={{ color: 'var(--text3)' }}>Завантаження…</p>
 
   const orders = data.orders.filter(o => co === 'all' || o.companyId === co)
   const manual = data.manual.filter(m => co === 'all' || m.company_id === co)
@@ -57,6 +61,7 @@ export default function ForecastBalance() {
   const expense = flat.filter(x => x.kind === 'expense').reduce((s, x) => s + x.amount, 0)
   const coList = (companies || []).filter(c => Object.keys(cash || {}).includes(c.id) || data.orders.some(o => o.companyId === c.id) || data.manual.some(m => m.company_id === c.id))
   const f = data.flags || {}
+  if (newUi) return <ForecastNew months={months} orders={orders} manual={manual} flags={f} co={co} setCo={setCo} coList={coList} companies={companies} userId={user?.id} onChange={reload} />
 
   return (
     <div>
