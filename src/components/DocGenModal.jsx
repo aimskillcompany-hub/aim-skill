@@ -155,7 +155,11 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
 
   const removeItem = idx => setItems(prev => prev.filter((_, i) => i !== idx))
 
-  const totals = calcTotals(items)
+  // Позика ПДВ не обкладається (ТЗ 6.6, помилка 5). Позиції створюються ще до вибору типу — зі ставкою за замовчуванням,
+  // тож для договору позики ставку обнуляємо явно: і в підсумках, і в позиціях, що зберігаються.
+  const noVat = docType === 'loanAgreement'
+  useEffect(() => { if (noVat && items.some(it => Number(it.vatRate))) setItems(prev => prev.map(it => ({ ...it, vatRate: 0 }))) }, [noVat, items])
+  const totals = calcTotals(noVat ? items.map(it => ({ ...it, vatRate: 0 })) : items)
 
   const handleSave = async (andDownload) => {
     setSaving(true); setError(null)
@@ -403,7 +407,7 @@ export default function DocGenModal({ contractor, userId, onClose, onSaved, edit
                   {docType === 'loanAgreement' && <>
                     <div className="form-group">
                       <label>Сума допомоги (грн)</label>
-                      <input type="number" className="form-input" value={items[0]?.amount || ''} onChange={e => setItems([{ ...items[0], amount: e.target.value, name: 'Фінансова допомога', quantity: 1, unitPrice: e.target.value }])} placeholder="0.00" />
+                      <input type="number" className="form-input" value={items[0]?.amount || ''} onChange={e => setItems([{ ...items[0], amount: e.target.value, name: 'Фінансова допомога', quantity: 1, unitPrice: e.target.value, vatRate: 0 }])} placeholder="0.00" />
                     </div>
                     <div className="form-group">
                       <label>Строк повернення</label>
