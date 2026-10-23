@@ -12,7 +12,7 @@ import { invalidateCache, PL_ORDER, PL_LABELS } from '../lib/articles'
 import { ROLES, ROLE_LABELS, ROLE_SECTIONS } from '../lib/permissions'
 import { getAccountBalances } from '../lib/accounts'
 import { formatAmount, plural } from '../utils/format'
-import { Button, Modal, Menu, Callout, TableSkeleton, useToast, useTabParam } from '../components/ui'
+import { Button, Modal, Menu, Callout, TableSkeleton, useToast, useTabParam, InfoTip } from '../components/ui'
 import './Reports.css'
 import './AnalyticsNew.css'
 import './SettingsNew.css'
@@ -133,8 +133,7 @@ function ArticlesSection() {
   return (
     <div className="stn-col">
       <section className="cfn-card stn-plan">
-        <h2>План статей</h2>
-        <p className="rpt-muted">Згруповано так, як статті складаються в P&L: зверху вниз від виручки до податків. Порядок у групі — перетягуванням або стрілками; правка, об'єднання й видалення — у меню «⋯».</p>
+        <h2>План статей<InfoTip label="План статей">Згруповано так, як статті складаються в P&L: зверху вниз від виручки до податків. Порядок у групі — перетягуванням або стрілками; правка, об’єднання й видалення — у меню «⋯».</InfoTip></h2>
         <Button variant="primary" icon="ti-plus" onClick={() => setEdit({ name: '', type: 'expense', pl_level: 'opex' })}>Нова стаття</Button>
       </section>
       {simGroups.length > 0 && (
@@ -143,7 +142,7 @@ function ArticlesSection() {
       )}
       {GROUPS.map(g => byGroup[g].length > 0 && (
         <section key={g} className="cfn-card stn-group" aria-label={g === '_none' ? 'Поза P&L' : PL_LABELS[g]}>
-          <h2><i className={`stn-gdot is-${g.replace('_', '')}`} aria-hidden="true" />{g === '_none' ? 'Поза P&L' : plain(PL_LABELS[g])} <small>{GROUP_NOTE[g]}</small><span className="stn-gcount">{byGroup[g].length} {plural(byGroup[g].length, ['стаття', 'статті', 'статей'])}</span></h2>
+          <h2><i className={`stn-gdot is-${g.replace('_', '')}`} aria-hidden="true" />{g === '_none' ? 'Поза P&L' : plain(PL_LABELS[g])}<InfoTip label={g === '_none' ? 'Поза P&L' : plain(PL_LABELS[g])}>{GROUP_NOTE[g][0].toUpperCase() + GROUP_NOTE[g].slice(1)}.</InfoTip><span className="stn-gcount">{byGroup[g].length} {plural(byGroup[g].length, ['стаття', 'статті', 'статей'])}</span></h2>
           <ul>
             {byGroup[g].map((a, i) => (
               <li key={a.id} draggable onDragStart={() => setDrag({ g, id: a.id })} onDragOver={e => e.preventDefault()} onDrop={() => drop(g, a.id)}
@@ -262,7 +261,7 @@ function AccountsSection() {
   return (
     <div className="stn-col">
       <section className="cfn-card stn-team-head">
-        <div><h2>Рахунки {active?.short_name || active?.name || ''}</h2><small className="rpt-muted">Залишок зараз = початковий залишок + усі рухи після дати старту</small></div>
+        <div><h2>Рахунки {active?.short_name || active?.name || ''}<InfoTip label="Рахунки">Залишок зараз = початковий залишок + усі рухи після дати старту.</InfoTip></h2></div>
         <Button variant="primary" icon="ti-plus" onClick={() => setEdit({ name: '', type: 'bank', bank_name: '', opening_balance: 0, opening_balance_date: '' })}>Рахунок або каса</Button>
       </section>
       {spread > 60 && <Callout tone="warn" title="Дати старту рахунків сильно розходяться."
@@ -280,7 +279,7 @@ function AccountsSection() {
               ]} /></div>
             <div className="stn-acc-b"><small>Зараз</small><b className={bal[a.id] < 0 ? 'rpt-late' : ''}>{bal[a.id] == null ? '…' : `${n0(bal[a.id])} ₴`}</b></div>
             <div className="stn-acc-ob">
-              <label><span>Початковий залишок</span><input className="form-input" inputMode="decimal" value={ob[a.id]?.opening_balance ?? a.opening_balance ?? 0}
+              <label><span>Початковий залишок<InfoTip label="Початковий залишок">Стартова сума на рахунку станом на вказану дату. Реальний залишок = початковий + рухи від цієї дати.</InfoTip></span><input className="form-input" inputMode="decimal" value={ob[a.id]?.opening_balance ?? a.opening_balance ?? 0}
                 onChange={e => setOb(o => ({ ...o, [a.id]: { ...o[a.id], opening_balance: e.target.value } }))} /></label>
               <label><span>Станом на</span><input className="form-input" type="date" value={ob[a.id]?.opening_balance_date ?? a.opening_balance_date ?? ''}
                 onChange={e => setOb(o => ({ ...o, [a.id]: { ...o[a.id], opening_balance_date: e.target.value } }))} /></label>
@@ -320,7 +319,7 @@ const SECTION_LABELS = { orders: 'Замовлення', tasks: 'Задачі', 
 function RoleMatrix() {
   return (
     <section className="cfn-card stn-matrix" aria-label="Доступ до розділів">
-      <div className="stn-mx-h"><h2>Хто що бачить</h2><span className="rpt-muted rpt-note"><i className="stn-dot" aria-hidden="true" /> є доступ · поки лише перегляд — змінювати доступи будемо окремо</span></div>
+      <div className="stn-mx-h"><h2>Хто що бачить<InfoTip label="Хто що бачить">Поки лише перегляд — змінювати доступи будемо окремо. «Інвестору» бачить лише адміністратор.</InfoTip></h2><span className="rpt-muted rpt-note"><i className="stn-dot" aria-hidden="true" /> є доступ</span></div>
       <div className="tbl-wrap rpt-table"><table>
         <thead><tr><th>Розділ</th>{ROLES.map(r => <th key={r} className="c">{ROLE_LABELS[r]}</th>)}</tr></thead>
         <tbody>{Object.keys(SECTION_LABELS).map(k => (

@@ -8,6 +8,7 @@ import { invalidateCache, PL_ORDER, PL_LABELS } from '../lib/articles'
 import { ROLES, ROLE_LABELS, ROLE_HINTS } from '../lib/permissions'
 import { useNewUi } from '../lib/uiPrefs'
 import SettingsNew from './SettingsNew'
+import { InfoTip } from '../components/ui'
 
 const TABS = [
   { id: 'company', label: 'Реквізити', icon: 'ti-building' },
@@ -130,7 +131,7 @@ function CompanyTab({ newUi = false } = {}) {
     return (
       <div className="stn-co-form">
         <section className="cfn-card">
-          <div className="stn-card-h"><h2>Юридичні дані</h2><small className="rpt-muted">потрапляють у шапку накладних, актів і рахунків</small></div>
+          <div className="stn-card-h"><h2>Юридичні дані<InfoTip label="Юридичні дані">Потрапляють у шапку накладних, актів і рахунків цієї юрособи. Іншу юрособу оберіть карткою вгорі.</InfoTip></h2></div>
           <div className="stn-grid">
             {inp('name', 'Повна назва', 'is-full')}
             {inp('short_name', 'Коротка назва')}{inp('edrpou', 'ЄДРПОУ')}{inp('ipn', 'ІПН / РНОКПП')}
@@ -144,7 +145,7 @@ function CompanyTab({ newUi = false } = {}) {
           <div className="stn-grid is-bank">{inp('iban', 'IBAN')}{inp('bank_name', 'Банк')}{inp('mfo', 'МФО')}</div>
         </section>
         <section className="cfn-card">
-          <div className="stn-card-h"><h2>Податки</h2></div>
+          <div className="stn-card-h"><h2>Податки<InfoTip label="Податки">Платник ПДВ: ціни в документах з ПДВ 20%, а вхідний ПДВ від платників іде в кредит. ФОП: у документах підпис ФОП, без «Директора». Окремі перемикачі «Платник ПДВ» і «ФОП» не потрібні — система визначає це з групи.</InfoTip></h2></div>
           <div className="stn-tax" role="radiogroup" aria-label="Група оподаткування">
             {TAX_GROUPS.map(([v, l]) => (
               <button key={v} type="button" role="radio" aria-checked={tg === v} onClick={() => pickTax(v)}>
@@ -157,10 +158,10 @@ function CompanyTab({ newUi = false } = {}) {
                 <label><input type="checkbox" checked={!!form.is_vat_payer} onChange={e => set('is_vat_payer', e.target.checked)} /> Платник ПДВ</label>
                 <label><input type="checkbox" checked={!!form.is_fop} onChange={e => set('is_fop', e.target.checked)} /> ФОП (без «Директора», підпис ФОП)</label>
               </div>
-            : <p className="stn-info">{form.is_vat_payer ? 'Платник ПДВ: ціни в документах з ПДВ 20%, вхідний ПДВ від платників іде в кредит.' : 'Не платник ПДВ: документи без ПДВ.'}{form.is_fop ? ' ФОП: у документах підпис ФОП, без «Директора».' : ''} Окремі перемикачі «Платник ПДВ» і «ФОП» не потрібні — система визначає це з групи.</p>}
+            : null}
         </section>
         <section className="cfn-card">
-          <div className="stn-card-h"><h2>Вигляд документів</h2><small className="rpt-muted">{active?.edrpou === '45505924' ? 'Ейм Скіл друкує фірмове лого AiM' : 'лого з’явиться у шапці документів цієї юрособи'}</small></div>
+          <div className="stn-card-h"><h2>Вигляд документів<InfoTip label="Вигляд документів">{active?.edrpou === '45505924' ? 'Ейм Скіл друкує фірмове лого AiM — поле «Лого» для неї не застосовується.' : 'Лого з’явиться у шапці згенерованих документів цієї юрособи.'}</InfoTip></h2></div>
           <div className="stn-themes" role="radiogroup" aria-label="Дизайн документів">
             {DOC_THEMES.map(([v, l]) => (
               <button key={v || 'auto'} type="button" role="radio" aria-checked={(form.doc_theme || '') === v} className={`is-${THEME_TONE[v]}`} onClick={() => set('doc_theme', v || null)}>
@@ -436,7 +437,7 @@ function UsersTab({ newUi = false } = {}) {
         <button className="btn btn-primary" onClick={createUser} disabled={busy}>{busy ? '…' : 'Створити'}</button>
         <button className="btn" onClick={() => { setAdding(false); setMsg(null) }} disabled={busy}>Скасувати</button>
       </div>
-      <p className="stn-hint">Акаунт створюється одразу (без листа-підтвердження). Передайте користувачу email і пароль — він зможе увійти й змінити пароль.</p>
+
     </div>
   )
   // Новий інтерфейс (макет SettingsUsers): «Команда» — аватар, ім'я, «це ви», email, роль
@@ -444,8 +445,8 @@ function UsersTab({ newUi = false } = {}) {
     const ini = (u) => (u.full_name || u.email || '?').split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(x => x[0]).join('').toUpperCase()
     return <>
       <section className="cfn-card stn-team-head">
-        <div><h2>Команда · {rows.length} {rows.length === 1 ? 'людина' : rows.length < 5 ? 'людини' : 'людей'}</h2>
-          <small className="rpt-muted">Самореєстрація вимкнена: акаунти створює лише адміністратор. Свою роль змінити не можна.</small></div>
+        <div><h2>Команда · {rows.length} {rows.length === 1 ? 'людина' : rows.length < 5 ? 'людини' : 'людей'}<InfoTip label="Команда">Самореєстрація вимкнена: акаунти створює лише адміністратор — одразу, без листа-підтвердження; передайте людині email і пароль. Свою роль змінити не можна.</InfoTip></h2>
+          </div>
         {isAdmin && !adding && <button type="button" className="btn btn-primary" onClick={() => { setMsg(null); setAdding(true) }}><i className="ti ti-plus" aria-hidden="true" /> Запросити</button>}
       </section>
       {addForm && <section className="cfn-card">{addForm}</section>}
