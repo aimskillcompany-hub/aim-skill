@@ -29,6 +29,14 @@ export function loadReceivables(companies, year, month) {
 // Строк оплати = дата документа + відстрочка контрагента (contractors.payment_delay_days, інакше 0);
 // прострочка = дата відліку − строк оплати (не менше 0). Вік — від дати документа.
 export async function loadReceivablesAsOf(companies, asOf) {
+  return loadDebtsAsOf(companies, asOf, 'receivable')
+}
+
+// Спільний розрахунок боргу за документами станом на дату (ТЗ редизайну 6.3: кредиторка — дзеркально до дебіторки):
+//   direction 'receivable' — нам винні (видаткові / акти клієнту); 'payable' — ми винні (прихідні / акти отримані).
+// Те саме правило, що й «Баланс» (periodClose.computeSnapshot): документ − прив'язані оплати з датою ≤ asOf.
+// overpaid — документи, оплачені понад суму (для кредиторки це передоплата постачальнику, актив).
+export async function loadDebtsAsOf(companies, asOf, direction = 'receivable') {
   const run = async () => {
     // Вік боргу — до сьогодні (для поточного/майбутнього періоду) або до кінця минулого періоду.
     // Склад боргів (документи/оплати ≤ asOf) не змінюється — щоб сума збігалась із Балансом.
@@ -36,6 +44,7 @@ export async function loadReceivablesAsOf(companies, asOf) {
     const ageRef = asOf < todayIso ? asOf : todayIso
     const asOfMs = new Date(ageRef).getTime()
     const docsOut = []
+    const overpaid = []
     const companyMeta = []
     try {
       // контрагенти (не скоуплені) — один раз
@@ -50,7 +59,7 @@ export async function loadReceivablesAsOf(companies, asOf) {
         // боргові документи клієнту до кінця періоду
         const docs = await fetchAll(() => qc('documents')
           .select('id, doc_number, type, doc_date, amount, vat_amount, is_signed, is_verified, contractor_id, storage_path, order_id, created_at, direction, generated_doc_id')
-          .eq('direction', 'receivable').not('amount', 'is', null))
+          .eq('direction', direction).not('amount', 'is', null))
         const relevant = (docs || []).filter(d => countsAsDebt(d.type) && debtDate(d) <= asOf)
         const ids = relevant.map(d => d.id)
         if (!ids.length) continue
@@ -67,6 +76,8 @@ export async function loadReceivablesAsOf(companies, asOf) {
           const amount = Math.abs(Number(d.amount) || 0)
           const paid = r2(paidByDoc[d.id] || 0)
           const outstanding = r2(amount - paid)
+          if (outstanding < -0.5) overpaid.push({ companyId: comp.id, docId: d.id, doc_number: d.doc_number || '—', type: d.type, doc_date: debtDate(d),
+            amount, paid, over: r2(-outstanding), contractorId: d.contractor_id || 'unknown', contractorName: cName[d.contractor_id] || 'Без контрагента', order_id: d.order_id || null })
           if (outstanding <= 0.5) return
           const dd = debtDate(d)
           const ageDays = dd ? Math.max(0, Math.floor((asOfMs - new Date(dd).getTime()) / 864e5)) : 0
@@ -90,7 +101,7 @@ export async function loadReceivablesAsOf(companies, asOf) {
     } finally {
       setReportScope(null); clearCompanyCache()
     }
-    return { docs: docsOut, companies: companyMeta, asOf, ageRef }
+    return { docs: docsOut, overpaid, companies: companyMeta, asOf, ageRef }
   }
   return runExclusive(run)
 }

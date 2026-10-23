@@ -1,0 +1,156 @@
+/* «Звіти» — новий інтерфейс (макети Reports / ReportsPayables / ReportsProfit / ReportsAccountant / ReportsMobile). */
+.rpt-page { display: flex; flex-direction: column; gap: 16px; }
+.rpt-h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -.03em; }
+.rpt-sub { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
+.rpt-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.rpt-tile { display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 16px 18px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); font: inherit; color: var(--text); cursor: pointer; min-width: 0; }
+.rpt-tile:hover { border-color: var(--border-strong); }
+.rpt-tile[aria-selected="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+.rpt-tile:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.rpt-tile-name { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.rpt-tile[aria-selected="true"] .rpt-tile-name, .rpt-tile[aria-selected="true"] .rpt-tile-sub { color: var(--on-dark-muted); }
+.rpt-tile-value { font-size: 24px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.rpt-tile-value.is-neg { color: var(--danger-fg); }
+.rpt-tile[aria-selected="true"] .rpt-tile-value { color: var(--on-dark-pos); }
+.rpt-tile[aria-selected="true"] .rpt-tile-value.is-neg { color: var(--on-dark-neg); }
+.rpt-tile-sub { font-size: 12px; color: var(--muted); min-height: 1em; }
+
+/* звіт (кредиторка тощо) */
+.rpt { display: flex; flex-direction: column; gap: 14px; }
+.rpt-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.rpt-kpis .ui-kpi { border-radius: 18px; }
+.rpt-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+.rpt-card.is-flush { padding: 0; overflow: hidden; }
+.rpt-h3 { margin: 0; font-size: 15px; font-weight: 700; }
+.rpt-h3 small { font-weight: 500; color: var(--muted); font-size: 12px; margin-left: 6px; }
+.rpt-table { border: 0 !important; border-radius: 0 !important; }
+.rpt-table .r { text-align: right; }
+.rpt-table tr.is-click { cursor: pointer; }
+.rpt-table tr.rpt-sub td { background: var(--surface-sunken); font-size: 13px; }
+.rpt-table tfoot td { font-weight: 700; background: var(--surface-sunken); }
+.rpt-x { width: 36px; }
+.rpt-x button { border: 0; background: none; width: 28px; height: 28px; border-radius: 8px; color: var(--muted); cursor: pointer; }
+.rpt-num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rpt-muted { color: var(--muted); }
+.rpt-late { color: var(--danger-fg); font-weight: 600; }
+.rpt-link { border: 0; background: none; padding: 0; font: inherit; color: var(--brand-dark); font-weight: 600; cursor: pointer; }
+.rpt-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.rpt-list li { display: flex; justify-content: space-between; gap: 12px; }
+@media (max-width: 767px) {
+  .rpt-h1 { font-size: 28px; }
+  .rpt-tiles { display: flex; overflow-x: auto; scrollbar-width: none; }
+  .rpt-tile { flex: 0 0 190px; }
+}
+@media (max-width: 767px) {
+  .rpt-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .rpt-kpis .ui-kpi { padding: 12px; }
+  .rpt-kpis .ui-kpi-value { font-size: 17px; }
+  .rpt-table table { min-width: 0 !important; }
+  .rpt-table thead, .rpt-table .c-docs, .rpt-table .c-due { display: none; }
+  .rpt-table tbody tr.is-click { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; grid-template-areas: "x name name" "x sum over"; gap: 2px 8px; padding: 10px 12px; border-bottom: 1px solid var(--divider); }
+  .rpt-table tbody tr.is-click td { padding: 0 !important; border: 0 !important; }
+  .rpt-table .rpt-x { grid-area: x; }
+  .rpt-table .c-name { grid-area: name; }
+  .rpt-table .c-sum { grid-area: sum; text-align: left !important; }
+  .rpt-table .c-over { grid-area: over; }
+  .rpt-table tr.rpt-sub { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; padding: 10px 12px 10px 44px; }
+  .rpt-table tr.rpt-sub td { padding: 0 !important; border: 0 !important; }
+  .rpt-table tr.rpt-sub td:first-child, .rpt-table tr.rpt-sub td:nth-child(3) { display: none; }
+  .rpt-table tr.rpt-sub td:nth-child(2) { grid-column: 1 / -1; }
+  .rpt-table tfoot tr { display: flex; justify-content: space-between; padding: 10px 12px; }
+  .rpt-table tfoot td { padding: 0 !important; border: 0 !important; }
+  .rpt-table tfoot td:first-child, .rpt-table tfoot td:nth-child(3), .rpt-table tfoot td:last-child { display: none; }
+}
+
+/* «Для бухгалтера»: пакет за місяць (ТЗ 5.4) */
+.acc-pack { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; background: var(--ink); color: var(--surface); border-radius: var(--r-card); padding: 18px 22px; margin-bottom: 16px; }
+.acc-pack-t { display: flex; flex-direction: column; gap: 3px; flex: 1 1 280px; min-width: 0; }
+.acc-pack-t span, .acc-pack-t small { font-size: 12px; color: var(--on-dark-muted); }
+.acc-pack-t b { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.acc-pack-m { width: 170px; background: var(--ink-field); border-color: var(--ink-line); color: var(--surface); color-scheme: dark; }
+@media (max-width: 767px) { .acc-pack .btn { width: 100%; justify-content: center; } .acc-pack-m { width: 100%; } }
+
+/* Дебіторка (новий вигляд) */
+.rpt-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rpt-bar > .ui-btn:last-child, .rpt-bar > .btn:last-child { margin-left: auto; }
+.rpt-sel { width: 140px; } .rpt-sel.is-year { width: 96px; }
+.rpt-search { position: relative; flex: 0 1 380px; }
+.rpt-search i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); }
+.rpt-search input { width: 100%; padding-left: 34px; }
+.rcv-sum { gap: 18px; padding: 20px 24px; }
+.rcv-kpis { display: grid; grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr)); gap: 16px 24px; align-items: end; }
+.rcv-kpis > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.rcv-kpis span, .rcv-kpis small { font-size: 12px; color: var(--muted); }
+.rcv-kpis b { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.rcv-kpis b.is-neg { color: var(--danger-fg); }
+.rcv-main b { font-size: 40px; letter-spacing: -.03em; }
+.rcv-table .c-name small { display: block; font-size: 12px; }
+.rcv-table .c-via { max-width: 200px; white-space: normal; font-size: 13px; }
+.rcv-table .c-share { width: 22%; min-width: 120px; }
+.rcv-share { display: block; height: 6px; border-radius: 3px; background: var(--seg-track); overflow: hidden; }
+.rcv-share i { display: block; height: 100%; background: var(--brand); border-radius: 3px; }
+.rcv-age { display: inline-block; padding: 2px 9px; border-radius: var(--r-pill); font-size: 12px; font-weight: 600; background: var(--surface-sunken); font-variant-numeric: tabular-nums; }
+.rcv-age.is-warn { background: var(--warn-bg); color: var(--warn-fg); }
+.rcv-age.is-bad { background: var(--danger-soft-bg); color: var(--danger-fg); }
+.rcv-flag { margin-left: 8px; font-size: 11px; font-weight: 600; color: var(--danger-fg); }
+.rcv-items { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 4px 0; }
+.rcv-items th { text-align: left; font-size: 11px; color: var(--muted); font-weight: 600; padding: 3px 6px; }
+.rcv-items td { padding: 3px 6px; border-top: 1px solid var(--divider); background: transparent !important; }
+.rcv-items .r { text-align: right; }
+.rcv-warn { font-size: 12px; color: var(--warn-fg); margin: 2px 0; } .rcv-warn.is-bad { color: var(--danger-fg); }
+.rcv-pays { font-size: 12px; color: var(--brand-dark); margin-top: 4px; }
+.rpt-note { font-size: 12px; margin: 0; }
+@media (max-width: 1023px) { .rcv-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .rcv-main { grid-column: 1 / -1; } }
+@media (max-width: 767px) { .rcv-main b { font-size: 32px; } .rpt-sel { flex: 1; } .rpt-bar > .ui-btn:last-child { margin-left: 0; } }
+
+/* Прибутковість (новий вигляд) */
+.prf-hero { background: var(--ink); color: var(--surface); border-radius: var(--r-card); padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; }
+.prf-eq { display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap; }
+.prf-eq > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.prf-eq span { font-size: 12px; color: var(--on-dark-muted); }
+.prf-eq b { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.prf-eq b.is-out { color: var(--on-dark-neg); }
+.prf-eq > i { font-style: normal; font-size: 20px; color: var(--on-dark-muted); padding-bottom: 4px; }
+.prf-eq .is-net { margin-left: auto; }
+.prf-eq .is-net b { font-size: 36px; color: var(--on-dark-pos); }
+.prf-eq .is-net b.is-neg { color: var(--on-dark-neg); }
+.prf-meta { display: flex; gap: 22px; flex-wrap: wrap; font-size: 12px; color: var(--on-dark-muted); }
+.prf-meta b { color: var(--surface); } .prf-meta b.is-neg { color: var(--on-dark-neg); }
+.prf-doc { color: var(--brand-dark); }
+.prf-table .c-name small { display: block; font-size: 12px; }
+.prf-table .c-scale { min-width: 190px; }
+.prf-track { width: 120px; }
+.prf-net { color: var(--brand-dark); font-weight: 700; }
+.prf-net.is-neg { color: var(--danger-fg); }
+.prf-pct { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 13px; }
+.prf-pct input { width: 56px; height: 32px; padding: 0 8px; border: 1px dashed var(--border-strong); border-radius: 8px; background: var(--surface); font: inherit; font-variant-numeric: tabular-nums; text-align: right; color: var(--text); }
+.prf-pct input:focus { border-style: solid; border-color: var(--brand); outline: none; }
+.prf-note { padding: 12px 18px 16px; }
+.prf-agent { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; margin-top: 10px; padding: 10px 14px; border-radius: 12px; background: var(--warn-bg); color: var(--warn-fg); font-size: 13px; }
+.prf-agent label { display: inline-flex; align-items: center; gap: 8px; }
+.prf-agent .form-input { width: 180px; height: 34px; }
+.prf-agent-net { margin-left: auto; } .prf-agent-net b { color: var(--brand-dark); font-size: 15px; }
+@media (max-width: 767px) { .prf-eq > i { display: none; } .prf-eq > div { flex: 1 1 40%; } .prf-eq .is-net { flex-basis: 100%; margin-left: 0; } .prf-eq .is-net b { font-size: 30px; } }
+.rpt-table tfoot td { padding: 12px; }
+.rpt-table thead th.r { text-align: right; }
+.rcv-table td .btn, .rcv-table .rcv-age { white-space: nowrap; }
+.rcv-table tbody td { vertical-align: middle; }
+@media (max-width: 767px) {
+  .rcv-table .c-via, .rcv-table .c-share { display: none !important; }
+  .rcv-table tbody tr.is-click { grid-template-areas: "x name age" "x sum over" "x act act"; }
+  .rcv-table .c-age { grid-area: age; } .rcv-table .c-act { grid-area: act; text-align: left !important; margin-top: 6px; }
+  .rcv-table .c-over { text-align: right !important; }
+  .rcv-table tr.rpt-sub td:nth-child(3) { display: block; }
+  .rcv-table tr.rpt-sub td:last-child { display: none; }
+  .rcv-table tr.rpt-sub td { text-align: left !important; }
+  .rcv-items { display: block; overflow-x: auto; }
+  .prf-table tbody tr.is-click { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name net" "client client" "scale agent"; padding: 12px; }
+  .prf-table .c-client { grid-area: client; font-size: 13px; color: var(--muted); }
+  .prf-table .c-scale { grid-area: scale; min-width: 0; } .prf-table .c-agent { grid-area: agent; } .prf-table .c-net { grid-area: net; }
+  .prf-table .c-real, .prf-table .c-profit, .prf-table .c-vat { display: none; }
+  .prf-table tr.rpt-sub { display: block; padding: 8px 12px; }
+  .prf-table tr.rpt-sub > td { display: block !important; }
+  .prf-items { display: block; overflow-x: auto; }
+  .prf-table tfoot td:nth-child(2), .prf-table tfoot td:nth-child(3), .prf-table tfoot td:nth-child(5), .prf-table tfoot td:nth-child(6), .prf-table tfoot td:nth-child(7) { display: none; }
+  .prf-table tfoot td:first-child, .prf-table tfoot td:last-child { display: block; }
+}

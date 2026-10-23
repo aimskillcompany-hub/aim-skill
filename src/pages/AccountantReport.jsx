@@ -2,7 +2,10 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useCompany } from '../lib/company'
 import { supabase } from '../lib/supabase'
 import { fmt } from '../lib/fmt'
-import { listOutgoingDocs, traceOutgoing } from '../lib/accountantReport'
+import { listOutgoingDocs, traceOutgoing, buildMonthArchive } from '../lib/accountantReport'
+import { useNewUi } from '../lib/uiPrefs'
+import { todayKyiv } from '../lib/dates'
+import { formatAmount, plural } from '../utils/format'
 import { exportOutgoingReportPdf } from '../lib/outgoingReportPdf'
 
 // Звіт для бухгалтера: по видатковій — простежити кожен товар до прихідної накладної (де/коли куплено).
@@ -79,6 +82,39 @@ export default function AccountantReport() {
   const [err, setErr] = useState(null)
 
   useEffect(() => { setList(null); setReport(null); setSel(''); listOutgoingDocs().then(setList).catch(e => setErr(e.message)) }, [activeId])
+
+  // Архів місяця (новий інтерфейс): усі видаткові й акти місяця з прихідними та сканами одним .zip
+  const newUi = useNewUi()
+  const [arcMonth, setArcMonth] = useState(() => todayKyiv().slice(0, 7))
+  const [arcProg, setArcProg] = useState(null)   // { i, n } під час збирання
+  const [arcNote, setArcNote] = useState(null)
+  const monthDocs = useMemo(() => (list || []).filter(x => (x.doc_date || '').startsWith(arcMonth)), [list, arcMonth])
+  const monthSum = monthDocs.reduce((a, x) => a + (Number(x.amount) || 0), 0)
+  const downloadMonth = async () => {
+    if (!monthDocs.length || arcProg) return
+    setArcNote(null); setArcProg({ i: 0, n: monthDocs.length })
+    try {
+      const { zipSync } = await import('fflate')
+      const { files, missing, fileCount } = await buildMonthArchive(monthDocs, { onProgress: (i, n) => setArcProg({ i, n }) })
+      const blob = new Blob([zipSync(files)], { type: 'application/zip' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a'); a.href = url; a.download = `Документи для бухгалтера ${arcMonth}.zip`; a.click(); URL.revokeObjectURL(url)
+      setArcNote(`Архів готовий: ${fileCount} ${plural(fileCount, ['файл', 'файли', 'файлів'])}${missing.length ? `; без файлу — ${missing.length} (див. «Перелік.txt»)` : ''}.`)
+    } catch (e) { setArcNote('Не вдалося зібрати архів: ' + e.message) } finally { setArcProg(null) }
+  }
+  const monthBanner = newUi && (
+    <section className="acc-pack" aria-label="Пакет за місяць">
+      <div className="acc-pack-t">
+        <span>Пакет за місяць</span>
+        <b>{list ? `${monthDocs.length} ${plural(monthDocs.length, ['документ', 'документи', 'документів'])} на ${formatAmount(monthSum, { decimals: 0 })} ₴` : '…'}</b>
+        <small>{arcProg ? `Збираю ${arcProg.i} з ${arcProg.n}…` : arcNote || 'Видаткові й акти місяця, прихідні до них і скани — одним архівом, з переліком.'}</small>
+      </div>
+      <input type="month" className="form-input acc-pack-m" aria-label="Місяць" value={arcMonth} max={todayKyiv().slice(0, 7)} onChange={e => e.target.value && setArcMonth(e.target.value)} />
+      <button type="button" className="btn btn-brand" onClick={downloadMonth} disabled={!monthDocs.length || !!arcProg}>
+        <i className="ti ti-file-zip" aria-hidden="true" />{arcProg ? 'Архівую…' : 'Завантажити архів місяця (.zip)'}
+      </button>
+    </section>
+  )
 
   const contractors = useMemo(() => [...new Set((list || []).map(x => x.contractorName))].sort((a, b) => a.localeCompare(b, 'uk')), [list])
   const filtered = useMemo(() => {
@@ -162,6 +198,7 @@ export default function AccountantReport() {
       <p style={{ fontSize: 13, color: 'var(--text2)', margin: '0 0 16px' }}>
         Оберіть видаткову накладну або акт — система простежить кожен товар до прихідної накладної (де й коли куплено).
       </p>
+      {monthBanner}
 
       <div className="card compact" style={{ marginBottom: 16 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12, alignItems: 'end' }}>

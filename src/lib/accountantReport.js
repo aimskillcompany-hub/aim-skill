@@ -281,3 +281,59 @@ export async function traceOutgoing(docId) {
 
   return { doc, items, services, shortages, orderCostDocs, purchaseDocs: Object.values(inDocs) }
 }
+
+// ── Архів місяця для бухгалтера (ТЗ редизайну 5.4) ──
+// Усі наші документи реалізації за місяць: кожен — у своїй папці разом зі звітом-переліком; прихідні й вхідні
+// документи витрат (з traceOutgoing) — в одній спільній папці без дублів. Лише читання зі Storage.
+const safeName = (s) => (s || '').replace(/[/\\:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim() || 'doc'
+const COST_TYPE = { serviceAct: 'Вхідний акт', incomingWaybill: 'Прихідна', other: 'Документ' }
+
+export async function buildMonthArchive(docs, { onProgress } = {}) {
+  const files = {}, used = new Set(), byPath = {}
+  const enc = new TextEncoder()
+  const fetchFile = async (path) => {
+    if (!path) return null
+    if (byPath[path] !== undefined) return byPath[path]
+    const { data } = await supabase.storage.from('documents').download(path)
+    byPath[path] = data ? new Uint8Array(await data.arrayBuffer()) : null
+    return byPath[path]
+  }
+  const put = (name, buf) => {
+    let f = name, i = 1
+    const dot = name.lastIndexOf('.')
+    while (used.has(f)) { i++; f = `${name.slice(0, dot)} (${i})${name.slice(dot)}` }
+    used.add(f); files[f] = buf
+  }
+  const ext = (p) => (p.split('.').pop() || 'pdf').toLowerCase()
+  const lines = ['Пакет документів для бухгалтера', '']
+  const missing = []
+  const sharedDone = new Set()
+  for (let i = 0; i < docs.length; i++) {
+    const d = docs[i]
+    onProgress?.(i + 1, docs.length)
+    let rep
+    try { rep = await traceOutgoing(d.id) } catch { missing.push(`${d.doc_number}: не вдалося простежити`); continue }
+    const kind = rep.doc.isAct ? 'Акт' : 'Видаткова'
+    const date = (rep.doc.doc_date || '').split('-').reverse().join('.')
+    const folder = safeName(`${String(i + 1).padStart(2, '0')} ${kind} ${rep.doc.doc_number} ${rep.doc.contractorName}`)
+    lines.push(`${kind} № ${rep.doc.doc_number} від ${date} — ${rep.doc.contractorName} — ${rep.doc.amount ?? ''} грн`)
+    const own = await fetchFile(rep.doc.storage_path)
+    if (own) put(`${folder}/${safeName(`${kind} ${rep.doc.doc_number}`)}.${ext(rep.doc.storage_path)}`, own)
+    else missing.push(`${kind} № ${rep.doc.doc_number}: немає файлу`)
+    const sources = [
+      ...rep.purchaseDocs.map(p => ({ path: p.storage_path, label: `Прихідна ${p.doc_number || ''} ${p.supplierName || ''}`, line: `прихідна № ${p.doc_number || '—'} — ${p.supplierName || ''}` })),
+      ...(rep.orderCostDocs || []).map(c => ({ path: c.storage_path, label: `${COST_TYPE[c.type] || 'Вхідний'} ${c.doc_number || ''} ${c.supplierName || ''}`, line: `${(COST_TYPE[c.type] || 'вхідний').toLowerCase()} № ${c.doc_number || '—'} — ${c.supplierName || ''}` })),
+    ]
+    for (const s of sources) {
+      lines.push(`    ← ${s.line}${s.path ? '' : ' (без файлу)'}`)
+      if (!s.path || sharedDone.has(s.path)) continue
+      sharedDone.add(s.path)
+      const buf = await fetchFile(s.path)
+      if (buf) put(`Прихідні та витрати/${safeName(s.label)}.${ext(s.path)}`, buf)
+    }
+    if (rep.shortages?.length) lines.push(`    ! не вистачило прихідних: ${rep.shortages.length} поз.`)
+  }
+  if (missing.length) lines.push('', 'Без файлів:', ...missing.map(m => `  ${m}`))
+  files['Перелік.txt'] = enc.encode(lines.join('\r\n'))
+  return { files, missing, fileCount: Object.keys(files).length - 1 }
+}

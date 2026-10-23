@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { qc, withCompany } from '../lib/companyScope'
 import { useUser } from '../lib/auth'
@@ -278,6 +279,25 @@ function TransactionsTab({ accounts, onChange, newUi = false, addSignal = 0 }) {
 
   // ── Новий інтерфейс: правка в рядку і масові дії зі «Скасувати» ──
   useEffect(() => { if (addSignal) setShowAdd(true) }, [addSignal])
+  // «Оплатити» з кредиторки: /bank?pay=<документ>&amount=…&contractor=…&cname=…&label=…
+  const [params, setParams] = useSearchParams()
+  const [payPreset, setPayPreset] = useState(null)
+  // «Розподілити» з Аналітики: /bank?article=__none__ — відкрити з фільтром «Без статті»
+  useEffect(() => { const a = params.get('article'); if (a) { setArt(a); setParams({}, { replace: true }) } }, [params])
+  useEffect(() => {
+    const docId = params.get('pay')
+    if (!docId) return
+    const cid = params.get('contractor')
+    const go = (name) => {
+      setPayPreset({ kind: 'out', direction: 'Витрати', amount: params.get('amount') || '', contractor_id: cid && cid !== 'unknown' ? cid : null,
+        cname: name || '', description: `Оплата: ${params.get('label') || 'документ'}`, docId })
+      setShowAdd(true)
+      setParams({}, { replace: true })
+    }
+    if (params.get('cname')) go(params.get('cname'))
+    else if (cid && cid !== 'unknown') supabase.from('contractors').select('name').eq('id', cid).maybeSingle().then(({ data }) => go(data?.name))
+    else go('')
+  }, [params])
   const withArticleId = (upd) => 'article' in upd ? { ...upd, article_id: upd.article ? (articles.find(a => a.name === upd.article)?.id || null) : null } : upd
   // Одна операція: зберегти й оновити рядок на місці (без перезавантаження списку)
   const quickUpdate = async (r, upd, label) => {
@@ -353,7 +373,7 @@ function TransactionsTab({ accounts, onChange, newUi = false, addSignal = 0 }) {
         autoLink={autoLink} linking={linking} linkMsg={linkMsg} autoFill={autoFill} onCheck={() => setShowCheck(true)}
         quickUpdate={quickUpdate} bulkUpdate={bulkUpdate} unignore={unignore} hasMore={rows.length >= limit} onMore={() => setLimit(l => l + 500)} />
       {showCheck && <LinkCheckModal onClose={() => setShowCheck(false)} onChanged={() => { load(); onChange() }} />}
-      {showAdd && <AddTxModal accounts={accounts} grouped={grouped} onClose={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); load(); onChange() }} />}
+      {showAdd && <AddTxModal accounts={accounts} grouped={grouped} preset={payPreset} onClose={() => { setShowAdd(false); setPayPreset(null) }} onSaved={() => { setShowAdd(false); setPayPreset(null); load(); onChange() }} />}
       {editTx && <TxModal tx={editTx} grouped={grouped} accounts={accounts} onClose={() => setEditTx(null)} onSaved={() => { setEditTx(null); load(); onChange() }} onLink={() => { setLinkTx(editTx); setEditTx(null) }} onOpenDoc={(d) => { setOpenDoc(d); setEditTx(null) }} />}
       {linkTx && <TxLinkModal tx={linkTx} onClose={() => setLinkTx(null)} onSaved={() => { setLinkTx(null); load() }} />}
       {openDoc && <DocModal existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => { setOpenDoc(null); load() }} />}
@@ -480,7 +500,7 @@ function TransactionsTab({ accounts, onChange, newUi = false, addSignal = 0 }) {
         )}
       </div>
 
-      {showAdd && <AddTxModal accounts={accounts} grouped={grouped} onClose={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); load(); onChange() }} />}
+      {showAdd && <AddTxModal accounts={accounts} grouped={grouped} preset={payPreset} onClose={() => { setShowAdd(false); setPayPreset(null) }} onSaved={() => { setShowAdd(false); setPayPreset(null); load(); onChange() }} />}
       {editTx && <TxModal tx={editTx} grouped={grouped} accounts={accounts} onClose={() => setEditTx(null)} onSaved={() => { setEditTx(null); load(); onChange() }} onLink={() => { setLinkTx(editTx); setEditTx(null) }} onOpenDoc={(d) => { setOpenDoc(d); setEditTx(null) }} />}
       {linkTx && <TxLinkModal tx={linkTx} onClose={() => setLinkTx(null)} onSaved={() => { setLinkTx(null); load() }} />}
       {openDoc && <DocModal existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => { setOpenDoc(null); load() }} />}
@@ -489,13 +509,18 @@ function TransactionsTab({ accounts, onChange, newUi = false, addSignal = 0 }) {
 }
 
 // ───────── Ручне додавання операції (надходження / витрата) ─────────
-function AddTxModal({ accounts, grouped, onClose, onSaved }) {
+// preset — «Оплатити» з кредиторки: { kind, direction, amount, contractor_id, cname, description, docId }.
+// Після збереження платіж прив'язується до документа (transaction_documents) на цю суму.
+function AddTxModal({ accounts, grouped, onClose, onSaved, preset = null }) {
   const { user } = useUser()
   const today = todayKyiv()
-  const [f, setF] = useState({
+  const [f, setF] = useState(() => ({
     account_id: accounts[0]?.id || '', date: today, kind: 'in', amount: '',
     direction: 'Доходи', article: '', contractor_id: null, cname: '', description: '',
-  })
+    ...(preset ? Object.fromEntries(Object.entries(preset).filter(([k]) => k !== 'docId')) : {}),
+  }))
+  // рахунки можуть довантажитися вже після відкриття (прямий перехід з «Оплатити») — тоді беремо перший
+  useEffect(() => { if (!f.account_id && accounts[0]?.id) setF(s => s.account_id ? s : { ...s, account_id: accounts[0].id }) }, [accounts])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
@@ -510,14 +535,19 @@ function AddTxModal({ accounts, grouped, onClose, onSaved }) {
     const arts = Object.values(grouped).flat()
     const article = arts.find(a => a.name === f.article)
     const signed = f.kind === 'in' ? Math.abs(sum) : -Math.abs(sum)
-    const { error } = await qc('bank_transactions').insert(withCompany({
+    const { data: inserted, error } = await qc('bank_transactions').insert(withCompany({
       account_id: f.account_id, date: f.date, amount: signed,
       direction: f.direction || null, article: f.article || null, article_id: article?.id || null,
       contractor_id: f.contractor_id || null, counterparty: f.cname || null, description: f.description || null,
       is_validated: true, is_ignored: false, imported_by: user?.id || null,
-    }))
+    })).select('id').single()
+    if (error) { setBusy(false); setError(error.message); return }
+    // оплата документа з кредиторки — одразу прив'язати платіж до документа
+    if (preset?.docId && inserted?.id) {
+      const { error: lErr } = await supabase.from('transaction_documents').insert({ transaction_id: inserted.id, document_id: preset.docId, amount: Math.abs(sum) })
+      if (lErr) { setBusy(false); setError('Платіж збережено, але не прив\'язано до документа: ' + lErr.message + '. Прив\'яжіть його в списку операцій.'); return }
+    }
     setBusy(false)
-    if (error) { setError(error.message); return }
     onSaved()
   }
 

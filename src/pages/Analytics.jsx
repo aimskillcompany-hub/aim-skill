@@ -12,10 +12,12 @@ import { getDocType } from '../lib/docgen'
 import { supabase } from '../lib/supabase'
 import DocModal from '../components/DocModal'
 import { useUser } from '../lib/auth'
-import { useTabParam } from '../components/ui'
+import { useTabParam, Tabs, Button, Segmented, Switch } from '../components/ui'
 import { useNewUi } from '../lib/uiPrefs'
+import { todayKyiv } from '../lib/dates'
 import { canAccess } from '../lib/permissions'
 import CashflowReport from '../components/CashflowReport'
+import { CashFlowNew, PeriodChips, PLNew, ForecastHero, BalanceSnapshotNew, BalanceTrendNew } from './AnalyticsNew'
 
 const DIRECTIONS = ['Доходи', 'Витрати', 'Інше', 'ПФД', 'ОЗ']
 
@@ -43,6 +45,22 @@ export default function Analytics() {
     ...(newUi && canAccess(user?.role, 'cashflow') ? [['cashflow-report', 'Звіт по статтях', 'ti-table']] : [])]
   // активна вкладка — в адресі (?tab=…), щоб посилання й «назад» вели на неї
   const [tab, setTab] = useTabParam('cashflow', TABS.map(t => t[0]))
+  const body = <>
+    {tab === 'cashflow' && <CashFlowView />}
+    {tab === 'pl' && <PLView />}
+    {tab === 'balance' && <BalanceView />}
+    {tab === 'margins' && <OrderMarginsReport />}
+    {tab === 'cashflow-report' && <CashflowReport />}
+  </>
+  if (newUi) return (
+    <div className="an-page">
+      <div className="an-head">
+        <h1>Аналітика</h1>
+        <Tabs ariaLabel="Розділи аналітики" idPrefix="an" value={tab} onChange={setTab} tabs={TABS.map(([id, label, icon]) => ({ id, label, icon }))} />
+      </div>
+      {body}
+    </div>
+  )
   return (
     <div>
       <div className="page-header"><h1>Аналітика</h1></div>
@@ -82,6 +100,7 @@ function PeriodPicker({ year, setYear, month, setMonth }) {
 // fixedYear/fixedMonth — коли задані (напр. у «Закритті періоду»), період фіксований і селектор ховається.
 export function CashFlowView({ fixedYear = null, fixedMonth = null } = {}) {
   const locked = fixedYear != null
+  const newUi = useNewUi()
   const [year, setYear] = useState(fixedYear ?? NOW.getFullYear())
   const [month, setMonth] = useState(fixedMonth ?? 0)
   useEffect(() => { if (locked) { setYear(fixedYear); setMonth(fixedMonth) } }, [fixedYear, fixedMonth])
@@ -117,6 +136,22 @@ export function CashFlowView({ fixedYear = null, fixedMonth = null } = {}) {
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Cash Flow')
     XLSX.writeFile(wb, `CashFlow_${year}${month ? '-' + String(month).padStart(2, '0') : ''}.xlsx`)
   }
+
+  const modals = <>
+    {drill && <CashFlowDrillModal drill={drill} onClose={() => setDrill(null)} onSaved={() => { setDrill(null); reload() }} />}
+    {aging && <AgingModal title={aging.title} data={aging.data} color={aging.color} onClose={() => setAging(null)} />}
+  </>
+  // Новий інтерфейс (ТЗ 5.1): у «Закритті періоду» (locked) лишається звичний вигляд
+  if (newUi && !locked) return (
+    <>
+      <div className="an-toolbar">
+        <PeriodChips year={year} setYear={setYear} month={month} setMonth={setMonth} years={YEARS} />
+        <Button variant="primary" icon="ti-download" onClick={exportXlsx} disabled={!d}>Експорт Excel</Button>
+      </div>
+      <CashFlowNew d={d} debt={debt} year={year} month={month} setMonth={setMonth} openDrill={openDrill} />
+      {modals}
+    </>
+  )
 
   return (
     <div>
@@ -385,6 +420,9 @@ export function PLView({ fixedYear = null, fixedMonth = null } = {}) {
   const [drill, setDrill] = useState(null)
   const [showPending, setShowPending] = useState(false)
   const accrual = basis === 'accrual'
+  const newUi = useNewUi()
+  const [fc, setFc] = useState(null)   // прогноз для темної картки нового інтерфейсу
+  useEffect(() => { if (newUi && !locked) { setFc(null); computeForecast(year, month || null).then(setFc) } }, [year, month, newUi, locked])
 
   useEffect(() => {
     let cancelled = false
@@ -418,6 +456,30 @@ export function PLView({ fixedYear = null, fixedMonth = null } = {}) {
     })
     return out
   }, [data])
+
+  // Новий інтерфейс (ТЗ 5.1): у «Закритті періоду» (locked) лишається звичний вигляд
+  if (newUi && !locked) return (
+    <>
+      <div className="an-toolbar">
+        <PeriodChips year={year} setYear={setYear} month={month} setMonth={setMonth} years={YEARS} />
+      </div>
+      <div className="an-toolbar pln-switches">
+        <Segmented ariaLabel="Метод" value={basis} onChange={k => { setBasis(k); if (k === 'accrual') setMode('fact') }}
+          options={[{ value: 'accrual', label: 'Нарахування' }, { value: 'cash', label: 'Касовий' }]} />
+        {!accrual && <Segmented ariaLabel="Факт чи план" value={mode} onChange={setMode}
+          options={[{ value: 'fact', label: 'Факт' }, { value: 'plan', label: 'План' }, { value: 'compare', label: 'План vs факт' }]} />}
+        {!accrual && mode === 'fact' && <Switch checked={showPending} onChange={setShowPending} label="Показати непідтверджені" />}
+        <span className="cfn-muted cfn-sm">{accrual ? 'Виручка й собівартість — за датою документа. План — у касовому методі.' : 'Лише підтверджені оплати, за датою оплати.'}</span>
+      </div>
+      <PLNew bd={bd} acc={acc} recon={recon} plErr={plErr} year={year} month={month} setMonth={setMonth} accrual={accrual} mode={mode}
+        planRows={data ? rows : null} setDrill={setDrill}
+        forecast={<ForecastHero f0={fc} accrualNet={accrual ? (acc ? acc.netTotal : undefined) : null} />}>
+        {accrual && acc?.missing?.length > 0 && <div id="pl-missing"><MissingCostCard missing={acc.missing} /></div>}
+        {accrual && (acc?.estimated?.length > 0 || acc?.writeoffs?.length > 0) && <EstimateWriteoffCard estimated={acc.estimated || []} writeoffs={acc.writeoffs || []} />}
+      </PLNew>
+      {drill && <DrillModal drill={drill} year={year} month={month || null} onClose={() => setDrill(null)} />}
+    </>
+  )
 
   return (
     <div>
@@ -798,11 +860,48 @@ export function BalanceView({ fixedYear = null, fixedMonth = null } = {}) {
   const [trend, setTrend] = useState(null)
 
   useEffect(() => { setS(null); computeSnapshot(year, month || null).then(setS) }, [year, month])
+  const newUi = useNewUi()
+  const [range, setRange] = useState('ytd') // новий інтерфейс: ytd — з початку року (база — 31.12 попереднього), all — з початку діяльності
+  const [trendDrill, setTrendDrill] = useState(null)
+  const [busyCell, setBusyCell] = useState(null)
   useEffect(() => {
     if (view !== 'trend') return
     setTrend(null)
-    computeBalanceTrend(year, month || 12, { fromY: 2025, fromM: 1 }).then(setTrend)
-  }, [year, month, view])
+    // ТЗ 6.6, помилка 7: майбутні місяці дублювали поточний — динаміка лише до поточного місяця
+    const cur = year === NOW.getFullYear() ? NOW.getMonth() + 1 : 12
+    const toM = Math.min(month || 12, cur)
+    const from = newUi && range === 'ytd' ? { fromY: year - 1, fromM: 12 } : { fromY: 2025, fromM: 1 }
+    computeBalanceTrend(year, toM, from).then(setTrend)
+  }, [year, month, view, range, newUi])
+  const openTrendCell = async (r, type) => {
+    setBusyCell(`${r.label}:${type}`)
+    const snap = await computeSnapshot(r.y, r.m)
+    setBusyCell(null)
+    setTrendDrill({ snap, type, monthLabel: r.label })
+  }
+
+  // Новий інтерфейс (ТЗ 5.1): у «Закритті періоду» (locked) лишається звичний вигляд
+  if (newUi && !locked) {
+    const cur = year === NOW.getFullYear() && (!month || month === NOW.getMonth() + 1)
+    const asOf = cur ? `на ${todayKyiv().split('-').reverse().join('.')}` : `на ${String(new Date(year, month || 12, 0).getDate()).padStart(2, '0')}.${String(month || 12).padStart(2, '0')}.${year}`
+    return (
+      <>
+        <div className="an-toolbar pln-switches">
+          <PeriodChips year={year} setYear={setYear} month={month} setMonth={setMonth} years={YEARS} />
+        </div>
+        <div className="an-toolbar pln-switches">
+          <Segmented ariaLabel="Вигляд балансу" value={view} onChange={setView} options={[{ value: 'snapshot', label: 'Поточний стан' }, { value: 'trend', label: 'Динаміка' }]} />
+          {view === 'trend' && <Segmented ariaLabel="Діапазон" value={range} onChange={setRange} options={[{ value: 'ytd', label: 'З початку року' }, { value: 'all', label: 'З початку діяльності' }]} />}
+          <span className="cfn-muted cfn-sm">{view === 'trend' ? 'Стан на кінець кожного місяця; майбутні місяці не показуються.' : `Станом ${asOf}`}</span>
+        </div>
+        {view === 'trend'
+          ? <BalanceTrendNew trend={trend} range={range} onCell={openTrendCell} busyCell={busyCell} />
+          : <BalanceSnapshotNew s={s} asOf={asOf.replace('на ', '')} onDrill={setDrill} />}
+        {drill && s && <BalanceDrillModal drill={drill} snap={s} onClose={() => setDrill(null)} />}
+        {trendDrill && <BalanceDrillModal drill={{ type: trendDrill.type, monthLabel: trendDrill.monthLabel }} snap={trendDrill.snap} onClose={() => setTrendDrill(null)} />}
+      </>
+    )
+  }
 
   const toggle = (
     <div style={{ display: 'flex', gap: 4, marginLeft: locked ? 0 : 'auto' }}>
