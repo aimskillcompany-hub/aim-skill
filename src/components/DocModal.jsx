@@ -149,13 +149,17 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
   }
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }, [previewUrl])
   // Дефолти складського руху: для накладних — увімкнено за типом; для актів/рахунків — напрям за роллю, вимкнено (opt-in)
+  // Збережений документ, у якого вже є складські рухи, — «Рух на складі» НЕ вмикаємо самі: увімкнений перемикач при
+  // збереженні видаляє рухи документа й створює заново (нові id), і продажі, що списували з цих партій, позначаються
+  // «партію видалено — перерахувати» (так розірвались Starlink з прихідної 916 і ноутбуки з 2162). Перестворюємо лише свідомо.
   useEffect(() => {
     if (!form) return
     const dt = getDocType(form.type)
     const role = form.doc_role || existingDoc?.doc_role
     setStockDir(dt?.stockEffect || (role === 'incoming' ? 'in' : 'out'))
-    setStockOn((form.items || []).length > 0 && !!dt?.stockEffect)
-  }, [form?.type])
+    const hasMovs = existingDoc?.id ? (docMovements === null || docMovements.some(m => m.source !== 'assembly')) : false
+    setStockOn((form.items || []).length > 0 && !!dt?.stockEffect && !hasMovs)
+  }, [form?.type, docMovements === null, (docMovements || []).length])
 
   const makePreview = (blob, name = '', type = '') => {
     const ext = (name.split('.').pop() || '').toLowerCase()
@@ -571,6 +575,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
                     {stockOn && <div className="den-row">
                       <select className="form-input" value={stockDir} onChange={e => setStockDir(e.target.value)} aria-label="Тип руху"><option value="in">Прихід (оприбуткування)</option><option value="out">Видача (списання за FIFO)</option></select>
                       <span className="den-hint">при збереженні</span></div>}
+                    {stockOn && docMovements?.length > 0 && <p className="den-warn">Наявні складські рухи ({docMovements.length}) буде видалено й створено заново. Продажі, що вже списали з цих партій, втратять прив’язку (позначка «перерахувати»). Вмикайте, лише якщо змінили позиції.</p>}
                   </div>
                 )}
                 {existingDoc && (
@@ -728,6 +733,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
                       <span style={{ fontSize: 12, color: 'var(--text3)' }}>при збереженні</span>
                     </div>
                   )}
+                  {stockOn && docMovements?.length > 0 && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 6 }}>Наявні рухи ({docMovements.length}) буде видалено й створено заново — продажі, що списали з цих партій, втратять прив’язку. Вмикайте, лише якщо змінили позиції.</div>}
                 </div>
               )}
 
