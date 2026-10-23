@@ -324,3 +324,24 @@ export async function loadClientPaid(orders) {
   })
   return out
 }
+
+// Плановий прибуток замовлень (плитки етапів у реєстрі): той самий computeOrderPlan, що в картці замовлення.
+// orders — [{ id, agent_commission_pct, vatOn }]; повертає { [id]: { net, gross, revenueNet, hasItems } }. Лише читання.
+export async function loadOrderPlans(orders) {
+  const ids = orders.map(o => o.id)
+  if (!ids.length) return {}
+  let { data: items, error: iErr } = await inChunks('order_items', 'order_id, qty, unit_price, cost_price, vat_rate, cost_vat_rate, price_includes_vat, supplier_id', 'order_id', ids)
+  if (iErr) ({ data: items } = await inChunks('order_items', 'order_id, qty, unit_price, cost_price, vat_rate, price_includes_vat, supplier_id', 'order_id', ids))
+  let { data: exps, error: eErr } = await inChunks('order_expenses', 'order_id, amount, vat_included', 'order_id', ids)
+  if (eErr) ({ data: exps } = await inChunks('order_expenses', 'order_id, amount', 'order_id', ids))
+  const by = (arr) => { const m = {}; (arr || []).forEach(x => (m[x.order_id] ||= []).push(x)); return m }
+  const itemsBy = by(items), expBy = by(exps)
+  const out = {}
+  orders.forEach(o => {
+    const oi = itemsBy[o.id] || []
+    const other = (expBy[o.id] || []).reduce((s, e) => s + expenseNet(e), 0)
+    const p = computeOrderPlan(oi, { vatOn: o.vatOn !== false, agentPct: o.agent_commission_pct, otherExpenses: other })
+    out[o.id] = { net: p.net, gross: p.gross, revenueNet: p.revenueNet, hasItems: oi.length > 0 }
+  })
+  return out
+}
