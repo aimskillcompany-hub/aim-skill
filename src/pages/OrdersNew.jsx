@@ -31,6 +31,15 @@ function Stage({ o }) {
   )
 }
 
+// Сплачено клієнтом (часткові оплати): «сплачено 86% · лишилось 394 260 ₴»
+const left = (o) => Math.max(0, (Number(o.total) || 0) - (o.clientPaid || 0))
+function PaidNote({ o }) {
+  const t = Number(o.total) || 0, p = o.clientPaid || 0
+  if (!(p > 0.5) || !(t > 0)) return null
+  if (p >= t - 0.5) return <span className="on-paid is-full">сплачено повністю</span>
+  return <span className="on-paid">сплачено {Math.floor((p / t) * 100)}% · лишилось {formatAmount(left(o), { decimals: 0 })} ₴</span>
+}
+
 function Person({ name }) {
   if (!name || name === '—') return <span className="on-person is-none" title="Не призначено"><span className="on-av is-none" aria-hidden="true">?</span><span className="on-trunc">Не призначено</span></span>
   return <span className="on-person" title={name}><span className="on-av" aria-hidden="true">{initials(name)}</span><span className="on-trunc">{name}</span></span>
@@ -70,7 +79,10 @@ export default function OrdersNew({
   const openSum = open.reduce((s, o) => s + (Number(o.total) || 0), 0)
   const stages = useMemo(() => STATUS_ORDER.map(s => {
     const list = open.filter(o => o.status === s)
-    return { s, n: list.length, sum: list.reduce((a, o) => a + (Number(o.total) || 0), 0) }
+    // «Потребує оплати» — залишок до оплати: сума замовлення мінус уже сплачене клієнтом (часткові оплати)
+    const sum = list.reduce((a, o) => a + (s === 'needs_payment' ? left(o) : (Number(o.total) || 0)), 0)
+    const paid = s === 'needs_payment' ? list.reduce((a, o) => a + Math.min(Number(o.total) || 0, o.clientPaid || 0), 0) : 0
+    return { s, n: list.length, sum, paid }
   }).filter(x => x.n > 0), [open])
   const managers = useMemo(() => [...new Set(orders.map(o => o.managerName).filter(n => n && n !== '—'))].sort((a, b) => a.localeCompare(b, 'uk')), [orders])
   const total = rows.reduce((s, o) => s + (Number(o.total) || 0), 0)
@@ -101,9 +113,9 @@ export default function OrdersNew({
             const on = stage === x.s
             return (
               <button key={x.s} type="button" className={`on-tile is-${tone}`} aria-pressed={on} onClick={() => setStage(on ? null : x.s)}
-                title={`${labelForStatus(x.s)}: ${x.n} · ${formatAmount(x.sum)} ₴`}>
+                title={`${labelForStatus(x.s)}: ${x.n} · ${x.s === 'needs_payment' ? 'до оплати ' : ''}${formatAmount(x.sum)} ₴${x.paid > 0.5 ? ` (уже сплачено ${formatAmount(x.paid)} ₴)` : ''}`}>
                 <span className="on-tile-head"><span className="on-tile-dot" aria-hidden="true" />{labelForStatus(x.s)}<span className="on-tile-n">{x.n}</span></span>
-                <span className="on-tile-sum">{formatShort(x.sum)} <small>₴</small></span>
+                <span className="on-tile-sum">{formatShort(x.sum)} <small>₴{x.s === 'needs_payment' ? ' до оплати' : ''}</small></span>
                 <span className="on-tile-bar" aria-hidden="true"><span style={{ width: `${openSum > 0 ? Math.max(2, x.sum / openSum * 100) : 0}%` }} /></span>
               </button>
             )
@@ -170,7 +182,7 @@ export default function OrdersNew({
                         </td>
                         <td><TaskChip o={o} navigate={navigate} /></td>
                         <td onClick={e => e.stopPropagation()}><Flags o={o} {...flags} /></td>
-                        <td className="on-sum">{formatAmount(o.total)} <small>₴</small></td>
+                        <td className="on-sum">{formatAmount(o.total)} <small>₴</small><PaidNote o={o} /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -194,7 +206,7 @@ export default function OrdersNew({
                       <span className="on-mcard-foot">
                         <Person name={o.managerName} />
                         {o.tasks && <span className={`on-task is-static${o.tasks.late ? ' is-late' : ''}`}>задач: {o.tasks.n}</span>}
-                        <span className="on-sum">{formatAmount(o.total)} <small>₴</small></span>
+                        <span className="on-sum">{formatAmount(o.total)} <small>₴</small><PaidNote o={o} /></span>
                       </span>
                     </button>
                   </li>
