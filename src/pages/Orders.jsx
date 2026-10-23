@@ -293,11 +293,12 @@ export default function Orders() {
   )
 }
 
-function NewOrderModal({ onClose, onCreated }) {
+// presetClientId — відкрити з картки контрагента з уже вибраним клієнтом
+export function NewOrderModal({ onClose, onCreated, presetClientId }) {
   const { user } = useUser()
   const [type, setType] = useState('trade')
   const [clients, setClients] = useState([])
-  const [clientId, setClientId] = useState('')
+  const [clientId, setClientId] = useState(presetClientId || '')
   const [total, setTotal] = useState('')
   const [description, setDescription] = useState('')
   const [managerId, setManagerId] = useState(user?.id || '')

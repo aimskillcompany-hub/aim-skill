@@ -45,7 +45,7 @@ a.ocn-meta-item:hover { color: var(--brand-dark); }
 .ocn-step.is-done .ocn-step-bar { background: var(--brand); }
 .ocn-step.is-current { color: var(--text); font-weight: 700; }
 .ocn-step.is-current .ocn-step-bar { background: var(--brand); }
-.ocn-step.is-current.is-attention .ocn-step-bar { background: #D99A1E; }
+.ocn-step.is-current.is-attention .ocn-step-bar { background: var(--warn-mark); }
 
 /* дві колонки */
 .ocn-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }

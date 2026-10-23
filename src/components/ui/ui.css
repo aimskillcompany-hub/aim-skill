@@ -147,7 +147,7 @@
 .ui-hero-value.is-pos { color: var(--on-dark-pos); }
 .ui-hero-value.is-neg { color: var(--on-dark-neg); }
 .ui-hero-unit { font-size: 18px; font-weight: 500; color: var(--on-dark-muted); }
-.ui-hero-eq { display: flex; flex-wrap: wrap; gap: 12px 24px; margin-top: 18px; padding-top: 16px; border-top: 1px solid #2B3630; }
+.ui-hero-eq { display: flex; flex-wrap: wrap; gap: 12px 24px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--ink-line); }
 .ui-hero-eq-item { display: flex; align-items: flex-end; gap: 10px; }
 .ui-hero-eq-text { display: flex; flex-direction: column; gap: 2px; }
 .ui-hero-op { font-size: 22px; line-height: 1.2; color: var(--on-dark-muted); }
@@ -174,7 +174,7 @@
 .ui-meter-track { height: 6px; border-radius: var(--r-pill); background: var(--divider); overflow: hidden; }
 .ui-meter-track > span { display: block; height: 100%; border-radius: inherit; background: var(--brand); }
 .ui-meter-track.is-expense > span { background: var(--expense-chart); }
-.ui-meter-track.is-warn > span { background: #E0A100; }
+.ui-meter-track.is-warn > span { background: var(--warn-mark); }
 .ui-meter-track.is-danger > span { background: var(--danger-fg); }
 .ui-meter-pct { font-size: 12px; color: var(--muted); min-width: 34px; text-align: right; }
 .ui-stack-bar { display: flex; gap: 2px; height: 10px; border-radius: var(--r-pill); overflow: hidden; background: var(--divider); }

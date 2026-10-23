@@ -16,6 +16,10 @@ import DocModal from '../components/DocModal'
 import { useSort, SortTh } from '../components/Sort'
 import { todayKyiv } from '../lib/dates'
 import LinkCheckModal from '../components/LinkCheckModal'
+import { useNewUi } from '../lib/uiPrefs'
+import { Button, useToast } from '../components/ui'
+import { formatAmount } from '../utils/format'
+import BankNew from './BankNew'
 
 // поля документа для DocModal
 const DOC_FIELDS = 'id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)'
@@ -27,9 +31,48 @@ const PROJECT_ARTICLES = ['Виручка: товари / ПЗ', 'Закупів
 export default function BankCash() {
   const [tab, setTab] = useState('transactions')
   const [accounts, setAccounts] = useState([])
+  const newUi = useNewUi()
+  const [addSignal, setAddSignal] = useState(0)   // новий інтерфейс: «+ Операція» в шапці відкриває форму у вкладці
 
   const loadAccounts = async () => { setAccounts(await getAccountBalances()) }
   useEffect(() => { loadAccounts() }, [])
+
+  if (newUi) {
+    const total = accounts.reduce((s, a) => s + (Number(a.balance) || 0), 0)
+    const inflow = accounts.reduce((s, a) => s + (Number(a.inflow) || 0), 0)
+    const outflow = accounts.reduce((s, a) => s + (Number(a.outflow) || 0), 0)
+    return (
+      <div className="bkn-page">
+        <div className="bkn-head">
+          <div><h1 className="bkn-h1">Банк і каса</h1>
+            <p className="bkn-sub">{accounts.length} рахунків · залишок {formatAmount(total, { decimals: 0 })} ₴</p></div>
+          <div className="bkn-head-actions">
+            <Button variant="secondary" icon="ti-upload" onClick={() => setTab('import')}>Імпорт виписки</Button>
+            <Button variant="secondary" icon="ti-arrows-exchange" onClick={() => setTab('transfer')} className="bkn-hide-sm">Переказ між рахунками</Button>
+            <Button variant="brand" icon="ti-plus" onClick={() => { setTab('transactions'); setAddSignal(n => n + 1) }} className="bkn-hide-sm">Операція</Button>
+          </div>
+        </div>
+        <div className="bkn-accounts" role="group" aria-label="Рахунки">
+          <section className="bkn-acc is-total">
+            <span className="bkn-acc-name"><span className="bkn-acc-ic" aria-hidden="true">Σ</span>Усі рахунки</span>
+            <b className="bkn-acc-bal">{formatAmount(total, { decimals: 0 })} <small>₴</small></b>
+            <span className="bkn-acc-flow"><span>↓ {formatAmount(inflow, { decimals: 0 })}</span><span>↑ {formatAmount(outflow, { decimals: 0 })}</span></span>
+          </section>
+          {accounts.map(a => (
+            <section key={a.id} className="bkn-acc">
+              <span className="bkn-acc-name"><span className="bkn-acc-ic" aria-hidden="true">{a.type === 'cash' ? '₴' : (a.name || '?')[0]}</span>{a.name}</span>
+              <b className={`bkn-acc-bal${a.balance < 0 ? ' is-neg' : ''}`}>{formatAmount(a.balance, { decimals: 0 })} <small>₴</small></b>
+              <span className="bkn-acc-flow"><span>↓ {formatAmount(a.inflow, { decimals: 0 })}</span><span>↑ {formatAmount(a.outflow, { decimals: 0 })}</span></span>
+            </section>
+          ))}
+        </div>
+        {tab !== 'transactions' && <button type="button" className="bkn-back" onClick={() => setTab('transactions')}><i className="ti ti-chevron-left" aria-hidden="true" />До операцій</button>}
+        {tab === 'transactions' && <TransactionsTab accounts={accounts} onChange={loadAccounts} newUi addSignal={addSignal} />}
+        {tab === 'import' && <div className="card"><ImportTab accounts={accounts} onDone={() => { loadAccounts(); setTab('transactions') }} /></div>}
+        {tab === 'transfer' && <div className="card"><TransferTab accounts={accounts} onDone={() => { loadAccounts(); setTab('transactions') }} /></div>}
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -71,7 +114,8 @@ const tabStyle = (active) => ({
 })
 
 // ───────── Транзакції + валідація ─────────
-function TransactionsTab({ accounts, onChange }) {
+function TransactionsTab({ accounts, onChange, newUi = false, addSignal = 0 }) {
+  const toast = useToast()
   const [rows, setRows] = useState([])
   const [articles, setArticles] = useState([])
   const [loading, setLoading] = useState(true)
@@ -232,6 +276,45 @@ function TransactionsTab({ accounts, onChange }) {
     load(); onChange()
   }
 
+  // ── Новий інтерфейс: правка в рядку і масові дії зі «Скасувати» ──
+  useEffect(() => { if (addSignal) setShowAdd(true) }, [addSignal])
+  const withArticleId = (upd) => 'article' in upd ? { ...upd, article_id: upd.article ? (articles.find(a => a.name === upd.article)?.id || null) : null } : upd
+  // Одна операція: зберегти й оновити рядок на місці (без перезавантаження списку)
+  const quickUpdate = async (r, upd, label) => {
+    const u = withArticleId(upd)
+    const { data, error } = await qc('bank_transactions').update(u).eq('id', r.id).select('id')
+    if (error || !data?.length) { toast('Не збережено' + (error ? `: ${error.message}` : ' — можливо, закритий період або немає прав'), { type: 'error' }); return }
+    setRows(rs => rs.map(x => x.id === r.id ? { ...x, ...u } : x))
+    if (label) toast(label)
+    if ('is_validated' in u || 'is_ignored' in u) onChange()
+  }
+  // Кілька операцій: по одній (закритий період / права на окремому рядку не зривають пачку), потім
+  // тост «Змінено N · Скасувати» (6 с) — повертає попередні значення змінених полів.
+  const bulkUpdate = async (ids, upd, label = 'Змінено') => {
+    if (!ids.length) return
+    const u = withArticleId(upd)
+    const keys = Object.keys(u)
+    const prev = {}
+    rows.forEach(r => { if (ids.includes(r.id)) prev[r.id] = Object.fromEntries(keys.map(k => [k, r[k] ?? null])) })
+    setBulkBusy(true)
+    let done = 0, blocked = 0, lastErr = null
+    const ok = []
+    for (const id of ids) {
+      const { data, error } = await qc('bank_transactions').update(u).eq('id', id).select('id')
+      if (error) { lastErr = error; blocked++ } else if (data?.length) { done++; ok.push(id) } else blocked++
+    }
+    setBulkBusy(false)
+    setSel(new Set())
+    const undo = async () => {
+      let back = 0
+      for (const id of ok) { const { data } = await qc('bank_transactions').update(prev[id]).eq('id', id).select('id'); if (data?.length) back++ }
+      toast(`Повернуто ${back} з ${ok.length}`); load(); onChange()
+    }
+    if (done) toast(`${label}: ${done} ${done === 1 ? 'операція' : done < 5 ? 'операції' : 'операцій'}${blocked ? ` · не збережено ${blocked}` : ''}`, { action: { label: 'Скасувати', onClick: undo } })
+    else toast(`Не збережено жодної${lastErr ? `: ${lastErr.message}` : ' — можливо, закритий період або немає прав'}`, { type: 'error' })
+    load(); onChange()
+  }
+
   // ── Масове редагування напряму/статті ──
   const toggleSel = (id) => setSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
   const allSelected = view.length > 0 && view.every(r => sel.has(r.id))
@@ -261,6 +344,21 @@ function TransactionsTab({ accounts, onChange }) {
     }
     load(); onChange()
   }
+
+  if (newUi) return (
+    <>
+      <BankNew rows={view} loading={loading} status={status} setStatus={setStatus} q={q} setQ={setQ} acc={acc} setAcc={setAcc} accounts={accounts}
+        art={art} setArt={setArt} grouped={grouped} typeLabels={TYPE_LABELS} directions={DIRECTIONS}
+        sel={sel} toggleSel={toggleSel} setSel={setSel} onOpen={setEditTx} onLink={setLinkTx} onAdd={() => setShowAdd(true)}
+        autoLink={autoLink} linking={linking} linkMsg={linkMsg} autoFill={autoFill} onCheck={() => setShowCheck(true)}
+        quickUpdate={quickUpdate} bulkUpdate={bulkUpdate} unignore={unignore} hasMore={rows.length >= limit} onMore={() => setLimit(l => l + 500)} />
+      {showCheck && <LinkCheckModal onClose={() => setShowCheck(false)} onChanged={() => { load(); onChange() }} />}
+      {showAdd && <AddTxModal accounts={accounts} grouped={grouped} onClose={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); load(); onChange() }} />}
+      {editTx && <TxModal tx={editTx} grouped={grouped} accounts={accounts} onClose={() => setEditTx(null)} onSaved={() => { setEditTx(null); load(); onChange() }} onLink={() => { setLinkTx(editTx); setEditTx(null) }} onOpenDoc={(d) => { setOpenDoc(d); setEditTx(null) }} />}
+      {linkTx && <TxLinkModal tx={linkTx} onClose={() => setLinkTx(null)} onSaved={() => { setLinkTx(null); load() }} />}
+      {openDoc && <DocModal existingDoc={openDoc} autoOcr={false} onClose={() => setOpenDoc(null)} onSaved={() => { setOpenDoc(null); load() }} />}
+    </>
+  )
 
   if (loading) return <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
 

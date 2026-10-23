@@ -1,0 +1,128 @@
+/* «Банк і каса» — новий інтерфейс (макети Bank / BankMobile). Лише токени. */
+.bkn-page, .bkn { display: flex; flex-direction: column; gap: 16px; }
+.bkn-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.bkn-h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -.03em; }
+.bkn-sub { margin: 4px 0 0; font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.bkn-head-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.bkn-accounts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.bkn-acc { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.bkn-acc.is-total { background: var(--ink); color: #fff; border-color: var(--ink); }
+.bkn-acc-name { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); font-weight: 500; min-width: 0; }
+.bkn-acc.is-total .bkn-acc-name { color: var(--on-dark-muted); }
+.bkn-acc-ic { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; background: var(--surface2); color: var(--text-strong2); font-size: 11px; font-weight: 700; flex: 0 0 auto; }
+.bkn-acc.is-total .bkn-acc-ic { background: rgba(255, 255, 255, .12); color: #fff; }
+.bkn-acc-bal { font-size: 24px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.bkn-acc-bal small { font-size: 13px; color: var(--muted); font-weight: 500; }
+.bkn-acc.is-total .bkn-acc-bal small { color: var(--on-dark-muted); }
+.bkn-acc-bal.is-neg { color: var(--danger-fg); }
+.bkn-acc-flow { display: flex; gap: 12px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.bkn-acc.is-total .bkn-acc-flow { color: var(--on-dark-muted); }
+.bkn-back { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; padding: 0; }
+
+.bkn-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); overflow: hidden; gap: 0; }
+.bkn-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--divider); }
+.bkn-search { position: relative; flex: 1 1 240px; }
+.bkn-search .ti { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.bkn-search .form-input { width: 100%; padding-left: 36px; }
+.bkn-select { width: auto; max-width: 200px; }
+.bkn-issues { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 18px; border-bottom: 1px solid var(--divider); background: var(--surface-sunken); }
+.bkn-issues-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-right: 4px; }
+.bkn-issue { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font: inherit; font-size: 13px; font-weight: 500; color: var(--text); cursor: pointer; }
+.bkn-issue b { font-weight: 700; }
+.bkn-issue[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.bkn-dot { width: 7px; height: 7px; border-radius: 50%; }
+.bkn-issue.is-warn .bkn-dot { background: var(--warn-mark); }
+.bkn-issue.is-exp .bkn-dot { background: var(--expense-chart); }
+.bkn-issue.is-danger .bkn-dot { background: var(--danger-fg); }
+.bkn-link { border: 0; background: none; padding: 0; font: inherit; font-size: 13px; font-weight: 600; color: var(--brand-dark); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.bkn-msg { margin: 0; padding: 10px 18px; font-size: 13px; background: var(--brand-soft); color: var(--brand-dark); }
+
+/* липка панель масових дій */
+.bkn-bulk { position: sticky; top: 0; z-index: 30; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 18px; background: var(--ink); color: #fff; }
+.bkn-bulk-n { font-size: 14px; margin-right: 6px; font-variant-numeric: tabular-nums; }
+.bkn-bulk label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--on-dark-muted); }
+.bkn-bulk select { height: 32px; border-radius: 8px; border: 1px solid var(--ink-line); background: var(--ink-field); color: #fff; font: inherit; font-size: 13px; padding: 0 8px; max-width: 220px; }
+.bkn-bulk .bkn-ignore { color: var(--on-dark-neg) !important; }
+.bkn-bulk-cancel { margin-left: auto; border: 0; background: none; color: var(--on-dark-muted); font: inherit; font-size: 13px; cursor: pointer; }
+.bkn-bulk-cancel:hover { color: #fff; }
+.bkn-selectbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 10px 18px; border-bottom: 1px solid var(--divider); font-size: 13px; }
+.bkn-check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.bkn-check input, .bkn-cb { width: 18px; height: 18px; accent-color: var(--brand); cursor: pointer; flex: 0 0 auto; }
+.bkn-hint { font-size: 12px; color: var(--muted); }
+.bkn-mobile-only { display: none; }
+
+/* дні й операції */
+.bkn-day-head { display: flex; justify-content: space-between; align-items: center; padding: 8px 18px; font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--muted); background: var(--surface-sunken); border-top: 1px solid var(--divider); }
+.bkn-day-head b { font-variant-numeric: tabular-nums; letter-spacing: 0; }
+.bkn-day-head .is-pos { color: var(--brand-dark); }
+.bkn-day-head .is-neg { color: var(--expense-fg); }
+.bkn-row { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; grid-template-areas: "cb ico main side" "cb ico chips side"; align-items: start; column-gap: 12px; row-gap: 6px;
+  padding: 12px 18px; border-top: 1px solid var(--divider); background: var(--surface); }
+.bkn-row.is-unconfirmed { box-shadow: inset 3px 0 0 var(--warn-mark); background: var(--warn-row-bg); }
+.bkn-row.is-sel { background: var(--brand-soft); box-shadow: inset 3px 0 0 var(--brand); }
+.bkn-cb { grid-area: cb; margin-top: 8px; }
+.bkn-ico { grid-area: ico; width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; font-size: 16px; }
+.bkn-ico.is-in { background: var(--brand-soft); color: var(--brand-dark); }
+.bkn-ico.is-out { background: var(--expense-bg); color: var(--expense-fg); }
+.bkn-ico.is-swap { background: var(--group-bg); color: var(--group-fg); }
+.bkn-main { grid-area: main; display: flex; flex-direction: column; gap: 2px; min-width: 0; border: 0; background: none; padding: 0; text-align: left; font: inherit; color: var(--text); cursor: pointer; }
+.bkn-main:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 6px; }
+.bkn-name { font-weight: 600; font-size: 14px; }
+.bkn-name.is-none { color: var(--danger-fg); }
+.bkn-desc { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bkn-mobile-meta { display: none; }
+.bkn-chips { grid-area: chips; display: flex; flex-wrap: wrap; gap: 6px; }
+.bkn-chip { height: 26px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); font: inherit; font-size: 12px; font-weight: 600; color: var(--text); padding: 0 8px; cursor: pointer; max-width: 240px; display: inline-flex; align-items: center; gap: 4px; }
+.bkn-chip:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.bkn-chip.is-missing { border-style: dashed; border-color: var(--expense-chart); color: var(--expense-fg); background: var(--surface); }
+.bkn-chip.is-add { border-style: dashed; border-color: var(--warn-mark); color: var(--warn-fg); }
+.bkn-chip.is-doc { background: var(--info-bg); border-color: var(--info-bg); color: var(--info-fg); }
+.bkn-side { grid-area: side; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.bkn-amt { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bkn-amt.is-pos { color: var(--brand-dark); }
+.bkn-ok { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--brand-dark); }
+.bkn-confirm { color: var(--brand-dark) !important; }
+.bkn-tag { height: 20px; padding: 0 8px; border-radius: 6px; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; }
+.bkn-tag.is-warn { background: var(--warn-bg); color: var(--warn-fg); }
+.bkn-tag.is-danger { background: var(--danger-soft-bg); color: var(--danger-fg); }
+.bkn-more { display: flex; justify-content: center; padding: 14px; border-top: 1px solid var(--divider); }
+.bkn-card .ui-empty { padding: 48px 16px; }
+.bkn-fab { display: none; }
+
+@media (max-width: 767px) {
+  .bkn-h1 { font-size: 28px; }
+  .bkn-hide-sm { display: none !important; }
+  .bkn-head-actions { position: absolute; right: 16px; }
+  .bkn-head-actions .btn { width: var(--h-touch); min-width: var(--h-touch); padding: 0; font-size: 0; gap: 0; }
+  .bkn-head-actions .btn .ti { font-size: 20px; }
+  .bkn-head { position: relative; }
+  .bkn-accounts { display: flex; overflow-x: auto; scrollbar-width: none; gap: 8px; }
+  .bkn-acc { flex: 0 0 160px; padding: 12px 14px; }
+  .bkn-acc.is-total { flex-basis: 200px; }
+  .bkn-acc-bal { font-size: 20px; }
+  .bkn-card { background: transparent; border: 0; overflow: visible; }
+  .bkn-toolbar { padding: 0 0 10px; border: 0; }
+  .bkn-search { flex-basis: 100%; order: -1; }
+  .bkn-select, .bkn-toolbar > .btn-primary { display: none !important; }
+  .bkn-issues { padding: 0 0 10px; background: transparent; border: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .bkn-issues-label { display: none; }
+  .bkn-issue { flex: 0 0 auto; height: 36px; }
+  .bkn-selectbar { padding: 0 0 10px; border: 0; }
+  .bkn-selectbar .bkn-check, .bkn-selectbar .btn, .bkn-hint { display: none !important; }
+  .bkn-mobile-only { display: inline; }
+  .bkn-bulk { position: fixed; left: 12px; right: 12px; top: auto; bottom: calc(var(--bottom-nav-h) + 22px + env(safe-area-inset-bottom)); border-radius: 18px; z-index: 205; box-shadow: var(--shadow-pop); }
+  .bkn-bulk label { flex: 1 1 45%; }
+  .bkn-bulk select { width: 100%; max-width: none; }
+  .bkn-day { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card-mobile); overflow: hidden; margin-bottom: 12px; }
+  .bkn-day-head { background: transparent; border: 0; padding: 12px 14px 4px; }
+  .bkn-row { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "ico main side"; padding: 12px 14px; min-height: 56px; }
+  .bkn-cb, .bkn-chips, .bkn-side .btn, .bkn-ok { display: none; }
+  .bkn-days.is-select .bkn-row { grid-template-columns: auto auto minmax(0, 1fr) auto; grid-template-areas: "cb ico main side"; }
+  .bkn-days.is-select .bkn-cb { display: block; }
+  .bkn-desc { display: none; }
+  .bkn-mobile-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); }
+  .bkn-row.is-unconfirmed { background: var(--surface); }
+  .bkn-fab { display: grid; place-items: center; position: fixed; right: 16px; bottom: calc(var(--bottom-nav-h) + 26px + env(safe-area-inset-bottom)); width: 56px; height: 56px;
+    border-radius: 18px; border: 0; background: var(--brand); color: #fff; box-shadow: var(--shadow-pop); z-index: 190; cursor: pointer; }
+  .bkn-fab .ti { font-size: 26px; }
+}

@@ -1,0 +1,41 @@
+/* Картка контрагента — новий інтерфейс (макети Contractor / ContractorMobile). Лише токени. */
+.ccn { display: flex; flex-direction: column; gap: 16px; }
+.ccn-back { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; padding: 0; font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; }
+.ccn-back:hover { color: var(--text); }
+.ccn-head { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); padding: 20px 24px; }
+.ccn-av { width: 60px; height: 60px; border-radius: 18px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand-dark); font-size: 20px; font-weight: 700; flex: 0 0 auto; }
+.ccn-head-main { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.ccn-h1 { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -.03em; line-height: 1.15; }
+.ccn-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; font-size: 13px; color: var(--muted); }
+.ccn-chip { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.ccn-chip.is-client { background: var(--brand-soft); color: var(--brand-dark); }
+.ccn-chip.is-supplier { background: var(--info-bg); color: var(--info-fg); }
+.ccn-chip.is-none { background: var(--warn-bg); color: var(--warn-fg); }
+.ccn-edr { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+.ccn-copy { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 2px; border-radius: 6px; display: inline-grid; place-items: center; }
+.ccn-copy:hover { background: var(--surface2); color: var(--text); }
+.ccn-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ccn-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.ccn-kpis .ui-kpi { border-radius: 20px; padding: 18px 20px; }
+.ccn-owed { background: var(--ink); color: #fff; border-radius: 20px; padding: 18px 20px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ccn-owed-label { font-size: 13px; color: var(--on-dark-muted); }
+.ccn-owed.is-payable .ccn-owed-value { color: var(--on-dark-neg); }
+.ccn-owed-value { font-size: 28px; font-weight: 700; letter-spacing: -.02em; color: var(--on-dark-pos); font-variant-numeric: tabular-nums; }
+.ccn-owed-note { font-size: 12px; color: var(--on-dark-muted); line-height: 1.4; }
+.ccn-owed-note b { color: #fff; }
+.ccn-owed-link { align-self: flex-start; border: 0; background: none; padding: 0; font: inherit; font-size: 13px; font-weight: 600; color: var(--on-dark-pos); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.ccn-loans { margin: 0; font-size: 13px; color: var(--muted); }
+.ccn-body { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); padding: 8px 20px 20px; min-width: 0; }
+.ccn-body > .ui-tabs { margin: 0 -20px 18px; padding: 0 12px; }
+.ccn-panel .card { border-radius: 18px; }
+@media (max-width: 767px) {
+  .ccn-head { padding: 16px; border-radius: var(--r-card-mobile); }
+  .ccn-av { width: 48px; height: 48px; font-size: 16px; border-radius: 14px; }
+  .ccn-h1 { font-size: 22px; }
+  .ccn-actions { width: 100%; }
+  .ccn-actions .btn { flex: 1 1 0; width: auto; min-width: 0; }
+  .ccn-actions .btn-brand { flex-basis: 100%; order: -1; }
+  .ccn-kpis { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .ccn-body { padding: 12px 14px 16px; border-radius: var(--r-card-mobile); }
+  .ccn-body > .ui-tabs { margin: 0 -14px 14px; padding: 0 14px; }
+}
