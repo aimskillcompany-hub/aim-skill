@@ -178,3 +178,28 @@
 .task-full.is-new:not(.task-inline) { position: fixed; inset: 0; z-index: 230; overflow-y: auto; }
 .tpn-top > .btn:first-child { flex: none; }
 .tpn-top .tpn-chip { flex: 1 1 auto; width: fit-content; max-width: max-content; }
+
+/* ── Звірка з макетами: «Задачі» ── */
+.tkn-ring { border-color: var(--border-strong) !important; background: none !important; }
+.tkn-ring.is-done { background: var(--brand) !important; border-color: var(--brand) !important; color: var(--surface); }
+.tkn-group-head.is-today { color: var(--expense-fg); }
+.tkn-counts-sm { display: none; }
+@media (max-width: 767px) {
+  .tkn-title { flex-wrap: wrap; }
+  .tkn-title .tkn-chip { display: none; }
+  .tkn-counts-sm { display: block; flex-basis: 100%; font-size: 13px; color: var(--muted); }
+  /* кожна група — окрема картка */
+  .tkn-list > .tkn-card { background: none; border: 0; box-shadow: none; display: flex; flex-direction: column; gap: 12px; }
+  .tkn-group { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card-mobile); overflow: hidden; }
+}
+@media (max-width: 767px) {
+  /* картка задачі на телефоні: поля — рядками «назва → значення» (макет TaskMobile) */
+  .tpn-prop { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 8px 14px; }
+  .tpn-prop > span { flex: none; font-size: 13px; font-weight: 500; }
+  .tpn-prop .tpn-val { justify-content: flex-end; text-align: right; min-width: 0; }
+  .tpn-prop .tpn-val::after { content: '\203A'; color: var(--muted-2); font-size: 18px; margin-left: 2px; }
+  .tpn-prop .tpn-watch::after, .tpn-prop .tpn-rem::after { content: none; }
+  .tpn-rem { justify-content: flex-end; }
+  .tpn-desc { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 14px; }
+  .tpn-seg button { font-size: 12px; }
+}

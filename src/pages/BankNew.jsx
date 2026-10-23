@@ -5,6 +5,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { useGroupContractors } from '../lib/group'
 import { Button, Menu, Segmented, EmptyState, TableSkeleton } from '../components/ui'
+import PeriodMenu from '../components/ui/PeriodMenu'
 import { formatAmount } from '../utils/format'
 import './BankNew.css'
 
@@ -28,7 +29,7 @@ function TxIcon({ r }) {
 
 export default function BankNew(p) {
   const grp = useGroupContractors()
-  const { rows, loading, status, setStatus, q, setQ, acc, setAcc, accounts, art, setArt, grouped, typeLabels, directions,
+  const { rows, loading, status, setStatus, period, setPeriod, tabCounts = {}, q, setQ, acc, setAcc, accounts, art, setArt, grouped, typeLabels, directions,
     sel, toggleSel, setSel, onOpen, onLink, onAdd, autoLink, linking, linkMsg, autoFill, onCheck,
     quickUpdate, bulkUpdate, unignore, hasMore, onMore } = p
   const [issue, setIssue] = useState(null)       // noDoc | noArticle | noContractor — відбір серед завантажених
@@ -65,19 +66,16 @@ export default function BankNew(p) {
     <div className="bkn">
       <section className="bkn-card">
         <div className="bkn-toolbar">
-          <Segmented ariaLabel="Стан операцій" value={status} onChange={setStatus}
-            options={[{ value: 'unconfirmed', label: 'Непідтверджені' }, { value: 'all', label: 'Усі' }, { value: 'ignored', label: 'Ігноровані' }]} />
+          <Segmented ariaLabel="Стан операцій" value={status} onChange={setStatus} className="bkn-status"
+            options={[{ value: 'unconfirmed', label: 'Непідтверджені', count: tabCounts.unconfirmed }, { value: 'all', label: 'Усі', count: tabCounts.all }, { value: 'ignored', label: 'Ігноровані', count: tabCounts.ignored }]} />
           <label className="bkn-search"><i className="ti ti-search" aria-hidden="true" />
             <input type="search" className="form-input" placeholder="Контрагент, ЄДРПОУ, призначення" aria-label="Пошук операцій" value={q} onChange={e => setQ(e.target.value)} /></label>
-          <select className="form-input bkn-select" aria-label="Рахунок" value={acc} onChange={e => setAcc(e.target.value)}>
-            <option value="all">Усі рахунки</option>
-            {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
           <select className="form-input bkn-select" aria-label="Стаття" value={art} onChange={e => setArt(e.target.value)}>
             <option value="all">Усі статті</option><option value="__none__">Без статті</option>
             <option value="__nolink__">Стаття не з довідника</option><option value="__nocontractor__">Без контрагента</option>
             {articleOptions}
           </select>
+          {setPeriod && <span className="bkn-period"><PeriodMenu year={period.year} month={period.month} onChange={setPeriod} allowAll /></span>}
           <Button variant="primary" icon="ti-link" onClick={autoLink} loading={linking} title="Прив'язати документи: контрагент + сума ±1% + дата ±15 днів">Автоприв'язка</Button>
           <Menu trigger={<Button variant="secondary" iconOnly icon="ti-dots" aria-label="Інші дії" />} items={[
             ...(status === 'unconfirmed' ? [{ label: 'Авто-класифікація видимих', icon: 'ti-wand', onClick: autoFill }] : []),
@@ -152,7 +150,7 @@ export default function BankNew(p) {
                               {i.noContractor && <span className="bkn-tag is-danger">Без контрагента</span>}</span>
                           </button>
                           <div className="bkn-chips">
-                            <select className={`bkn-chip${r.direction ? '' : ' is-missing'}`} value={r.direction || ''} aria-label="Напрям"
+                            <select className={`bkn-chip is-dir${r.direction ? ' d-' + ({ 'Доходи': 'in', 'Витрати': 'out', 'ПФД': 'pfd' }[r.direction] || 'other') : ' is-missing'}`} value={r.direction || ''} aria-label="Напрям"
                               onChange={e => quickUpdate(r, { direction: e.target.value || null })}>
                               <option value="">Напрям?</option>{directions.map(d => <option key={d} value={d}>{d}</option>)}
                             </select>

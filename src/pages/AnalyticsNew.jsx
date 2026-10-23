@@ -242,6 +242,7 @@ function plSummary(bd) {
 
 export function PLNew({ bd, acc, recon, plErr, year, month, setMonth, accrual, mode, planRows, setDrill, forecast, children }) {
   const [open, setOpen] = useState(() => new Set(['revenue']))
+  const [mCol, setMCol] = useState('total')   // телефон: яку колонку показати в списку (чипи місяців)
   const cols = useMemo(() => {
     if (!bd) return []
     if (month || year !== NOW.getFullYear()) return bd.cols
@@ -280,6 +281,7 @@ export function PLNew({ bd, acc, recon, plErr, year, month, setMonth, accrual, m
               <div className={`pln-big${s.net < 0 ? ' is-neg' : ''}`}>{formatAmount(s.net, { decimals: 0 })} <small>₴</small></div></div>
             <dl className="pln-marg"><div><dt>Валова маржа</dt><dd>{pct(s.gp)}</dd></div><div><dt>Чиста маржа</dt><dd>{pct(s.net)}</dd></div></dl>
           </div>
+          <h3 className="pln-wf-title">Від виручки до прибутку</h3>
           <ul className="pln-wf-list">
             {steps.map(([label, a, b, kind, shown]) => (
               <li key={label} className={`is-${kind}`}>
@@ -293,11 +295,16 @@ export function PLNew({ bd, acc, recon, plErr, year, month, setMonth, accrual, m
         <div className="pln-side">
           {forecast}
           {accrual && acc?.missing?.length > 0 && (() => { const n = acc.missing.reduce((a, m) => a + m.items.length, 0); return (
-            <a className="cfn-card pln-warn" href="#pl-missing">
+            <button type="button" className="cfn-card pln-warn" onClick={() => {
+              // HashRouter: «#якір» змінив би маршрут — прокручуємо до переліку й розгортаємо його
+              const h = document.querySelector('#pl-missing [data-toggle]')
+              if (h?.getAttribute('aria-expanded') === 'false') h.click()
+              document.getElementById('pl-missing')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            }}>
               <i className="ti ti-alert-triangle" aria-hidden="true" />
               <span><b>{n} {n === 1 ? 'позиція' : n < 5 ? 'позиції' : 'позицій'} без собівартості</b>
                 <span className="cfn-sm">у {acc.missing.length} док. — прибуток завищено. Відкрити й виправити →</span></span>
-            </a>) })()}
+            </button>) })()}
         </div>
       </div>
 
@@ -326,6 +333,9 @@ export function PLNew({ bd, acc, recon, plErr, year, month, setMonth, accrual, m
 
       <section className="cfn-card cfn-report" aria-label="Звіт про прибутки та збитки">
         <div className="cfn-report-head"><h2>Звіт про прибутки та збитки</h2><span className="cfn-muted cfn-sm">від'ємні значення — зі знаком «−» · натисніть на цифру, щоб побачити операції</span></div>
+        {cols.length > 1 && <div className="pln-mchips" role="group" aria-label="Період у списку">
+          {[{ key: 'total', label: 'Разом' }, ...cols].map(c => <button key={c.key} type="button" aria-pressed={mCol === c.key} onClick={() => setMCol(c.key)}>{c.label}</button>)}
+        </div>}
         <div className="cfn-tbl pln-tbl">
           <table>
             <thead><tr><th scope="col">Стаття</th>{cols.map(c => <th key={c.key} scope="col">{c.label}</th>)}<th scope="col">Разом</th></tr></thead>
@@ -337,8 +347,8 @@ export function PLNew({ bd, acc, recon, plErr, year, month, setMonth, accrual, m
                     <th scope="row">{r.type === 'header' && bd.rows.some(x => x.type === 'row' && x.level === r.level)
                       ? <button type="button" aria-expanded={open.has(r.level)} onClick={() => toggle(r.level)}><i className={`ti ${open.has(r.level) ? 'ti-chevron-down' : 'ti-chevron-right'}`} aria-hidden="true" />{r.label}</button>
                       : r.label}</th>
-                    {cols.map(c => <PlNum key={c.key} v={k * (r.cells[c.key] || 0)} onClick={r.articles ? () => drill(r, c.key, `${c.label} ${year}`) : null} />)}
-                    <PlNum v={k * r.total} strong onClick={r.articles ? () => drill(r, 'total', `Разом ${year}`) : null} />
+                    {cols.map(c => <PlNum key={c.key} m={mCol === c.key} v={k * (r.cells[c.key] || 0)} onClick={r.articles ? () => drill(r, c.key, `${c.label} ${year}`) : null} />)}
+                    <PlNum v={k * r.total} m={mCol === 'total' || cols.length <= 1} strong onClick={r.articles ? () => drill(r, 'total', `Разом ${year}`) : null} />
                   </tr>
                 )
               })}
@@ -357,10 +367,10 @@ export function PLNew({ bd, acc, recon, plErr, year, month, setMonth, accrual, m
   )
 }
 
-function PlNum({ v, onClick, strong }) {
-  if (!v) return <td className="cfn-zero">–</td>
+function PlNum({ v, onClick, strong, m }) {
+  if (!v) return <td className={`cfn-zero${m ? ' is-m' : ''}`}>–</td>
   const txt = formatAmount(v, { decimals: 0 })
-  return <td className={`${v < 0 ? 'is-neg' : ''}${strong ? ' is-strong' : ''}`}>{onClick ? <button type="button" onClick={onClick}>{txt}</button> : txt}</td>
+  return <td className={`${v < 0 ? 'is-neg' : ''}${strong ? ' is-strong' : ''}${m ? ' is-m' : ''}`}>{onClick ? <button type="button" onClick={onClick}>{txt}</button> : txt}</td>
 }
 
 // План / порівняння (касовий режим) — та сама логіка, що раніше
@@ -391,6 +401,8 @@ function PlanTable({ rows, mode }) {
 
 // «Чому прибуток X, а грошей Y» — той самий розрахунок accrualReconciliation, що в старій «Звірці»
 function ReconBridge({ recon: r }) {
+  // телефон: згорнутий акордеон (макет PnLMobile)
+  const [shut, setShut] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 767px)').matches)
   if (!r) return <TableSkeleton rows={6} cols={2} label="Звіряю з грошима…" />
   const ex = r.explained
   const known = ex.loans + ex.fixedAssets + ex.vat + ex.withdrawals + ex.other + ex.noArticle + ex.unvalidated + (ex.vatInDocs || 0)
@@ -405,9 +417,12 @@ function ReconBridge({ recon: r }) {
   ].filter(([, v, k]) => k || Math.abs(v) >= 1)
   const max = Math.max(1, ...lines.map(l => Math.abs(l[1])))
   return (
-    <section className="cfn-card pln-bridge" aria-label="Звірка прибутку з грошима">
-      <h2>Чому прибуток {short(r.netProfit)}, а грошей {short(r.cashFlow)}</h2>
-      <p className="cfn-muted cfn-sm">Звірка прибутку за нарахуванням із фактичним рухом грошей</p>
+    <section className={`cfn-card pln-bridge${shut ? ' is-shut' : ''}`} aria-label="Звірка прибутку з грошима">
+      <button type="button" className="pln-br-head" aria-expanded={!shut} onClick={() => setShut(x => !x)}>
+        <span><h2>Чому прибуток {short(r.netProfit)}, а грошей {short(r.cashFlow)}</h2>
+          <span className="cfn-muted cfn-sm">Звірка прибутку за нарахуванням із фактичним рухом грошей</span></span>
+        <i className={`ti ti-chevron-${shut ? 'down' : 'up'}`} aria-hidden="true" /></button>
+      {!shut && <>
       <ul>
         {lines.map(([label, v, k]) => (
           <li key={label} className={k ? `is-${k}` : ''}>
@@ -418,6 +433,7 @@ function ReconBridge({ recon: r }) {
         ))}
       </ul>
       {r.opening && <p className="cfn-muted cfn-sm">На початок ({r.opening.date.split('-').reverse().join('.')}): дебіторка {plain(r.opening.receivable)}, кредиторка {plain(r.opening.payable)}, запаси {plain(r.opening.inventory)} ₴. Борги — з ПДВ, прибуток — без ПДВ, тому різниця на суму ПДВ очікувана.</p>}
+      </>}
     </section>
   )
 }
@@ -590,7 +606,7 @@ export function BalanceTrendNew({ trend, range, onCell, busyCell }) {
                   {cell(r, r.cash, 'cash', r.cash < 0)}{cell(r, r.stock, 'stock')}{cell(r, r.fixedAssets, 'fa')}{cell(r, r.receivable, 'recv')}
                   {cell(r, r.payable, 'pay', true)}{cell(r, r.loans, 'loans', r.loans > 0)}
                   <td className="is-strong">{formatAmount(r.equity, { decimals: 0 })}</td>
-                  <td><span className={`cfn-pill ${d < 0 ? 'is-neg' : 'is-pos'}`}>{formatAmount(d, { decimals: 0, sign: 'always' })}</span></td>
+                  <td>{Math.round(d) ? <span className={`cfn-pill ${d < 0 ? 'is-neg' : 'is-pos'}`}>{formatAmount(d, { decimals: 0, sign: 'always' })}</span> : <span className="cfn-zero">—</span>}</td>
                 </tr>
               ))}
             </tbody>

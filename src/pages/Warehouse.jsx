@@ -5,7 +5,7 @@ import { fetchAll, fetchAllData, fetchAllIn } from '../lib/fetchAll'
 import { useUser } from '../lib/auth'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { fmt, fmtInt } from '../lib/fmt'
-import { assembleProduct, getAssembly, deleteAssembly, editAssembly, mergeProducts } from '../lib/stockService'
+import { resolveProduct, assembleProduct, getAssembly, deleteAssembly, editAssembly, mergeProducts } from '../lib/stockService'
 import { exportAssemblyAct } from '../lib/assemblyAct'
 import { getDocType } from '../lib/docgen'
 import DocModal from '../components/DocModal'
@@ -21,7 +21,7 @@ import GeneratedDocModal from '../components/GeneratedDocModal'
 import { useSort, SortTh } from '../components/Sort'
 import { todayKyiv } from '../lib/dates'
 import { useNewUi } from '../lib/uiPrefs'
-import { Button, Menu, Tabs, Switch, KpiTile, EmptyState, TableSkeleton, Callout, Segmented } from '../components/ui'
+import { Button, Menu, Modal, Tabs, Switch, KpiTile, EmptyState, TableSkeleton, Callout, Segmented, useToast } from '../components/ui'
 import { formatAmount, plural } from '../utils/format'
 import './WarehouseNew.css'
 const POS = ['позиція', 'позиції', 'позицій']
@@ -38,6 +38,7 @@ const srcLabel = (s) => SRC_LABEL[s] || s || '—'
 
 export default function Warehouse() {
   const newUi = useNewUi()
+  const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const [tab, setTabState] = useState(() => params.get('tab') || 'goods')
   const setTab = (t) => { setTabState(t); setParams(t === 'goods' ? {} : { tab: t }, { replace: true }) }
@@ -45,24 +46,37 @@ export default function Warehouse() {
   const [diag, setDiag] = useState(false)
   const [xls, setXls] = useState(false)
   const [rev, setRev] = useState(0)
+  const [stats, setStats] = useState(null)      // новий інтерфейс: «N товарів у довіднику · M у наявності»
+  const [newProd, setNewProd] = useState(false)
   const { user } = useUser()
+  const canXls = ['admin', 'accountant'].includes(user?.role)
   if (newUi) return (
     <div className="whn">
       <div className="whn-head">
-        <h1 className="whn-h1">Склад</h1>
+        <div><h1 className="whn-h1">Склад</h1>
+          {stats && <p className="whn-sub">{stats.total} {plural(stats.total, ['товар', 'товари', 'товарів'])} у довіднику · {stats.inStock} у наявності</p>}</div>
         <div className="whn-actions">
           <Link className="btn btn-secondary whn-hide-sm" to="/inventory/recon">Звірка видаткових</Link>
-          <Menu trigger={<Button variant="secondary" icon="ti-calculator">Собівартість</Button>} items={[
+          <span className="whn-hide-sm"><Menu trigger={<Button variant="secondary">Собівартість<i className="ti ti-chevron-down" aria-hidden="true" /></Button>} items={[
             { label: 'Діагностика собівартості', icon: 'ti-stethoscope', onClick: () => setDiag(true) },
             { label: 'Перерахувати за період (FIFO)', icon: 'ti-calculator', onClick: () => setRecalc(true) },
-          ]} />
-          {['admin', 'accountant'].includes(user?.role) && <Button variant="secondary" icon="ti-file-spreadsheet" onClick={() => setXls(true)}>Excel</Button>}
+          ]} /></span>
+          {canXls && <Button variant="secondary" icon="ti-file-spreadsheet" onClick={() => setXls(true)} className="whn-hide-sm">Excel</Button>}
+          {user?.role !== 'viewer' && <Button variant="brand" icon="ti-plus" onClick={() => setNewProd(true)} className="whn-hide-sm">Товар</Button>}
+          <span className="whn-only-sm"><Menu trigger={<Button variant="secondary" iconOnly icon="ti-dots-vertical" aria-label="Дії складу" />} items={[
+            ...(user?.role !== 'viewer' ? [{ label: 'Новий товар', icon: 'ti-plus', onClick: () => setNewProd(true) }] : []),
+            { label: 'Звірка видаткових', icon: 'ti-arrows-exchange', onClick: () => navigate('/inventory/recon') },
+            { label: 'Діагностика собівартості', icon: 'ti-stethoscope', onClick: () => setDiag(true) },
+            { label: 'Перерахувати собівартість (FIFO)', icon: 'ti-calculator', onClick: () => setRecalc(true) },
+            ...(canXls ? [{ label: 'Excel: вивантажити / виправити', icon: 'ti-file-spreadsheet', onClick: () => setXls(true) }] : []),
+          ]} /></span>
         </div>
       </div>
+      {newProd && <NewProductModal userId={user?.id} onClose={() => setNewProd(false)} onCreated={(id) => { setNewProd(false); navigate(`/inventory/product/${id}`) }} />}
       {recalc && <RecalcCostModal onClose={() => setRecalc(false)} />}
       {diag && <CostDiagnosticsModal onClose={() => setDiag(false)} />}
       {xls && <StockExcelModal onClose={() => setXls(false)} onDone={() => { setXls(false); setRev(r => r + 1) }} />}
-      {tab === 'goods' && <StockTab key={rev} newUi onExcel={['admin', 'accountant'].includes(user?.role) ? () => setXls(true) : null}
+      {tab === 'goods' && <StockTab key={rev} newUi onStats={setStats} onExcel={canXls ? () => setXls(true) : null}
         tabs={<Tabs ariaLabel="Розділи складу" idPrefix="whn-tab" value={tab} onChange={setTab} tabs={WH_TABS} />} />}
       {tab !== 'goods' && <section className="whn-card"><Tabs ariaLabel="Розділи складу" idPrefix="whn-tab" value={tab} onChange={setTab} tabs={WH_TABS} />
         <div className="whn-pad">
@@ -107,8 +121,41 @@ const tabStyle = (active) => ({
 })
 const WH_TABS = [{ id: 'goods', label: 'Товари' }, { id: 'services', label: 'Послуги' }, { id: 'consumables', label: 'Розхідні матеріали' }, { id: 'movements', label: 'Рухи' }, { id: 'assemblies', label: 'Збірки' }]
 
+// «+ Товар» (новий інтерфейс): те саме правило, що й при розпізнаванні документів — resolveProduct
+// спершу шукає за артикулом / синонімом / назвою і лише тоді створює картку (дублів не плодить).
+function NewProductModal({ userId, onClose, onCreated }) {
+  const toast = useToast()
+  const [f, setF] = useState({ name: '', sku: '', unit: 'шт' })
+  const [busy, setBusy] = useState(false)
+  const save = async () => {
+    if (!f.name.trim()) return
+    setBusy(true)
+    try {
+      const r = await resolveProduct(f.name, f.unit.trim() || 'шт', null, userId, f.sku)
+      if (!r?.productId) throw new Error('Не вдалося створити товар')
+      if (!r.isNew) toast('Такий товар уже є в довіднику — відкрито його картку')
+      onCreated(r.productId)
+    } catch (e) { toast(e.message, { type: 'error' }); setBusy(false) }
+  }
+  return (
+    <Modal open onClose={onClose} title="Новий товар" footer={<>
+      <Button variant="secondary" onClick={onClose}>Скасувати</Button>
+      <Button variant="brand" onClick={save} loading={busy} disabled={!f.name.trim()}>Створити</Button></>}>
+      <div className="form-grid">
+        <div className="form-group full"><label htmlFor="np-name">Назва</label>
+          <input id="np-name" className="form-input" value={f.name} onChange={e => setF({ ...f, name: e.target.value })} onKeyDown={e => { if (e.key === 'Enter') save() }} /></div>
+        <div className="form-group"><label htmlFor="np-sku">Артикул</label>
+          <input id="np-sku" className="form-input" value={f.sku} onChange={e => setF({ ...f, sku: e.target.value })} /></div>
+        <div className="form-group"><label htmlFor="np-unit">Одиниця</label>
+          <input id="np-unit" className="form-input" value={f.unit} onChange={e => setF({ ...f, unit: e.target.value })} /></div>
+      </div>
+      <p className="whn-hint">Якщо товар із таким артикулом або назвою вже є — відкриємо наявну картку.</p>
+    </Modal>
+  )
+}
+
 // ───────── Залишки (довідник товарів) ─────────
-function StockTab({ newUi = false, tabs = null, onExcel = null }) {
+function StockTab({ newUi = false, tabs = null, onExcel = null, onStats = null }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
@@ -221,8 +268,10 @@ function StockTab({ newUi = false, tabs = null, onExcel = null }) {
     )
   }
 
+  const inStockN = rows.filter(r => (Number(r.computed_stock) || 0) > 0).length
+  useEffect(() => { if (onStats && !loading) onStats({ total: rows.length, inStock: inStockN }) }, [rows, loading, inStockN])
   if (newUi) {
-    const inStock = rows.filter(r => (Number(r.computed_stock) || 0) > 0).length
+    const inStock = inStockN
     const minus = rows.filter(r => (Number(r.computed_stock) || 0) < 0).length
     const noSku = rows.filter(r => !(r.sku || '').trim()).length
     const oddUnits = rows.filter(r => unitOdd(r.unit))
@@ -240,7 +289,9 @@ function StockTab({ newUi = false, tabs = null, onExcel = null }) {
               <span className="whn-sku">{(r.sku || '').trim() ? <code>{r.sku}</code> : <><span className="whn-muted">артикул не вказано</span><span className="whn-tag is-warn">без артикулу</span></>}
                 {unitOdd(r.unit) && <span className="whn-tag is-warn">одиниця «{r.unit}»</span>}</span></span></span></td>
           <td className="r"><span className={`whn-stock${stock > 0 ? ' is-pos' : stock < 0 ? ' is-neg' : ''}`}>{stock < 0 ? '−' : ''}{fmt(Math.abs(stock))} {r.unit || 'шт'}</span></td>
-          <td className="r whn-num">{up ? `${formatAmount(up)} ₴` : '—'}</td>
+          <td className="r whn-num whn-up">{up ? <>{formatAmount(up)} ₴<small className="whn-only-sm"> / од.</small></> : '—'}
+            {!(r.sku || '').trim() && <span className="whn-tag is-warn whn-only-sm">без артикулу</span>}
+            {unitOdd(r.unit) && <span className="whn-tag is-warn whn-only-sm">«{r.unit}»</span>}</td>
           <td className="r whn-num"><b>{val ? `${formatAmount(val)} ₴` : '—'}</b></td>
         </tr>
       )
@@ -248,9 +299,11 @@ function StockTab({ newUi = false, tabs = null, onExcel = null }) {
     return (
       <div className="whn">
         <div className="whn-kpis">
-          <section className="whn-value"><span>Вартість запасу</span><b>≈ {formatAmount(totalValue, { decimals: 0 })} ₴</b><small>за собівартістю партій (FIFO), без ПДВ{cat || onlyStock || q || quality ? ' · з урахуванням фільтра' : ''}</small></section>
-          <KpiTile label="У наявності" tone="brand" value={`${inStock} ${plural(inStock, POS)}`} hint={`ще ${rows.length - inStock - minus} — 0 шт`} onClick={() => setOnlyStock(true)} />
-          {minus > 0 && <KpiTile label="Мінусові залишки" tone="danger" value={`${minus} ${plural(minus, POS)}`} hint="продано більше, ніж прийшло — перевірити" onClick={() => setQuality(quality === 'minus' ? null : 'minus')} />}
+          <section className="whn-value"><span>Вартість запасу</span><b>≈ {formatAmount(totalValue, { decimals: 0 })} ₴</b><small>за собівартістю партій (FIFO), без ПДВ{cat || onlyStock || q || quality ? ' · з урахуванням фільтра' : ''}</small>
+            <button type="button" className="whn-instock" aria-pressed={onlyStock} onClick={() => setOnlyStock(o => !o)}>
+              <span><i aria-hidden="true" />{inStock} {plural(inStock, POS)} у наявності</span><small>{onlyStock ? 'показати всі' : 'лише в наявності'}</small></button></section>
+          <KpiTile className="whn-kpi-lg" label="У наявності" value={`${inStock} ${plural(inStock, POS)}`} hint={`ще ${rows.length - inStock - minus} — 0 шт`} onClick={() => setOnlyStock(true)} />
+          {minus > 0 && <KpiTile className="whn-kpi-lg" label="Мінусові залишки" tone="danger" value={`${minus} ${plural(minus, POS)}`} hint="продано більше, ніж прийшло — перевірити" onClick={() => setQuality(quality === 'minus' ? null : 'minus')} />}
           {(noSku > 0 || oddUnits.length > 0) && (
             <section className="whn-quality">
               <div className="whn-quality-head"><span>Якість довідника</span>{onExcel && <button type="button" className="whn-link" onClick={onExcel}>Виправити в Excel →</button>}</div>
@@ -273,6 +326,12 @@ function StockTab({ newUi = false, tabs = null, onExcel = null }) {
             <Switch checked={grouped} onChange={setGrouped} label="За категоріями" />
             <Switch checked={showArchived} onChange={setShowArchived} label="Архівні" />
           </div>
+          <div className="whn-mchips">
+            {minus > 0 && <button type="button" className="whn-mchip is-danger" aria-pressed={quality === 'minus'} onClick={() => setQuality(quality === 'minus' ? null : 'minus')}><i aria-hidden="true" />Мінусові <b>{minus}</b></button>}
+            {noSku > 0 && <button type="button" className="whn-mchip" aria-pressed={quality === 'nosku'} onClick={() => setQuality(quality === 'nosku' ? null : 'nosku')}><i aria-hidden="true" />Без артикулу <b>{noSku}</b></button>}
+            {oddUnits.length > 0 && <button type="button" className="whn-mchip" aria-pressed={quality === 'unit'} onClick={() => setQuality(quality === 'unit' ? null : 'unit')}><i aria-hidden="true" />Різні одиниці <b>{oddUnits.length}</b></button>}
+          </div>
+          {!loading && <div className="whn-listhead"><span>{onlyStock ? 'У наявності' : 'Усі товари'}</span><span>{view.length} з {rows.length}</span></div>}
           {quality && <div className="whn-filter">Фільтр: <b>{{ minus: 'мінусові залишки', nosku: 'без артикулу', unit: 'одиниця в різному написанні' }[quality]}</b><button type="button" className="whn-link" onClick={() => setQuality(null)}>Скинути</button></div>}
           {sel.size > 0 && (
             <div className="whn-bulk">

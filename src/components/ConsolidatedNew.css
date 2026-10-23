@@ -57,3 +57,12 @@
   .csn .rpt-card .cfn-report-head { padding: 14px 16px; }
 }
 .csn-note:empty { display: none; }
+/* телефон (макет InvestorMobile): великий капітал групи зверху, активи / зобов'язання — рядком під ним */
+@media (max-width: 767px) {
+  .csn-hero-top > span:last-child { display: none; }
+  .csn-eq { display: grid !important; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+  .csn-eq > i { display: none; }
+  .csn-eq > .is-eq { grid-column: 1 / -1; grid-row: 1; }
+  .csn-eq > .is-eq b { font-size: 34px; }
+  .csn-eq > div:not(.is-eq) b { font-size: 18px; }
+}

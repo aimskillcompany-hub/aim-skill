@@ -64,6 +64,7 @@
 
 /* ── вміст ── */
 .shell-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.shell-main:focus { outline: none; }
 .shell-main .page-inner { padding: 28px 32px 48px; max-width: 1400px; width: 100%; margin: 0 auto; box-sizing: border-box; }
 .shell-bar { display: none; }
 .shell-bottom { display: none; }

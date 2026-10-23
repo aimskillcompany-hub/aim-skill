@@ -129,13 +129,30 @@ export default function Tasks() {
         </div>}
       </span>
     )
-    const groups = GROUPS.map(([k, name]) => ({ k, name, items: list.filter(t => bucket(t) === k) })).filter(g => g.items.length)
+    // Групи за днями (макет Tasks): прострочені · «Сьогодні · чт, 23 жовтня» · «Завтра · …» · кожен день окремо · без терміну · відкладені · виконані
+    const today = todayKyiv()
+    const dayKey = (t) => { const b = bucket(t, today); return ['today', 'week', 'later'].includes(b) ? 'd:' + t.due_date : b }
+    const WDS = ['нд', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб']
+    const MG = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня', 'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня']
+    const dayName = (iso) => {
+      const d = new Date(iso + 'T12:00:00Z'), diff = Math.round((Date.parse(iso) - Date.parse(today)) / 864e5)
+      const base = `${WDS[d.getUTCDay()]}, ${Number(iso.slice(8, 10))} ${MG[Number(iso.slice(5, 7)) - 1]}`
+      return diff === 0 ? `Сьогодні · ${base}` : diff === 1 ? `Завтра · ${base}` : base
+    }
+    const keys = [...new Set(list.map(dayKey))]
+    const order = (k) => k === 'overdue' ? 0 : k.startsWith('d:') ? 1 : k === 'nodate' ? 2 : k === 'hold' ? 3 : 4
+    const groups = keys.sort((a, b) => order(a) - order(b) || a.localeCompare(b)).map(k => ({
+      k: k.startsWith('d:') ? (k.slice(2) === today ? 'today' : k) : k,
+      name: k.startsWith('d:') ? dayName(k.slice(2)) : GROUPS.find(g => g[0] === k)?.[1] || k,
+      items: list.filter(t => dayKey(t) === k),
+    }))
     const showDetail = sel && wide
     return (
       <div className={`tkn${showDetail ? ' has-detail' : ''}`}>
         <div className="tkn-head">
           <div className="tkn-title">
             <h1>Задачі</h1>
+            <span className="tkn-counts-sm">Активних {active.length} · прострочено {active.filter(t => isOverdue(t)).length} · на перевірці {active.filter(t => t.status === 'review').length}</span>
             <span className="tkn-chip">Активних {active.length}</span>
             <span className={`tkn-chip${active.some(t => isOverdue(t)) ? ' is-danger' : ''}`}>Прострочено {active.filter(t => isOverdue(t)).length}</span>
             <span className="tkn-chip">На перевірці {active.filter(t => t.status === 'review').length}</span>
@@ -143,8 +160,8 @@ export default function Tasks() {
           <div className="tkn-actions">{bell_}<Button variant="brand" icon="ti-plus" onClick={() => setEdit({ priority: 'normal', assignee_id: me })}>Нова задача</Button></div>
         </div>
         <div className="tkn-toolbar">
-          <Segmented ariaLabel="Чиї задачі" value={scope} onChange={setScope}
-            options={[['mine', 'Мої'], ['created', 'Я поставив'], ['watch', 'Я спостерігаю'], ['all', 'Усі']].map(([value, label]) => ({ value, label, count: counts[value] }))} />
+          <Segmented ariaLabel="Чиї задачі" value={scope} onChange={setScope} className="is-chips-sm"
+            options={[['mine', 'Мої'], ['created', 'Я поставив'], ['watch', 'Спостерігаю'], ['all', 'Усі']].map(([value, label]) => ({ value, label, count: counts[value] }))} />
           <label className="tkn-search"><i className="ti ti-search" aria-hidden="true" />
             <input type="search" className="form-input" placeholder="Пошук: задача, №, клієнт" aria-label="Пошук задач" value={q} onChange={e => setQ(e.target.value)} /></label>
           <span className="tkn-view"><Segmented ariaLabel="Вигляд" value={view} onChange={setView} options={[{ value: 'list', label: 'Список' }, { value: 'board', label: 'Канбан' }]} /></span>
@@ -322,7 +339,7 @@ function TaskRowNew({ t, me, on, P, onPick, compact = false }) {
           {forMe && <span className="tkn-tag is-warn">підзадача для вас</span>}
           {t.priority === 'high' || t.priority === 'urgent' ? <span className="tkn-tag is-danger">{PRIORITY[t.priority]?.label}</span> : null}
           {t.requires_review && <span className="tkn-tag is-group">з перевіркою</span>}
-          {t.status !== 'new' && !done && <span className="tkn-status">{STATUS[t.status]?.label}</span>}
+          {t.status === 'review' && <span className="tkn-tag is-info">на перевірці</span>}
           {t.comments > 0 && <span><i className="ti ti-message" aria-hidden="true" />{t.comments}</span>}
         </span>
       </span>

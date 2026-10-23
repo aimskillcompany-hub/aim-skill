@@ -123,3 +123,24 @@ a.ocn-meta-item:hover { color: var(--brand-dark); }
   .ocn-grid.is-items .ocn-aside { position: static; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (min-width: 768px) and (max-width: 1023px) { .ocn-grid.is-items .ocn-aside { grid-template-columns: minmax(0, 1fr); } }
+
+/* ── Звірка з макетами: картка замовлення на телефоні — темна картка-герой (макет OrderMobile) ── */
+.ocn-back-sm { display: none; }
+@media (max-width: 767px) {
+  .ocn-back-lg { display: none; } .ocn-back-sm { display: inline; font-weight: 700; color: var(--text); font-size: 15px; }
+  .ocn-head { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+  .ocn-head .ocn-h1 { display: none; }
+  .ocn-head .ocn-meta-item, .ocn-head .ocn-muted, .ocn-head .ocn-client { color: var(--on-dark-muted); }
+  .ocn-head .ocn-client { color: var(--surface); font-weight: 700; font-size: 16px; }
+  .ocn-head .ocn-av { background: var(--ink-field); color: var(--surface); }
+  .ocn-head .ocn-total { color: var(--surface); font-size: 32px; } .ocn-head .ocn-total small { color: var(--on-dark-muted); }
+  .ocn-head .ocn-total-sub { color: var(--on-dark-muted); } .ocn-head .ocn-total-sub b { color: var(--on-dark-pos); } .ocn-head .ocn-total-sub b.is-neg { color: var(--on-dark-neg); }
+  .ocn-head .ocn-chip.is-brand { background: var(--ink-field); color: var(--on-dark-pos); }
+  .ocn-head .ocn-paid { background: var(--ink-field); color: var(--on-dark-pos); border-color: var(--ink-line); }
+  .ocn-head .ocn-btn-t { display: none; }
+  .ocn-head .ocn-actions .btn-secondary { background: var(--ink-field); border-color: var(--ink-line); color: var(--surface); flex: 0 0 44px; width: 44px; padding: 0; }
+  .ocn-head .ocn-actions .btn-primary { background: var(--brand); border-color: var(--brand); color: var(--surface); flex: 1 1 0; order: 0; }
+  .ocn-head .ocn-step-bar { background: var(--ink-line); } .ocn-head .ocn-step-label { color: var(--on-dark-muted); }
+  .ocn-head .ocn-step.is-done .ocn-step-bar { background: var(--on-dark-pos); }
+  .ocn-head .ocn-step.is-current .ocn-step-label { color: var(--surface); }
+}

@@ -55,3 +55,25 @@
 @media (max-width: 1279px) { .mtn-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .mtn-dec { grid-template-columns: 24px minmax(0, 1fr) auto auto; } .mtn-dec-acc { display: none; } .mtn-pill { grid-column: 2; justify-self: start; } }
 @media (max-width: 1023px) { .mtn-body { grid-template-columns: minmax(0, 1fr); } .mtn-list { flex-direction: row; overflow-x: auto; } .mtn-month { display: none; } .mtn-card { flex: 0 0 260px; } }
 @media (max-width: 767px) { .mtn-sum3 { grid-template-columns: minmax(0, 1fr); } .mtn-detail { padding: 16px; } .mtn-d-head { flex-direction: column; } }
+.mtn-d-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.mtn-back { display: none; }
+/* телефон (макет ProtocolsMobile): список нарад → окремий екран наради зі стрілкою назад */
+@media (max-width: 767px) {
+  .mtn-body:not(.is-open) .mtn-detail { display: none; }
+  .mtn-body.is-open .mtn-list { display: none; }
+  .mtn-list { flex-direction: column; overflow: visible; }
+  .mtn-card { flex: none; }
+  .mtn-month { display: block; }
+  .mtn-back { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; margin-bottom: 8px; padding: 0; border: 0; background: none; font: inherit; font-size: 14px; font-weight: 600; color: var(--text); cursor: pointer; }
+  .mtn-back .ti { font-size: 20px; }
+  .mtn-cb { width: 24px; height: 24px; border-radius: 50%; }
+  .mtn-add { width: 100%; justify-content: center; }
+}
+@media (max-width: 767px) { .mtn:has(.mtn-body.is-open) .mtn-kpis, .mtn:has(.mtn-body.is-open) .mtn-top { display: none; } }
+@media (max-width: 767px) {
+  .mtn-d-acts { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
+  .mtn-sum3 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 6px; }
+  .mtn-sum3 > div { padding: 10px; }
+  .mtn-sum3 span { font-size: 11px; }
+  .mtn-sum3 b { font-size: 15px; white-space: nowrap; }
+}

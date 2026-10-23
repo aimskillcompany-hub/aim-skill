@@ -243,3 +243,10 @@
   .ui-tabs.is-pills .ui-tab { height: 40px; border: 1px solid var(--border); border-radius: var(--r-pill); background: var(--surface); color: var(--text); }
   .ui-tabs.is-pills .ui-tab[aria-selected="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); box-shadow: none; }
 }
+
+@media (max-width: 767px) {
+  .ui-segmented.is-chips-sm { background: none; padding: 0; gap: 6px; overflow-x: auto; scrollbar-width: none; max-width: 100%; }
+  .ui-segmented.is-chips-sm .ui-seg-btn { flex: none; height: 36px; padding: 0 14px; border: 1px solid var(--border); border-radius: var(--r-pill); background: var(--surface); color: var(--text); }
+  .ui-segmented.is-chips-sm .ui-seg-btn[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); box-shadow: none; }
+  .ui-segmented.is-chips-sm .ui-seg-btn[aria-pressed="true"] .ui-seg-count { color: var(--on-dark-muted); }
+}

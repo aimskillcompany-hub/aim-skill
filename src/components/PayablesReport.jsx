@@ -11,6 +11,8 @@ import { loadPayablesAsOf, groupPayables } from '../lib/payables'
 import { useGroupContractors } from '../lib/group'
 import { exportReportXlsx, exportReportPdf } from '../lib/reportExport'
 import { BUCKETS } from '../lib/receivables'
+import { loadPfd } from '../lib/pfd'
+import { getAccountBalances } from '../lib/accounts'
 import { formatAmount, plural } from '../utils/format'
 import { KpiTile, StackBar, EmptyState, TableSkeleton, Button, Callout } from './ui'
 
@@ -26,6 +28,11 @@ export default function PayablesReport({ showGroup = true, ctl = null } = {}) {
   const [err, setErr] = useState(null)
   const [open, setOpen] = useState(() => new Set())
   const [orders, setOrders] = useState({})
+  const [side, setSide] = useState(null)   // { loans, cash } — для підсумкової картки (макет ReportsPayables)
+  useEffect(() => {
+    Promise.all([loadPfd().then(r => r.totals.owedByUs).catch(() => null), getAccountBalances().then(a => a.reduce((x, b) => x + (Number(b.balance) || 0), 0)).catch(() => null)])
+      .then(([loans, cash]) => setSide({ loans, cash }))
+  }, [companies])
   useEffect(() => {
     if (!companies?.length) return
     setData(null); setErr(null)
@@ -61,8 +68,15 @@ export default function PayablesReport({ showGroup = true, ctl = null } = {}) {
 
   return (
     <div className="rpt">
-      <div className="rpt-kpis">
-        <KpiTile label="Ми винні" tone={s.total > 0 ? 'warn' : 'brand'} value={`${formatAmount(s.total, { decimals: 0 })} ₴`} hint={`у т. ч. ПДВ ${formatAmount(s.vat, { decimals: 0 })} ₴ · станом на ${dmy(data.asOf)}`} />
+      <section className="rpt-paysum" aria-label="Підсумок кредиторки">
+        <div className="rpt-ps-main"><span>Ми винні постачальникам · {dmy(data.asOf)}</span><b>{formatAmount(s.total, { decimals: 0 })} ₴</b>
+          <small>у т. ч. ПДВ {formatAmount(s.vat, { decimals: 0 })} ₴ · {s.debtors} {plural(s.debtors, ['постачальник', 'постачальники', 'постачальників'])}</small></div>
+        <div><span>Позики отримані (ПФД)</span><b className="is-out">{side?.loans == null ? '…' : `${formatAmount(side.loans, { decimals: 0 })} ₴`}</b>
+          <button type="button" className="rpt-link" onClick={() => navigate('/loans')}>Поворотна фін. допомога →</button></div>
+        <div><span>Гроші на рахунках зараз</span><b className="is-in">{side?.cash == null ? '…' : `${formatAmount(side.cash, { decimals: 0 })} ₴`}</b>
+          <small>{side?.cash != null && s.total > 0 ? (side.cash >= s.total ? `покривають кредиторку в ${Math.floor(side.cash / s.total)} ${plural(Math.floor(side.cash / s.total), ['раз', 'рази', 'разів'])}` : `покривають ${Math.round(Math.max(0, side.cash) / s.total * 100)}% кредиторки`) : ' '}</small></div>
+      </section>
+      <div className="rpt-kpis is-3">
         <KpiTile label="Прострочено" tone={overdue > 0 ? 'danger' : 'neutral'} value={`${formatAmount(overdue, { decimals: 0 })} ₴`} hint="строк = дата документа + відстрочка постачальника" />
         <KpiTile label="Постачальників" value={s.debtors} hint={`${s.docCount} ${plural(s.docCount, ['документ', 'документи', 'документів'])}`} />
         <KpiTile label="Передоплати постачальникам" tone={prepaid > 0 ? 'brand' : 'neutral'} value={`${formatAmount(prepaid, { decimals: 0 })} ₴`} hint="оплачено понад документ — це актив" />
@@ -115,7 +129,7 @@ export default function PayablesReport({ showGroup = true, ctl = null } = {}) {
           <ul className="rpt-list">{data.overpaid.map(x => <li key={x.docId}><span>{x.contractorName} · {getDocType(x.type)?.label || 'документ'} № {x.doc_number}</span><b className="rpt-num">{formatAmount(x.over)} ₴</b></li>)}</ul>
         </section>
       )}
-      <Callout tone="info" title="Позики отримані" text="(поворотна фінансова допомога) у кредиторку не входять — їх видно в окремому розділі." action={{ label: 'Поворотна фін. допомога', to: '/loans' }} />
+      <p className="rpt-muted rpt-note">Позики отримані (поворотна фінансова допомога) у кредиторку не входять — вони окремо, у картці вище.</p>
     </div>
   )
 }

@@ -88,3 +88,34 @@
 @media (max-width: 1023px) { .fca-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fca-main { grid-column: 1 / -1; } .fca-detail { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 767px) { .fca-main b { font-size: 44px; } .fca-table tbody tr.is-click { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name net"; padding: 12px; } .fca-table tbody tr.is-click td:not(.c-name):not(.c-net) { display: none; } .fca-table .c-name { grid-area: name; } .fca-table .c-net { grid-area: net; } .fca-table tr.rpt-sub { display: block; padding: 8px 12px; } .fca-table tr.rpt-sub > td { display: block !important; } }
 .fca h2 { margin: 0; font-size: 17px; font-weight: 700; }
+/* «Звідки цифри» — номери в кружках (макет Forecast) */
+.fcn-src ol { list-style: none; padding: 0; counter-reset: fcn; display: flex; flex-direction: column; gap: 10px; }
+.fcn-src ol li { counter-increment: fcn; position: relative; padding-left: 32px; }
+.fcn-src ol li::before { content: counter(fcn); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand-dark); font-size: 11px; font-weight: 700; }
+/* телефон (макет ForecastMobile): головна «Гроші після прогнозу» зверху, місяці — списком, замовлення — картки */
+.fcn-mrows { display: none; }
+@media (max-width: 767px) {
+  .fcn-eq { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 10px; }
+  .fcn-eq .is-res { grid-column: 1 / -1; grid-row: 1; }
+  .fcn-eq > div:not(.is-res) b { font-size: 16px; }
+  .fcn-eq .is-res b { font-size: 34px; }
+  .fcn-src { display: none; }
+  .fcn-chart .pln-legend, .fcn-chart .fcn-cols { display: none; }
+  .fcn-mrows { display: flex; flex-direction: column; list-style: none; margin: 8px -4px 0; padding: 0; }
+  .fcn-mrows li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; padding: 12px 4px; border-top: 1px solid var(--divider); }
+  .fcn-mrows li:first-child { border-top: 0; }
+  .fcn-mrows li > b { font-variant-numeric: tabular-nums; }
+  .fcn-mrows li > b.is-neg { color: var(--danger-fg); }
+  .fcn-mr-l small { color: var(--muted); font-size: 12px; }
+  .fcn-mr-d { grid-column: 1 / -1; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .fcn-mr-bar { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: var(--surface-sunken); overflow: hidden; }
+  .fcn-mr-bar i { display: block; height: 100%; border-radius: 3px; background: var(--brand); }
+  .fcn-mr-bar i.is-neg { background: var(--expense-chart); }
+  .fcn-table tbody tr.is-click { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-areas: "name name st" "client client client" "in out net"; gap: 6px 10px; padding: 14px; }
+  .fcn-table tbody tr.is-click td.fcn-in, .fcn-table tbody tr.is-click td.fcn-out, .fcn-table tbody tr.is-click td.c-st { display: block !important; }
+  .fcn-table tbody tr.is-click td.fcn-in { grid-area: in; } .fcn-table tbody tr.is-click td.fcn-out { grid-area: out; }
+  .fcn-table tbody tr.is-click td.c-st { grid-area: st; text-align: right; }
+  .fcn-table tbody tr.is-click td[data-l] { text-align: left !important; font-weight: 700; font-size: 15px; }
+  .fcn-table tbody tr.is-click td[data-l]::before { content: attr(data-l); display: block; font-size: 11px; font-weight: 500; color: var(--muted); }
+}
+@media (max-width: 767px) { .fcn-eq > div:not(.is-res) b { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } }

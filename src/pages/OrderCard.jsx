@@ -59,7 +59,7 @@ export default function OrderCard() {
   const [lastSent, setLastSent] = useState(null)
   const [payment, setPayment] = useState(null) // прив'язана оплата клієнта (bank_transaction)
   const [qs] = useSearchParams()
-  const [tab, setTab] = useState(() => qs.get('tab') || 'details')
+  const [tab, setTab] = useState(() => qs.get('tab') || (typeof window !== 'undefined' && window.innerWidth < 768 && document.documentElement.dataset.ui === 'new' ? 'items' : 'details'))
   const [busy, setBusy] = useState('')
   const [confirmDel, setConfirmDel] = useState(false)
   const [msg, setMsg] = useState(null)
@@ -323,7 +323,7 @@ function NewCardLayout({ o, payment, busy, msg, overdue, tab, tabs, switchTab, o
       <div className={`ocn-grid${tab === 'items' ? ' is-items' : ''}`}>
         <section className="ocn-main">
           <Tabs ariaLabel="Розділи замовлення" idPrefix="ocn-tab" value={tab} onChange={switchTab}
-            tabs={tabs.map(t => ({ id: t.id, label: t.label }))} />
+            tabs={tabs.map(t => ({ id: t.id, label: t.label, count: t.id === 'items' && plan?.count ? plan.count : undefined }))} />
           <div className="ocn-panel" role="tabpanel" aria-labelledby={`ocn-tab-${tab}`}>{panel}</div>
           {tab === 'items' && <OrderTotals o={o} plan={plan} />}
         </section>

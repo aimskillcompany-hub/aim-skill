@@ -13,7 +13,7 @@ import { ORDER_TYPES, TYPE_COLORS, statusLabel } from '../lib/orders'
 import DocModal from '../components/DocModal'
 import GeneratedDocModal from '../components/GeneratedDocModal'
 import { useNewUi } from '../lib/uiPrefs'
-import { Tabs, Button, KpiTile, useToast } from '../components/ui'
+import { Tabs, Button, KpiTile, Menu, useToast } from '../components/ui'
 import { formatAmount } from '../utils/format'
 import { initials } from '../components/AppShell'
 import { NewOrderModal } from './Orders'
@@ -29,6 +29,10 @@ const TABS = [
   { id: 'notes', label: 'Комунікація', icon: 'ti-message' },
 ]
 
+// Новий інтерфейс (макет Contractor): + «Договори»; на телефоні «Реквізити» — не першою (макет ContractorMobile)
+const TABS_NEW = [TABS[0], { id: 'contracts', label: 'Договори' }, ...TABS.slice(1)]
+const isPhone = () => typeof window !== 'undefined' && window.matchMedia?.('(max-width: 767px)').matches
+
 export default function ContractorCard() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -41,6 +45,8 @@ export default function ContractorCard() {
   const [orders, setOrders] = useState(null)       // замовлення клієнта в роботі (новий інтерфейс)
   const [newOrder, setNewOrder] = useState(false)
   const [newTask, setNewTask] = useState(false)
+  const [counts, setCounts] = useState({})        // лічильники на вкладках (новий інтерфейс)
+  const [editSignal, setEditSignal] = useState(0) // «Редагувати» в шапці відкриває форму реквізитів
 
   useEffect(() => {
     supabase.from('contractors').select('*').eq('id', id).single().then(({ data }) => setC(data))
@@ -50,7 +56,16 @@ export default function ContractorCard() {
     if (!newUi) return
     qc('orders').select('id, status, archived_at').eq('client_id', id).is('archived_at', null)
       .then(({ data }) => setOrders(data || []))
+    const cnt = (q) => q.then(({ count, error }) => (error ? undefined : count))
+    Promise.all([
+      cnt(supabase.from('contractor_contracts').select('id', { count: 'exact', head: true }).eq('contractor_id', id)),
+      cnt(qc('orders').select('id', { count: 'exact', head: true }).eq('client_id', id)),
+      cnt(qc('documents').select('id', { count: 'exact', head: true }).eq('contractor_id', id).not('posted', 'is', false)),
+      cnt(qc('bank_transactions').select('id', { count: 'exact', head: true }).eq('contractor_id', id).eq('is_ignored', false)),
+    ]).then(([contracts, ords, documents, transactions]) => setCounts({ contracts, orders: ords, documents, transactions })).catch(() => {})
   }, [id, newUi])
+  // телефон: відкриваємо з «Замовлень» (клієнт) або «Транзакцій»
+  useEffect(() => { if (newUi && c && isPhone()) setTab(t => t === 'details' ? (c.is_client ? 'orders' : 'transactions') : t) }, [newUi, c?.id])
 
   if (!c) return <div className="page-header"><h1>Завантаження…</h1></div>
 
@@ -62,6 +77,13 @@ export default function ContractorCard() {
     return (
       <div className="ccn">
         <button type="button" className="ccn-back" onClick={() => navigate('/contractors')}><i className="ti ti-chevron-left" aria-hidden="true" />Контрагенти</button>
+        <div className="ccn-topbar">
+          <button type="button" className="ccn-tb-btn is-plain" onClick={() => navigate('/contractors')} aria-label="До контрагентів"><i className="ti ti-arrow-left" aria-hidden="true" /></button>
+          <span className="ccn-tb-sp" />
+          {c.phone && <a className="ccn-tb-btn" href={`tel:${String(c.phone).replace(/[^\d+]/g, '')}`} aria-label={`Подзвонити ${c.phone}`}><i className="ti ti-phone" aria-hidden="true" /></a>}
+          <Menu trigger={<button type="button" className="ccn-tb-btn" aria-label="Інші дії"><i className="ti ti-dots" aria-hidden="true" /></button>}
+            items={[{ label: 'Редагувати реквізити', icon: 'ti-pencil', onClick: () => { setTab('details'); setEditSignal(n => n + 1) } }]} />
+        </div>
         <section className="ccn-head">
           <span className="ccn-av" aria-hidden="true">{initials(c.short_name || c.name)}</span>
           <div className="ccn-head-main">
@@ -74,9 +96,9 @@ export default function ContractorCard() {
             </div>
           </div>
           <div className="ccn-actions">
-            <Button variant="secondary" icon="ti-plus" onClick={() => setNewTask(true)}>Задача</Button>
-            <Button variant="secondary" onClick={() => setTab('details')}>Редагувати</Button>
-            {c.is_client && <Button variant="brand" icon="ti-plus" onClick={() => setNewOrder(true)}>Нове замовлення</Button>}
+            <Button variant="secondary" icon="ti-plus" onClick={() => setNewTask(true)} className="ccn-act-task">Задача</Button>
+            <Button variant="secondary" onClick={() => { setTab('details'); setEditSignal(n => n + 1) }} className="ccn-act-edit">Редагувати</Button>
+            {c.is_client && <Button variant="brand" icon="ti-plus" onClick={() => setNewOrder(true)} className="ccn-act-order"><span className="ccn-lg">Нове замовлення</span><span className="ccn-sm">Замовлення</span></Button>}
           </div>
         </section>
 
@@ -96,17 +118,21 @@ export default function ContractorCard() {
                 <b className="ccn-owed-value">{bal ? `${formatAmount(main.value, { decimals: 0 })} ₴` : '…'}</b>
                 {main.extra > 0.5 && <span className="ccn-owed-note">+ <b>{formatAmount(main.extra, { decimals: 0 })} ₴</b> {main.extraText}</span>}
                 {main.extra > 0.5 && <button type="button" className="ccn-owed-link" onClick={() => navigate('/bank')}>Прив'язати в «Банку» →</button>}
+                <span className="ccn-owed-sub">
+                  <span><small>{other.label}</small><b>{bal ? `${formatAmount(other.value, { decimals: 0 })} ₴` : '…'}</b></span>
+                  <span><small>Оборот за рік</small><b>{bal ? `${formatAmount(bal.turnoverYear, { decimals: 0 })} ₴` : '…'}</b></span>
+                </span>
               </section>
-              <KpiTile label={other.label} value={bal ? `${formatAmount(other.value, { decimals: 0 })} ₴` : '…'} hint={other.hint} />
+              <KpiTile className="ccn-kpi-lg" label={other.label} value={bal ? `${formatAmount(other.value, { decimals: 0 })} ₴` : '…'} hint={other.hint} />
             </>
           })()}
-          <KpiTile label="Оборот за рік" value={bal ? `${formatAmount(bal.turnoverYear, { decimals: 0 })} ₴` : '…'}
+          <KpiTile className="ccn-kpi-lg" label="Оборот за рік" value={bal ? `${formatAmount(bal.turnoverYear, { decimals: 0 })} ₴` : '…'}
             hint={bal ? `надійшло ${formatAmount(bal.income, { decimals: 0 })} · сплачено ${formatAmount(bal.expense, { decimals: 0 })}` : null} />
           {c.is_client
-            ? <KpiTile label="Замовлення в роботі" value={orders ? orders.length : '…'} onClick={() => setTab('orders')}
+            ? <KpiTile className="ccn-kpi-lg" label="Замовлення в роботі" value={orders ? orders.length : '…'} onClick={() => setTab('orders')}
                 tone={waitPay || waitContract ? 'warn' : 'neutral'}
                 hint={orders && (waitPay || waitContract) ? [waitPay && `${waitPay} чекають оплату`, waitContract && `${waitContract} — договір`].filter(Boolean).join(' · ') : 'відкрити список'} />
-            : bal?.loans?.count > 0 && <KpiTile label="Позики: нам винні − ми винні" value={`${formatAmount(bal.loans.theyOwe - bal.loans.weOwe, { decimals: 0 })} ₴`}
+            : bal?.loans?.count > 0 && <KpiTile className="ccn-kpi-lg" label="Позики: нам винні − ми винні" value={`${formatAmount(bal.loans.theyOwe - bal.loans.weOwe, { decimals: 0 })} ₴`}
                 hint={`нам винні ${formatAmount(bal.loans.theyOwe, { decimals: 0 })} · ми винні ${formatAmount(bal.loans.weOwe, { decimals: 0 })}`} />}
         </div>
         {c.is_client && bal?.loans?.count > 0 && (
@@ -114,10 +140,12 @@ export default function ContractorCard() {
         )}
 
         <section className="ccn-body">
-          <Tabs ariaLabel="Розділи контрагента" idPrefix="ccn-tab" value={tab} onChange={setTab} tabs={TABS.map(t => ({ id: t.id, label: t.label }))} />
+          <Tabs ariaLabel="Розділи контрагента" idPrefix="ccn-tab" value={tab} onChange={setTab}
+            tabs={(isPhone() ? [...TABS_NEW.slice(2), ...TABS_NEW.slice(0, 2)] : TABS_NEW).map(t => ({ id: t.id, label: t.label, count: counts[t.id] || undefined }))} />
           <div className="ccn-panel" role="tabpanel" aria-labelledby={`ccn-tab-${tab}`}>
-            {tab === 'details' && <DetailsTab c={c} onSaved={setC} />}
-            {tab === 'orders' && <OrdersTab id={id} />}
+            {tab === 'details' && <DetailsTab c={c} onSaved={setC} newUi editSignal={editSignal} />}
+            {tab === 'contracts' && <div className="ccn-contracts"><Contracts contractorId={c.id} newUi /></div>}
+            {tab === 'orders' && <OrdersTab id={id} newUi />}
             {tab === 'documents' && <DocumentsTab id={id} />}
             {tab === 'transactions' && <TransactionsTab id={id} />}
             {tab === 'products' && <ProductsTab id={id} />}
@@ -216,9 +244,10 @@ const FIELD_GROUPS = [
   ]},
 ]
 
-function DetailsTab({ c, onSaved }) {
+function DetailsTab({ c, onSaved, newUi, editSignal }) {
   const [form, setForm] = useState(c)
-  const [editing, setEditing] = useState(false)
+  const [editing, setEditing] = useState(!!editSignal)
+  useEffect(() => { if (editSignal) setEditing(true) }, [editSignal])
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [vk, setVk] = useState({ loading: false, msg: null, err: null })
@@ -313,6 +342,9 @@ function DetailsTab({ c, onSaved }) {
       setVk({ loading: false, err: e.message, msg: null })
     }
   }
+
+  // ─── Новий інтерфейс: перегляд — 4 картки (макет Contractor: Юрособа, Адреса, Контактні особи, Банківські рахунки) ───
+  if (!editing && newUi) return <DetailsCards form={form} c={c} onEdit={() => setEditing(true)} openExtract={openExtract} />
 
   // ─── Режим ПЕРЕГЛЯДУ (за замовчуванням) — компактно, лише заповнені поля ───
   if (!editing) {
@@ -443,6 +475,71 @@ function DetailsTab({ c, onSaved }) {
   )
 }
 
+const Field = ({ label, v, wide }) => (v == null || v === '') ? null : (
+  <div className={`ccd-f${wide ? ' is-wide' : ''}`}><span>{label}</span><b>{String(v)}</b></div>
+)
+function DetailsCards({ form, c, onEdit, openExtract }) {
+  const [contacts, setContacts] = useState(null)
+  useEffect(() => {
+    supabase.from('contractor_contacts').select('*').eq('contractor_id', c.id).order('created_at').then(({ data }) => setContacts(data || []))
+  }, [c.id])
+  const type = [form.is_client && 'Клієнт', form.is_supplier && 'Постачальник'].filter(Boolean).join(' і ') || 'не вказано'
+  const hasAddr = form.legal_address || form.city || form.postal_code || form.region
+  const hasBank = form.iban || form.bank_name || form.mfo
+  const edit = <button type="button" className="ccd-edit" onClick={onEdit}>Змінити</button>
+  return (
+    <div className="ccd">
+      <section className="ccd-card">
+        <div className="ccd-h"><b>Юридична особа</b>{edit}</div>
+        <div className="ccd-grid">
+          <Field label="Повна назва" v={form.name} wide />
+          <Field label="Коротка назва" v={form.short_name} />
+          <Field label="ЄДРПОУ" v={form.edrpou} />
+          <Field label="ІПН" v={form.ipn} />
+          <Field label="Орг.-правова форма" v={form.legal_form} />
+          <Field label="Тип" v={type} />
+          <Field label="Відстрочка оплати" v={`${Number(form.payment_delay_days) || 0} днів`} />
+          <Field label="Система оподаткування" v={form.tax_system || (form.is_vat_payer ? 'платник ПДВ' : null)} />
+          <Field label="Директор" v={[form.director, form.director_position].filter(Boolean).join(', ')} wide />
+          {form.is_supplier && <Field label="Код компанії у дилера" v={form.dealer_code} />}
+        </div>
+        {form.edr_extract_path && <button type="button" className="ccd-link" onClick={openExtract}><i className="ti ti-file-check" aria-hidden="true" />Витяг з ЄДР: {form.edr_extract_name || 'переглянути'}</button>}
+      </section>
+      <section className={`ccd-card${hasAddr ? '' : ' is-empty'}`}>
+        <div className="ccd-h"><b>Адреса</b>{hasAddr && edit}</div>
+        {hasAddr ? <div className="ccd-grid">
+          <Field label="Юридична адреса" v={form.legal_address} wide />
+          <Field label="Місто" v={form.city} />
+          <Field label="Індекс" v={form.postal_code} />
+          <Field label="Область" v={form.region} />
+          <Field label="Телефон" v={form.phone} />
+          <Field label="Email" v={form.email} />
+          <Field label="Сайт" v={form.website} />
+        </div> : <><p className="ccd-hint">Додайте юридичну адресу — вона потрапить у рахунки й договори.</p>
+          <button type="button" className="ccd-add" onClick={onEdit}>+ Адреса</button></>}
+      </section>
+      <section className={`ccd-card${contacts?.length ? '' : ' is-empty'}`}>
+        <div className="ccd-h"><b>Контактні особи</b>{contacts?.length > 0 && edit}</div>
+        {contacts == null ? <p className="ccd-hint">Завантаження…</p>
+          : contacts.length ? <ul className="ccd-people">{contacts.map(r => (
+              <li key={r.id}><b>{r.name}</b>{r.role && <span>{r.role}</span>}
+                {(r.phone || r.email) && <small>{[r.phone, r.email].filter(Boolean).join(' · ')}</small>}</li>))}</ul>
+          : <><p className="ccd-hint">Додайте відповідальну особу замовника — її підставимо в КП і листи.</p>
+            <button type="button" className="ccd-add" onClick={onEdit}>+ Контакт</button></>}
+      </section>
+      <section className={`ccd-card${hasBank ? '' : ' is-empty'}`}>
+        <div className="ccd-h"><b>Банківські рахунки</b>{hasBank && edit}</div>
+        {hasBank ? <div className="ccd-grid">
+          <Field label="IBAN" v={form.iban} wide />
+          <Field label="Банк" v={form.bank_name} />
+          <Field label="МФО" v={form.mfo} />
+        </div> : <><p className="ccd-hint">Додайте IBAN — підставимо його в рахунки й платіжки.</p>
+          <button type="button" className="ccd-add" onClick={onEdit}>+ Рахунок</button></>}
+      </section>
+    </div>
+  )
+}
+
 function Contacts({ contractorId, readOnly }) {
   const [rows, setRows] = useState([])
   const [add, setAdd] = useState({ name: '', role: '', phone: '', email: '' })
@@ -481,7 +578,7 @@ function Contacts({ contractorId, readOnly }) {
 }
 
 // ───────────────────────── Договори ─────────────────────────
-function Contracts({ contractorId, readOnly }) {
+function Contracts({ contractorId, readOnly, newUi }) {
   const [rows, setRows] = useState([])
   const [add, setAdd] = useState({ number: '', date: '', subject: '' })
   const load = () => supabase.from('contractor_contracts').select('*').eq('contractor_id', contractorId).order('date', { ascending: false }).then(({ data }) => setRows(data || []))
@@ -499,8 +596,8 @@ function Contracts({ contractorId, readOnly }) {
   if (readOnly && rows.length === 0) return null
 
   return (
-    <div style={{ marginTop: 20 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10 }}>Договори</div>
+    <div style={{ marginTop: newUi ? 0 : 20 }}>
+      {!newUi && <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10 }}>Договори</div>}
       {!readOnly && rows.length === 0 && <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 8 }}>Договорів ще немає. Додаються тут або автоматично при генерації документа з номером договору.</div>}
       {rows.map(r => (
         <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 14 }}>
@@ -520,7 +617,7 @@ function Contracts({ contractorId, readOnly }) {
 }
 
 // ───────────────────────── Замовлення ─────────────────────────
-function OrdersTab({ id }) {
+function OrdersTab({ id, newUi }) {
   const navigate = useNavigate()
   const [rows, setRows] = useState(null)
   useEffect(() => {
@@ -529,7 +626,15 @@ function OrdersTab({ id }) {
   }, [id])
   if (rows == null) return <Loading />
   if (!rows.length) return <Empty text="Замовлень ще немає." />
-  return (
+  const list = newUi && (
+    <ul className="ccn-olist">{rows.map(o => (
+      <li key={o.id}><button type="button" onClick={() => navigate(`/orders/${o.id}`)}>
+        <span className="ccn-o-main"><b>№ {o.order_number || o.id.slice(0, 8)}</b><small>{(o.created_at || '').slice(0, 10).split('-').reverse().slice(0, 2).join('.')}</small></span>
+        <span className="ccn-o-st">{statusLabel(o)}</span>
+        <b className="ccn-o-sum">{formatAmount(o.total, { decimals: 2 })} ₴</b>
+      </button></li>))}</ul>
+  )
+  return (<>{list}<div className={newUi ? 'ccn-otable' : undefined}>
     <Table head={['Номер', 'Тип', 'Статус', 'Сума', 'Створено']}>
       {rows.map(o => (
         <tr key={o.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/orders/${o.id}`)}>
@@ -538,7 +643,7 @@ function OrdersTab({ id }) {
           <td style={{ fontSize: 13 }}>{statusLabel(o)}</td>
           <td style={{ textAlign: 'right' }}>{fmt(o.total)}</td><td>{(o.created_at || '').slice(0, 10)}</td></tr>
       ))}
-    </Table>
+    </Table></div></>
   )
 }
 

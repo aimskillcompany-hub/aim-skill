@@ -7,8 +7,10 @@
 .on-show-sm { display: none !important; }
 
 /* плитки етапів */
-.on-stages { display: flex; gap: 12px; overflow-x: auto; scrollbar-width: thin; padding-bottom: 2px; }
-.on-stages > .on-tile { flex: 1 0 168px; }
+.on-stages { display: flex; gap: 12px; flex-wrap: wrap; }
+.on-stages > .on-tile { flex: 1 1 180px; }   /* етапів може бути більше 5 — переносимо на другий ряд, а не обрізаємо */
+.on-tile-head { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.on-stages-sm { display: none; }
 .on-tile { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px 12px; border-radius: 18px; background: var(--surface); border: 1px solid var(--border);
   cursor: pointer; text-align: left; font: inherit; color: var(--text); min-width: 0; }
 .on-tile:hover { border-color: var(--border-strong); }
@@ -147,3 +149,17 @@
 /* часткові оплати клієнта під сумою замовлення */
 .on-paid { display: block; margin-top: 2px; font-size: 11.5px; font-weight: 600; color: var(--warn-fg); white-space: nowrap; }
 .on-paid.is-full { color: var(--brand-dark); }
+
+@media (max-width: 767px) {
+  .on-stages-lg { display: none; }
+  .on-stages-sm { display: flex; flex-wrap: nowrap; margin: 0 -16px 12px; padding: 0 16px; }
+  .on-toolbar .ui-segmented { order: 0; flex-basis: 100%; }
+  .on-mcard-top .on-stage { display: none; }
+  .on-mcard .on-stage-row { display: flex; }
+}
+.on-mcard .on-stage-row { display: none; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+@media (max-width: 767px) {
+  .on-stages-sm .on-tile { flex: none; }
+  .on-stages-sm .on-tile-head { overflow: visible; }
+  .on-mcard .on-stage-row { display: flex; }
+}

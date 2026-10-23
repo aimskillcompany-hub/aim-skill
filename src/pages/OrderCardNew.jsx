@@ -94,7 +94,7 @@ export function OrderHeadNew({ o, plan, busy, onBack, onStatus, onArchive, onUna
   const client = o.contractors?.name
   return (
     <>
-      <Link to="/orders" className="ocn-back" onClick={onBack}><i className="ti ti-chevron-left" aria-hidden="true" />Реєстр замовлень</Link>
+      <Link to="/orders" className="ocn-back" onClick={onBack}><i className="ti ti-chevron-left" aria-hidden="true" /><span className="ocn-back-lg">Реєстр замовлень</span><span className="ocn-back-sm">Замовлення {o.order_number || ''}{ORDER_TYPES[o.type] ? ` · ${ORDER_TYPES[o.type]}` : ''}</span></Link>
       <section className="ocn-head">
         <div className="ocn-head-top">
           <div className="ocn-head-main">
@@ -126,8 +126,8 @@ export function OrderHeadNew({ o, plan, busy, onBack, onStatus, onArchive, onUna
               {o.archived_at
                 ? <Button variant="secondary" icon="ti-rotate-2" onClick={onUnarchive} loading={busy === 'archive'}>Повернути в роботу</Button>
                 : <>
-                    <Button variant="secondary" icon="ti-x" className="ocn-lost" onClick={() => onArchive('lost')} disabled={busy === 'archive'}>Програно</Button>
-                    <Button variant="secondary" icon="ti-check" className="ocn-won" onClick={() => onArchive('won')} disabled={busy === 'archive'}>Виконано</Button>
+                    <Button variant="secondary" icon="ti-x" className="ocn-lost" onClick={() => onArchive('lost')} disabled={busy === 'archive'} aria-label="Програно"><span className="ocn-btn-t">Програно</span></Button>
+                    <Button variant="secondary" icon="ti-check" className="ocn-won" onClick={() => onArchive('won')} disabled={busy === 'archive'} aria-label="Виконано"><span className="ocn-btn-t">Виконано</span></Button>
                   </>}
               {next && <Button variant="primary" onClick={() => onStatus(next.s)}>Далі: {next.label} <i className="ti ti-arrow-right" aria-hidden="true" /></Button>}
               <Menu items={[{ label: 'Видалити замовлення', icon: 'ti-trash', danger: true, disabled: !!busy, onClick: onDelete }]}
