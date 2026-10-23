@@ -3,7 +3,8 @@ import Button from './Button'
 import Menu from './Menu'
 
 // Шапка сторінки / запису.
-//   crumbs [{ label, to }] (останній — поточна сторінка) або title; subtitle;
+//   crumbs [{ label, to, onClick }] (останній — поточна сторінка; onClick(e) може скасувати перехід через e.preventDefault()) або title;
+//   subtitle — рядок або елементи;
 //   primary { label, icon, onClick, loading } — синя головна дія; secondary — так само, біла;
 //   menu — пункти для «⋯» (див. Menu)
 export default function PageHeader({ title, crumbs, subtitle, primary, secondary, menu }) {
@@ -14,13 +15,13 @@ export default function PageHeader({ title, crumbs, subtitle, primary, secondary
           ? <>
               <nav className="ui-crumbs" aria-label="Шлях">
                 {crumbs.map((c, i) => c.to && i < crumbs.length - 1
-                  ? <Link key={i} to={c.to}>{c.label}</Link>
+                  ? <Link key={i} to={c.to} onClick={c.onClick}>{c.label}</Link>
                   : <span key={i} aria-current={i === crumbs.length - 1 ? 'page' : undefined}>{c.label}</span>)}
               </nav>
               {title && <h1>{title}</h1>}
             </>
           : <h1>{title}</h1>}
-        {subtitle && <p>{subtitle}</p>}
+        {subtitle && (typeof subtitle === 'string' ? <p>{subtitle}</p> : <div className="ui-ph-sub">{subtitle}</div>)}
       </div>
       <div className="ui-ph-actions">
         {secondary && <Button variant="secondary" icon={secondary.icon} onClick={secondary.onClick} loading={secondary.loading}>{secondary.label}</Button>}
