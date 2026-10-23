@@ -88,7 +88,7 @@ function fileToLogoDataUrl(file, maxDim = 320) {
   })
 }
 
-function CompanyTab() {
+function CompanyTab({ newUi = false } = {}) {
   const { active, activeId, reload } = useCompany()
   const [form, setForm] = useState(null)
   const [saved, setSaved] = useState(false)
@@ -116,6 +116,68 @@ function CompanyTab() {
   }
   if (!activeId) return <div className="card"><p style={{ color: 'var(--text3)' }}>Оберіть компанію в перемикачі у шапці.</p></div>
   if (!form) return <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
+  // Новий інтерфейс (макет Settings, ТЗ 5.6): картки; податки — чипи груп, «платник ПДВ» і «ФОП» визначаються з групи
+  if (newUi) {
+    const inp = (key, label, cls = '') => (
+      <div className={`form-group ${cls}`} key={key}><label htmlFor={`co-${key}`}>{label}</label>
+        <input id={`co-${key}`} className="form-input" value={form[key] || ''} onChange={e => set(key, e.target.value)} /></div>
+    )
+    const TAX_HINT = { tov_vat: '20% ПДВ', tov_single_5: '5% від доходу', fop_group2: 'фікс. податок', fop_group3: '5% від доходу', other: 'вручну' }
+    const TAX_FLAGS = { tov_vat: [true, false], tov_single_5: [false, false], fop_group2: [false, true], fop_group3: [false, true] }
+    const pickTax = (g) => setForm(f => ({ ...f, tax_group: g, ...(TAX_FLAGS[g] ? { is_vat_payer: TAX_FLAGS[g][0], is_fop: TAX_FLAGS[g][1] } : {}) }))
+    const tg = form.tax_group || 'tov_vat'
+    const THEME_TONE = { '': 'auto', clean: 'clean', bit: 'bit', aim: 'aim' }
+    return (
+      <div className="stn-co-form">
+        <section className="cfn-card">
+          <div className="stn-card-h"><h2>Юридичні дані</h2><small className="rpt-muted">потрапляють у шапку накладних, актів і рахунків</small></div>
+          <div className="stn-grid">
+            {inp('name', 'Повна назва', 'is-full')}
+            {inp('short_name', 'Коротка назва')}{inp('edrpou', 'ЄДРПОУ')}{inp('ipn', 'ІПН / РНОКПП')}
+            {inp('address', 'Адреса', 'is-full')}
+            {inp('director', form.is_fop ? 'ФОП (ПІБ)' : 'Директор / підписант')}{inp('director_position', 'Посада')}{inp('phone', 'Телефон')}
+            {inp('email', 'Email')}
+          </div>
+        </section>
+        <section className="cfn-card">
+          <div className="stn-card-h"><h2>Банк для документів</h2></div>
+          <div className="stn-grid is-bank">{inp('iban', 'IBAN')}{inp('bank_name', 'Банк')}{inp('mfo', 'МФО')}</div>
+        </section>
+        <section className="cfn-card">
+          <div className="stn-card-h"><h2>Податки</h2></div>
+          <div className="stn-tax" role="radiogroup" aria-label="Група оподаткування">
+            {TAX_GROUPS.map(([v, l]) => (
+              <button key={v} type="button" role="radio" aria-checked={tg === v} onClick={() => pickTax(v)}>
+                <b>{l.replace(' — ', ' · ').replace(' (5%)', '')}</b><small>{TAX_HINT[v]}</small></button>))}
+          </div>
+          {TAX_FLAGS[tg] && (!!form.is_vat_payer !== TAX_FLAGS[tg][0] || !!form.is_fop !== TAX_FLAGS[tg][1]) && (
+            <p className="stn-warn">Група й позначки не збігаються: зараз {form.is_vat_payer ? 'платник ПДВ' : 'не платник ПДВ'}{form.is_fop ? ', ФОП' : ''}. Натисніть потрібну групу — позначки узгодяться, потім «Зберегти».</p>)}
+          {tg === 'other'
+            ? <div className="stn-tax-flags">
+                <label><input type="checkbox" checked={!!form.is_vat_payer} onChange={e => set('is_vat_payer', e.target.checked)} /> Платник ПДВ</label>
+                <label><input type="checkbox" checked={!!form.is_fop} onChange={e => set('is_fop', e.target.checked)} /> ФОП (без «Директора», підпис ФОП)</label>
+              </div>
+            : <p className="stn-info">{form.is_vat_payer ? 'Платник ПДВ: ціни в документах з ПДВ 20%, вхідний ПДВ від платників іде в кредит.' : 'Не платник ПДВ: документи без ПДВ.'}{form.is_fop ? ' ФОП: у документах підпис ФОП, без «Директора».' : ''} Окремі перемикачі «Платник ПДВ» і «ФОП» не потрібні — система визначає це з групи.</p>}
+        </section>
+        <section className="cfn-card">
+          <div className="stn-card-h"><h2>Вигляд документів</h2><small className="rpt-muted">{active?.edrpou === '45505924' ? 'Ейм Скіл друкує фірмове лого AiM' : 'лого з’явиться у шапці документів цієї юрособи'}</small></div>
+          <div className="stn-themes" role="radiogroup" aria-label="Дизайн документів">
+            {DOC_THEMES.map(([v, l]) => (
+              <button key={v || 'auto'} type="button" role="radio" aria-checked={(form.doc_theme || '') === v} className={`is-${THEME_TONE[v]}`} onClick={() => set('doc_theme', v || null)}>
+                <span className="stn-sheet" aria-hidden="true"><i /><em /><em /><em /><u /></span><b>{l.replace(/ \(.*\)$/, '')}</b></button>))}
+          </div>
+          <div className="stn-logo">
+            {form.logo_base64 ? <img src={form.logo_base64} alt="Лого для документів" /> : <span className="rpt-muted">Лого не завантажено</span>}
+            <label className="btn btn-secondary btn-sm"><i className="ti ti-upload" aria-hidden="true" /> Завантажити лого
+              <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" hidden
+                onChange={async e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) { try { set('logo_base64', await fileToLogoDataUrl(file)) } catch { alert('Не вдалося зчитати зображення') } } }} /></label>
+            {form.logo_base64 && <button type="button" className="btn btn-ghost btn-sm" onClick={() => set('logo_base64', null)}>Прибрати</button>}
+          </div>
+        </section>
+        <div className="stn-save">{saved && <span className="stn-ok">Збережено</span>}<button type="button" className="btn btn-brand" onClick={save} disabled={busy}>{busy ? 'Збереження…' : 'Зберегти'}</button></div>
+      </div>
+    )
+  }
   return (
     <div className="card">
       <p style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 16 }}>

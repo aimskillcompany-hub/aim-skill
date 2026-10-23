@@ -64,11 +64,13 @@ function CompaniesSection({ CompanyTab }) {
         {(companies || []).map(c => (
           <button key={c.id} type="button" className="stn-co" aria-pressed={c.id === activeId} onClick={() => setActiveCompany(c.id)}>
             <span className="stn-co-av" aria-hidden="true">{(c.short_name || c.name || '?').replace(/[«»"ТОВФОП ]/g, '').slice(0, 2).toUpperCase()}</span>
-            <span><b>{c.short_name || c.name}</b><small>{c.edrpou ? `ЄДРПОУ ${c.edrpou}` : c.ipn ? `ІПН ${c.ipn}` : '—'}{c.is_vat_payer ? ' · платник ПДВ' : ''}</small></span>
+            <span><b>{c.short_name || c.name}</b><small>{c.edrpou ? `ЄДРПОУ ${c.edrpou}` : c.ipn ? `ІПН ${c.ipn}` : '—'}{c.is_vat_payer ? ' · платник ПДВ' : ''}</small>
+              {/* «заповнено» — є все, що потрапляє в шапку документів */}
+              {(() => { const ok = c.name && (c.edrpou || c.ipn) && c.address && c.iban && c.director; return <em className={`stn-co-st${ok ? ' is-ok' : ''}`}>{ok ? 'заповнено' : 'перевірити'}</em> })()}</span>
           </button>
         ))}
       </div>
-      <CompanyTab />
+      <CompanyTab newUi />
     </div>
   )
 }
