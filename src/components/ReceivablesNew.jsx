@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { BUCKETS } from '../lib/receivables'
 import { loadDocItems } from '../lib/docItems'
 import { formatAmount, plural } from '../utils/format'
-import { Segmented, StackBar, TableSkeleton, EmptyState, Button, Callout, PeriodMenu } from './ui'
+import { Segmented, StackBar, TableSkeleton, EmptyState, Button, Callout, PeriodMenu, InfoTip } from './ui'
 
 const BUCKET_COLORS = { '0-7': 'var(--brand)', '8-14': 'var(--warn-mark)', '15-30': 'var(--expense-chart)', '30+': 'var(--danger-fg)' }
 const n0 = (v) => formatAmount(v, { decimals: 0 })
@@ -35,7 +35,7 @@ export default function ReceivablesNew({ raw, filtered, shown, loading, err, yea
       {!filtered ? (loading || !err) && <TableSkeleton rows={6} cols={5} label="Рахую дебіторку…" /> : <>
         <section className="rpt-card rcv-sum" aria-label="Підсумок">
           <div className="rcv-kpis">
-            <div className="rcv-main"><span>Нам винні · станом на {dmy(raw?.asOf)}</span><b>{n0(s.total)} ₴</b><small>у т. ч. ПДВ {n0(s.vat)} ₴</small></div>
+            <div className="rcv-main"><span>Нам винні · станом на {dmy(raw?.asOf)}<InfoTip label="Як рахується дебіторка"><b>Вік</b> — від дати документа.<br /><b>Прострочка</b> — від строку оплати: дата документа + відстрочка з картки контрагента.<br /><b>Борг</b> = сума документа − оплати.</InfoTip></span><b>{n0(s.total)} ₴</b><small>у т. ч. ПДВ {n0(s.vat)} ₴</small></div>
             <div><span>Прострочено 30+ днів</span><b className={s.over30 > 0 ? 'is-neg' : ''}>{n0(s.over30)} ₴</b><small>{Math.round(s.over30Pct * 100)}% боргу</small></div>
             <div><span>Боржників</span><b>{s.debtors}</b><small>{s.debtors > 1 && top < s.debtors ? `${top} з них — ${Math.round((acc / s.total) * 100)}% боргу` : `${s.docCount} ${plural(s.docCount, ['документ', 'документи', 'документів'])}`}</small></div>
             <div><span>Найстаріший борг</span><b className={oldest > 30 ? 'is-neg' : ''}>{oldest} дн.</b><small>від дати документа</small></div>
@@ -57,7 +57,6 @@ export default function ReceivablesNew({ raw, filtered, shown, loading, err, yea
               <tfoot><tr><td /><td>Разом</td>{scope === 'all' && <td className="c-via" />}<td className="r rpt-num">{n0(s.total)}</td><td className="c-share" /><td className="r rpt-num rpt-late">{n0(s.over30)}</td><td colSpan={2} /></tr></tfoot>
             </table></div>}
         </section>
-        <p className="rpt-muted rpt-note">Вік — від дати документа; прострочка — від строку оплати (дата документа + відстрочка з картки контрагента). Борг = сума документа − оплати. Клік по документу — товарні позиції.</p>
       </>}
     </div>
   )

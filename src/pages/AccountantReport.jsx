@@ -7,7 +7,7 @@ import { useNewUi } from '../lib/uiPrefs'
 import { todayKyiv } from '../lib/dates'
 import { formatAmount, plural } from '../utils/format'
 import { exportOutgoingReportPdf } from '../lib/outgoingReportPdf'
-import { Segmented, TableSkeleton } from '../components/ui'
+import { Segmented, TableSkeleton, InfoTip } from '../components/ui'
 
 // Звіт для бухгалтера: по видатковій — простежити кожен товар до прихідної накладної (де/коли куплено).
 const d = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('.') : '—'
@@ -114,9 +114,9 @@ export default function AccountantReport({ ctl = null } = {}) {
   const monthBanner = newUi && (
     <section className="acc-pack" aria-label="Пакет за місяць">
       <div className="acc-pack-t">
-        <span>Пакет за місяць</span>
+        <span>Пакет за місяць<InfoTip tone="onDark" label="Пакет за місяць">Видаткові й акти місяця, до кожного товару — прихідна накладна (FIFO) зі сканом. Одним архівом, з переліком.</InfoTip></span>
         <b>{list ? `${monthDocs.length} ${plural(monthDocs.length, ['документ', 'документи', 'документів'])} на ${formatAmount(monthSum, { decimals: 0 })} ₴` : '…'}</b>
-        <small>{arcProg ? `Збираю ${arcProg.i} з ${arcProg.n}…` : arcNote || 'Видаткові й акти місяця, прихідні до них і скани — одним архівом, з переліком.'}</small>
+        <small>{arcProg ? `Збираю ${arcProg.i} з ${arcProg.n}…` : arcNote || ''}</small>
       </div>
       {!ctl && <input type="month" className="form-input acc-pack-m" aria-label="Місяць" value={arcMonth} max={todayKyiv().slice(0, 7)} onChange={e => e.target.value && setArcMonth(e.target.value)} />}
       <button type="button" className="btn btn-brand" onClick={downloadMonth} disabled={!monthDocs.length || !!arcProg}>
@@ -334,7 +334,7 @@ export default function AccountantReport({ ctl = null } = {}) {
 
           {/* Товари + джерела (для акту — лише якщо є складські рухи) */}
           {(!report.doc.isAct || report.items.length > 0) && <div className="card" style={{ overflowX: 'auto', marginBottom: 14 }}>
-            <div className="card-title" style={{ marginBottom: 10 }}>Товари та джерела закупівлі ({report.items.length})</div>
+            <div className="card-title" style={{ marginBottom: 10 }}>Товари та джерела закупівлі ({report.items.length}){newUi && <InfoTip label="Звідки товар">Джерело товару визначається за FIFO: першими списуються найраніші закупівлі. В архіві — сам документ і всі прихідні накладні зі сканами.</InfoTip>}</div>
             {report.items.length === 0 && <p style={{ color: 'var(--text3)', fontSize: 13 }}>У документі немає складських рухів (товар не оприбутковувався/не списувався зі складу).</p>}
             {report.items.map(it => (
               <div key={it.productId} style={{ borderTop: '1px solid var(--border)', padding: '10px 0' }}>
@@ -418,9 +418,9 @@ export default function AccountantReport({ ctl = null } = {}) {
             </div>
           )}
 
-          <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 12 }}>
+{!newUi && <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 12 }}>
             Джерело кожного товару визначається за FIFO (найраніші закупівлі списуються першими). Архів містить сам документ, усі прихідні накладні зі звіту{report.doc.isAct ? ' та вхідні документи витрат по замовленню' : ''} (з вкладеними сканами).
-          </p>
+          </p>}
         </>
       )}
     </>
