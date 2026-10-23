@@ -159,3 +159,15 @@
 
 .rpt-right { margin-left: auto; display: inline-flex; align-items: center; gap: 10px; }
 @media (max-width: 767px) { .rpt-right { margin-left: 0; } }
+
+/* спільна шапка «Звітів» (ТЗ 5.4): період, Excel, PDF; юрособа чипами й «операції всередині групи» */
+.rpt-head-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.rpt-head-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rpt-scope { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.rpt-cos { display: inline-flex; align-items: center; gap: 2px; padding: 4px; border-radius: 14px; background: var(--seg-track); flex-wrap: wrap; }
+.rpt-cos span { padding: 0 8px 0 6px; font-size: 13px; color: var(--muted); }
+.rpt-cos button { height: 32px; padding: 0 12px; border: 0; border-radius: 10px; background: none; font: inherit; font-size: 13px; color: var(--muted); cursor: pointer; }
+.rpt-cos button[aria-pressed="true"] { background: var(--surface); color: var(--text); font-weight: 700; box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 12%, transparent); }
+.rpt-groupchk { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; font-size: 14px; cursor: pointer; }
+.rpt-groupchk input { width: 18px; height: 18px; accent-color: var(--brand); }
+@media (max-width: 767px) { .rpt-head-acts { width: 100%; } .rpt-head-acts .ui-pm { flex: 1; } .rpt-groupchk { margin-left: 0; } .rpt-cos { width: 100%; overflow-x: auto; flex-wrap: nowrap; } }

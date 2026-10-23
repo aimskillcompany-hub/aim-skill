@@ -8,6 +8,7 @@ import ClientStatementModal from './ClientStatementModal'
 import ReceivablesNew from './ReceivablesNew'
 import { useNewUi } from '../lib/uiPrefs'
 import { useGroupContractors } from '../lib/group'
+import { exportReportXlsx } from '../lib/reportExport'
 
 // Звіт «Дебіторка»: підсумок + старіння + контрагенти (розгортаються до документів). PDF-експорт.
 const MONTHS = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень', 'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень']
@@ -19,13 +20,15 @@ const n2 = (v) => _dec.format(Number(v) || 0)
 const d = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('.') : '—'
 const MONO = { fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }
 
-export default function ReceivablesReport({ showGroup = true } = {}) {
+// ctl — спільна шапка «Звітів» (новий інтерфейс): { year, month, scope, registerExport }; без неї — власні фільтри
+export default function ReceivablesReport({ showGroup = true, ctl = null } = {}) {
   const grp = useGroupContractors()
   const { companies } = useCompany()
-  const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
+  const [yearS, setYear] = useState(now.getFullYear())
+  const [monthS, setMonth] = useState(now.getMonth() + 1)
   const [raw, setRaw] = useState(null)
-  const [scope, setScope] = useState('all') // 'all' | companyId
+  const [scopeS, setScope] = useState('all') // 'all' | companyId
+  const year = ctl?.year ?? yearS, month = ctl?.month || monthS, scope = ctl?.scope ?? scopeS
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState(null)
   const [q, setQ] = useState('')                 // пошук контрагента за назвою / ЄДРПОУ
@@ -62,12 +65,23 @@ export default function ReceivablesReport({ showGroup = true } = {}) {
   const asOf = raw?.asOf ? d(raw.asOf) : ''
 
   const newUi = useNewUi()
+  // експорт для спільної шапки «Звітів»
+  useEffect(() => {
+    if (!ctl?.registerExport) return
+    ctl.registerExport(filtered ? {
+      pdf: pdf,
+      xlsx: () => exportReportXlsx({ fileName: `Дебіторка ${raw?.asOf || ''}`, sheet: 'Дебіторка',
+        columns: [{ key: 'name', label: 'Боржник' }, { key: 'via', label: 'Через кого' }, { key: 'docs', label: 'Документів', num: true }, { key: 'total', label: 'Борг, з ПДВ', num: true }, { key: 'over30', label: 'З них 30+ дн.', num: true }, { key: 'oldest', label: 'Найстаріший, дн.', num: true }],
+        rows: filtered.contractors.map(c => ({ name: c.name, via: [...new Set(c.docs.map(x => x.companyName))].join(', '), docs: c.docs.length, total: c.total, over30: c.over30, oldest: c.oldest })),
+        total: { name: 'Разом', total: filtered.summary.total, over30: filtered.summary.over30 } }),
+    } : null)
+  }, [filtered, ctl?.registerExport])
   const pdf = () => filtered && exportReceivablesPdf({ ...filtered, asOf: raw.asOf, scopeName: scope === 'all' ? 'Усі юрособи' : (raw?.companies.find(c => c.id === scope)?.name || '') })
   const report = (c) => setStmt(raw.docs.filter(x => x.contractorId === c.contractorId).length ? { ...c, docs: raw.docs.filter(x => x.contractorId === c.contractorId) } : c)
   if (newUi) return (
     <>
       <ReceivablesNew raw={raw} filtered={filtered} shown={shown} loading={loading} err={err} year={year} setYear={setYear} month={month} setMonth={setMonth}
-        years={years} scope={scope} setScope={setScope} companies={companies} q={q} setQ={setQ} reminders={reminders} onReport={report} onPdf={pdf} isGroup={grp.has} />
+        years={years} scope={scope} setScope={setScope} companies={companies} q={q} setQ={setQ} reminders={reminders} onReport={report} onPdf={pdf} isGroup={grp.has} hideControls={!!ctl} />
       {stmt && <ClientStatementModal group={stmt} defaultAsOf={raw?.asOf} onClose={() => setStmt(null)} onLogged={reloadReminders} />}
     </>
   )

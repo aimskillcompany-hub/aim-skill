@@ -12,7 +12,7 @@ const n0 = (v) => formatAmount(v, { decimals: 0 })
 const n2 = (v) => formatAmount(v)
 const dmy = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('.') : '—'
 
-export default function ReceivablesNew({ raw, filtered, shown, loading, err, year, setYear, month, setMonth, years, scope, setScope, companies, q, setQ, reminders, onReport, onPdf, isGroup = () => false }) {
+export default function ReceivablesNew({ raw, filtered, shown, loading, err, year, setYear, month, setMonth, years, scope, setScope, companies, q, setQ, reminders, onReport, onPdf, isGroup = () => false, hideControls = false }) {
   const s = filtered?.summary
   const oldest = filtered ? Math.max(0, ...filtered.contractors.map(c => c.oldest || 0)) : 0
   // скільки найбільших боржників дають ≥ 80% боргу
@@ -22,14 +22,14 @@ export default function ReceivablesNew({ raw, filtered, shown, loading, err, yea
 
   return (
     <div className="rpt">
-      <div className="rpt-bar">
+      {!hideControls && <div className="rpt-bar">
         {(raw?.companies || companies || []).length > 1 && (
           <Segmented ariaLabel="Юрособа" value={scope} onChange={setScope}
             options={[{ value: 'all', label: 'Усі' }, ...(raw?.companies || companies).map(c => ({ value: c.id, label: c.short_name || c.name }))]} />
         )}
         <span className="rpt-right"><PeriodMenu year={year} month={month} allowYear={false} years={years} onChange={p => { setYear(p.year); setMonth(p.month) }} />
           <Button variant="primary" icon="ti-file-download" onClick={onPdf} disabled={!filtered}>PDF</Button></span>
-      </div>
+      </div>}
 
       {err && <Callout tone="danger" title="Не вдалося порахувати дебіторку." text={err} />}
       {!filtered ? (loading || !err) && <TableSkeleton rows={6} cols={5} label="Рахую дебіторку…" /> : <>

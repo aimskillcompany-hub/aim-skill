@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import { saveAgent, computeTotals } from '../lib/profitability'
 import { useGroupContractors } from '../lib/group'
+import { exportReportXlsx, exportReportPdf } from '../lib/reportExport'
 import { listDecisions } from '../lib/decisions'
 import { formatAmount, plural } from '../utils/format'
 import { TableSkeleton, EmptyState, Callout, useToast, PeriodMenu } from './ui'
@@ -12,12 +13,20 @@ const n0 = (v) => formatAmount(v, { decimals: 0 })
 const pct = (f) => f == null ? '—' : `${f < 0 ? '−' : ''}${Math.abs(f * 100).toFixed(1).replace('.', ',')}%`
 const d2 = (s) => s ? String(s).slice(8, 10) + '.' + String(s).slice(5, 7) : ''
 
-export default function ProfitabilityNew({ data, loading, err, from, to, setFrom, setTo, companies, companyId, setCompanyId, userId, onChanged, showGroup = true }) {
+export default function ProfitabilityNew({ data, loading, err, from, to, setFrom, setTo, companies, companyId, setCompanyId, userId, onChanged, showGroup = true, ctl = null }) {
   const grp = useGroupContractors()
   // ТЗ 6.4: без продажів нашим компаніям — підсумки перераховуються тим самим computeTotals
   const all = data ? (showGroup ? data.invoices : data.invoices.filter(i => !grp.has(i.contractorId))) : []
   const t = data ? (showGroup ? data.totals : computeTotals(all)) : null
   const invoices = [...all].sort((a, b) => b.profit - a.profit)
+  useEffect(() => {
+    if (!ctl?.registerExport) return
+    const spec = { fileName: `Прибутковість ${from} — ${to}`, title: 'Прибутковість реалізації', subtitle: `${from.split('-').reverse().join('.')} — ${to.split('-').reverse().join('.')} · суми без ПДВ`, sheet: 'Прибутковість',
+      columns: [{ key: 'doc', label: 'Накладна' }, { key: 'date', label: 'Дата' }, { key: 'client', label: 'Клієнт' }, { key: 'sell', label: 'Реалізація', num: true }, { key: 'profit', label: 'Прибуток', num: true }, { key: 'margin', label: 'Маржа, %', num: true }, { key: 'vat', label: 'ПДВ до сплати', num: true }, { key: 'agent', label: 'Агентські', num: true }, { key: 'net', label: 'Чистий', num: true }],
+      rows: invoices.map(i => ({ doc: i.doc_number, date: d2(i.doc_date), client: i.client, sell: i.sellSum, profit: i.profit, margin: i.margin == null ? '' : Math.round(i.margin * 1000) / 10, vat: i.vatToPay, agent: i.commission, net: i.net })),
+      total: t ? { doc: 'Разом', sell: t.sellSum, profit: t.profit, vat: t.vatToPay, agent: t.commission, net: t.net } : null }
+    ctl.registerExport(data ? { xlsx: () => exportReportXlsx(spec), pdf: () => exportReportPdf(spec) } : null)
+  }, [data, showGroup, ctl?.registerExport])
   const noAgents = t && t.count > 0 && invoices.every(i => !(Number(i.percent) > 0))
   // Помилка 12: агентські, ухвалені в протоколах за цей період (рішення 098; для не-адміна RLS віддає порожньо)
   const [protoAgent, setProtoAgent] = useState(null)
@@ -29,7 +38,7 @@ export default function ProfitabilityNew({ data, loading, err, from, to, setFrom
   }, [from, to])
   return (
     <div className="rpt">
-      <div className="rpt-bar">
+      {!ctl && <div className="rpt-bar">
         <span className="rpt-right"><PeriodMenu year={Number(from.slice(0, 4))} month={from.slice(5) === '01-01' && to.slice(5) === '12-31' ? 0 : Number(from.slice(5, 7))}
           onChange={p => { const y = p.year, m = p.month; setFrom(m ? `${y}-${String(m).padStart(2, '0')}-01` : `${y}-01-01`); setTo(m ? `${y}-${String(m).padStart(2, '0')}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}` : `${y}-12-31`) }} /></span>
         {(companies || []).length > 1 && (
@@ -37,7 +46,7 @@ export default function ProfitabilityNew({ data, loading, err, from, to, setFrom
             {companies.map(c => <option key={c.id} value={c.id}>{c.short_name || c.name}</option>)}
           </select>
         )}
-      </div>
+      </div>}
       {err && <Callout tone="danger" title="Не вдалося порахувати прибутковість." text={`${err}${/agent_commissions/.test(err) ? ' — потрібна міграція 064.' : ''}`} />}
       {!data ? (loading || !err) && <TableSkeleton rows={8} cols={7} label="Рахую прибутковість…" /> : <>
         <section className="prf-hero" aria-label="Від реалізації до чистого прибутку">
