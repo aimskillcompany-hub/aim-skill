@@ -38,6 +38,31 @@ export default function DocumentsNew({ rows, loading, q, setQ, typeFilter, setTy
   const [period, setPeriod] = useState(() => dateFrom || dateTo ? 'custom' : 'all')
   const [selId, setSelId] = useState(null)
   const [shown, setShown] = useState(60)
+  const [checked, setChecked] = useState(() => new Set())   // масовий вибір
+  const [bulkBusy, setBulkBusy] = useState('')
+  const { user } = useUser()
+  const toast = useToast()
+  // широкий екран: панель перегляду постійна (макет Documents) — відкриваємо перший документ списку
+  const wide = typeof window !== 'undefined' && window.matchMedia?.('(min-width: 1280px)').matches
+  useEffect(() => { if (wide && !loading && filtered.length && !filtered.some(d => d.id === selId)) setSelId(filtered[0].id) }, [wide, loading, filtered])
+  useEffect(() => { setChecked(new Set()) }, [filtered])
+  const toggle = (id) => setChecked(c => { const n = new Set(c); n.has(id) ? n.delete(id) : n.add(id); return n })
+  // ті самі оновлення, що й кнопки у швидкому перегляді, — для кількох документів
+  const bulk = async (kind) => {
+    const ids = [...checked].filter(id => kind === 'v' || !isIncoming(rows.find(d => d.id === id) || {}))
+    if (!ids.length) return
+    setBulkBusy(kind)
+    const upd = kind === 'v' ? { is_verified: true, verified_at: new Date().toISOString(), verified_by: user?.id || null } : { is_signed: true }
+    let done = 0, lastErr = null
+    for (const id of ids) {
+      const d = rows.find(x => x.id === id)
+      const { error } = await qc('documents').update(kind === 's' ? { ...upd, signed_scan_url: d?.storage_path || d?.file_path || null } : upd).eq('id', id)
+      if (error) lastErr = error; else done++
+    }
+    setBulkBusy('')
+    toast(lastErr ? `Позначено ${done} із ${ids.length}: ${lastErr.message}` : `Позначено ${done} ${plural(done, ['документ', 'документи', 'документів'])}`, lastErr ? { type: 'error' } : undefined)
+    setChecked(new Set()); reload()
+  }
   const pickPeriod = (k) => { setPeriod(k); if (k !== 'custom') { const [a, b] = periodRange(k); setDateFrom(a); setDateTo(b) } }
   const state = verFilter === 'unverified' ? 'unverified' : signedFilter === 'unsigned' ? 'unsigned' : 'all'
   const setState = (v) => { setVerFilter(v === 'unverified' ? 'unverified' : 'all'); setSignedFilter(v === 'unsigned' ? 'unsigned' : 'all') }
@@ -64,21 +89,22 @@ export default function DocumentsNew({ rows, loading, q, setQ, typeFilter, setTy
     <div className="dcn">
       <div className="dcn-head">
         <div><h1 className="dcn-h1">Документи</h1>
-          <p className="dcn-sub">{rows.length} {plural(rows.length, ['документ', 'документи', 'документів'])} · рахунки, накладні, акти, договори</p></div>
+          <p className="dcn-sub">{rows.length} {plural(rows.length, ['документ', 'документи', 'документів'])}<span className="dcn-hide-sm"> · рахунки, накладні, акти, договори</span></p></div>
         <div className="dcn-actions">
           <Link className="btn btn-secondary dcn-hide-sm" to="/documents/gen-recon">Звірка з PDF</Link>
-          <Menu trigger={<Button variant="secondary" icon="ti-upload">Завантажити</Button>} items={[
+          <button type="button" className="dcn-cam" onClick={onUploadScan} aria-label="Сфотографувати або завантажити скан"><i className="ti ti-camera" aria-hidden="true" /></button>
+          <span className="dcn-hide-sm"><Menu trigger={<Button variant="secondary" icon="ti-upload">Завантажити<i className="ti ti-chevron-down" aria-hidden="true" /></Button>} items={[
             { label: 'Скан з розпізнаванням', icon: 'ti-scan', onClick: onUploadScan },
             { label: 'Кілька файлів одразу', icon: 'ti-stack-2', onClick: onUploadBatch },
-          ]} />
+          ]} /></span>
           <Button variant="brand" icon="ti-plus" onClick={onCreate}>Створити</Button>
         </div>
       </div>
 
       <div className="dcn-toolbar">
         <label className="dcn-search"><i className="ti ti-search" aria-hidden="true" /><input type="search" className="form-input" placeholder="Номер, контрагент або файл" aria-label="Пошук документів" value={q} onChange={e => setQ(e.target.value)} /></label>
-        <Segmented ariaLabel="Період" value={period} onChange={pickPeriod} options={[{ value: 'month', label: 'Місяць' }, { value: 'quarter', label: 'Квартал' }, { value: 'year', label: 'Рік' }, { value: 'all', label: 'Усі' }, { value: 'custom', label: 'Період…' }]} />
-        <Segmented ariaLabel="Стан" value={state} onChange={setState} options={[{ value: 'all', label: 'Усі' }, { value: 'unverified', label: 'Неперевірені' }, { value: 'unsigned', label: 'Без підпису' }]} />
+        <Segmented ariaLabel="Період" className="dcn-per" value={period} onChange={pickPeriod} options={[{ value: 'month', label: 'Місяць' }, { value: 'quarter', label: 'Квартал' }, { value: 'year', label: 'Рік' }, { value: 'all', label: 'Усі' }, { value: 'custom', label: 'Період…' }]} />
+        <Segmented ariaLabel="Стан" className="is-chips-sm" value={state} onChange={setState} options={[{ value: 'all', label: 'Усі' }, { value: 'unverified', label: 'Неперевірені' }, { value: 'unsigned', label: 'Без підпису' }]} />
       </div>
       {period === 'custom' && (
         <div className="dcn-period">
@@ -98,6 +124,14 @@ export default function DocumentsNew({ rows, loading, q, setQ, typeFilter, setTy
 
       <div className={`dcn-body${sel ? ' has-sel' : ''}`}>
         <section className="dcn-list">
+          {checked.size > 0 && (
+            <div className="dcn-bulk" role="region" aria-label="Дії з вибраними">
+              <b>Вибрано {checked.size}</b>
+              <Button size="sm" variant="brand" icon="ti-check" loading={bulkBusy === 'v'} onClick={() => bulk('v')}>Позначити перевіреними</Button>
+              <Button size="sm" variant="secondary" loading={bulkBusy === 's'} onClick={() => bulk('s')}>Позначити підписаними</Button>
+              <button type="button" className="dcn-bulk-x" onClick={() => setChecked(new Set())}>Скасувати</button>
+            </div>
+          )}
           {loading ? <TableSkeleton rows={8} cols={2} label="Завантаження документів…" />
             : filtered.length === 0 ? <EmptyState icon="ti-files" title="Документів не знайдено" text="Змініть пошук, період або тип." />
             : <>
@@ -108,7 +142,9 @@ export default function DocumentsNew({ rows, loading, q, setQ, typeFilter, setTy
                     const t = getDocType(d.type)
                     const loanVat = d.type === 'loanAgreement' && Number(d.vat_amount) > 0
                     return (
-                      <button key={d.id} type="button" className={`dcn-row${d.id === selId ? ' is-on' : ''}`} onClick={() => setSelId(d.id)} aria-current={d.id === selId ? 'true' : undefined}>
+                      <div key={d.id} className={`dcn-rw${d.id === selId ? ' is-on' : ''}${checked.has(d.id) ? ' is-chk' : ''}`}>
+                      <input type="checkbox" className="dcn-cb" checked={checked.has(d.id)} onChange={() => toggle(d.id)} aria-label={`Вибрати ${t?.label || 'документ'} ${d.doc_number || ''}`} />
+                      <button type="button" className={`dcn-row${d.id === selId ? ' is-on' : ''}`} onClick={() => setSelId(d.id)} aria-current={d.id === selId ? 'true' : undefined}>
                         <span className={`dcn-ico is-${TYPE_TONE[d.type] || 'neutral'}`} aria-hidden="true">{t?.prefix || 'ДОК'}</span>
                         <span className="dcn-row-main">
                           <span className="dcn-row-title"><b>{d.doc_number || 'без номера'}</b><span>{t?.label || 'Документ'}</span></span>
@@ -127,6 +163,7 @@ export default function DocumentsNew({ rows, loading, q, setQ, typeFilter, setTy
                           <small>{dm(dateOf(d))}</small>
                         </span>
                       </button>
+                      </div>
                     )
                   })}
                 </div>
@@ -184,7 +221,7 @@ function QuickView({ d, dupe, onClose, onOpen, onRecognize, reload }) {
         <div><span className="dcn-qv-type">{t?.label || 'Документ'}</span><h2>№ {d.doc_number || '—'}</h2></div>
         <div className="dcn-qv-btns">
           {url && <a className="btn btn-secondary btn-sm btn-icon" href={url} target="_blank" rel="noreferrer" aria-label="Відкрити файл у новій вкладці"><i className="ti ti-external-link" aria-hidden="true" /></a>}
-          <Button size="sm" variant="secondary" iconOnly icon="ti-x" aria-label="Закрити перегляд" onClick={onClose} />
+          <Button size="sm" variant="secondary" iconOnly icon="ti-x" aria-label="Закрити перегляд" onClick={onClose} className="dcn-qv-close" />
         </div>
       </div>
       <div className="dcn-preview">
