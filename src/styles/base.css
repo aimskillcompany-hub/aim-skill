@@ -253,7 +253,7 @@ textarea.form-input { height: auto; min-height: var(--h-control); padding: 8px 1
   position: fixed; inset: 0;
   background: rgba(0,0,0,.3);
   backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
-  z-index: 200;
+  z-index: 250; /* вище за мобільне меню (200) — інакше воно ховає кнопки внизу вікна на телефоні */
   display: flex; align-items: center; justify-content: center;
   padding: 16px; animation: fadeIn .2s ease;
 }

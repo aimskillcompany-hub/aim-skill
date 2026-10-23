@@ -4,21 +4,25 @@ import { supabase } from '../lib/supabase'
 import { qc, withCompany } from '../lib/companyScope'
 import { useUser } from '../lib/auth'
 import { nextOrderNumber } from '../lib/orderNumber'
-import { fmt, fmtInt } from '../lib/fmt'
+import { fmt } from '../lib/fmt'
 
 const fmtDate = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('.') : ''
 import {
-  ORDER_TYPES, TYPE_COLORS, OUTCOME, statusLabel, statusAccent, isOpen,
+  ORDER_TYPES, OUTCOME, statusLabel,
   proposalOverdue, paymentOverdue,
 } from '../lib/orders'
 import { autoLinkPayment } from '../lib/orderPayments'
 import Kanban from '../components/Kanban'
 import OrderReport from '../components/OrderReport'
 import { useSort, SortTh } from '../components/Sort'
+import { PageHeader, Segmented, StatusPill, TableSkeleton, EmptyState, Modal, Button, useToast } from '../components/ui'
+import { formatMoney, formatDate } from '../utils/format'
+import './Orders.css'
 
 export default function Orders() {
   const navigate = useNavigate()
   const { user } = useUser()
+  const toast = useToast()
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
@@ -87,7 +91,7 @@ export default function Orders() {
     }
     setLinking(false)
     await load()
-    alert(n ? `Прив'язано оплат: ${n}` : 'Нових однозначних збігів не знайдено')
+    toast(n ? `Прив'язано оплат: ${n}` : 'Нових однозначних збігів не знайдено')
   }
 
   // Відмітка «комісійні сплачені» — перемикач прямо в реєстрі (без переходу в картку)
@@ -97,7 +101,7 @@ export default function Orders() {
     const { error } = await qc('orders').update({ commission_paid: val }).eq('id', o.id)
     if (error) {
       setOrders(prev => prev.map(x => x.id === o.id ? { ...x, commission_paid: !val } : x))
-      alert('Не вдалося зберегти: ' + (/commission_paid/.test(error.message || '') ? 'запустіть міграцію 045' : error.message))
+      toast('Не вдалося зберегти: ' + (/commission_paid/.test(error.message || '') ? 'запустіть міграцію 045' : error.message), { type: 'error' })
     }
   }
 
@@ -108,7 +112,7 @@ export default function Orders() {
     const { error } = await qc('orders').update({ in_investor: val }).eq('id', o.id)
     if (error) {
       setOrders(prev => prev.map(x => x.id === o.id ? { ...x, in_investor: !val } : x))
-      alert('Не вдалося зберегти: ' + (/in_investor/.test(error.message || '') ? 'запустіть міграцію 047' : error.message))
+      toast('Не вдалося зберегти: ' + (/in_investor/.test(error.message || '') ? 'запустіть міграцію 047' : error.message), { type: 'error' })
     }
   }
 
@@ -119,7 +123,7 @@ export default function Orders() {
     const { error } = await qc('orders').update({ in_forecast: val }).eq('id', o.id)
     if (error) {
       setOrders(prev => prev.map(x => x.id === o.id ? { ...x, in_forecast: !val } : x))
-      alert('Не вдалося зберегти: ' + (/in_forecast/.test(error.message || '') ? 'запустіть міграцію 061' : error.message))
+      toast('Не вдалося зберегти: ' + (/in_forecast/.test(error.message || '') ? 'запустіть міграцію 061' : error.message), { type: 'error' })
     }
   }
 
@@ -137,15 +141,6 @@ export default function Orders() {
     })
   }, [orders, q, filter])
 
-  const kpi = useMemo(() => {
-    const open = orders.filter(o => !o.archived_at && isOpen(o))
-    return {
-      active: open.length,
-      overdue: open.filter(o => o.overdue).length,
-      sum: open.reduce((s, o) => s + (Number(o.total) || 0), 0),
-    }
-  }, [orders])
-
   const { sort, onSort, sorted } = useSort('order_number', 'asc')
   const sortedOrders = sorted(filtered, {
     order_number: o => o.order_number || '',
@@ -160,66 +155,65 @@ export default function Orders() {
     total: o => Number(o.total) || 0,
   })
 
+  // Лічильники для перемикача — ті самі правила, що й у filtered (без пошуку)
+  const counts = useMemo(() => {
+    const c = { all: 0, mine: 0, done: 0, lost: 0 }
+    orders.forEach(o => {
+      if (o.outcome === 'lost') c.lost++
+      else if (o.archived_at) c.done++
+      if (!o.archived_at) { c.all++; if (o.manager_id === user?.id) c.mine++ }
+    })
+    return c
+  }, [orders, user?.id])
+
   const FILTERS = [
-    ['all', 'Усі'], ['mine', 'Мої'],
-    ['done', 'Виконані'], ['lost', 'Програні'],
+    { value: 'all', label: 'Усі', count: counts.all }, { value: 'mine', label: 'Мої', count: counts.mine },
+    { value: 'done', label: 'Виконані', count: counts.done }, { value: 'lost', label: 'Програні', count: counts.lost },
+  ]
+  const VIEWS = [
+    { value: 'table', label: 'Таблиця', icon: 'ti-list' },
+    { value: 'kanban', label: 'Канбан', icon: 'ti-layout-kanban' },
+    { value: 'report', label: 'Звіт', icon: 'ti-report' },
   ]
 
   return (
     <div>
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <h1>Замовлення</h1>
-        <button className="btn btn-primary" onClick={() => setShowNew(true)}><i className="ti ti-plus" /> Нове замовлення</button>
-      </div>
+      <PageHeader title="Замовлення"
+        primary={{ label: 'Нове замовлення', icon: 'ti-plus', onClick: () => setShowNew(true) }}
+        secondary={view !== 'report' ? { label: linking ? 'Підбір…' : 'Підтягнути оплати', icon: 'ti-cash', onClick: autoLinkPayments, loading: linking } : undefined} />
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div className="orders-toolbar">
         {view !== 'report' && <>
-          <input className="form-input" placeholder="Пошук за клієнтом або номером…" value={q} onChange={e => setQ(e.target.value)} style={{ flex: '1 1 240px', maxWidth: 360 }} />
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {FILTERS.map(([k, lbl]) => {
-              const bright = k === 'done' ? 'var(--green)' : k === 'lost' ? 'var(--red)' : 'var(--blue)'
-              const active = filter === k
-              return (
-              <button key={k} onClick={() => setFilter(k)} className="btn"
-                style={{ background: active ? bright : 'var(--surface)', color: active ? '#fff' : (k === 'done' ? 'var(--green)' : k === 'lost' ? 'var(--red)' : 'var(--text2)'), border: '1px solid var(--border)', fontWeight: (k === 'done' || k === 'lost') ? 600 : 400 }}>{lbl}</button>
-              )
-            })}
-          </div>
+          <input className="form-input orders-search" type="search" placeholder="Пошук за клієнтом або номером…" aria-label="Пошук замовлень" value={q} onChange={e => setQ(e.target.value)} />
+          <Segmented ariaLabel="Фільтр замовлень" value={filter} onChange={setFilter} options={FILTERS} />
         </>}
-        {view !== 'report' && (
-          <button className="btn" onClick={autoLinkPayments} disabled={linking} title="Знайти й прив'язати оплати клієнтів (збіг контрагента і суми)">
-            <i className="ti ti-cash" /> {linking ? 'Підбір…' : 'Підтягнути оплати'}
-          </button>
-        )}
-        <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
-          <button className="btn" onClick={() => setView('table')} style={{ background: view === 'table' ? 'var(--surface2)' : 'var(--surface)' }} title="Таблиця"><i className="ti ti-list" /></button>
-          <button className="btn" onClick={() => setView('kanban')} style={{ background: view === 'kanban' ? 'var(--surface2)' : 'var(--surface)' }} title="Канбан"><i className="ti ti-layout-kanban" /></button>
-          <button className="btn" onClick={() => setView('report')} style={{ background: view === 'report' ? 'var(--surface2)' : 'var(--surface)' }} title="Звіт"><i className="ti ti-report" /></button>
-        </div>
+        <div className="orders-views"><Segmented ariaLabel="Вигляд" value={view} onChange={setView} options={VIEWS} /></div>
       </div>
 
-      {(filter === 'done' || filter === 'lost') && !loading && (() => {
-        const sum = arr => arr.reduce((s, o) => s + (Number(o.total) || 0), 0)
-        if (!filtered.length) return null
-        const label = filter === 'done' ? 'Виконані' : 'Програні'
-        const color = filter === 'done' ? 'var(--green)' : 'var(--red)'
-        return (
-          <div style={{ display: 'flex', gap: 20, marginBottom: 14, flexWrap: 'wrap', fontSize: 13 }}>
-            <span style={{ color, fontWeight: 600 }}><i className={`ti ${filter === 'done' ? 'ti-circle-check' : 'ti-mood-sad'}`} /> {label}: {filtered.length} · {fmtInt(sum(filtered))} грн</span>
-          </div>
-        )
-      })()}
+      {(filter === 'done' || filter === 'lost') && !loading && view !== 'report' && filtered.length > 0 && (
+        <p className="orders-summary">
+          {filter === 'done' ? 'Виконані' : 'Програні'}: {filtered.length} · {formatMoney(filtered.reduce((s, o) => s + (Number(o.total) || 0), 0))} грн
+        </p>
+      )}
 
       {view === 'report' ? (
         <OrderReport />
       ) : loading ? (
-        <div className="card"><p style={{ color: 'var(--text3)' }}>Завантаження…</p></div>
+        <TableSkeleton rows={8} cols={7} label="Завантаження замовлень…" />
       ) : view === 'kanban' ? (
         <Kanban orders={filtered} type={filter} onOpen={(id) => navigate(`/orders/${id}`)} />
+      ) : sortedOrders.length === 0 ? (
+        <div className="card">
+          {q.trim() || filter !== 'all'
+            ? <EmptyState icon="ti-search" title="Нічого не знайдено" text="Змініть пошук або фільтр."
+                action={{ label: 'Скинути фільтри', onClick: () => { setQ(''); setFilter('all') } }} />
+            : <EmptyState icon="ti-clipboard-list" title="Замовлень ще немає" text="Створіть перше замовлення — далі його етапи, документи й оплати будуть тут."
+                action={{ label: 'Нове замовлення', icon: 'ti-plus', onClick: () => setShowNew(true) }} />}
+        </div>
       ) : (
         <div className="card">
           <div className="tbl-wrap" style={{ border: 'none' }}>
-            <table>
+            <table className="orders-table">
               <thead><tr>
                 <SortTh label="№" k="order_number" sort={sort} onSort={onSort} />
                 <SortTh label="Дата" k="created" sort={sort} onSort={onSort} />
@@ -231,47 +225,42 @@ export default function Orders() {
               </tr></thead>
               <tbody>
                 {sortedOrders.map(o => (
-                  <tr key={o.id} style={{ cursor: 'pointer', background: o.overdue ? 'var(--red-bg)' : undefined }} onClick={() => navigate(`/orders/${o.id}`)}>
-                    <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{o.order_number || o.id.slice(0, 6)}
-                      {o.tasks && <button onClick={e => { e.stopPropagation(); navigate(o.tasks.n === 1 ? `/tasks?task=${o.tasks.first.id}` : `/orders/${o.id}?tab=tasks`) }}
+                  <tr key={o.id} className={o.overdue ? 'orders-row is-overdue' : 'orders-row'} onClick={() => navigate(`/orders/${o.id}`)}>
+                    <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{o.order_number || o.id.slice(0, 6)}
+                      {o.tasks && <button type="button" className={`orders-task-badge${o.tasks.late ? ' is-late' : ''}`}
+                        onClick={e => { e.stopPropagation(); navigate(o.tasks.n === 1 ? `/tasks?task=${o.tasks.first.id}` : `/orders/${o.id}?tab=tasks`) }}
                         title={o.tasks.n === 1 ? `Задача: ${o.tasks.first.title}` : `Невиконаних задач: ${o.tasks.n}${o.tasks.late ? `, прострочено: ${o.tasks.late}` : ''}`}
-                        style={{ marginLeft: 6, border: 'none', cursor: 'pointer', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
-                          background: o.tasks.late ? '#fee2e2' : '#eef2ff', color: o.tasks.late ? '#b91c1c' : '#3730a3', display: 'inline-flex', alignItems: 'center', gap: 2, verticalAlign: 'middle' }}>
-                        <i className="ti ti-checklist" style={{ fontSize: 13 }} />{o.tasks.n}</button>}
+                        aria-label={`Невиконаних задач: ${o.tasks.n}${o.tasks.late ? `, прострочено: ${o.tasks.late}` : ''}`}>
+                        <i className="ti ti-checklist" aria-hidden="true" />{o.tasks.n}</button>}
                     </td>
-                    <td style={{ fontSize: 13, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{o.created_at ? o.created_at.slice(0, 10).split('-').reverse().join('.') : '—'}</td>
+                    <td className="orders-muted" style={{ whiteSpace: 'nowrap' }} title={o.created_at ? fmtDate(o.created_at) : undefined}>{o.created_at ? formatDate(o.created_at) : '—'}</td>
                     <td><div className="trunc">{o.clientName}</div></td>
-                    <td style={{ fontSize: 13, color: o.managerName === '—' ? 'var(--text3)' : 'var(--text2)' }}><div className="trunc">{o.managerName}</div></td>
-                    <td style={{ fontSize: 13 }}>
-                      {statusAccent(o.status)
-                        ? <span style={{ background: statusAccent(o.status), color: '#fff', borderRadius: 6, padding: '2px 9px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>{statusLabel(o)}</span>
-                        : statusLabel(o)}
-                      {OUTCOME[o.outcome] && (
-                        <span style={{ marginLeft: 6, color: OUTCOME[o.outcome].color, fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' }}>
-                          <i className={`ti ${OUTCOME[o.outcome].icon}`} /> {OUTCOME[o.outcome].label}
-                        </span>
-                      )}
-                      {o.paid_transaction_id && (
-                        <span title={o.payment ? `Оплата ${fmtDate(o.payment.date)} · ${fmt(Math.abs(o.payment.amount))} грн` : 'Оплачено клієнтом'}
-                          style={{ marginLeft: 6, background: 'var(--green-bg, #e7f7ec)', color: 'var(--green)', borderRadius: 6, padding: '1px 7px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                          <i className="ti ti-cash" /> Оплачено клієнтом
-                        </span>
-                      )}
+                    <td className="orders-muted"><div className="trunc">{o.managerName}</div></td>
+                    <td>
+                      <span className="orders-pills">
+                        {OUTCOME[o.outcome]
+                          ? <StatusPill status={o.outcome} kind="order" />
+                          : <StatusPill status={o.status} kind="order" label={statusLabel(o)} />}
+                        {o.paid_transaction_id && o.status !== 'paid' && (
+                          <span title={o.payment ? `Оплата ${fmtDate(o.payment.date)} · ${fmt(Math.abs(o.payment.amount))} грн` : 'Оплачено клієнтом'}>
+                            <StatusPill status="paid" kind="order" size="sm" label="Оплачено клієнтом" />
+                          </span>
+                        )}
+                      </span>
                     </td>
-                    <td style={{ textAlign: 'right' }}>{fmt(o.total)}</td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{formatMoney(o.total)}</td>
                     <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
-                      <span style={{ display: 'inline-flex', gap: 2, alignItems: 'center' }}>
-                        <button onClick={() => toggleInvestor(o)} title={o.in_investor ? 'Інвестор: враховується в розрахунку' : 'Інвестор: додати в розрахунок'} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 3, lineHeight: 0 }}>
-                          <i className="ti ti-diamond-filled" style={{ fontSize: 16, color: o.in_investor ? '#7C3AED' : 'var(--border)' }} /></button>
-                        <button onClick={() => toggleForecast(o)} title={o.in_forecast ? 'Прогноз: у прогнозі' : 'Прогноз: додати'} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 3, lineHeight: 0 }}>
-                          <i className="ti ti-trending-up" style={{ fontSize: 16, color: o.in_forecast ? '#2563EB' : 'var(--border)' }} /></button>
-                        <button onClick={() => toggleCommission(o)} title={o.commission_paid ? 'Комісію сплачено' : 'Комісію не сплачено'} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 3, lineHeight: 0 }}>
-                          <i className={`ti ${o.commission_paid ? 'ti-square-check-filled' : 'ti-square'}`} style={{ fontSize: 17, color: o.commission_paid ? '#16a34a' : 'var(--border)' }} /></button>
+                      <span className="orders-flags">
+                        <button type="button" onClick={() => toggleInvestor(o)} aria-pressed={!!o.in_investor} title={o.in_investor ? 'Інвестор: враховується в розрахунку' : 'Інвестор: додати в розрахунок'} aria-label="Інвестор">
+                          <i className="ti ti-diamond-filled" aria-hidden="true" style={{ color: o.in_investor ? '#7C3AED' : undefined }} /></button>
+                        <button type="button" onClick={() => toggleForecast(o)} aria-pressed={!!o.in_forecast} title={o.in_forecast ? 'Прогноз: у прогнозі' : 'Прогноз: додати'} aria-label="Прогноз">
+                          <i className="ti ti-trending-up" aria-hidden="true" style={{ color: o.in_forecast ? 'var(--blue)' : undefined }} /></button>
+                        <button type="button" onClick={() => toggleCommission(o)} aria-pressed={!!o.commission_paid} title={o.commission_paid ? 'Комісію сплачено' : 'Комісію не сплачено'} aria-label="Комісію сплачено">
+                          <i className={`ti ${o.commission_paid ? 'ti-square-check-filled' : 'ti-square'}`} aria-hidden="true" style={{ color: o.commission_paid ? '#16a34a' : undefined }} /></button>
                       </span>
                     </td>
                   </tr>
                 ))}
-                {sortedOrders.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text3)', padding: 28 }}>Замовлень немає</td></tr>}
               </tbody>
             </table>
           </div>
@@ -279,15 +268,6 @@ export default function Orders() {
       )}
 
       {showNew && <NewOrderModal onClose={() => setShowNew(false)} onCreated={(id) => { setShowNew(false); navigate(`/orders/${id}`) }} />}
-    </div>
-  )
-}
-
-function Kpi({ label, value, suffix, accent }) {
-  return (
-    <div className="kpi">
-      <div className="kpi-label">{label}</div>
-      <div className="kpi-value" style={{ color: accent }}>{value}{suffix && <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text3)' }}> {suffix}</span>}</div>
     </div>
   )
 }
@@ -325,38 +305,31 @@ function NewOrderModal({ onClose, onCreated }) {
   }
 
   return (
-    <div className="modal-bg" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
-        <div className="modal-header"><h2>Нове замовлення</h2><button onClick={onClose} className="modal-close"><i className="ti ti-x" /></button></div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div className="form-group"><label>Напрямок</label>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {Object.entries(ORDER_TYPES).map(([k, lbl]) => (
-                <button key={k} className="btn" onClick={() => setType(k)} style={{ flex: 1, background: type === k ? TYPE_COLORS[k] : 'var(--surface)', color: type === k ? '#fff' : 'var(--text2)', border: '1px solid var(--border)' }}>{lbl}</button>
-              ))}
-            </div>
-          </div>
-          <div className="form-group"><label>Клієнт *</label>
-            <select className="form-input" value={clientId} onChange={e => setClientId(e.target.value)}>
-              <option value="">— оберіть —</option>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-          <div className="form-group"><label>Відповідальний менеджер</label>
-            <select className="form-input" value={managerId} onChange={e => setManagerId(e.target.value)}>
-              <option value="">— не призначено —</option>
-              {users.map(u => <option key={u.id} value={u.id}>{u.full_name || u.email}</option>)}
-            </select>
-          </div>
-          <div className="form-group"><label>Сума (план)</label><input className="form-input" type="number" value={total} onChange={e => setTotal(e.target.value)} /></div>
-          <div className="form-group"><label>Опис</label><input className="form-input" value={description} onChange={e => setDescription(e.target.value)} /></div>
-          {error && <div style={{ color: 'var(--red)', fontSize: 13 }}>{error}</div>}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button className="btn" onClick={onClose}>Скасувати</button>
-            <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? '…' : 'Створити'}</button>
-          </div>
-        </div>
+    <Modal open onClose={onClose} title="Нове замовлення"
+      footer={<>
+        <Button variant="secondary" onClick={onClose}>Скасувати</Button>
+        <Button variant="dark" onClick={save} loading={saving}>Створити</Button>
+      </>}>
+      <div className="form-group"><label className="form-label" id="new-order-type">Напрямок</label>
+        <Segmented ariaLabel="Напрямок" value={type} onChange={setType} options={Object.entries(ORDER_TYPES).map(([value, label]) => ({ value, label }))} />
       </div>
-    </div>
+      <div className="form-group"><label className="form-label" htmlFor="new-order-client">Клієнт *</label>
+        <select id="new-order-client" className="form-input" value={clientId} onChange={e => setClientId(e.target.value)} aria-invalid={error === 'Оберіть клієнта' || undefined}>
+          <option value="">— оберіть —</option>
+          {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
+      <div className="form-group"><label className="form-label" htmlFor="new-order-manager">Відповідальний менеджер</label>
+        <select id="new-order-manager" className="form-input" value={managerId} onChange={e => setManagerId(e.target.value)}>
+          <option value="">— не призначено —</option>
+          {users.map(u => <option key={u.id} value={u.id}>{u.full_name || u.email}</option>)}
+        </select>
+      </div>
+      <div className="form-group"><label className="form-label" htmlFor="new-order-total">Сума (план), грн</label>
+        <input id="new-order-total" className="form-input" type="number" inputMode="decimal" value={total} onChange={e => setTotal(e.target.value)} /></div>
+      <div className="form-group"><label className="form-label" htmlFor="new-order-desc">Опис</label>
+        <input id="new-order-desc" className="form-input" value={description} onChange={e => setDescription(e.target.value)} /></div>
+      {error && <div role="alert" style={{ color: 'var(--danger)', fontSize: 13 }}>{error}</div>}
+    </Modal>
   )
 }
