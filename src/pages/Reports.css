@@ -222,3 +222,25 @@
   .rcv-table .c-act .btn { height: 28px; min-height: 28px; padding: 0 10px; font-size: 12px; width: auto; }
 }
 @media (max-width: 767px) { .rcv-table .c-sum, .rcv-table .c-age, .rcv-table .c-act { justify-self: end; } .rcv-table .c-sum b { font-size: 15px; } .rcv-table tfoot td:nth-child(3) { text-align: right; } }
+/* «Для бухгалтера», права панель — у палітрі нового інтерфейсу (таблиці спільні зі старим, тому стилі — тут) */
+.acc-dh { display: flex; flex-direction: column; gap: 12px; margin-bottom: 18px; }
+.acc-dh-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.acc-dh h3 { margin: 2px 0 0; font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
+.acc-dh-acts { display: flex; gap: 6px; }
+.acc-dh-boxes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.acc-dh-boxes > div { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 14px; background: var(--surface-sunken); min-width: 0; }
+.acc-dh-boxes span, .acc-dh-boxes small { font-size: 12px; color: var(--muted); }
+.acc-dh-boxes b { font-size: 14px; } .acc-dh-boxes b.is-big { font-size: 20px; font-variant-numeric: tabular-nums; }
+.acc-open { align-self: flex-start; font-size: 13px; }
+.acc-detail .card { border: 0 !important; padding: 0 !important; box-shadow: none !important; background: none !important; }
+.acc-detail .card-title { font-size: 15px; font-weight: 700; }
+.acc-detail .card[style*="var(--red)"] { padding: 12px 14px !important; border-radius: 14px; background: var(--danger-soft-bg) !important; border-left: 0 !important; }
+.acc-detail table { font-variant-numeric: tabular-nums; }
+.acc-detail table thead tr { color: var(--muted) !important; text-transform: uppercase; letter-spacing: .04em; }
+.acc-detail table tr[style*="#F4F2FA"], .acc-detail table tr[style*="#FAFAFE"] { background: var(--group-bg) !important; }
+.acc-detail table tr[style*="#FDECEC"] { background: var(--danger-soft-bg) !important; }
+.acc-detail td[style*="#5B2FD6"] { color: var(--group-fg) !important; }
+.acc-detail a[style*="var(--blue)"] { color: var(--brand-dark) !important; }
+.acc-detail > p, .acc-detail p[style*="text3"] { color: var(--muted) !important; }
+.acc-detail .card { padding: 0 !important; border-radius: 0 !important; }
+.acc-detail .card[style*="var(--red)"] { border-radius: 14px !important; }
