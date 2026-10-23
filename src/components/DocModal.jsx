@@ -332,7 +332,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
           type: form.type,
           contractor_id: form.contractor_id || null,
           amount: Number(form.amount) || null,
-          vat_amount: Number(form.vat_amount) || 0,
+          vat_amount: form.type === 'loanAgreement' ? 0 : (Number(form.vat_amount) || 0),   // позика ПДВ не обкладається
           direction: resDir,
           doc_role: resRole,
           is_signed: form.is_signed,
@@ -392,7 +392,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
         doc_date: form.date || null,
         contractor_id: form.contractor_id || null,
         amount: Number(form.amount) || null,
-        vat_amount: Number(form.vat_amount) || 0,
+        vat_amount: form.type === 'loanAgreement' ? 0 : (Number(form.vat_amount) || 0),   // позика ПДВ не обкладається
         direction: resolveDocDir(form.type, form.doc_role, cflags).direction,
         is_signed: form.is_signed,
         signed_scan_url: form.is_signed ? storage_path : null,
@@ -408,7 +408,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
 
       await syncDocStock(doc.id)
       onSaved()
-    } catch (e) { setError(e.message) }
+    } catch (e) { setError(/DOC_NUMBER_TAKEN/.test(e.message || '') ? String(e.message).replace(/^.*DOC_NUMBER_TAKEN:\s*/, 'Н').replace(/^Нномер/, 'Номер') + ' — змініть номер документа.' : e.message) }
     setBusy(false)
   }
 
