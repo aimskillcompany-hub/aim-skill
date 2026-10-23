@@ -7,6 +7,7 @@ import { useNewUi } from '../lib/uiPrefs'
 import { todayKyiv } from '../lib/dates'
 import { formatAmount, plural } from '../utils/format'
 import { exportOutgoingReportPdf } from '../lib/outgoingReportPdf'
+import { Segmented, TableSkeleton } from '../components/ui'
 
 // Звіт для бухгалтера: по видатковій — простежити кожен товар до прихідної накладної (де/коли куплено).
 const d = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('.') : '—'
@@ -88,6 +89,12 @@ export default function AccountantReport({ ctl = null } = {}) {
   const [arcMonth, setArcMonth] = useState(() => todayKyiv().slice(0, 7))
   useEffect(() => { if (ctl?.year && ctl?.month) setArcMonth(`${ctl.year}-${String(ctl.month).padStart(2, '0')}`) }, [ctl?.year, ctl?.month])
   useEffect(() => { ctl?.registerExport?.(null) }, [ctl?.registerExport])
+  // новий інтерфейс: список — за місяцем із шапки «Звітів»
+  useEffect(() => {
+    if (!newUi || !ctl?.year || !ctl?.month) return
+    const mm = String(ctl.month).padStart(2, '0')
+    setFFrom(`${ctl.year}-${mm}-01`); setFTo(`${ctl.year}-${mm}-${String(new Date(ctl.year, ctl.month, 0).getDate()).padStart(2, '0')}`)
+  }, [newUi, ctl?.year, ctl?.month])
   const [arcProg, setArcProg] = useState(null)   // { i, n } під час збирання
   const [arcNote, setArcNote] = useState(null)
   const monthDocs = useMemo(() => (list || []).filter(x => (x.doc_date || '').startsWith(arcMonth)), [list, arcMonth])
@@ -157,6 +164,12 @@ export default function AccountantReport({ ctl = null } = {}) {
     catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
 
+  // широкий екран: одразу показуємо перший документ (макет ReportsAccountant)
+  useEffect(() => {
+    if (!newUi || sel || busy || !filtered.length || !window.matchMedia?.('(min-width: 1024px)').matches) return
+    build(filtered[0].id)
+  }, [newUi, filtered])
+
   const openFile = async (path) => {
     if (!path) return
     const { data } = await supabase.storage.from('documents').createSignedUrl(path, 300)
@@ -191,79 +204,72 @@ export default function AccountantReport({ ctl = null } = {}) {
     } catch (e) { setErr('Помилка архіву: ' + e.message) } finally { setZipping(false) }
   }
 
-  return (
-    <div>
-      <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <i className="ti ti-report-analytics" style={{ fontSize: 22 }} />
-        <h1 style={{ margin: 0 }}>Звіт для бухгалтера</h1>
-      </div>
-      <p style={{ fontSize: 13, color: 'var(--text2)', margin: '0 0 16px' }}>
-        Оберіть видаткову накладну або акт — система простежить кожен товар до прихідної накладної (де й коли куплено).
-      </p>
-      {monthBanner}
-
+  const filtersCard = (
       <div className="card compact" style={{ marginBottom: 16 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12, alignItems: 'end' }}>
-          <div className="form-group">
-            <label>Тип документа</label>
-            <select className="form-input" value={fType} onChange={e => setFType(e.target.value)}>
-              <option value="all">Усі</option>
-              <option value="waybill">Видаткові накладні</option>
-              <option value="serviceAct">Акти наданих послуг</option>
-            </select>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12, alignItems: 'end' }}>
+            <div className="form-group">
+              <label>Тип документа</label>
+              <select className="form-input" value={fType} onChange={e => setFType(e.target.value)}>
+                <option value="all">Усі</option>
+                <option value="waybill">Видаткові накладні</option>
+                <option value="serviceAct">Акти наданих послуг</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Дата з</label>
+              <input type="date" className="form-input" value={fFrom} onChange={e => setFFrom(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>Дата по</label>
+              <input type="date" className="form-input" value={fTo} onChange={e => setFTo(e.target.value)} />
+            </div>
+            <div className="form-group" style={{ gridColumn: 'span 2' }}>
+              <label>Покупець</label>
+              <select className="form-input" value={fContr} onChange={e => setFContr(e.target.value)}>
+                <option value="">Усі контрагенти</option>
+                {contractors.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="form-group" style={{ gridColumn: 'span 2' }}>
+              <label>Пошук</label>
+              <input className="form-input" placeholder="№ документа, контрагент або сума" value={fQ} onChange={e => setFQ(e.target.value)} />
+            </div>
           </div>
-          <div className="form-group">
-            <label>Дата з</label>
-            <input type="date" className="form-input" value={fFrom} onChange={e => setFFrom(e.target.value)} />
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', margin: '12px 0 10px', fontSize: 12 }}>
+            <span style={{ color: 'var(--text3)', marginRight: 2 }}>Період:</span>
+            {[['month', 'Цей місяць'], ['prev', 'Минулий місяць'], ['quarter', 'Квартал'], ['year', 'Рік']].map(([k, l]) => (
+              <button key={k} className="btn btn-sm" style={{ minHeight: 28, padding: '4px 10px', fontSize: 12 }} onClick={() => setPeriod(k)}>{l}</button>
+            ))}
+            {hasFilters && <button className="btn btn-sm" style={{ minHeight: 28, padding: '4px 10px', fontSize: 12 }} onClick={resetFilters}><i className="ti ti-x" /> Скинути</button>}
+            <span style={{ marginLeft: 'auto', color: 'var(--text3)' }}>{list ? `Знайдено: ${filtered.length}` : 'Завантаження…'}</span>
           </div>
-          <div className="form-group">
-            <label>Дата по</label>
-            <input type="date" className="form-input" value={fTo} onChange={e => setFTo(e.target.value)} />
+  
+          <div style={{ overflowX: 'auto', maxHeight: 360, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+            <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+              <thead><tr style={{ color: 'var(--text3)', fontSize: 11, position: 'sticky', top: 0, background: 'var(--bg2, #fff)' }}>
+                <th style={TH}>Тип</th><th style={TH}>№</th><th style={TH}>Дата</th><th style={TH}>Покупець</th><th style={{ ...TH, textAlign: 'right' }}>Сума</th>
+              </tr></thead>
+              <tbody>
+                {shown.map(x => (
+                  <tr key={x.id} onClick={() => build(x.id)} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer', background: sel === x.id ? '#F4F2FA' : undefined }}>
+                    <td style={TD}><span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 6, background: x.type === 'serviceAct' ? '#E8F4EC' : '#EEF0FB', color: x.type === 'serviceAct' ? '#2E7D4F' : '#3B4BA8' }}>{x.type === 'serviceAct' ? 'Акт' : 'Видаткова'}</span></td>
+                    <td style={{ ...TD, fontWeight: sel === x.id ? 700 : 500 }}>{x.doc_number || '(без №)'}</td>
+                    <td style={TD}>{d(x.doc_date)}</td>
+                    <td style={TD}>{x.contractorName}</td>
+                    <td style={{ ...TD, textAlign: 'right', whiteSpace: 'nowrap' }}>{fmt(x.amount)} грн</td>
+                  </tr>
+                ))}
+                {list && !filtered.length && <tr><td colSpan={5} style={{ ...TD, color: 'var(--text3)', textAlign: 'center' }}>Нічого не знайдено за цими фільтрами</td></tr>}
+              </tbody>
+            </table>
           </div>
-          <div className="form-group" style={{ gridColumn: 'span 2' }}>
-            <label>Покупець</label>
-            <select className="form-input" value={fContr} onChange={e => setFContr(e.target.value)}>
-              <option value="">Усі контрагенти</option>
-              {contractors.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <div className="form-group" style={{ gridColumn: 'span 2' }}>
-            <label>Пошук</label>
-            <input className="form-input" placeholder="№ документа, контрагент або сума" value={fQ} onChange={e => setFQ(e.target.value)} />
-          </div>
+          {!showAll && filtered.length > LIMIT && <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={() => setShowAll(true)}>Показати всі {filtered.length}</button>}
+  
         </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', margin: '12px 0 10px', fontSize: 12 }}>
-          <span style={{ color: 'var(--text3)', marginRight: 2 }}>Період:</span>
-          {[['month', 'Цей місяць'], ['prev', 'Минулий місяць'], ['quarter', 'Квартал'], ['year', 'Рік']].map(([k, l]) => (
-            <button key={k} className="btn btn-sm" style={{ minHeight: 28, padding: '4px 10px', fontSize: 12 }} onClick={() => setPeriod(k)}>{l}</button>
-          ))}
-          {hasFilters && <button className="btn btn-sm" style={{ minHeight: 28, padding: '4px 10px', fontSize: 12 }} onClick={resetFilters}><i className="ti ti-x" /> Скинути</button>}
-          <span style={{ marginLeft: 'auto', color: 'var(--text3)' }}>{list ? `Знайдено: ${filtered.length}` : 'Завантаження…'}</span>
-        </div>
-
-        <div style={{ overflowX: 'auto', maxHeight: 360, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
-          <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
-            <thead><tr style={{ color: 'var(--text3)', fontSize: 11, position: 'sticky', top: 0, background: 'var(--bg2, #fff)' }}>
-              <th style={TH}>Тип</th><th style={TH}>№</th><th style={TH}>Дата</th><th style={TH}>Покупець</th><th style={{ ...TH, textAlign: 'right' }}>Сума</th>
-            </tr></thead>
-            <tbody>
-              {shown.map(x => (
-                <tr key={x.id} onClick={() => build(x.id)} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer', background: sel === x.id ? '#F4F2FA' : undefined }}>
-                  <td style={TD}><span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 6, background: x.type === 'serviceAct' ? '#E8F4EC' : '#EEF0FB', color: x.type === 'serviceAct' ? '#2E7D4F' : '#3B4BA8' }}>{x.type === 'serviceAct' ? 'Акт' : 'Видаткова'}</span></td>
-                  <td style={{ ...TD, fontWeight: sel === x.id ? 700 : 500 }}>{x.doc_number || '(без №)'}</td>
-                  <td style={TD}>{d(x.doc_date)}</td>
-                  <td style={TD}>{x.contractorName}</td>
-                  <td style={{ ...TD, textAlign: 'right', whiteSpace: 'nowrap' }}>{fmt(x.amount)} грн</td>
-                </tr>
-              ))}
-              {list && !filtered.length && <tr><td colSpan={5} style={{ ...TD, color: 'var(--text3)', textAlign: 'center' }}>Нічого не знайдено за цими фільтрами</td></tr>}
-            </tbody>
-          </table>
-        </div>
-        {!showAll && filtered.length > LIMIT && <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={() => setShowAll(true)}>Показати всі {filtered.length}</button>}
-
-      </div>
-
+  
+    )
+  const detail = (
+    <>
       {busy && <div className="card" style={{ marginBottom: 14, fontSize: 13, color: 'var(--text2)' }}><i className="ti ti-loader-2" /> Формую звіт…</div>}
       {err && <div className="card" style={{ color: 'var(--red)' }}>Помилка: {err}</div>}
 
@@ -399,6 +405,47 @@ export default function AccountantReport({ ctl = null } = {}) {
           </p>
         </>
       )}
+    </>
+  )
+  // Новий інтерфейс (макет ReportsAccountant): місяць — із шапки «Звітів»; список ліворуч, простеження — праворуч
+  if (newUi) return (
+    <div>
+      {monthBanner}
+      <div className="acc-split">
+        <section className="acc-list" aria-label="Документи місяця">
+          <div className="acc-list-head">
+            <Segmented ariaLabel="Тип документа" size="sm" value={fType} onChange={setFType} options={[{ value: 'all', label: 'Усі' }, { value: 'waybill', label: 'Видаткові' }, { value: 'serviceAct', label: 'Акти' }]} />
+            <input type="search" className="form-input" placeholder="№, покупець або сума" aria-label="Пошук документа" value={fQ} onChange={e => setFQ(e.target.value)} />
+          </div>
+          {!list ? <TableSkeleton rows={6} cols={2} label="Завантаження документів…" />
+            : !filtered.length ? <p className="acc-empty">Нічого не знайдено за цими фільтрами.</p>
+            : <ul>{shown.map(x => (
+              <li key={x.id}><button type="button" className="acc-row" aria-current={sel === x.id ? 'true' : undefined} onClick={() => build(x.id)}>
+                <span><b>{x.doc_number || '(без №)'}</b> <small>· {d(x.doc_date).slice(0, 5)}</small><em>{x.contractorName}</em></span>
+                <b className="acc-row-sum">{formatAmount(x.amount)} ₴</b>
+              </button></li>))}</ul>}
+          {!showAll && filtered.length > LIMIT && <div className="acc-more"><button type="button" className="btn btn-sm" onClick={() => setShowAll(true)}>Показати всі {filtered.length}</button></div>}
+        </section>
+        <section className="acc-detail" aria-label="Звідки товар">
+          {!report && !busy && !err ? <p className="acc-empty">Оберіть видаткову накладну або акт — система простежить кожен товар до прихідної накладної.</p> : detail}
+        </section>
+      </div>
+    </div>
+  )
+
+  return (
+    <div>
+      <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <i className="ti ti-report-analytics" style={{ fontSize: 22 }} />
+        <h1 style={{ margin: 0 }}>Звіт для бухгалтера</h1>
+      </div>
+      <p style={{ fontSize: 13, color: 'var(--text2)', margin: '0 0 16px' }}>
+        Оберіть видаткову накладну або акт — система простежить кожен товар до прихідної накладної (де й коли куплено).
+      </p>
+      {monthBanner}
+
+      {filtersCard}
+      {detail}
     </div>
   )
 }
