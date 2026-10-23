@@ -265,7 +265,7 @@
 .ui-tip:hover, .ui-tip:focus-visible, .ui-tip.is-open { border-color: var(--brand); color: var(--brand); outline: none; }
 .ui-tip.is-dark { border-color: var(--tip-ring-dark); color: var(--on-dark-muted); }
 .ui-tip.is-dark:hover, .ui-tip.is-dark:focus-visible, .ui-tip.is-dark.is-open { border-color: var(--on-dark-pos); color: var(--on-dark-pos); }
-.ui-tip-pop { position: fixed; z-index: 1000; max-width: 300px; width: max-content; padding: 10px 12px; border-radius: 12px; background: var(--ink); color: var(--tip-text);
+.ui-tip-pop { position: fixed; z-index: 1000; border: 1px solid var(--ink-line); max-width: 300px; width: max-content; padding: 10px 12px; border-radius: 12px; background: var(--ink); color: var(--tip-text);
   font-size: 12.5px; font-weight: 400; line-height: 1.45; letter-spacing: 0; text-transform: none; text-align: left; white-space: normal; box-shadow: var(--shadow-pop); }
 .ui-tip-pop b { color: #fff; }
 @media (max-width: 767px) { .ui-tip-pop { max-width: 260px; } }

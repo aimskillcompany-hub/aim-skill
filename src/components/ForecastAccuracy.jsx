@@ -5,7 +5,7 @@ import { useCompany } from '../lib/company'
 import { computeAccuracy, inForecastWithoutSnapshot, KEYS } from '../lib/accuracy'
 import { takeSnapshot, isMissingSnapTable, COST_LABELS } from '../lib/snapshots'
 import { formatAmount, plural } from '../utils/format'
-import { Button, Callout, EmptyState, TableSkeleton, useToast } from './ui'
+import { Button, Callout, EmptyState, TableSkeleton, useToast, InfoTip } from './ui'
 import '../pages/Reports.css'
 import '../pages/AnalyticsNew.css'
 import './ForecastNew.css'
@@ -63,67 +63,52 @@ export default function ForecastAccuracy() {
         <EmptyState icon="ti-target-arrow" title="Ще немає закритих замовлень зі знімком прогнозу"
           text={`Знімок зберігається, коли замовлення позначають «в прогноз». Після закриття (статус «Закрито») тут з'явиться порівняння плану з фактом.${data.withoutSnap ? ` Закритих без знімка: ${data.withoutSnap} — для них точність не рахується.` : ''}`} />
       ) : <>
-        <section className="fca-hero" aria-label="Точність прогнозу прибутку">
-          <div className="fca-main"><span>Точність прогнозу прибутку</span><b className={tone(acc == null ? null : acc >= 0.95 && acc <= 1.05 ? 'ok' : acc >= 0.85 ? 'fair' : 'bad')}>{pc(acc)}</b>
-            <small>з кожних 100 ₴ запланованого прибутку отримали {acc == null ? '—' : Math.round(acc * 100)} ₴</small></div>
-          <div><span>Прибуток · план</span><b>{n0(plan)} ₴</b></div>
-          <div><span>Прибуток · факт</span><b>{n0(fact)} ₴</b><small className={fact - plan < 0 ? 'is-neg' : 'is-pos'}>{sg(fact - plan)} ₴</small></div>
-          {!delays.length ? <div><span>Оплата клієнтів</span><b className="is-sm">—</b><small>оплат за закритими замовленнями ще немає</small></div> :
-          <div><span>Гроші прийшли {avgDelay > 0 ? 'пізніше' : avgDelay < 0 ? 'раніше' : 'вчасно'}</span><b className="is-sm">{avgDelay == null ? '—' : avgDelay === 0 ? 'вчасно' : `у середньому на ${Math.abs(avgDelay)} дн.`}</b>
-            <small>{late} з {delays.length} {plural(delays.length, ['замовлення', 'замовлень', 'замовлень'])} — із затримкою</small></div>}
+        {/* макет ForecastAccuracy (23.10.2026): одна картка з висновком, «Куди ділися», таблиця прибутку план → факт */}
+        <section className="rpt-card fca-one" aria-label="Точність прогнозу прибутку">
+          <div className="fca-one-n"><span>Справдилось прогнозу прибутку</span>
+            <b className={tone(acc == null ? null : acc >= 0.95 && acc <= 1.05 ? 'ok' : acc >= 0.85 ? 'fair' : 'bad')}>{pc(acc)}</b></div>
+          <p>Планували заробити <b>{n0(plan)} ₴</b>, заробили <b>{n0(fact)} ₴</b> <span className={fact - plan < 0 ? 'rpt-late' : 'fcn-in'}>({sg(fact - plan)} ₴)</span>.<br />
+            {!delays.length ? 'Оплат за закритими замовленнями ще немає.'
+              : late ? <>{late} з {delays.length} {plural(delays.length, ['клієнта', 'клієнтів', 'клієнтів'])} заплатили пізніше графіка, у середньому на <b>{Math.round(delays.filter(r => r.delay > 0).reduce((a, r) => a + r.delay, 0) / late)} дн.</b></>
+              : 'Усі клієнти заплатили вчасно.'}</p>
         </section>
 
-        <div className="fcn-mid">
-          <section className="cfn-card fca-why" aria-label="Чому прибуток вийшов меншим">
-            <h2>{reasons.length ? 'Чому прибуток вийшов меншим' : 'Прибуток не менший за план'}</h2>
-            {reasons.map(x => (
-              <div key={x.k} className="fca-reason"><div><span>{REASON[x.k]}</span><b>{sg(x.v)} ₴</b></div>
-                <span className="fca-track"><i style={{ width: `${(-x.v / rMax) * 100}%` }} /></span></div>
-            ))}
+        {reasons.length > 0 && (
+          <section className="rpt-card fca-where" aria-label="Куди ділися гроші">
+            <h2 className="rpt-h3">Куди ділися {n0(-reasons.reduce((a, x) => a + x.v, 0))} ₴</h2>
+            <div className="fca-bar" aria-hidden="true">{reasons.map((x, i) => <span key={x.k} className={`is-${i}`} style={{ flexGrow: -x.v }} />)}</div>
+            <ul className="fca-leg">{reasons.map((x, i) => <li key={x.k}><i className={`is-${i}`} />{REASON[x.k]} <b>{sg(x.v)}</b></li>)}</ul>
           </section>
-          <section className="cfn-card fca-legend" aria-label="Як читати оцінку">
-            <h2>Як читати оцінку</h2>
-            <p><span className="fca-g is-ok">95–105%</span>Прогноз точний</p>
-            <p><span className="fca-g is-fair">85–95%</span>Допустиме відхилення</p>
-            <p><span className="fca-g is-bad">&lt; 85%</span>Прогноз не справдився: розберіть причину</p>
-            <small className="rpt-muted">Точність = фактичний прибуток ÷ запланований. План — зі знімка в момент позначки «в прогноз»; пізніші правки замовлення його не змінюють.</small>
-          </section>
-        </div>
+        )}
 
         <section className="rpt-card is-flush">
-          <div className="cfn-report-head"><h2 className="rpt-h3">Закриті замовлення: план проти факту</h2><span className="rpt-muted rpt-note">натисніть рядок, щоб побачити розбір</span></div>
+          <div className="cfn-report-head"><h2 className="rpt-h3">Закриті замовлення</h2></div>
           <div className="tbl-wrap rpt-table fca-table"><table>
-            <thead><tr><th>Замовлення</th><th className="r">Виручка · план → факт</th><th className="r">Витрати · план → факт</th><th className="r">Прибуток · план → факт</th><th className="r">Оплата</th><th className="r">Точність</th></tr></thead>
+            <thead><tr><th>Замовлення</th><th className="r">Прибуток: план → факт</th><th className="r">Оплата</th>
+              <th className="r">Справдилось<InfoTip label="Справдилось" placement="left">Справдилось = фактичний прибуток ÷ запланований. План — знімок у момент позначки «в прогноз».<br />95–105% — точно<br />85–95% — допустимо<br />нижче 85% — не справдився</InfoTip></th></tr></thead>
             <tbody>
               {data.rows.map(r => {
-                const pe = r.plan.revenue - r.planProfit, fe = r.fact.revenue - r.factProfit
                 const isOpen = !!open[r.id]
+                const worst = KEYS.map(k => [k, r.dev[k]]).sort((a, b) => a[1] - b[1])[0]
                 return (
                   <Fragment key={r.id}>
                     <tr className="is-click" onClick={() => setOpen(s => ({ ...s, [r.id]: !s[r.id] }))} aria-expanded={isOpen}>
-                      <td className="c-name"><Link to={`/orders/${r.id}`} className="fcn-num" onClick={e => e.stopPropagation()}>№{r.number}</Link><small className="rpt-muted">{r.client}{r.late ? ' · знімок зроблено пізніше' : ''}</small></td>
-                      <td className="r rpt-num"><span className="rpt-muted">{n0(r.plan.revenue)} →</span> <b className={r.fact.revenue < r.plan.revenue - 0.5 ? 'rpt-late' : ''}>{n0(r.fact.revenue)}</b></td>
-                      <td className="r rpt-num"><span className="rpt-muted">{n0(pe)} →</span> <b className={fe > pe + 0.5 ? 'rpt-late' : ''}>{n0(fe)}</b></td>
-                      <td className="r rpt-num c-net"><span className="rpt-muted">{n0(r.planProfit)} →</span> <b>{n0(r.factProfit)}</b><small className={r.factProfit - r.planProfit < 0 ? 'rpt-late' : 'fcn-in'}>{sg(r.factProfit - r.planProfit)} ₴</small></td>
+                      <td className="c-name"><i className={`ti ti-chevron-${isOpen ? 'down' : 'right'} rpt-muted`} aria-hidden="true" /> <Link to={`/orders/${r.id}`} className="fcn-num" onClick={e => e.stopPropagation()}>№{r.number}</Link> <span>{r.client}</span>{r.late && <small className="rpt-muted"> · знімок пізніше</small>}</td>
+                      <td className="r rpt-num c-net"><span className="rpt-muted">{n0(r.planProfit)} →</span> <b>{n0(r.factProfit)}</b> <small className={r.factProfit - r.planProfit < 0 ? 'rpt-late' : 'fcn-in'}>{sg(r.factProfit - r.planProfit)}</small></td>
                       <td className="r">{r.noFact ? <span className="rpt-muted">немає відвантаження</span> : r.delay == null ? <span className="rpt-muted">не оплачено</span> : r.delay > 0 ? <span className="rpt-late">+{r.delay} дн.</span> : <span className="fcn-in">вчасно</span>}</td>
                       <td className="r"><span className={`fca-g ${tone(r.grade)}`}>{pc(r.accuracy)}</span></td>
                     </tr>
                     {isOpen && (
-                      <tr className="rpt-sub"><td colSpan={6}>
-                        <div className="fca-detail">
-                          <div><h3>Розбір по статтях</h3>
-                            <table className="fca-items"><thead><tr><th /><th className="r">План</th><th className="r">Факт</th><th className="r">Вплив</th></tr></thead>
-                              <tbody>{KEYS.filter(k => r.plan[k] || r.fact[k]).map(k => (
-                                <tr key={k}><td>{LABELS[k]}</td><td className="r rpt-num rpt-muted">{n0(r.plan[k])}</td><td className="r rpt-num"><b>{n0(r.fact[k])}</b></td><td className={`r rpt-num ${r.dev[k] < -0.5 ? 'rpt-late' : r.dev[k] > 0.5 ? 'fcn-in' : 'rpt-muted'}`}>{Math.abs(r.dev[k]) < 0.5 ? '0' : sg(r.dev[k])}</td></tr>
-                              ))}
-                                <tr className="is-tot"><td>Прибуток</td><td className="r rpt-num">{n0(r.planProfit)}</td><td className="r rpt-num"><b>{n0(r.factProfit)}</b></td><td className={`r rpt-num ${r.factProfit < r.planProfit ? 'rpt-late' : 'fcn-in'}`}>{sg(r.factProfit - r.planProfit)}</td></tr></tbody></table></div>
-                          <div><h3>Оплата клієнта</h3>
-                            <div className="fca-pay"><span>план {dm(r.planPay)}</span><i className={r.delay > 0 ? 'is-late' : ''} /><span className={r.delay > 0 ? 'is-late' : ''}>факт {r.factPay ? dm(r.factPay) : '—'}</span></div>
-                            {(() => { const worst = KEYS.map(k => [k, r.dev[k]]).sort((a, b) => a[1] - b[1])[0]; return worst && worst[1] < -0.5
-                              ? <p className="fca-concl"><b>Висновок:</b> найбільше прибуток зменшила стаття «{LABELS[worst[0]]}»: у прогнозі {n0(r.plan[worst[0]])} ₴, фактично {n0(r.fact[worst[0]])} ₴ ({sg(worst[1])} ₴).</p>
-                              : <p className="fca-concl"><b>Висновок:</b> жодна стаття не погіршила прибуток проти плану.</p> })()}
-                            <p className="rpt-muted rpt-note">Знімок від {dm(r.snap.taken_at?.slice(0, 10))}.{r.snap.taken_at?.slice(0, 4)}{r.late ? ' (зроблено пізніше, ніж замовлення потрапило в прогноз)' : ''}. <Link to={`/orders/${r.id}`}>Відкрити замовлення →</Link></p>
-                          </div>
+                      <tr className="rpt-sub"><td colSpan={4}>
+                        <div className="fca-row">
+                          <p className="fca-concl">{worst && worst[1] < -0.5
+                            ? <>Прибуток з’їла стаття «{LABELS[worst[0]]}»: заклали {n0(r.plan[worst[0]])} ₴, фактично {n0(r.fact[worst[0]])} ₴.</>
+                            : <>Жодна стаття не погіршила прибуток проти плану.</>}
+                            {r.delay > 0 ? ` Клієнт оплатив на ${r.delay} дн. пізніше.` : ''}</p>
+                          <p className="fca-lines">{KEYS.filter(k => Math.abs(r.dev[k]) >= 0.5).map(k => (
+                            <span key={k}>{LABELS[k]}: {n0(r.plan[k])} → <b>{n0(r.fact[k])}</b> <em className={r.dev[k] < 0 ? 'rpt-late' : 'fcn-in'}>({sg(r.dev[k])})</em></span>))}
+                            <span>оплата: план {dm(r.planPay)} → факт {r.factPay ? dm(r.factPay) : '—'}</span>
+                            <Link to={`/orders/${r.id}`}>Відкрити замовлення →</Link></p>
                         </div>
                       </td></tr>
                     )}

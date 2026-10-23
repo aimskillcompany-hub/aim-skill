@@ -142,3 +142,21 @@
 .fcn-manual.is-empty { display: none; }
 @media (min-width: 768px) { .fcn-hero, .fcn-mid { display: none !important; } }
 @media (max-width: 767px) { .fcn-three { display: none; } .fcn-manual.is-empty { display: block; } }
+/* «Точність прогнозу» (макет 23.10.2026) */
+.fca-one { display: flex; align-items: center; gap: 32px; flex-wrap: wrap; }
+.fca-one-n { display: flex; flex-direction: column; gap: 2px; }
+.fca-one-n span { font-size: 13px; color: var(--muted); }
+.fca-one-n b { font-size: 52px; font-weight: 700; letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+.fca-one-n b.is-ok { color: var(--brand-dark); } .fca-one-n b.is-fair { color: var(--warn-fg); } .fca-one-n b.is-bad { color: var(--danger-fg); }
+.fca-one p { margin: 0; font-size: 15px; line-height: 1.6; }
+.fca-where { display: flex; flex-direction: column; gap: 10px; }
+.fca-bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; gap: 2px; }
+.fca-bar .is-0, .fca-leg i.is-0 { background: var(--danger-fg); } .fca-bar .is-1, .fca-leg i.is-1 { background: var(--expense-chart); }
+.fca-bar .is-2, .fca-leg i.is-2 { background: var(--warn-mark); } .fca-bar span:nth-child(n+4), .fca-leg li:nth-child(n+4) i { background: var(--muted-2); }
+.fca-leg { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; }
+.fca-leg li { display: inline-flex; align-items: center; gap: 6px; } .fca-leg i { width: 8px; height: 8px; border-radius: 2px; } .fca-leg b { font-variant-numeric: tabular-nums; }
+.fca-row { display: flex; flex-direction: column; gap: 6px; padding: 4px 0 4px 22px; }
+.fca-row .fca-concl { margin: 0; font-size: 14px; }
+.fca-lines { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.fca-lines em { font-style: normal; }
+@media (max-width: 767px) { .fca-one { gap: 12px; } .fca-one-n b { font-size: 40px; } .fca-row { padding-left: 0; } }
