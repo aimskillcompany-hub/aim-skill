@@ -1,7 +1,7 @@
 // Реєстр замовлень у новому інтерфейсі (ТЗ редизайну 4.1; макети Orders / OrdersMobile).
 // Дані, фільтри й обробники приходять з Orders.jsx — тут лише подача. Логіка не змінюється.
 import { useMemo } from 'react'
-import { Segmented, EmptyState, TableSkeleton, Button } from '../components/ui'
+import { Segmented, EmptyState, TableSkeleton, Button, Menu } from '../components/ui'
 import { ORDER_STATUS_TONE } from '../components/ui/statusMaps'
 import { formatAmount, formatShort } from '../utils/format'
 import { STATUS_ORDER, OUTCOME, statusLabel, labelForStatus } from '../lib/orders'
@@ -131,11 +131,9 @@ export default function OrdersNew({
             <input type="search" className="form-input" placeholder="№ або клієнт" aria-label="Пошук замовлень" value={q} onChange={e => setQ(e.target.value)} />
           </label>
           {managers.length > 0 && (
-            <select className="form-input on-mgr" aria-label="Менеджер" value={manager} onChange={e => setManager(e.target.value)}>
-              <option value="">Менеджер: усі</option>
-              {managers.map(m => <option key={m} value={m}>{m}</option>)}
-              <option value="—">Не призначено</option>
-            </select>
+            <span className="on-mgr"><Menu align="right"
+              trigger={<button type="button" className="ui-dd-btn">Менеджер: {manager === '' ? 'усі' : manager === '—' ? 'не призначено' : manager}<i className="ti ti-chevron-down" aria-hidden="true" /></button>}
+              items={[['', 'Усі'], ...managers.map(m => [m, m]), ['—', 'Не призначено']].map(([v, l]) => ({ label: l, icon: v === manager ? 'ti-check' : undefined, onClick: () => setManager(v) }))} /></span>
           )}
           <span className="on-views"><Segmented ariaLabel="Вигляд" value={view} onChange={setView} options={views} /></span>
         </div>

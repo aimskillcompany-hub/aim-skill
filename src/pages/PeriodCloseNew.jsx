@@ -58,11 +58,12 @@ export default function PeriodCloseNew({ year, setYear, sel, openMonth, statusOf
           const m = i + 1, fut = isFuture(m), s = fut ? 'future' : statusOf(m)
           return (
             <button key={m} type="button" role="listitem" className={`pcn-m ${ST[s][1]}`} aria-pressed={sel === m} disabled={fut} onClick={() => openMonth(m)}>
-              <b>{MS[i]}</b><span>{s === 'closed' ? <i className="ti ti-lock" aria-hidden="true" /> : s === 'reopened' ? <i className="ti ti-lock-open" aria-hidden="true" /> : null}{ST[s][0]}</span>
+              <b>{MS[i]}</b><i className="pcn-m-bar" aria-hidden="true" /><span>{s === 'closed' ? <i className="ti ti-lock" aria-hidden="true" /> : s === 'reopened' ? <i className="ti ti-lock-open" aria-hidden="true" /> : null}{ST[s][0]}</span>
             </button>
           )
         })}
       </div>
+      <ul className="pcn-legend" aria-label="Позначення"><li><i className="is-closed" />Закритий</li><li><i className="is-reopened" />Переоткритий: був закритий, зараз можна змінювати</li><li><i />Відкритий</li></ul>
       {reopenedList.length > 0 && <Callout tone="warn" title={`Переоткриті місяці: ${reopenedList.map(m => MONTHS[m - 1].toLowerCase()).join(', ')}.`} text="Їхні дані знову можна змінювати — закрийте їх повторно після виправлень." />}
       {err && <Callout tone="danger" title="Помилка." text={err} />}
 

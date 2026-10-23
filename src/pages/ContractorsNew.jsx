@@ -125,7 +125,7 @@ export default function ContractorsNew({ list, loading, q, setQ, filter, setFilt
           <label className="ctn-search"><i className="ti ti-search" aria-hidden="true" />
             <input type="search" className="form-input" placeholder="Назва або ЄДРПОУ" aria-label="Пошук контрагентів" value={q} onChange={e => setQ(e.target.value)} /></label>
           <span className="ctn-sort"><Menu align="right"
-            trigger={<button type="button" className="ctn-sort-btn">Сортування: {SORTS.find(x => x[0] === sortKey)[1]}<i className="ti ti-chevron-down" aria-hidden="true" /></button>}
+            trigger={<button type="button" className="ui-dd-btn">Сортування: {SORTS.find(x => x[0] === sortKey)[1]}<i className="ti ti-chevron-down" aria-hidden="true" /></button>}
             items={SORTS.map(([v, l]) => ({ label: l[0].toUpperCase() + l.slice(1), icon: v === sortKey ? 'ti-check' : undefined, onClick: () => setSortKey(v) }))} /></span>
         </div>
         {!loading && rows.length > 0 && <div className="ctn-listhead"><span>{SORTS.find(x => x[0] === sortKey)[2]}</span><span>{view.length} із {rows.length}</span></div>}

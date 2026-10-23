@@ -96,3 +96,10 @@
 .pcn-other button[aria-pressed="true"] { border-color: var(--brand); background: var(--surface); }
 @media (max-width: 1023px) { .pcn-r3 { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 767px) { .pcn-cash-k { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* стрічка місяців: кольорова смужка й легенда (макет PeriodClose) */
+.pcn-m-bar { display: block; width: 100%; height: 5px; border-radius: 3px; background: var(--surface2); }
+.pcn-m.is-closed .pcn-m-bar { background: var(--brand); } .pcn-m.is-reopened .pcn-m-bar { background: var(--warn-mark); }
+.pcn-legend { list-style: none; margin: -4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--muted); }
+.pcn-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.pcn-legend i { width: 14px; height: 5px; border-radius: 3px; background: var(--muted-2); }
+.pcn-legend i.is-closed { background: var(--brand); } .pcn-legend i.is-reopened { background: var(--warn-mark); }

@@ -250,3 +250,9 @@
   .ui-segmented.is-chips-sm .ui-seg-btn[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); box-shadow: none; }
   .ui-segmented.is-chips-sm .ui-seg-btn[aria-pressed="true"] .ui-seg-count { color: var(--on-dark-muted); }
 }
+
+/* Кнопка-випадайка «Назва: значення ▾» для Menu (замість нативного select у фільтрах) */
+.ui-dd-btn { display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); font: inherit; font-size: 14px; color: var(--text); cursor: pointer; white-space: nowrap; }
+.ui-dd-btn .ti { color: var(--muted); }
+.ui-dd-btn:hover { background: var(--surface-sunken); }
+.ui-dd-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }

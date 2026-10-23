@@ -55,7 +55,7 @@ export default function ForecastAccuracy() {
     <div className="rpt fca">
       {missing && <Callout tone="warn" title="Знімки прогнозу ще не доступні" text="— потрібна міграція 099. До того точність не рахується." />}
       {!missing && pending.length > 0 && (
-        <Callout tone="info" title={`${pending.length} ${plural(pending.length, ['замовлення', 'замовлення', 'замовлень'])} у прогнозі без знімка.`}
+        <Callout tone="warn" title={`${pending.length} ${plural(pending.length, ['замовлення', 'замовлення', 'замовлень'])} у прогнозі без знімка.`}
           text="Вони стояли «в прогнозі» ще до знімків. Зробимо знімок їхнього поточного плану з позначкою «зроблено пізніше» — тоді після закриття їх можна буде порівняти з фактом."
           action={{ label: busy ? 'Роблю знімки…' : 'Зробити знімок зараз', onClick: busy ? undefined : backfill }} />
       )}
