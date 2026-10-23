@@ -107,7 +107,7 @@ export default function OrdersNew({
       </div>
 
       {stages.length > 0 && (
-        <div className="on-stages" role="group" aria-label="Етапи замовлень у роботі">
+        <div className="on-stages on-stages-lg" role="group" aria-label="Етапи замовлень у роботі">
           {stages.map(x => {
             const tone = ORDER_STATUS_TONE[x.s] || 'neutral'
             const on = stage === x.s
@@ -125,7 +125,7 @@ export default function OrdersNew({
 
       <section className="on-card">
         <div className="on-toolbar">
-          <Segmented ariaLabel="Фільтр замовлень" value={filter} onChange={setFilter} options={filters} />
+          <Segmented ariaLabel="Фільтр замовлень" value={filter} onChange={setFilter} options={filters} className="is-chips-sm" />
           <label className="on-search">
             <i className="ti ti-search" aria-hidden="true" />
             <input type="search" className="form-input" placeholder="№ або клієнт" aria-label="Пошук замовлень" value={q} onChange={e => setQ(e.target.value)} />
@@ -139,6 +139,14 @@ export default function OrdersNew({
           )}
           <span className="on-views"><Segmented ariaLabel="Вигляд" value={view} onChange={setView} options={views} /></span>
         </div>
+        {stages.length > 0 && (
+          <div className="on-stages on-stages-sm" role="group" aria-label="Етапи замовлень у роботі">
+            {stages.map(x => { const on = stage === x.s; return (
+              <button key={x.s} type="button" className={`on-tile is-${ORDER_STATUS_TONE[x.s] || 'neutral'}`} aria-pressed={on} onClick={() => setStage(on ? null : x.s)}>
+                <span className="on-tile-head"><span className="on-tile-dot" aria-hidden="true" />{labelForStatus(x.s)}<span className="on-tile-n">{x.n}</span></span>
+              </button>) })}
+          </div>
+        )}
         {stage && (
           <div className="on-active-filter">
             Етап: <b>{labelForStatus(stage)}</b>
@@ -203,6 +211,7 @@ export default function OrdersNew({
                         <Stage o={o} />
                       </span>
                       <span className="on-mcard-client">{o.clientName}</span>
+                      <span className="on-stage-row"><Stage o={o} /></span>
                       <span className="on-mcard-foot">
                         <Person name={o.managerName} />
                         {o.tasks && <span className={`on-task is-static${o.tasks.late ? ' is-late' : ''}`}>задач: {o.tasks.n}</span>}
