@@ -116,3 +116,6 @@
   --danger: #B42318;
 }
 @media (max-width: 768px) { :root[data-ui="new"] { --radius-xl: 20px; --radius-2xl: 20px; } }
+
+/* Звірка з макетами, п. 4: позначка «Інвестор» у новому інтерфейсі — у палітрі (зелений), не фіолетова */
+[data-ui="new"] { --investor: var(--brand); --investor-bg: var(--brand-soft); }

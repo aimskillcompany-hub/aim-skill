@@ -61,7 +61,7 @@ function Flags({ o, toggleInvestor, toggleForecast, toggleCommission }) {
   return (
     <span className="orders-flags" onClick={e => e.stopPropagation()}>
       <button type="button" onClick={() => toggleInvestor(o)} aria-pressed={!!o.in_investor} title={o.in_investor ? 'Інвестор: враховується' : 'Інвестор: додати в розрахунок'} aria-label="Інвестор">
-        <i className="ti ti-diamond-filled" aria-hidden="true" style={{ color: o.in_investor ? 'var(--group-fg)' : undefined }} /></button>
+        <i className="ti ti-diamond-filled" aria-hidden="true" style={{ color: o.in_investor ? 'var(--investor)' : undefined }} /></button>
       <button type="button" onClick={() => toggleForecast(o)} aria-pressed={!!o.in_forecast} title={o.in_forecast ? 'Прогноз: у прогнозі' : 'Прогноз: додати'} aria-label="Прогноз">
         <i className="ti ti-trending-up" aria-hidden="true" style={{ color: o.in_forecast ? 'var(--info-fg)' : undefined }} /></button>
       <button type="button" onClick={() => toggleCommission(o)} aria-pressed={!!o.commission_paid} title={o.commission_paid ? 'Комісію сплачено' : 'Комісію не сплачено'} aria-label="Комісію сплачено">

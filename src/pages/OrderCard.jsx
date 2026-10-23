@@ -506,9 +506,9 @@ function DetailsTab({ o, onSaved }) {
         </div>
         <div className="form-group full">
           <label>Розрахунок інвестора</label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '8px 12px', borderRadius: 10, border: `1px solid ${form.in_investor ? '#7C3AED' : 'var(--border)'}`, background: form.in_investor ? 'rgba(124,58,237,.08)' : 'var(--surface)' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '8px 12px', borderRadius: 10, border: `1px solid ${form.in_investor ? 'var(--investor, #7C3AED)' : 'var(--border)'}`, background: form.in_investor ? 'var(--investor-bg, rgba(124,58,237,.08))' : 'var(--surface)' }}>
             <input type="checkbox" checked={form.in_investor} onChange={e => setForm(f => ({ ...f, in_investor: e.target.checked }))} style={{ width: 18, height: 18 }} />
-            <i className="ti ti-diamond-filled" style={{ fontSize: 18, color: form.in_investor ? '#7C3AED' : 'var(--text3)' }} />
+            <i className="ti ti-diamond-filled" style={{ fontSize: 18, color: form.in_investor ? 'var(--investor, #7C3AED)' : 'var(--text3)' }} />
             <span style={{ fontSize: 13, color: 'var(--text2)' }}>Врахувати це замовлення в розрахунку «Інвестору» (реальне/підтверджене)</span>
           </label>
         </div>
