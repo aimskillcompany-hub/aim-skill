@@ -230,7 +230,10 @@ export default function OrderProfitNew({ o, onOrderChange }) {
       </section>
 
       {exp && <ExpenseForm o={o} kind={exp.kind} userId={user?.id} onClose={() => setExp(null)} onSaved={() => { setExp(null); changed() }} />}
-      {picker && <TxPicker kind={picker} orderId={o.id} clientId={o.client_id} supplierIds={[...new Set(d.cards.filter(c => c.isSupplier && c.supplierId).map(c => c.supplierId))]} userId={user?.id} onClose={() => setPicker(null)} onAdded={() => { setPicker(null); changed() }} />}
+      {picker && <TxPicker kind={picker} orderId={o.id} clientId={o.client_id} supplierIds={[...new Set(d.cards.filter(c => c.isSupplier && c.supplierId).map(c => c.supplierId))]} targets={(() => { const by = {}, out = []
+            d.cards.filter(c => c.isSupplier && c.supplierId && !c.paid).forEach(c => { const rest = Math.round((c.plan - c.fact) * 100) / 100; if (rest > 0.5) { out.push({ supplierId: c.supplierId, amount: rest }); by[c.supplierId] = (by[c.supplierId] || 0) + rest } })
+            Object.entries(by).forEach(([sid, v]) => { if (!out.some(x => x.supplierId === sid && Math.abs(x.amount - v) < 0.5)) out.push({ supplierId: sid, amount: Math.round(v * 100) / 100 }) })
+            return out })()} userId={user?.id} onClose={() => setPicker(null)} onAdded={() => { setPicker(null); changed() }} />}
     </div>
   )
 }

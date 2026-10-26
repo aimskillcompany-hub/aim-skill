@@ -285,7 +285,9 @@ function PlannedProfit({ o, userId }) {
 }
 
 // Вибір банківської транзакції + сума частки
-export function TxPicker({ kind, orderId, clientId, supplierIds = [], userId, onClose, onAdded }) {
+// targets — що ще до оплати постачальникам цього замовлення [{ supplierId, amount }]: платежі ±NEAR ₴ від цих сум пропонуються першими
+const NEAR = 5000
+export function TxPicker({ kind, orderId, clientId, supplierIds = [], targets = [], userId, onClose, onAdded }) {
   const toast = useToast()
   const [q, setQ] = useState('')
   const [rows, setRows] = useState(null)
@@ -295,11 +297,19 @@ export function TxPicker({ kind, orderId, clientId, supplierIds = [], userId, on
   const [busy, setBusy] = useState(false)
   const [onlyClient, setOnlyClient] = useState(kind === 'income' && !!clientId)
   const [onlySup, setOnlySup] = useState(kind === 'expense' && supplierIds.length > 0)
+  const [onlyNear, setOnlyNear] = useState(kind === 'expense' && targets.length > 0)
+  // найближча сума «до оплати» для транзакції (той самий постачальник; ±NEAR ₴)
+  const nearOf = (t) => {
+    const a = Math.abs(Number(t.amount) || 0)
+    const m = targets.filter(x => (!x.supplierId || x.supplierId === t.contractor_id) && Math.abs(a - x.amount) <= NEAR)
+      .sort((x, y) => Math.abs(a - x.amount) - Math.abs(a - y.amount))[0]
+    return m || null
+  }
 
   const search = async (term) => {
     let query = qc('bank_transactions')
       .select('id, date, counterparty, description, amount, direction, edrpou, contractor_id')
-      .eq('is_ignored', false).order('date', { ascending: false }).limit(60)
+      .eq('is_ignored', false).order('date', { ascending: false }).limit(onlyNear ? 500 : 60)
     // напрям — за знаком суми (поле direction заповнене не в усіх рядках виписки)
     if (kind === 'income') query = query.gt('amount', 0)
     else if (kind === 'expense') query = query.lt('amount', 0)
@@ -308,9 +318,14 @@ export function TxPicker({ kind, orderId, clientId, supplierIds = [], userId, on
     const t = term.trim()
     if (t) query = query.or(`counterparty.ilike.%${t}%,description.ilike.%${t}%,edrpou.ilike.%${t}%`)
     const { data } = await query
-    setRows(data || [])
+    let list = data || []
+    if (kind === 'expense' && targets.length) {
+      if (onlyNear) list = list.filter(nearOf)
+      list = [...list].sort((a, b) => (nearOf(b) ? 1 : 0) - (nearOf(a) ? 1 : 0)).slice(0, 60)
+    }
+    setRows(list)
   }
-  useEffect(() => { const id = setTimeout(() => search(q), q ? 300 : 0); return () => clearTimeout(id) }, [q, onlyClient, onlySup])
+  useEffect(() => { const id = setTimeout(() => search(q), q ? 300 : 0); return () => clearTimeout(id) }, [q, onlyClient, onlySup, onlyNear])
 
   // Скільки з транзакції вже розподілено на замовлення (частки + пряма прив'язка оплати клієнта) —
   // щоб одна транзакція не потрапила повною сумою в кілька замовлень (подвійний факт у прибутковості/прогнозі).
@@ -360,9 +375,10 @@ export function TxPicker({ kind, orderId, clientId, supplierIds = [], userId, on
               <input className="form-input" type="search" aria-label="Пошук транзакції" placeholder="Пошук: контрагент / опис / ЄДРПОУ…" value={q} onChange={e => setQ(e.target.value)} style={{ flex: '1 1 240px' }} />
               {kind === 'income' && clientId && <Switch checked={onlyClient} onChange={setOnlyClient} label="Лише від клієнта" />}
               {kind === 'expense' && supplierIds.length > 0 && <Switch checked={onlySup} onChange={setOnlySup} label="Лише постачальники замовлення" />}
+              {kind === 'expense' && targets.length > 0 && <Switch checked={onlyNear} onChange={setOnlyNear} label={`Сума ±${fmt(NEAR)} грн від «до оплати»`} />}
             </div>
             {rows == null ? <TableSkeleton rows={5} cols={3} />
-              : rows.length === 0 ? <p style={{ color: 'var(--text3)', fontSize: 13 }}>Транзакцій не знайдено.</p> : (
+              : rows.length === 0 ? <p style={{ color: 'var(--text3)', fontSize: 13 }}>{onlyNear ? `Платежів із сумою ±${fmt(NEAR)} грн від «до оплати» (${targets.map(x => fmt(x.amount)).join(' / ')} грн) не знайдено — вимкніть перемикач суми, щоб побачити всі.` : 'Транзакцій не знайдено.'}</p> : (
                 <div className="tbl-wrap" style={{ border: 'none' }}>
                   <table><thead><tr><th>Дата</th><th>Контрагент / опис</th><th style={{ textAlign: 'right' }}>Сума</th></tr></thead>
                     <tbody>{rows.map(t => (
@@ -370,7 +386,8 @@ export function TxPicker({ kind, orderId, clientId, supplierIds = [], userId, on
                         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(t) } }}>
                         <td style={{ whiteSpace: 'nowrap', fontSize: 13 }}>{d(t.date)}</td>
                         <td><div className="trunc" style={{ maxWidth: 340 }}>{t.counterparty || t.description || '—'}</div></td>
-                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{fmt(t.amount)}</td>
+                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{fmt(t.amount)}
+                          {kind === 'expense' && nearOf(t) && <div style={{ fontSize: 11, color: 'var(--brand-dark)', fontWeight: 600 }}>≈ до оплати {fmt(nearOf(t).amount)}</div>}</td>
                       </tr>
                     ))}</tbody>
                   </table>
