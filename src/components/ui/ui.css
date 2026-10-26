@@ -269,3 +269,14 @@
   font-size: 12.5px; font-weight: 400; line-height: 1.45; letter-spacing: 0; text-transform: none; text-align: left; white-space: normal; box-shadow: var(--shadow-pop); }
 .ui-tip-pop b { color: #fff; }
 @media (max-width: 767px) { .ui-tip-pop { max-width: 260px; } }
+
+/* Етап замовлення → власний колір (токени --st-* у tokens.css): клас st-<код> дає --st-c / --st-c-fg / --st-c-bg */
+.st-new { --st-c: var(--st-new); --st-c-fg: var(--st-new-fg); --st-c-bg: var(--st-new-bg); }
+.st-tender { --st-c: var(--st-tender); --st-c-fg: var(--st-tender-fg); --st-c-bg: var(--st-tender-bg); }
+.st-processing { --st-c: var(--st-processing); --st-c-fg: var(--st-processing-fg); --st-c-bg: var(--st-processing-bg); }
+.st-needs_contract { --st-c: var(--st-needs_contract); --st-c-fg: var(--st-needs_contract-fg); --st-c-bg: var(--st-needs_contract-bg); }
+.st-ordering_supplier { --st-c: var(--st-ordering_supplier); --st-c-fg: var(--st-ordering_supplier-fg); --st-c-bg: var(--st-ordering_supplier-bg); }
+.st-shipped { --st-c: var(--st-shipped); --st-c-fg: var(--st-shipped-fg); --st-c-bg: var(--st-shipped-bg); }
+.st-needs_payment { --st-c: var(--st-needs_payment); --st-c-fg: var(--st-needs_payment-fg); --st-c-bg: var(--st-needs_payment-bg); }
+.st-paid { --st-c: var(--st-paid); --st-c-fg: var(--st-paid-fg); --st-c-bg: var(--st-paid-bg); }
+.st-closed { --st-c: var(--st-closed); --st-c-fg: #fff; --st-c-bg: var(--st-closed-bg); }

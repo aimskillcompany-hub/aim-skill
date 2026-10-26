@@ -24,7 +24,7 @@ function Stage({ o }) {
   const filled = done && o.outcome === 'won' ? STATUS_ORDER.length : i >= 0 ? i + 1 : 1
   const label = OUTCOME[o.outcome] && done ? OUTCOME[o.outcome].label : statusLabel(o)
   return (
-    <span className={`on-stage is-${tone}`} title={`Етап ${Math.min(filled, STATUS_ORDER.length)} з ${STATUS_ORDER.length}`}>
+    <span className={`on-stage is-${tone}${done ? '' : ` st-${code}`}`} title={`Етап ${Math.min(filled, STATUS_ORDER.length)} з ${STATUS_ORDER.length}`}>
       <span className="on-stage-bar" aria-hidden="true">
         {STATUS_ORDER.map((_, k) => <i key={k} className={k < filled ? 'on' : undefined} />)}
       </span>
@@ -130,7 +130,7 @@ export default function OrdersNew({
             const tone = ORDER_STATUS_TONE[x.s] || 'neutral'
             const on = stage === x.s
             return (
-              <button key={x.s} type="button" className={`on-tile is-${tone}`} aria-pressed={on} onClick={() => setStage(on ? null : x.s)}
+              <button key={x.s} type="button" className={`on-tile is-${tone} st-${x.s}`} aria-pressed={on} onClick={() => setStage(on ? null : x.s)}
                 title={`${labelForStatus(x.s)}: ${x.n} · заробимо ${formatAmount(x.earn, { decimals: 0 })} ₴ · замовлень на ${formatAmount(x.sum)} ₴ з ПДВ${x.s === 'needs_payment' ? ` · до оплати ${formatAmount(x.due)} ₴` : ''}${x.noItems ? ` · без позицій: ${x.noItems}` : ''}`}>
                 <span className="on-tile-head"><span className="on-tile-dot" aria-hidden="true" />{labelForStatus(x.s)}<span className="on-tile-n">{x.n}</span></span>
                 <span className={`on-tile-sum${x.earn < 0 ? ' is-neg' : ''}`}>{plans ? formatShort(x.earn) : '…'} <small>₴</small></span>
@@ -159,7 +159,7 @@ export default function OrdersNew({
         {stages.length > 0 && (
           <div className="on-stages on-stages-sm" role="group" aria-label="Етапи замовлень у роботі">
             {stages.map(x => { const on = stage === x.s; return (
-              <button key={x.s} type="button" className={`on-tile is-${ORDER_STATUS_TONE[x.s] || 'neutral'}`} aria-pressed={on} onClick={() => setStage(on ? null : x.s)}>
+              <button key={x.s} type="button" className={`on-tile is-${ORDER_STATUS_TONE[x.s] || 'neutral'} st-${x.s}`} aria-pressed={on} onClick={() => setStage(on ? null : x.s)}>
                 <span className="on-tile-head"><span className="on-tile-dot" aria-hidden="true" />{labelForStatus(x.s)}<span className="on-tile-n">{x.n}</span></span>
               </button>) })}
           </div>

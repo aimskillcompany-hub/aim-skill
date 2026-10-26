@@ -170,3 +170,8 @@
 .on-tile-sub { display: block; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .on-tile-sum.is-neg { color: var(--danger-fg); }
 .on-sub .on-pos { color: var(--brand-dark); } .on-sub .on-neg { color: var(--danger-fg); }
+/* Кожен етап — свій колір (токени --st-*): плитки й етап у таблиці */
+.on-tile[class*=" st-"] .on-tile-head { color: var(--st-c-fg); }
+.on-tile[class*=" st-"] .on-tile-dot, .on-tile[class*=" st-"] .on-tile-bar > span { background: var(--st-c); }
+.on-stage[class*=" st-"] { background: var(--st-c-bg); color: var(--st-c-fg); }
+.on-tile.st-closed .on-tile-head { color: var(--text); }

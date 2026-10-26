@@ -1,6 +1,7 @@
 import { TONES, STATUS_MAPS } from './statusMaps'
 
 const warned = new Set()
+export const ORDER_STAGE_COLORS = new Set(['new', 'tender', 'processing', 'needs_contract', 'ordering_supplier', 'shipped', 'needs_payment', 'paid', 'closed'])
 
 // Статус — пігулка зі світлим фоном і темним текстом (контраст ≥ 4.5:1).
 //   status — код статусу з бази (напр. 'needs_payment' або 'in_progress'); kind — 'order' | 'task';
@@ -17,8 +18,10 @@ export default function StatusPill({ status, kind = 'order', label, size = 'md' 
     }
   }
   const t = TONES[tone]
+  // етапи замовлення — кожен свій колір (токени --st-*); результати (виконано / програно) — за тоном
+  const own = kind === 'order' && ORDER_STAGE_COLORS.has(status)
   return (
-    <span className={`ui-pill ui-pill-${size}`} data-tone={tone} style={{ background: t.bg, color: t.fg }}>
+    <span className={`ui-pill ui-pill-${size}`} data-tone={tone} style={own ? { background: `var(--st-${status}-bg)`, color: `var(--st-${status}-fg)` } : { background: t.bg, color: t.fg }}>
       {label || map.label(status)}
     </span>
   )

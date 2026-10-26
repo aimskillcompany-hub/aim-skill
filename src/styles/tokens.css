@@ -74,6 +74,16 @@
 :root {
   --font-sans: var(--font);
   --ink: #0F1A14;
+  /* Етапи замовлення — кожен свій колір (рішення власника 26.10.2026): текст / фон / смужка */
+  --st-new-fg: #4B5563;              --st-new-bg: #EEF0F2;              --st-new: #9CA3AF;
+  --st-tender-fg: #A21C5B;           --st-tender-bg: #FCE7F1;           --st-tender: #E0459A;
+  --st-processing-fg: #1E4FB5;       --st-processing-bg: #E3ECFC;       --st-processing: #3B76E0;
+  --st-needs_contract-fg: #6232C9;   --st-needs_contract-bg: #EEE8FD;   --st-needs_contract: #8B5CF6;
+  --st-ordering_supplier-fg: #0B6E80;--st-ordering_supplier-bg: #DDF3F7;--st-ordering_supplier: #14A3BC;
+  --st-shipped-fg: #8A5A00;          --st-shipped-bg: #FCF1D4;          --st-shipped: #E0A512;
+  --st-needs_payment-fg: #B23A0B;    --st-needs_payment-bg: #FDE9DC;    --st-needs_payment: #F07F3C;
+  --st-paid-fg: #146C3A;             --st-paid-bg: #DDF4E6;             --st-paid: #1F9D55;
+  --st-closed-fg: #F2F5F3;           --st-closed-bg: #33433A;           --st-closed: #0F1A14;
   --tip-ring: #A6AEA8;           /* обводка значка ⓘ */
   --tip-ring-dark: #7E8A83;      /* ⓘ на темних картках */
   --tip-text: #E6EBE8;           /* текст попапа ⓘ */
