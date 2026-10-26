@@ -7,6 +7,7 @@ import { useCompany } from '../lib/company'
 import { loadForecast, currentCashByCompany } from '../lib/forecast'
 import { buildCalendar, findPossiblyPaid, linkPaidPair, pairKey, GROUPS, addDaysIso } from '../lib/payCalendar'
 import { createTask } from '../lib/tasks'
+import { findSupplierDocPays, linkSupplierDocPay } from '../lib/supplierDocPays'
 import { todayKyiv } from '../lib/dates'
 import { formatAmount, plural } from '../utils/format'
 import { Button, Modal, Segmented, Callout, TableSkeleton, InfoTip, useToast } from './ui'
@@ -41,6 +42,8 @@ export default function PayCalendar({ co, onMeta }) {
   const [err, setErr] = useState(null)
   const [pairs, setPairs] = useState([])
   const [linking, setLinking] = useState(false)
+  const [docPays, setDocPays] = useState([])
+  const [docLinking, setDocLinking] = useState(false)
   const [onlyEst, setOnlyEst] = useState(false)
   const [open, setOpen] = useState({ supplier: true })
   const tableRef = useRef(null)
@@ -61,6 +64,8 @@ export default function PayCalendar({ co, onMeta }) {
     if (!cal) return
     let alive = true
     findPossiblyPaid(cal.rows, today).then(p => { if (alive) setPairs(p) }).catch(() => { if (alive) setPairs([]) })
+    const ids = [...new Set(cal.rows.filter(r => r.orderId && r.type === 'supplier').map(r => r.orderId))]
+    findSupplierDocPays(ids).then(p => { if (alive) setDocPays(p) }).catch(() => { if (alive) setDocPays([]) })
     return () => { alive = false }
   }, [cal, today])
 
@@ -110,15 +115,27 @@ export default function PayCalendar({ co, onMeta }) {
     btn: gapCause ? <Link className="btn btn-secondary btn-sm" to={`/orders/${gapCause.orderId}?tab=finance`}>Відкрити №{gapCause.number}</Link>
       : <Button size="sm" variant="secondary" onClick={() => document.getElementById('pc-hold')?.scrollIntoView({ behavior: 'smooth' })}>Варіанти</Button>,
   })
-  const fullP = pairs.filter(p => !p.partial), partP = pairs.filter(p => p.partial)
-  if (pairs.length) actions.push({
+  // платіж, що вже пропонується через прихідну, не дублюємо в «Можливо, вже оплачено»
+  const docTx = new Set(docPays.map(p => p.txId))
+  const pairsF = pairs.filter(p => !docTx.has(p.tx.id))
+  const fullP = pairsF.filter(p => !p.partial), partP = pairsF.filter(p => p.partial)
+  if (pairsF.length) actions.push({
     tone: 'info', title: 'Можливо, вже оплачено',
     text: [fullP.length ? `${fullP.length} ${plural(fullP.length, ['«прострочена» оплата', '«прострочені» оплати', '«прострочених» оплат'])} постачальникам є у виписці: ${fullP.map(p => `№${p.line.number} — ${n0(p.amount)} ₴ ${dmy(p.tx.date).slice(0, 5)}`).join(', ')}.` : '',
       partP.length ? `Часткові оплати, ще не прив'язані: ${[...new Set(partP.map(p => '№' + p.line.number))].join(', ')} — разом ${n0(partP.reduce((s, p) => s + p.amount, 0))} ₴.` : '',
       'Прив\'яжіть — і сьогоднішній мінус зменшиться.'].filter(Boolean).join(' '),
-    amount: pairs.reduce((s, p) => s + p.amount, 0), amountTone: 'info',
+    amount: pairsF.reduce((s, p) => s + p.amount, 0), amountTone: 'info',
     btn: <Button size="sm" variant="secondary" onClick={() => setLinking(true)}>Прив'язати</Button>,
   })
+  if (docPays.length) {
+    const numOf = (id) => rows.find(r => r.orderId === id)?.number
+    actions.push({
+      tone: 'info', title: 'Оплати через прихідні накладні',
+      text: `${docPays.length} ${plural(docPays.length, ['оплата', 'оплати', 'оплат'])} постачальникам прив'язані до прихідних, товар з яких пішов у замовлення ${[...new Set(docPays.map(p => numOf(p.orderId)).filter(Boolean))].map(n => '№' + n).join(', ')}, але не до самих замовлень.`,
+      amount: docPays.reduce((s2, p) => s2 + p.amount, 0), amountTone: 'info',
+      btn: <Button size="sm" variant="secondary" onClick={() => setDocLinking(true)}>Прив'язати</Button>,
+    })
+  }
   if (supOver.length) actions.push({
     tone: 'warn', title: 'Прострочено постачальникам',
     text: `${nums(uniq(supOver))} — сплатити або оновити дату в замовленні`, amount: sum(supOver),
@@ -225,7 +242,8 @@ export default function PayCalendar({ co, onMeta }) {
         <p className="pc-foot"><span className="pc-dot is-amber" aria-hidden="true" />Оренда, зарплата й податки, крім ПДВ, ще не внесені, тож реальний розрив може бути глибшим. <Link to="/forecast?tab=deals">Додати постійні витрати</Link></p>
       )}
 
-      {linking && <LinkModal pairs={pairs} userId={user?.id} onClose={() => setLinking(false)} onDone={() => { setLinking(false); reload() }} />}
+      {docLinking && <DocPaysModal pays={docPays} numOf={(id) => rows.find(r => r.orderId === id)?.number} userId={user?.id} onClose={() => setDocLinking(false)} onDone={() => { setDocLinking(false); reload() }} />}
+      {linking && <LinkModal pairs={pairsF} userId={user?.id} onClose={() => setLinking(false)} onDone={() => { setLinking(false); reload() }} />}
     </div>
   )
 }
@@ -394,6 +412,36 @@ function LinkModal({ pairs, userId, onClose, onDone }) {
           <div><b><Link to={`/orders/${p.line.orderId}?tab=finance`}>№{p.line.number}</Link> · {p.line.counterparty}</b><small>план {dmy(p.line.origDate)} · до оплати {n0(Math.abs(p.line.amount))} ₴</small></div>
           <div><b>{n0(p.amount)} ₴{p.partial && <span className="pc-tag is-part">частково</span>}</b><small>виписка {dmy(p.tx.date)} · платіж {n0(Math.abs(p.tx.amount))} ₴</small></div>
           <Button size="sm" variant="secondary" loading={busy === pairKey(p)} disabled={!!busy} onClick={() => link([p])}>Прив'язати</Button>
+        </li>
+      ))}</ul>
+      {!left.length && <p className="pc-modal-p">Усе прив'язано.</p>}
+    </Modal>
+  )
+}
+
+// ── «Оплати через прихідні накладні»: оплата прихідної → частка замовлення (supplierDocPays) ──
+function DocPaysModal({ pays, numOf, userId, onClose, onDone }) {
+  const toast = useToast()
+  const key = (p) => p.txId + '|' + p.orderId + '|' + p.docId
+  const [left, setLeft] = useState(pays)
+  const [busy, setBusy] = useState(null)
+  const [done, setDone] = useState(0)
+  const link = async (list) => {
+    setBusy(list.length > 1 ? 'all' : key(list[0]))
+    try { for (const p of list) { await linkSupplierDocPay(p, userId); setLeft(l => l.filter(x => key(x) !== key(p))); setDone(n => n + 1) } }
+    catch (e) { toast('Не вдалося прив\'язати: ' + e.message, { type: 'error' }) }
+    setBusy(null)
+  }
+  useEffect(() => { if (!left.length && done) onDone() }, [left, done])
+  return (
+    <Modal open onClose={done ? onDone : onClose} size="lg" title="Оплати через прихідні накладні"
+      footer={<><Button variant="secondary" onClick={done ? onDone : onClose}>Готово</Button><Button variant="dark" loading={busy === 'all'} disabled={!left.length || !!busy} onClick={() => link(left)}>Прив'язати всі ({left.length})</Button></>}>
+      <p className="pc-modal-p">Оплата у виписці прив'язана до прихідної накладної, а товар із цієї накладної списано в замовлення. Сума — частка замовлення у вартості накладної × оплата. Після прив'язки оплата постачальнику в замовленні й у календарі закривається.</p>
+      <ul className="pc-pairs">{left.map(p => (
+        <li key={key(p)}>
+          <div><b><Link to={`/orders/${p.orderId}?tab=finance`}>№{numOf(p.orderId) || '—'}</Link> · {p.doc?.contractors?.name || p.tx?.counterparty || 'Постачальник'}</b><small>прихідна {p.doc?.doc_number || '—'}{p.doc?.doc_date ? ' від ' + dmy(p.doc.doc_date) : ''}</small></div>
+          <div><b>{n0(p.amount)} ₴{p.share < 0.999 && <span className="pc-tag is-part">{Math.round(p.share * 100)}%</span>}</b><small>оплата {dmy(p.tx?.date)} · {n0(Math.abs(p.tx?.amount || 0))} ₴</small></div>
+          <Button size="sm" variant="secondary" loading={busy === key(p)} disabled={!!busy} onClick={() => link([p])}>Прив'язати</Button>
         </li>
       ))}</ul>
       {!left.length && <p className="pc-modal-p">Усе прив'язано.</p>}

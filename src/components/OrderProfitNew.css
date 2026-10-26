@@ -100,3 +100,7 @@
 .opn-st-bad { grid-column: 1 / -1; margin: 0; font-size: 12px; color: var(--danger-fg); }
 .opn-st-acts { grid-column: 1 / -1; display: flex; gap: 8px; justify-content: flex-end; }
 @media (max-width: 767px) { .opn-st-row { grid-template-columns: minmax(0, 1fr); } }
+
+.opn-cands-h { background: none !important; padding: 0 2px !important; font-size: 13px; color: var(--muted); }
+.opn-cands-h > span { display: inline-flex; align-items: center; }
+.opn-cands small { color: var(--muted); }

@@ -14,6 +14,7 @@ import { formatAmount } from '../utils/format'
 import { Button, Modal, Callout, TableSkeleton, EmptyState, Menu, useToast, InfoTip } from './ui'
 import ContractorSelect from './ui/ContractorSelect'
 import { TxPicker } from './OrderFinanceTab'
+import { findSupplierDocPays, linkSupplierDocPay } from '../lib/supplierDocPays'
 import './OrderProfitNew.css'
 
 const n0 = (v) => formatAmount(v, { decimals: 0 })
@@ -35,14 +36,23 @@ export default function OrderProfitNew({ o, onOrderChange }) {
   const [cands, setCands] = useState([])
   const [pp, setPp] = useState([])           // графік: ship / client
   const [editDate, setEditDate] = useState(null)
+  const [supCands, setSupCands] = useState([])   // оплати постачальникам через прихідні (не прив'язані до замовлення)
+  const [supBusy, setSupBusy] = useState(null)
   const load = () => {
     setErr(null)
     loadOrderProfit(o, { vatOn }).then(setD).catch(e => setErr(e.message))
     loadPaymentPlan(o.id).then(setPp).catch(() => setPp([]))
     if (!o.paid_transaction_id && o.client_id) paymentCandidates(o).then(setCands).catch(() => setCands([]))
+    findSupplierDocPays([o.id]).then(setSupCands).catch(() => setSupCands([]))
   }
   useEffect(load, [o.id, o.total, o.paid_transaction_id, o.status, o.agent_commission_pct, vatOn])
   const changed = () => { load(); onOrderChange?.() }
+  const linkSup = async (list) => {
+    setSupBusy(list.length > 1 ? 'all' : list[0].txId)
+    try { for (const p of list) await linkSupplierDocPay(p, user?.id); toast(list.length > 1 ? `Прив'язано ${list.length} оплат` : 'Оплату прив\'язано'); changed() }
+    catch (e) { toast('Не вдалося: ' + e.message, { type: 'error' }) }
+    setSupBusy(null)
+  }
 
   if (err) return <Callout tone="danger" title="Не вдалося порахувати прибутковість." text={err} />
   if (!d) return <TableSkeleton rows={8} cols={4} label="Рахую прибутковість…" />
@@ -209,6 +219,16 @@ export default function OrderProfitNew({ o, onOrderChange }) {
           <h2>Оплати по замовленню</h2>
           <div className="opn-acts"><Button variant="secondary" icon="ti-link" onClick={() => setPicker('income')}>Оплата клієнта</Button><Button variant="secondary" icon="ti-link" onClick={() => setPicker('expense')}>Оплата постачальнику</Button></div>
         </div>
+        {supCands.length > 0 && (
+          <div className="opn-cands is-sup">
+            <div className="opn-cands-h"><span>Оплати постачальникам через прихідні накладні — товар із них пішов у це замовлення<InfoTip label="Оплати через прихідні">Оплата у виписці прив'язана до прихідної накладної; товар із цієї накладної списано в це замовлення. Сума — частка замовлення у вартості накладної × оплата.</InfoTip></span>
+              {supCands.length > 1 && <Button size="sm" variant="brand" loading={supBusy === 'all'} disabled={!!supBusy} onClick={() => linkSup(supCands)}>Прив'язати всі</Button>}</div>
+            {supCands.map(p => (
+              <div key={p.txId + p.docId}><span>{p.doc?.contractors?.name || p.tx?.counterparty || 'Постачальник'} · прихідна {p.doc?.doc_number || '—'} · оплата {dmy(p.tx?.date)}: <b>{n2(p.amount)} ₴</b>{p.share < 0.999 && <small> ({Math.round(p.share * 100)}% від {n2(Math.abs(p.tx?.amount || 0))} ₴)</small>}</span>
+                <Button size="sm" variant="brand" loading={supBusy === p.txId} disabled={!!supBusy} onClick={() => linkSup([p])}>Прив'язати</Button></div>
+            ))}
+          </div>
+        )}
         {!o.paid_transaction_id && cands.length > 0 && (
           <div className="opn-cands">{cands.map(t => (
             <div key={t.id}><span>Знайдено оплату від клієнта: <b>{n2(Math.abs(t.amount))} ₴</b> · {dmy(t.date)}</span><Button size="sm" variant="brand" onClick={() => linkClient(t)}>Прив'язати</Button></div>
