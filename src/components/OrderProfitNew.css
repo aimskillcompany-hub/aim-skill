@@ -80,3 +80,23 @@
 .opn-pay-h { flex-wrap: wrap; } .opn-st { white-space: normal; }
 @media (max-width: 1279px) { .opn-top { grid-template-columns: 1fr 1fr; } .opn-verdict { grid-column: 1 / -1; } }
 .opn-cell.opn-verdict > b { font-size: 15px; white-space: normal; letter-spacing: 0; }
+/* Умови оплати постачальникам (103) */
+.opn-date-btn { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.opn-date-btn .ti { font-size: 13px; color: var(--muted-2); } .opn-date-btn:hover .ti { color: var(--brand); }
+.opn-date-in { height: 30px; width: 150px; padding: 0 8px; font-size: 13px; }
+.opn-terms { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+.opn-terms button { border: 0; background: none; padding: 0; font: inherit; font-size: 12px; color: var(--brand-dark); text-decoration: underline; cursor: pointer; }
+.opn-terms-card h2 { margin: 0 0 12px; font-size: 16px; display: flex; align-items: center; }
+.opn-st-row { display: grid; grid-template-columns: minmax(180px, 1fr) auto minmax(0, 2fr); gap: 10px 16px; align-items: start; padding: 12px 0; border-top: 1px solid var(--divider); }
+.opn-st-h { display: flex; flex-direction: column; gap: 2px; } .opn-st-h small { font-size: 12px; color: var(--muted); }
+.opn-st-base { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); } .opn-st-base .form-input { height: 34px; width: 150px; }
+.opn-st-parts { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.opn-st-part { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+.opn-st-part label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.opn-st-part .form-input { height: 32px; width: 64px; padding: 0 8px; text-align: right; }
+.opn-st-man { font-size: 12px; color: var(--warn-fg); display: inline-flex; gap: 4px; } .opn-st-man button { border: 0; background: none; cursor: pointer; color: inherit; }
+.opn-st-del { border: 0; background: none; color: var(--muted); cursor: pointer; }
+.opn-st-add { border: 1px dashed var(--border); background: none; border-radius: 10px; padding: 4px 10px; font: inherit; font-size: 12px; font-weight: 600; color: var(--brand-dark); cursor: pointer; }
+.opn-st-bad { grid-column: 1 / -1; margin: 0; font-size: 12px; color: var(--danger-fg); }
+.opn-st-acts { grid-column: 1 / -1; display: flex; gap: 8px; justify-content: flex-end; }
+@media (max-width: 767px) { .opn-st-row { grid-template-columns: minmax(0, 1fr); } }

@@ -144,7 +144,7 @@ export default function ForecastNew({ months, orders, manual, flags, co, setCo, 
                           <div className="fcn-lines">
                             {pend.map(l => (
                               <div key={l.key} className={`fcn-line${l.overdue ? ' is-late' : ''}`}>
-                                <span>{l.date ? `${MNOM[Number(l.date.slice(5, 7)) - 1]} ${l.date.slice(0, 4)}` : 'без дати'} · {l.label}{l.flag === 'receivable' ? ' · дебіторка' : ''}</span>
+                                <span>{l.date ? `${MNOM[Number(l.date.slice(5, 7)) - 1]} ${l.date.slice(0, 4)}` : 'без дати'} · {l.key?.startsWith('sup-') ? `платимо ${l.label}` : l.label}{l.partsCount > 1 && l.partNo ? ` · частина ${l.partNo}/${l.partsCount} (${Math.round(l.sharePct)}%)` : ''}{l.ownDays ? ' · відстрочка позиції' : ''}{l.manual ? ' · дата вручну' : ''}{l.flag === 'receivable' ? ' · дебіторка' : ''}</span>
                                 <b className={l.kind === 'income' ? 'fcn-in' : 'fcn-out'}>{l.kind === 'income' ? '+' : '−'}{n0(l.remaining)} ₴</b>
                                 <small>{dmy(l.date)}{l.estimated ? ' · орієнтовно' : ''}{l.overdue ? ' · прострочено' : ''}{l.fact > 0.5 ? ` · вже ${n0(l.fact)}` : ''}</small>
                               </div>

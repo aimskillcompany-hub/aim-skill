@@ -132,3 +132,5 @@
   .itn-more { width: var(--h-touch); height: var(--h-touch); }
   .itn-table tr.itn-sub { border: 1px solid var(--border); border-top: 0; border-radius: 0 0 var(--r-inner) var(--r-inner); padding: 0 14px 12px; margin-bottom: 10px; background: var(--surface-sunken); }
 }
+.itn-paydays { display: inline-flex; align-items: center; gap: 6px; margin-left: 12px; font-size: 12px; color: var(--muted); }
+.itn-paydays input { width: 56px; height: 26px; border: 1px solid var(--border); border-radius: 8px; padding: 0 6px; font: inherit; font-size: 12px; text-align: right; background: var(--surface); }
