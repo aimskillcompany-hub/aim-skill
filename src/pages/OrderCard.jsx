@@ -56,6 +56,7 @@ export default function OrderCard() {
   const { user } = useUser()
   const navigate = useNavigate()
   const [o, setO] = useState(null)
+  const [planRev, setPlanRev] = useState(0)   // перерахувати план (підсумки, прибуток) після збереження позицій — навіть якщо сума не змінилась
   const [lastSent, setLastSent] = useState(null)
   const [payment, setPayment] = useState(null) // прив'язана оплата клієнта (bank_transaction)
   const [qs] = useSearchParams()
@@ -193,7 +194,7 @@ export default function OrderCard() {
   const panel = (
     <>
       {tab === 'details' && <DetailsTab key={`${o.status}|${o.closed_at || ''}`} o={o} onSaved={load} />}
-      {tab === 'items' && <ItemsTab o={o} onChange={load} onDirty={setItemsDirty} />}
+      {tab === 'items' && <ItemsTab o={o} onChange={() => { load(); setPlanRev(n => n + 1) }} onDirty={setItemsDirty} />}
       {tab === 'proposals' && <ProposalsTab o={o} onChange={load} />}
       {tab === 'documents' && <DocumentsTab o={o} />}
       {tab === 'suppliers' && <SuppliersTab o={o} />}
@@ -216,7 +217,7 @@ export default function OrderCard() {
   )
 
   if (newUi) return (
-    <NewCardLayout o={o} payment={payment} busy={busy} msg={msg} overdue={overdue} tab={tab} tabs={tabs} switchTab={switchTab}
+    <NewCardLayout o={o} planRev={planRev} payment={payment} busy={busy} msg={msg} overdue={overdue} tab={tab} tabs={tabs} switchTab={switchTab}
       onBack={leaveCrumb} onStatus={setStatus} onArchive={archive} onUnarchive={unarchive} onOutcome={setOutcome} onCopy={copyOrder}
       onDelete={() => { setMsg(null); setConfirmDel(true) }} onUnlinkPayment={() => setAskUnlink(true)} panel={panel} dialogs={dialogs} />
   )
@@ -302,8 +303,8 @@ export default function OrderCard() {
 
 // Новий інтерфейс: шапка, підказки, вкладки + колонка праворуч (макет Order). План рахується тут, щоб
 // шапка (маржа) і колонка (прибуток) брали одне число.
-function NewCardLayout({ o, payment, busy, msg, overdue, tab, tabs, switchTab, onBack, onStatus, onArchive, onUnarchive, onOutcome, onCopy, onDelete, onUnlinkPayment, panel, dialogs }) {
-  const plan = useOrderPlan(o)
+function NewCardLayout({ o, planRev, payment, busy, msg, overdue, tab, tabs, switchTab, onBack, onStatus, onArchive, onUnarchive, onOutcome, onCopy, onDelete, onUnlinkPayment, panel, dialogs }) {
+  const plan = useOrderPlan(o, planRev)
   const lost = o.outcome === 'lost'
   return (
     <div className="ocn">
