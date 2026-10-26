@@ -46,7 +46,7 @@ export default function Documents() {
 
   const load = async () => {
     setLoading(true)
-    const base = 'id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, direction, created_at, contractor_id, storage_path, file_path, file_type, doc_role, ocr_data, source, generated_doc_id, contractors(name)'
+    const base = 'id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, direction, created_at, contractor_id, storage_path, file_path, file_type, doc_role, ocr_data, source, generated_doc_id, signed_scan_url, contractors(name)'
     // is_verified — міграція 029; якщо колонки ще нема, вантажимо без неї (сторінка не ламається)
     // posted=false — чернетка в замовленні (не проведено по системі), у реєстрі не показуємо
     const sel = (extra, filterPosted) => {

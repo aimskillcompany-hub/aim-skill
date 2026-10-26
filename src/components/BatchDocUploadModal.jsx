@@ -9,7 +9,9 @@ import { fmt } from '../lib/fmt'
 import { dirFromType, typeFromOcr, buildDocFileName } from './DocModal'
 import { todayKyiv } from '../lib/dates'
 
-// Масове завантаження: КОЖЕН файл = окремий документ (на відміну від DocModal,
+// Масове завантаження: КОЖЕН файл = окремий документ. Якщо такий документ уже є в системі (той самий тип і №;
+// контрагент — якщо розпізнано), за замовчуванням файл ПРИКРІПЛЮЄТЬСЯ до нього як підписаний скан
+// (documents.signed_scan_url, is_signed) — без нового документа. Інакше (на відміну від DocModal,
 // де кілька файлів = сторінки одного документа). Кожен файл розпізнається окремо,
 // далі — список-черга з полями + попередження про можливий дубль + чекбокс.
 // Batch створює лише рядки в `documents` (без авто-рухів складу — їх вмикають
@@ -42,23 +44,32 @@ export default function BatchDocUploadModal({ user, onClose, onSaved }) {
     }
   }
 
-  // Можливий дубль у БД: той самий тип + № + контрагент (сума як запасний ключ)
+  // Наявний документ у БД: той самий тип + № + контрагент (сума як запасний ключ). Сформовані в системі
+  // документи часто розпізнаються з іншим контрагентом (наша юрособа замість клієнта) — тоді шукаємо
+  // за типом і № у тому самому році (без контрагента), якщо такий документ один.
+  const COLS = 'id, doc_number, amount, doc_date, source, generated_doc_id, signed_scan_url, contractors(name)'
   const findDup = async (form) => {
     const num = (form.doc_number || '').trim()
     const amt = Number(form.amount) || null
     if (!num && !(form.contractor_id && amt != null)) return null
-    let dq = qc('documents').select('id, doc_number, amount, doc_date').eq('type', form.type)
+    let dq = qc('documents').select(COLS).eq('type', form.type)
     dq = form.contractor_id ? dq.eq('contractor_id', form.contractor_id) : dq.is('contractor_id', null)
     if (num) dq = dq.eq('doc_number', num); else dq = dq.eq('amount', amt)
     const { data } = await dq.limit(1)
-    return data?.[0] || null
+    if (data?.[0]) return data[0]
+    if (!num) return null
+    const y = (form.date || '').slice(0, 4)
+    let q2 = qc('documents').select(COLS).eq('type', form.type).eq('doc_number', num)
+    if (y) q2 = q2.gte('doc_date', `${y}-01-01`).lte('doc_date', `${y}-12-31`)
+    const { data: d2 } = await q2.limit(2)
+    return d2?.length === 1 ? d2[0] : null
   }
 
   const onPick = async (fileList) => {
     const files = Array.from(fileList || [])
     if (!files.length) return
     setPhase('review'); setBusy(true)
-    const base = files.map((file, i) => ({ id: `${i}_${file.name}`, file, status: 'pending', form: null, dup: null, include: true, error: null }))
+    const base = files.map((file, i) => ({ id: `${i}_${file.name}`, file, status: 'pending', form: null, dup: null, include: true, mode: 'new', error: null }))
     setItems(base)
     const articles = await fetchArticles().catch(() => [])
     const matcher = await getContractorMatcher()
@@ -75,7 +86,8 @@ export default function BatchDocUploadModal({ user, onClose, onSaved }) {
         const inBatch = seen.includes(key) && (form.doc_number || form.contractor_id)
         seen.push(key)
         const dup = dbDup ? { ...dbDup, where: 'db' } : (inBatch ? { where: 'batch' } : null)
-        setItems(prev => prev.map((it, j) => j === i ? { ...it, status: 'done', form, dup, include: !dup } : it))
+        // наявний у базі → прикріпити скан; дубль у цій пачці → пропустити
+        setItems(prev => prev.map((it, j) => j === i ? { ...it, status: 'done', form, dup, mode: dup?.where === 'db' ? 'attach' : 'new', include: dup?.where !== 'batch' } : it))
       } catch (e) {
         setItems(prev => prev.map((it, j) => j === i ? { ...it, status: 'error', form: mapOcr({ origName: file.name }, matcher), error: e.message } : it))
       }
@@ -98,6 +110,12 @@ export default function BatchDocUploadModal({ user, onClose, onSaved }) {
         const path = `${Date.now()}_${f.name}`.replace(/[^\w.\-/]/g, '_')
         const { error: upErr } = await supabase.storage.from('documents').upload(path, f, { upsert: false })
         if (upErr && !upErr.message.includes('exists')) throw upErr
+        if (it.mode === 'attach' && it.dup?.id) {
+          // скан до наявного документа: сформований PDF лишається, скан — у signed_scan_url
+          const { error } = await qc('documents').update({ signed_scan_url: path, is_signed: true }).eq('id', it.dup.id)
+          if (error) throw error
+          ok++; continue
+        }
         const num = (it.form.doc_number || '').trim()
         const ins = {
           type: it.form.type,
@@ -127,6 +145,7 @@ export default function BatchDocUploadModal({ user, onClose, onSaved }) {
 
   const doneCount = items.filter(it => it.status === 'done' || it.status === 'error').length
   const selCount = items.filter(it => it.include).length
+  const attachCount = items.filter(it => it.include && it.mode === 'attach').length
 
   return (
     <div className="modal-bg" onClick={busy ? undefined : onClose}>
@@ -149,7 +168,7 @@ export default function BatchDocUploadModal({ user, onClose, onSaved }) {
         {phase !== 'pick' && (
           <>
             {progress && <p style={{ color: 'var(--text2)', margin: '0 0 10px' }}><i className="ti ti-loader" /> {progress}</p>}
-            {phase === 'review' && !busy && <p style={{ color: 'var(--text2)', margin: '0 0 10px' }}>Розпізнано {doneCount}/{items.length}. Перевірте поля, зніміть галочку з дублів, тоді «Зберегти обрані».</p>}
+            {phase === 'review' && !busy && <p style={{ color: 'var(--text2)', margin: '0 0 10px' }}>Розпізнано {doneCount}/{items.length}. Якщо документ уже є в системі (наприклад, сформований), скан прикріпиться до нього — нового не буде. Перевірте поля, тоді «Зберегти обрані».</p>}
             <div className="tbl-wrap" style={{ maxHeight: '55vh', overflow: 'auto' }}>
               <table>
                 <thead><tr>
@@ -185,7 +204,15 @@ export default function BatchDocUploadModal({ user, onClose, onSaved }) {
                         {it.status === 'pending' && <span style={{ color: 'var(--text3)' }}>очікує</span>}
                         {it.status === 'ocr' && <span style={{ color: 'var(--text2)' }}><i className="ti ti-loader" /> розпізнавання…</span>}
                         {it.status === 'done' && !it.dup && <span style={{ color: 'var(--green)' }}><i className="ti ti-check" /> готово</span>}
-                        {it.status === 'done' && it.dup && <span style={{ color: 'var(--amber, #b45309)' }} title={it.dup.where === 'db' ? `Уже є: №${it.dup.doc_number || '—'}${it.dup.amount != null ? ` на ${fmt(it.dup.amount)}` : ''}${it.dup.doc_date ? ` від ${it.dup.doc_date}` : ''}` : 'Дубль у цій пачці'}><i className="ti ti-copy" /> можливий дубль{it.dup.where === 'batch' ? ' (у пачці)' : ''}</span>}
+                        {it.status === 'done' && it.dup?.where === 'db' && <>
+                          <select className="form-input" style={{ fontSize: 12, padding: '2px 4px' }} value={it.mode} disabled={busy} aria-label="Що зробити з файлом"
+                            onChange={e => setItems(prev => prev.map(x => x.id === it.id ? { ...x, mode: e.target.value } : x))}>
+                            <option value="attach">Прикріпити скан до наявного</option>
+                            <option value="new">Створити новий документ</option>
+                          </select>
+                          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>є: №{it.dup.doc_number || '—'}{it.dup.doc_date ? ` від ${it.dup.doc_date.split('-').reverse().join('.')}` : ''}{it.dup.amount != null ? ` · ${fmt(it.dup.amount)}` : ''}{it.dup.contractors?.name ? ` · ${it.dup.contractors.name}` : ''}{it.dup.signed_scan_url ? ' · скан уже є — замінимо' : ''}</div>
+                        </>}
+                        {it.status === 'done' && it.dup?.where === 'batch' && <span style={{ color: 'var(--amber, #b45309)' }} title="Дубль у цій пачці"><i className="ti ti-copy" /> дубль у пачці</span>}
                         {it.status === 'error' && <span style={{ color: 'var(--red, #dc2626)' }} title={it.error}><i className="ti ti-alert-triangle" /> OCR не вдалось</span>}
                       </td>
                     </tr>
@@ -198,7 +225,7 @@ export default function BatchDocUploadModal({ user, onClose, onSaved }) {
               <span style={{ color: 'var(--text2)', fontSize: 13 }}>Обрано до збереження: <b>{selCount}</b> з {items.length}</span>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn" onClick={onClose} disabled={busy}>{phase === 'done' ? 'Закрити' : 'Скасувати'}</button>
-                {phase !== 'done' && <button className="btn btn-primary" onClick={saveAll} disabled={busy || !selCount || doneCount < items.length}><i className="ti ti-device-floppy" /> Зберегти обрані ({selCount})</button>}
+                {phase !== 'done' && <button className="btn btn-primary" onClick={saveAll} disabled={busy || !selCount || doneCount < items.length}><i className="ti ti-device-floppy" /> Зберегти обрані ({selCount}{attachCount ? `, з них скан до наявних: ${attachCount}` : ''})</button>}
               </div>
             </div>
           </>
