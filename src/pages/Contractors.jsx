@@ -9,6 +9,7 @@ import { useCompany } from '../lib/company'
 import { loadContractorTurnover } from '../lib/debts'
 import { useNewUi } from '../lib/uiPrefs'
 import ContractorsNew from './ContractorsNew'
+import ContractorsExcelModal from '../components/ContractorsExcelModal'
 
 export default function Contractors() {
   const { user } = useUser()
@@ -19,6 +20,7 @@ export default function Contractors() {
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState('all') // all | client | supplier
   const [showNew, setShowNew] = useState(false)
+  const [showXls, setShowXls] = useState(false)
   const newUi = useNewUi()
 
   const load = async () => {
@@ -61,7 +63,8 @@ export default function Contractors() {
   if (newUi) return (
     <>
       <ContractorsNew list={list} loading={loading} q={q} setQ={setQ} filter={filter} setFilter={setFilter} companies={companies}
-        onNew={() => setShowNew(true)} navigate={navigate} />
+        onNew={() => setShowNew(true)} navigate={navigate} onExcel={() => setShowXls(true)} />
+      {showXls && <ContractorsExcelModal onClose={() => setShowXls(false)} onDone={() => { setShowXls(false); load() }} />}
       {showNew && <NewContractorModal user={user} onClose={() => setShowNew(false)} onCreated={(id) => { setShowNew(false); navigate(`/contractors/${id}`) }} />}
     </>
   )

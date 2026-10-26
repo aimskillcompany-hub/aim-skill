@@ -26,7 +26,7 @@ function ago(iso) {
 const SORTS = [['turnover', 'оборот', 'За оборотом'], ['debt', 'борг', 'За боргом'], ['last', 'остання операція', 'За останньою операцією'], ['name', 'назва', 'За назвою']]
 const typeOf = (c) => c.is_client && c.is_supplier ? 'both' : c.is_client ? 'client' : c.is_supplier ? 'supplier' : 'none'
 
-export default function ContractorsNew({ list, loading, q, setQ, filter, setFilter, companies, onNew, navigate }) {
+export default function ContractorsNew({ list, loading, q, setQ, filter, setFilter, companies, onNew, navigate, onExcel }) {
   const grp = useGroupContractors()
   const [sortKey, setSortKey] = useState('turnover')
   const [shown, setShown] = useState(PAGE)
@@ -94,6 +94,7 @@ export default function ContractorsNew({ list, loading, q, setQ, filter, setFilt
         </div>
         <div className="ctn-head-actions">
           <Button variant="secondary" onClick={() => navigate('/bank?tab=import')} className="ctn-import">Імпорт з виписки</Button>
+          {onExcel && <Button variant="secondary" icon="ti-file-spreadsheet" onClick={onExcel} className="ctn-import">Excel</Button>}
           <Button variant="brand" icon="ti-plus" onClick={onNew} className="ctn-new">Новий контрагент</Button>
           <button type="button" className="ctn-import-sm" onClick={() => navigate('/bank?tab=import')} aria-label="Імпорт з виписки"><i className="ti ti-upload" aria-hidden="true" /></button>
         </div>
