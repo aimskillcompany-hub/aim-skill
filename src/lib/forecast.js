@@ -179,6 +179,9 @@ export async function buildOrderForecasts({ orderIds = null } = {}) {
         perTx(sDocs.flatMap(d => (paysOfDoc[d.id] || []).map(t => ({ txId: t.transaction_id, amount: t.amount })))),
       ]) : 0
       let received = sDocs.reduce((s, d) => s + Math.abs(Number(d.amount) || 0), 0)
+      // «Оплачено повністю» (рядок kind='supplier_settled'): заплатили менше за план — залишок закрито, різниця — економія
+      const settled = pl.some(x => x.kind === 'supplier_settled' && (x.supplier_id || null) === sid)
+      const factAll = fact
       const rows = pl.filter(x => x.kind === 'supplier' && (x.supplier_id || null) === sid).sort((x, y) => (x.part_no || 1) - (y.part_no || 1))
       const subDue = (subBy[o.id] || []).find(s => (s.supplier_id || null) === sid && s.payment_due_date)?.payment_due_date
       const baseDate = rows.find(x => x.base_date)?.base_date || null
@@ -217,10 +220,11 @@ export async function buildOrderForecasts({ orderIds = null } = {}) {
       Object.values(late).forEach(x => sLines.push({ key: `sup-${key}-s${x.ship}-d${x.days}`, partNo: null, sharePct: null, days: x.days, manual: false, ownDays: true, itemShip: x.ship,
         plan: x.v, date: addDays(x.ship, x.days), estimated: false }))
       sLines.sort((x, y) => (x.date || '').localeCompare(y.date || ''))
+      const saving = settled ? r2(Math.max(0, b.gross - factAll)) : 0
       sLines.forEach(l => {
         const f = Math.min(Math.max(0, fact), l.plan); fact -= f
         const rcv = Math.min(Math.max(0, received), l.plan); received -= rcv
-        push({ ...l, kind: 'expense', label, supplierId: sid, baseDate, defDays, partsCount: parts.length, fact: f, payableShare: rcv })
+        push({ ...l, kind: 'expense', label, supplierId: sid, baseDate, defDays, partsCount: parts.length, fact: settled ? l.plan : f, factReal: f, payableShare: settled ? 0 : rcv, settled, saving })
       })
     })
     // кредиторка: частина залишку, на яку вже є прихідні (отримано, не оплачено)
@@ -307,6 +311,17 @@ export async function forecastNetByDate(toDate) {
     else { expense += x.amount; payablePay += x.payablePart || 0 }
   })
   return { income: r2(income), expense: r2(expense), net: r2(income - expense), receivableCollect: r2(receivableCollect), payablePay: r2(payablePay), items: within }
+}
+
+// «Оплачено повністю»: постачальнику в цьому замовленні більше нічого не платимо (заплатили менше за план)
+export async function setSupplierSettled(orderId, supplierId, on) {
+  let q = supabase.from('order_payment_plan').delete().eq('order_id', orderId).eq('kind', 'supplier_settled')
+  q = supplierId ? q.eq('supplier_id', supplierId) : q.is('supplier_id', null)
+  const { error: dErr } = await q
+  if (dErr) throw dErr
+  if (!on) return
+  const { error } = await supabase.from('order_payment_plan').insert({ order_id: orderId, kind: 'supplier_settled', supplier_id: supplierId || null })
+  if (error) throw error
 }
 
 export async function addForecastItem({ orderId = null, companyId, kind, amount, expectedDate, note, userId }) {
