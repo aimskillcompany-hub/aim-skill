@@ -134,3 +134,6 @@
 }
 .itn-paydays { display: inline-flex; align-items: center; gap: 6px; margin-left: 12px; font-size: 12px; color: var(--muted); }
 .itn-paydays input { width: 56px; height: 26px; border: 1px solid var(--border); border-radius: 8px; padding: 0 6px; font: inherit; font-size: 12px; text-align: right; background: var(--surface); }
+
+.itn-shipdate input { width: 132px; text-align: left; }
+.itn-shipdate button { border: 0; background: none; color: var(--muted); font-size: 15px; line-height: 1; cursor: pointer; padding: 0 2px; }

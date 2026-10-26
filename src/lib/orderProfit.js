@@ -146,14 +146,14 @@ export async function loadOrderProfit(o, { vatOn = true } = {}) {
     const sign = l.kind === 'income' ? 1 : -1
     run = r2(run + sign * l.plan)
     const paid = l.fact >= l.plan - 0.5, part = !paid && l.fact > 0.5
-    const isClient = l.key === 'client' || l.key === 'client-recv'
+    const isClient = l.key === 'client' || l.key === 'client-recv' || l.key.startsWith('client-s')
     const when = paid ? (isClient ? lastPay('client') : l.key.startsWith('sup-') ? lastPay('supplier', l.supplierId) : null) : null
     const late = paid && when && l.date ? days(l.date, when) : null
     return {
       key: l.key, date: l.date, label: isClient ? `Оплата від ${o.contractors?.name || 'клієнта'}` : l.key.startsWith('sup-') ? (l.supplierId ? `Платимо ${l.label}` : 'Постачальника не вказано') : l.label,
       // постачальник (103): частина оплати, дні, ручна дата
       supplierId: l.supplierId ?? null, isSupplier: l.key.startsWith('sup-'), partNo: l.partNo ?? null, partsCount: l.partsCount ?? 1, sharePct: l.sharePct ?? null,
-      days: l.days ?? null, manual: !!l.manual, ownDays: !!l.ownDays, baseDate: l.baseDate ?? null, defDays: l.defDays ?? null,
+      days: l.days ?? null, manual: !!l.manual, ownDays: !!l.ownDays, itemShip: l.itemShip ?? null, baseDate: l.baseDate ?? null, defDays: l.defDays ?? null,
       kind: l.kind, amount: r2(sign * l.plan), fact: r2(l.fact), plan: r2(l.plan), paid, part, when, late,
       estimated: l.estimated && !paid, overdue: l.overdue, after: run,
       warn: l.key.startsWith('sup-') && !l.supplierId ? 'supplier' : (isClient && !paid && !l.fact && (l.overdue || !o.paid_transaction_id)) ? 'client' : null,

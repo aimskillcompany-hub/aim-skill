@@ -179,8 +179,10 @@ export default function OrderProfitNew({ o, onOrderChange }) {
                 <span className={`opn-st ${c.paid ? (c.late > 0 ? 'is-late' : 'is-ok') : c.part ? 'is-part' : c.overdue ? 'is-late' : ''}`}>
                   {c.paid ? `${c.kind === 'income' ? 'отримано' : 'оплачено'}${c.when ? ' ' + dm(c.when) : ''}${c.late > 0 ? ` · +${c.late} дн.` : ''}` : c.part ? `отримано ${n0(c.fact)} з ${n0(c.plan)}` : c.overdue ? 'прострочено' : c.estimated ? 'орієнтовно' : 'заплановано'}</span></div>
               <span className="opn-pay-l">{c.label}</span>
+              {!c.isSupplier && c.itemShip && <span className="opn-terms">позиції з відвантаженням {dm(c.itemShip)}</span>}
               {c.isSupplier && <span className="opn-terms">
-                {c.ownDays ? `відстрочка позиції · ${c.days > 0 ? 'через ' + c.days : c.days < 0 ? 'за ' + -c.days + ' до' : 'у день'} дн.`
+                {c.itemShip ? `позиції з відвантаженням ${dm(c.itemShip)} · ${c.days > 0 ? 'через ' + c.days + ' дн.' : c.days < 0 ? 'передоплата за ' + -c.days + ' дн.' : 'у день відвантаження'}`
+                  : c.ownDays ? `відстрочка позиції · ${c.days > 0 ? 'через ' + c.days : c.days < 0 ? 'за ' + -c.days + ' до' : 'у день'} дн.`
                   : <>{c.partsCount > 1 ? `частина ${c.partNo}/${c.partsCount} · ${Math.round(c.sharePct)}% · ` : ''}{c.manual ? 'дата вручну' : c.days > 0 ? `через ${c.days} дн. від ${c.baseDate ? 'отримання' : 'відвантаження'}` : c.days < 0 ? `передоплата за ${-c.days} дн.` : `у день ${c.baseDate ? 'отримання' : 'відвантаження'}`}</>}
                 {c.manual && !c.paid && <button type="button" onClick={() => setPartDate(c, '')} title="Повернути розрахункову дату">скинути</button>}
               </span>}
