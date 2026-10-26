@@ -1685,6 +1685,7 @@ const SUB_STATUS = { new: 'Новий', ordered: 'Замовлено', in_transi
 // ───────── Склад ─────────
 // Рухи замовлення: прив'язані напряму (stock_movements.order_id), через документ замовлення (documents.order_id —
 // видаткові, прихідні) і через субзамовлення (supplier_orders.order_id) — те саме правило, що в звірці відвантажень.
+// Приходи, з яких списано товар замовлення (FIFO, stock_allocations), — теж; к-сть: «скільки з партії пішло в замовлення».
 const MOV_COLS = 'id, type, quantity, price, cost_price, date, document_id, order_id, supplier_order_id, products(name)'
 function StockTab({ o }) {
   const [rows, setRows] = useState(null)
@@ -1704,6 +1705,21 @@ function StockTab({ o }) {
         soIds.length ? supabase.from('stock_movements').select(MOV_COLS).in('supplier_order_id', soIds) : { data: [] },
       ])
       const all = {}; [...(direct || []), ...(byDoc || []), ...(bySo || [])].forEach(m => { all[m.id] = m })
+      // приходи за FIFO: партії, з яких списано видатки замовлення
+      const outIds = Object.values(all).filter(m => m.type !== 'in').map(m => m.id)
+      if (outIds.length) {
+        const allocs = []
+        for (let i = 0; i < outIds.length; i += 200) {
+          const { data: a } = await supabase.from('stock_allocations').select('in_movement_id, qty').in('out_movement_id', outIds.slice(i, i + 200))
+          allocs.push(...(a || []))
+        }
+        const qtyByIn = {}; allocs.forEach(a => { qtyByIn[a.in_movement_id] = (qtyByIn[a.in_movement_id] || 0) + (Number(a.qty) || 0) })
+        const inIds = Object.keys(qtyByIn).filter(id => !all[id])
+        for (let i = 0; i < inIds.length; i += 200) {
+          const { data: ins } = await supabase.from('stock_movements').select(MOV_COLS).in('id', inIds.slice(i, i + 200))
+          ;(ins || []).forEach(m => { all[m.id] = { ...m, allocQty: Math.round(qtyByIn[m.id] * 1e4) / 1e4 } })
+        }
+      }
       const list = Object.values(all)
       // номери документів (і для рухів, прив'язаних напряму)
       const docById = {}; (docs || []).forEach(d => { docById[d.id] = d })
@@ -1717,16 +1733,16 @@ function StockTab({ o }) {
   }, [o.id])
   if (rows == null) return <Loading />
   if (err) return <Callout tone="danger" title="Не вдалося завантажити рухи складу." text={err} />
-  if (!rows.length) return <Empty text="Складських рухів за замовленням немає" hint="Тут з'являться прихід і відвантаження товарів цього замовлення: з документів замовлення, субзамовлень і рухів, прив'язаних до нього." />
-  const inQ = rows.filter(m => m.type === 'in').reduce((s2, m) => s2 + (Number(m.quantity) || 0), 0)
+  if (!rows.length) return <Empty text="Складських рухів за замовленням немає" hint="Тут з'являться прихід і відвантаження товарів цього замовлення: з документів замовлення, субзамовлень, рухів, прив'язаних до нього, і партій, з яких списано товар." />
+  const inQ = rows.filter(m => m.type === 'in').reduce((s2, m) => s2 + (m.allocQty != null ? m.allocQty : Number(m.quantity) || 0), 0)
   const outQ = rows.filter(m => m.type !== 'in').reduce((s2, m) => s2 + (Number(m.quantity) || 0), 0)
   return <>
     <p style={{ fontSize: 13, color: 'var(--text2)', margin: '0 0 10px' }}>Прихід: <b>{inQ}</b> од. · Видаток: <b>{outQ}</b> од. · рухів: {rows.length}</p>
     <Table head={['Товар', 'Тип', 'К-сть', 'Ціна', 'Собівартість', 'Документ', 'Дата']}>
       {rows.map(m => <tr key={m.id}>
         <td><div className="trunc">{m.products?.name || '—'}</div></td>
-        <td>{m.type === 'in' ? 'Прихід' : 'Видаток'}</td>
-        <td style={{ textAlign: 'right' }}>{m.quantity}</td>
+        <td>{m.type === 'in' ? (m.allocQty != null ? 'Прихід (партія)' : 'Прихід') : 'Видаток'}</td>
+        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{m.allocQty != null ? <>{m.allocQty}<span style={{ color: 'var(--text3)', fontSize: 12 }}> з {m.quantity}</span></> : m.quantity}</td>
         <td style={{ textAlign: 'right' }}>{m.price != null ? fmt(m.price) : '—'}</td>
         <td style={{ textAlign: 'right' }}>{m.cost_price != null ? fmt(m.cost_price) : '—'}</td>
         <td>{m.doc ? <>{m.doc.doc_number || '—'}{m.doc.doc_date && <span style={{ color: 'var(--text3)', fontSize: 12 }}> · {String(m.doc.doc_date).slice(0, 10).split('-').reverse().join('.')}</span>}</> : m.supplier_order_id ? 'субзамовлення' : '—'}</td>
