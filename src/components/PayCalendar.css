@@ -1,0 +1,144 @@
+/* «Прогноз → Платіжний календар» (ТЗ 04; макет PayCalendar). Лише токени. */
+.pc { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.pc h2 { margin: 0; font-size: 17px; font-weight: 700; display: flex; align-items: center; }
+.pc-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); padding: 18px 22px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.pc-card-h { display: flex; justify-content: space-between; align-items: center; gap: 10px 16px; flex-wrap: wrap; }
+
+/* шапка */
+.pc-hero { background: var(--ink); color: var(--surface); border-radius: var(--r-card); padding: 22px 26px; display: flex; flex-direction: column; gap: 16px; }
+.pc-hero-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px 32px; flex-wrap: wrap; }
+.pc-gap { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pc-lbl { font-size: 13px; color: var(--on-dark-muted); display: inline-flex; align-items: center; }
+.pc-gap-v { font-size: 44px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.pc-gap-v.is-neg { color: var(--on-dark-neg); } .pc-gap-v.is-ok { color: var(--on-dark-pos); font-size: 32px; }
+.pc-gap small { font-size: 13px; color: var(--on-dark-muted); }
+.pc-kpis { display: flex; gap: 12px 36px; margin: 0; flex-wrap: wrap; }
+.pc-kpis > div { display: flex; flex-direction: column; gap: 2px; }
+.pc-kpis dt { font-size: 12px; color: var(--on-dark-muted); }
+.pc-kpis dd { margin: 0; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.pc-kpis dd.is-pos { color: var(--on-dark-pos); } .pc-kpis dd.is-neg { color: var(--on-dark-neg); }
+.pc-cause { margin: 0; padding: 12px 16px; border-radius: 14px; background: var(--ink-field); color: var(--on-dark-neg); font-size: 13px; line-height: 1.5; }
+
+/* що зробити */
+.pc-acts { list-style: none; margin: 0 -22px; padding: 0; }
+.pc-acts li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto auto; align-items: center; gap: 4px 16px; padding: 12px 22px; border-top: 1px solid var(--divider); }
+.pc-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted-2); display: inline-block; flex: none; }
+.pc-dot.is-danger { background: var(--danger-fg); } .pc-dot.is-info { background: var(--blue); } .pc-dot.is-warn { background: var(--expense-chart); }
+.pc-dot.is-amber { background: var(--warn-mark); } .pc-dot.is-muted { background: var(--muted-2); }
+.pc-act-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pc-act-t b { font-size: 14px; } .pc-act-t span { font-size: 13px; color: var(--muted); line-height: 1.4; }
+.pc-act-sum { font-size: 16px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.pc-act-sum.is-neg { color: var(--danger-fg); } .pc-act-sum.is-pos { color: var(--brand-dark); } .pc-act-sum.is-info { color: var(--blue); }
+.pc-act-btn { display: flex; justify-content: flex-end; }
+.pc-act-btn .btn { white-space: nowrap; }
+
+/* легенда */
+.pc-legend { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.pc-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.pc-sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.pc-sw.is-in { background: var(--brand); } .pc-sw.is-out { background: var(--expense-chart); } .pc-sw.is-line { height: 2px; width: 14px; background: var(--ink); border-radius: 0; }
+.pc-ex { display: inline-flex; align-items: center; gap: 6px; color: var(--text); font-weight: 600; cursor: pointer; }
+.pc-ex input { width: 16px; height: 16px; accent-color: var(--ink); }
+.pc-tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 700; margin-left: 6px; white-space: nowrap; }
+.pc-legend .pc-tag { margin-left: 0; }
+.pc-tag.is-est { background: var(--warn-bg); color: var(--warn-fg); } .pc-tag.is-late { background: var(--danger-soft-bg); color: var(--danger-fg); }
+.pc-filter { border: 0; background: var(--surface-sunken); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 12px; font-weight: 600; color: var(--text); cursor: pointer; }
+
+/* графік */
+.pc-chart { position: relative; min-width: 0; }
+.pc-chart-scroll { overflow-x: auto; overflow-y: hidden; }
+.pc-chart svg { display: block; }
+.pc-neg-zone { fill: var(--danger-soft-bg); opacity: .6; }
+.pc-grid { stroke: var(--divider); stroke-width: 1; } .pc-zero { stroke: var(--ink); stroke-width: 1.2; }
+.pc-ytick { font-size: 11px; fill: var(--muted); text-anchor: end; }
+.pc-xtick { font-size: 11px; fill: var(--muted); }
+.pc-bar-in { fill: var(--brand); } .pc-bar-out { fill: var(--expense-chart); }
+.pc-line { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+.pc-pt { fill: var(--ink); stroke: var(--surface); stroke-width: 1.5; } .pc-pt.is-neg { fill: var(--danger-fg); }
+.pc-gap-l { font-size: 12px; font-weight: 700; fill: var(--danger-fg); }
+.pc-hover-l { stroke: var(--border-strong); stroke-dasharray: 3 3; }
+.pc-tip { position: absolute; top: 8px; width: 180px; padding: 10px 12px; border-radius: 12px; background: var(--ink); color: var(--surface); font-size: 12px; display: flex; flex-direction: column; gap: 3px; pointer-events: none; box-shadow: var(--shadow-pop); z-index: 2; }
+.pc-tip span { display: flex; justify-content: space-between; gap: 8px; color: var(--on-dark-muted); }
+.pc-tip b { color: var(--surface); font-variant-numeric: tabular-nums; } .pc-tip b.is-neg { color: var(--on-dark-neg); } .pc-tip b.is-pos { color: var(--on-dark-pos); }
+
+/* тримають гроші */
+.pc-hold { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.pc-hold li { display: grid; grid-template-columns: minmax(140px, 220px) minmax(0, 1fr) 130px 150px; align-items: center; gap: 16px; }
+.pc-hold-n { font-size: 13px; min-width: 0; } .pc-hold-n a { font-weight: 700; color: var(--brand-dark); text-decoration: none; } .pc-hold-n small { color: var(--muted); }
+.pc-hold-bar { height: 8px; border-radius: 999px; background: var(--surface-sunken); overflow: hidden; }
+.pc-hold-bar i { display: block; height: 100%; border-radius: 999px; background: var(--expense-chart); } .pc-hold-bar i.is-bad { background: var(--danger-fg); }
+.pc-hold-v { color: var(--danger-fg); font-size: 16px; font-variant-numeric: tabular-nums; text-align: right; }
+.pc-hold-p { font-size: 12px; color: var(--muted); text-align: right; } .pc-hold-p.is-bad { color: var(--danger-fg); }
+
+/* таблиця */
+.pc-tbl-card { padding-left: 0; padding-right: 0; padding-bottom: 0; overflow: hidden; }
+.pc-tbl-card > .pc-card-h { padding: 0 22px; }
+.pc-tbl-wrap { overflow-x: auto; }
+.pc-tbl { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; font-size: 13px; }
+.pc-tbl th, .pc-tbl td { padding: 9px 12px; border-top: 1px solid var(--divider); white-space: nowrap; font-weight: 400; text-align: left; background: var(--surface); }
+.pc-tbl thead th { font-size: 12px; color: var(--muted); font-weight: 600; border-top: 1px solid var(--divider); vertical-align: bottom; }
+.pc-tbl thead th small { display: block; font-size: 10px; font-weight: 500; color: var(--muted-2); }
+.pc-tbl .is-num { text-align: right; font-variant-numeric: tabular-nums; min-width: 92px; }
+.pc-tbl .is-today { background: var(--brand-soft); } .pc-tbl thead .is-today { color: var(--brand-dark); }
+.pc-sticky { position: sticky; left: 0; z-index: 1; min-width: 260px; max-width: 340px; box-shadow: 1px 0 0 var(--divider); }
+.pc-tbl .is-neg { color: var(--danger-fg); } .pc-tbl .is-pos { color: var(--brand-dark); }
+.pc-row-bal th, .pc-row-bal td { font-weight: 700; background: var(--surface-sunken); }
+.pc-row-bal td.is-today { background: var(--brand-soft); }
+.pc-row-g th, .pc-row-g td { font-weight: 700; }
+.pc-row-g button { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; color: var(--text); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.pc-row-g button .ti { font-size: 14px; color: var(--muted); }
+.pc-row-s th { padding-left: 34px; white-space: normal; }
+.pc-row-s th small { color: var(--muted); margin-left: 6px; }
+.pc-row-s td { color: var(--text2); }
+.pc-row-net th, .pc-row-net td { font-weight: 700; background: var(--surface-sunken); }
+.pc-row-net td.is-today { background: var(--brand-soft); }
+.pc-row-end th, .pc-row-end td { font-weight: 700; border-top: 2px solid var(--ink); }
+.pc-tbl td.is-neg-bg { background: var(--danger-soft-bg); color: var(--danger-fg); }
+.pc-days { display: none; }
+
+.pc-foot { margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--muted); padding: 12px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); }
+.pc-foot a { color: var(--brand-dark); font-weight: 600; }
+
+/* модалка «Прив'язати» */
+.pc-modal-p { margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+.pc-pairs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.pc-pairs li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 14px; border: 1px solid var(--border); border-radius: 14px; }
+.pc-pairs li > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pc-pairs small { font-size: 12px; color: var(--muted); }
+
+/* шапка сторінки: підзаголовок і перемикач юрособи */
+.pc-page-h { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.pc-sub { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+
+@media (max-width: 1023px) {
+  .pc-hold li { grid-template-columns: minmax(120px, 180px) minmax(0, 1fr) 110px; }
+  .pc-hold-p { grid-column: 3; }
+}
+@media (max-width: 767px) {
+  .pc-card { padding: 14px; border-radius: var(--r-card-mobile); }
+  .pc-hero { padding: 18px; border-radius: var(--r-card-mobile); }
+  .pc-gap-v { font-size: 32px; }
+  .pc-kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; }
+  .pc-kpis dd { font-size: 18px; }
+  .pc-acts { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+  .pc-acts li { grid-template-columns: 10px minmax(0, 1fr) auto; padding: 12px; border: 1px solid var(--border); border-radius: 14px; }
+  .pc-act-btn { grid-column: 1 / -1; } .pc-act-btn .btn { width: 100%; justify-content: center; }
+  .pc-hold li { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; }
+  .pc-hold-bar { display: none; }
+  .pc-hold-p { grid-column: 1 / -1; text-align: left; }
+  .pc-tbl-wrap { display: none; }
+  .pc-tbl-card { padding: 14px 0 0; }
+  .pc-tbl-card > .pc-card-h { padding: 0 14px; }
+  .pc-days { display: flex; flex-direction: column; list-style: none; margin: 0; padding: 0; }
+  .pc-days > li { border-top: 1px solid var(--divider); }
+  .pc-days > li.is-neg > button { background: var(--danger-soft-bg); }
+  .pc-days > li > button { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 0; background: var(--surface); font: inherit; color: var(--text); text-align: left; cursor: pointer; }
+  .pc-days > li > button > span { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .pc-days small { font-size: 12px; color: var(--muted); }
+  .pc-day-end { font-variant-numeric: tabular-nums; } .pc-days li.is-neg .pc-day-end { color: var(--danger-fg); }
+  .pc-day-rows { list-style: none; margin: 0; padding: 4px 14px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .pc-day-rows li { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+  .pc-day-rows li > span { min-width: 0; }
+  .pc-day-rows b { font-variant-numeric: tabular-nums; white-space: nowrap; } .pc-day-rows .is-neg { color: var(--danger-fg); } .pc-day-rows .is-pos { color: var(--brand-dark); }
+  .pc-pairs li { grid-template-columns: minmax(0, 1fr); }
+}

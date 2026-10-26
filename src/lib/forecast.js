@@ -65,7 +65,7 @@ async function inChunks(table, cols, col, ids, mod) {
 // Розрахунок рядків прогнозу для замовлень. orderIds — конкретні (картка замовлення) або всі in_forecast.
 export async function buildOrderForecasts({ orderIds = null } = {}) {
   let oq = supabase.from('orders')
-    .select('id, order_number, status, outcome, archived_at, company_id, client_id, total, agent_commission_pct, commission_paid, paid_transaction_id, in_forecast, contractors(name), companies(short_name, name, is_vat_payer)')
+    .select('id, order_number, status, outcome, archived_at, company_id, client_id, manager_id, total, agent_commission_pct, commission_paid, paid_transaction_id, in_forecast, contractors(name), companies(short_name, name, is_vat_payer)')
   oq = orderIds ? oq.in('id', orderIds) : oq.eq('in_forecast', true)
   const { data: ordersRaw, error: oErr } = await oq.order('order_number')
   if (oErr) throw oErr
@@ -238,7 +238,7 @@ export async function buildOrderForecasts({ orderIds = null } = {}) {
     return {
       id: o.id, number: o.order_number || o.id.slice(0, 6), status: o.status, inForecast: !!o.in_forecast,
       companyId: o.company_id, company: o.companies?.short_name || o.companies?.name || '—',
-      client: o.contractors?.name || '—', vatOn, plan,
+      client: o.contractors?.name || '—', clientId: o.client_id, managerId: o.manager_id || null, vatOn, plan,
       lines: visible, income, expense, net: r2(income - expense),
       planNet, checkNet: r2(plan.net + plan.tax), // Σ плану має = чистий прибуток + податок 18%
       shipDate, shipEst, clientDate, flags,
