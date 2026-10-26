@@ -21,6 +21,7 @@ import { PageHeader, Segmented, StatusPill, TableSkeleton, EmptyState, Modal, Bu
 import { formatMoney, formatDate } from '../utils/format'
 import './Orders.css'
 import OrdersNew from './OrdersNew'
+import OrdersExcelModal from '../components/OrdersExcelModal'
 import { useNewUi } from '../lib/uiPrefs'
 
 export default function Orders() {
@@ -38,6 +39,7 @@ export default function Orders() {
   const [manager, setManager] = useState('')
   const [stage, setStage] = useState(null)
 
+  const [showXls, setShowXls] = useState(false)
   const load = async () => {
     setLoading(true)
     const [{ data: ords }, { data: props }, { data: subs }, { data: profs }] = await Promise.all([
@@ -201,7 +203,8 @@ export default function Orders() {
         linking={linking} autoLinkPayments={autoLinkPayments} onNew={() => setShowNew(true)} navigate={navigate}
         flags={{ toggleInvestor, toggleForecast, toggleCommission }} sort={sort} onSort={onSort}
         kanban={<Kanban orders={filtered} type={filter} onOpen={(id) => navigate(`/orders/${id}`)} />}
-        report={<OrderReport />} />
+        report={<OrderReport />} onExcel={() => setShowXls(true)} />
+      {showXls && <OrdersExcelModal onClose={() => setShowXls(false)} onDone={() => { setShowXls(false); load() }} />}
       {showNew && <NewOrderModal onClose={() => setShowNew(false)} onCreated={(id) => { setShowNew(false); navigate(`/orders/${id}`) }} />}
     </>
   )

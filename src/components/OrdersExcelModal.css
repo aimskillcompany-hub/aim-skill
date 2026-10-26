@@ -1,0 +1,17 @@
+/* Замовлення ↔ Excel. Лише токени. */
+.oxl { display: flex; flex-direction: column; gap: 12px; font-size: 14px; }
+.oxl-steps { margin: 0; padding-left: 20px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.oxl-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.oxl-acts label.btn { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.oxl-acts label.is-disabled { opacity: .5; pointer-events: none; }
+.oxl-muted { margin: 0; color: var(--muted); font-size: 13px; }
+.oxl-ok { color: var(--brand-dark); font-weight: 600; margin: 0; } .oxl-bad { color: var(--danger-fg); font-size: 12px; }
+.oxl-plan { max-height: 52vh; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+.oxl-plan h3 { margin: 6px 0 0; font-size: 14px; }
+.oxl-errs { padding: 10px 12px; border-radius: 12px; background: var(--warn-bg); color: var(--warn-fg); font-size: 13px; }
+.oxl-errs ul { margin: 4px 0 0; padding-left: 18px; }
+.oxl-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.oxl-tbl th, .oxl-tbl td { padding: 6px 8px; border-top: 1px solid var(--divider); text-align: left; vertical-align: top; }
+.oxl-tbl thead th { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; border-top: 0; }
+.oxl-was { color: var(--muted); text-decoration: line-through; }
+.oxl-name { max-width: 280px; }
