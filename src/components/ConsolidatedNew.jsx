@@ -81,7 +81,7 @@ export default function ConsolidatedNew({ data, forecast, loading, err, year, mo
         <div className="cfn-card csn-kpi"><span>Боргове навантаження</span><b className={liab / (t.assets || 1) > 0.5 ? 'is-warn' : 'is-pos'}>{t.assets ? pct(liab / t.assets) : '—'}</b><small>зобов'язання / активи</small></div>
         <div className="cfn-card csn-kpi"><span>Гроші покривають борги</span><b>{liab > 0 ? `${Math.round((t.cash / liab) * 100)}%` : '—'}</b><small>{n0(t.cash)} ₴ на {n0(liab)} ₴</small></div>
         <div className="cfn-card csn-kpi"><span>Дебіторка групи</span><b className="is-warn">{n0(t.recv)} ₴</b><small>{t.assets ? `${Math.round((t.recv / t.assets) * 100)}% активів — чекає оплати` : ''}</small></div>
-        <div className="cfn-card csn-kpi"><span>Прогноз на {asOf.slice(0, 5)}</span><b className={dEq < 0 ? 'is-neg' : ''}>{!forecast ? '—' : Math.abs(dEq) < 1 ? 'без змін' : `${formatAmount(dEq, { decimals: 0, sign: 'always' })} ₴`}</b><small><Link to="/forecast">угоди в роботі →</Link></small></div>
+        <div className="cfn-card csn-kpi"><span>Прогноз на {asOf.slice(0, 5)}</span><b className={dEq < 0 ? 'is-neg' : ''}>{!forecast ? '—' : Math.abs(dEq) < 1 ? 'без змін' : `${formatAmount(dEq, { decimals: 0, sign: 'always' })} ₴`}</b><small><Link to="/forecast?tab=deals">угоди в роботі →</Link></small></div>
       </div>
 
       <div className="csn-mid">

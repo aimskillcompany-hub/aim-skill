@@ -31,7 +31,7 @@ export const NAV_GROUPS = [
   { title: 'Аналіз', items: [
     { to: '/analytics', section: 'analytics', label: 'Аналітика', icon: 'ti-chart-bar', desc: 'Cash Flow, P&L, баланс, маржа' },
     { to: '/investor', section: 'investor', label: 'Інвестору', icon: 'ti-diamond', desc: 'зведений баланс, протоколи нарад' },
-    { to: '/forecast', section: 'forecast', label: 'Прогноз', icon: 'ti-trending-up', desc: 'угоди в роботі, точність' },
+    { to: '/forecast', section: 'forecast', label: 'Прогноз', icon: 'ti-trending-up', desc: 'платіжний календар, угоди в роботі, точність' },
     { to: '/reports', section: 'reports', label: 'Звіти', icon: 'ti-report-analytics', desc: 'дебіторка, кредиторка, прибутковість' },
     { to: '/finance', section: 'finance', label: 'Фінрезультат проєкту', icon: 'ti-chart-pie', desc: 'результат по проєктах' },
     { to: '/loans', section: 'loans', label: 'Поворотна фін. допомога', icon: 'ti-database', desc: 'позики отримані й видані' },

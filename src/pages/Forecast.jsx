@@ -28,11 +28,11 @@ export default function Forecast() {
   )
 }
 
-// Новий інтерфейс (ТЗ 5.3, 04): вкладки «Угоди в роботі» · «Платіжний календар» · «Точність прогнозу» (в адресі ?tab=…)
+// Новий інтерфейс (ТЗ 5.3, 04): вкладки «Платіжний календар» (за замовчуванням) · «Угоди в роботі» · «Точність прогнозу» (в адресі ?tab=…)
 const MS = ['січ', 'лют', 'бер', 'кві', 'тра', 'чер', 'лип', 'сер', 'вер', 'жов', 'лис', 'гру']
 const dS = (s, y) => { const [yy, m, d] = String(s).split('-').map(Number); return `${d} ${MS[m - 1]}${y ? ' ' + yy : ''}` }
 function ForecastNewPage() {
-  const [tab, setTab] = useTabParam('deals', ['deals', 'calendar', 'accuracy'])
+  const [tab, setTab] = useTabParam('calendar', ['calendar', 'deals', 'accuracy'])
   const [co, setCo] = usePayCalendarCo()
   const { companies } = useCompany()
   const [meta, setMeta] = useState(null)
@@ -53,7 +53,7 @@ function ForecastNewPage() {
           options={[{ value: 'all', label: 'Уся група' }, ...companies.map(c => ({ value: c.id, label: c.short_name || c.name }))]} />}
       </div>
       <Tabs ariaLabel="Розділи прогнозу" idPrefix="fc" value={tab} onChange={setTab}
-        tabs={[{ id: 'deals', label: 'Угоди в роботі' }, { id: 'calendar', label: 'Платіжний календар' }, { id: 'accuracy', label: 'Точність прогнозу' }]} />
+        tabs={[{ id: 'calendar', label: 'Платіжний календар' }, { id: 'deals', label: 'Угоди в роботі' }, { id: 'accuracy', label: 'Точність прогнозу' }]} />
       {tab === 'deals' ? <ForecastBalance /> : cal ? <PayCalendar co={co} onMeta={onMeta} /> : <ForecastAccuracy />}
     </div>
   )
