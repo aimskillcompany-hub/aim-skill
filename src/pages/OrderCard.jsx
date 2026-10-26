@@ -1683,17 +1683,57 @@ const SUB_STATUS = { new: 'Новий', ordered: 'Замовлено', in_transi
 
 // ───────── Транзакції ─────────
 // ───────── Склад ─────────
+// Рухи замовлення: прив'язані напряму (stock_movements.order_id), через документ замовлення (documents.order_id —
+// видаткові, прихідні) і через субзамовлення (supplier_orders.order_id) — те саме правило, що в звірці відвантажень.
+const MOV_COLS = 'id, type, quantity, price, cost_price, date, document_id, order_id, supplier_order_id, products(name)'
 function StockTab({ o }) {
   const [rows, setRows] = useState(null)
+  const [err, setErr] = useState(null)
   useEffect(() => {
-    qc('stock_movements').select('id, type, quantity, cost_price, total, date, products(name)').eq('order_id', o.id).order('date', { ascending: false })
-      .then(({ data }) => setRows(data || []))
+    let alive = true
+    ;(async () => {
+      const [{ data: docs }, { data: sos }, { data: direct, error: e1 }] = await Promise.all([
+        supabase.from('documents').select('id, type, doc_number, doc_date').eq('order_id', o.id),
+        supabase.from('supplier_orders').select('id').eq('order_id', o.id),
+        supabase.from('stock_movements').select(MOV_COLS).eq('order_id', o.id),
+      ])
+      if (e1) throw e1
+      const docIds = (docs || []).map(d => d.id), soIds = (sos || []).map(x => x.id)
+      const [{ data: byDoc }, { data: bySo }] = await Promise.all([
+        docIds.length ? supabase.from('stock_movements').select(MOV_COLS).in('document_id', docIds) : { data: [] },
+        soIds.length ? supabase.from('stock_movements').select(MOV_COLS).in('supplier_order_id', soIds) : { data: [] },
+      ])
+      const all = {}; [...(direct || []), ...(byDoc || []), ...(bySo || [])].forEach(m => { all[m.id] = m })
+      const list = Object.values(all)
+      // номери документів (і для рухів, прив'язаних напряму)
+      const docById = {}; (docs || []).forEach(d => { docById[d.id] = d })
+      const extra = [...new Set(list.map(m => m.document_id).filter(id => id && !docById[id]))]
+      if (extra.length) { const { data: ed } = await supabase.from('documents').select('id, type, doc_number, doc_date').in('id', extra); (ed || []).forEach(d => { docById[d.id] = d }) }
+      list.forEach(m => { m.doc = docById[m.document_id] || null })
+      list.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || (a.type === 'in' ? -1 : 1))
+      if (alive) setRows(list)
+    })().catch(e => { if (alive) { setErr(e.message); setRows([]) } })
+    return () => { alive = false }
   }, [o.id])
   if (rows == null) return <Loading />
-  if (!rows.length) return <Empty text="Складських рухів за замовленням немає" hint="Тут з'являться прихід і відвантаження товарів цього замовлення." />
-  return <Table head={['Товар', 'Тип', 'К-сть', 'Собівартість', 'Дата']}>
-    {rows.map(m => <tr key={m.id}><td><div className="trunc">{m.products?.name}</div></td><td>{m.type === 'in' ? 'Прихід' : 'Видаток'}</td><td style={{ textAlign: 'right' }}>{m.quantity}</td><td style={{ textAlign: 'right' }}>{fmt(m.cost_price || m.total)}</td><td>{m.date}</td></tr>)}
-  </Table>
+  if (err) return <Callout tone="danger" title="Не вдалося завантажити рухи складу." text={err} />
+  if (!rows.length) return <Empty text="Складських рухів за замовленням немає" hint="Тут з'являться прихід і відвантаження товарів цього замовлення: з документів замовлення, субзамовлень і рухів, прив'язаних до нього." />
+  const inQ = rows.filter(m => m.type === 'in').reduce((s2, m) => s2 + (Number(m.quantity) || 0), 0)
+  const outQ = rows.filter(m => m.type !== 'in').reduce((s2, m) => s2 + (Number(m.quantity) || 0), 0)
+  return <>
+    <p style={{ fontSize: 13, color: 'var(--text2)', margin: '0 0 10px' }}>Прихід: <b>{inQ}</b> од. · Видаток: <b>{outQ}</b> од. · рухів: {rows.length}</p>
+    <Table head={['Товар', 'Тип', 'К-сть', 'Ціна', 'Собівартість', 'Документ', 'Дата']}>
+      {rows.map(m => <tr key={m.id}>
+        <td><div className="trunc">{m.products?.name || '—'}</div></td>
+        <td>{m.type === 'in' ? 'Прихід' : 'Видаток'}</td>
+        <td style={{ textAlign: 'right' }}>{m.quantity}</td>
+        <td style={{ textAlign: 'right' }}>{m.price != null ? fmt(m.price) : '—'}</td>
+        <td style={{ textAlign: 'right' }}>{m.cost_price != null ? fmt(m.cost_price) : '—'}</td>
+        <td>{m.doc ? <>{m.doc.doc_number || '—'}{m.doc.doc_date && <span style={{ color: 'var(--text3)', fontSize: 12 }}> · {String(m.doc.doc_date).slice(0, 10).split('-').reverse().join('.')}</span>}</> : m.supplier_order_id ? 'субзамовлення' : '—'}</td>
+        <td style={{ whiteSpace: 'nowrap' }}>{m.date ? String(m.date).slice(0, 10).split('-').reverse().join('.') : '—'}</td>
+      </tr>)}
+    </Table>
+  </>
 }
 
 // ───────── helpers ─────────
