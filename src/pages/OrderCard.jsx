@@ -832,7 +832,7 @@ function ItemsTab({ o, onChange, onDirty }) {
         resolved.push({
           order_id: o.id, product_id, name: r.name.trim(), characteristics: r.characteristics || null, sku: r.sku || null, unit: r.unit || 'шт',
           qty: Number(r.qty) || 0, cost_price: Number(r.cost_price) || 0,
-          unit_price: Number(r.unit_price) || 0, vat_rate: Number(r.vat_rate) || 0, price_includes_vat: !!r.price_includes_vat, total: rowTotal(r), supplier_id: r.supplier_id || null, ...(r.pay_days != null && r.pay_days !== '' ? { pay_days: Number(r.pay_days) } : {}),
+          unit_price: Number(r.unit_price) || 0, vat_rate: Number(r.vat_rate) || 0, price_includes_vat: !!r.price_includes_vat, total: rowTotal(r), supplier_id: r.supplier_id || null, ...(r.pay_days != null && r.pay_days !== '' ? { pay_days: Number(r.pay_days) } : {}), ...(r.ship_date ? { ship_date: String(r.ship_date).slice(0, 10) } : {}),
           cost_vat_rate: r.cost_vat_rate === null || r.cost_vat_rate === undefined || r.cost_vat_rate === '' ? null : Number(r.cost_vat_rate),
         })
       }

@@ -98,6 +98,9 @@ export default function ItemsNew(p) {
                           {r.supplier_id && <label className="itn-paydays" title="Відстрочка оплати постачальнику саме за цю позицію (порожньо — умови постачальника в замовленні)">
                             <span>відстрочка позиції</span><input type="number" inputMode="numeric" aria-label={`Відстрочка оплати постачальнику, позиція ${i + 1}`} value={r.pay_days ?? ''} placeholder="—"
                               onChange={e => setRow(i, { pay_days: e.target.value === '' ? null : Number(e.target.value) })} /><span>дн.</span></label>}
+                          <label className="itn-paydays itn-shipdate" title="Якщо позицію відвантажите пізніше за решту замовлення — її дата. Від неї рахуються оплата клієнта, постачальнику й ПДВ за цю позицію (порожньо — разом із замовленням)">
+                            <span>відвантаження позиції</span><input type="date" aria-label={`Дата відвантаження, позиція ${i + 1}`} value={r.ship_date ? String(r.ship_date).slice(0, 10) : ''}
+                              onChange={e => setRow(i, { ship_date: e.target.value || null })} />{r.ship_date && <button type="button" aria-label="Прибрати дату відвантаження позиції" onClick={() => setRow(i, { ship_date: null })}>×</button>}</label>
                         </div>
                       </td>
                       <td className="r" data-label="Кількість"><input className="itn-cell" type="number" inputMode="decimal" aria-label={`Кількість, позиція ${i + 1}`} value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} /></td>

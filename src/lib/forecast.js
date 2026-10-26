@@ -16,7 +16,7 @@
 // Для балансу: оплата дебіторки / кредиторки змінює лише гроші, не капітал (борг уже в балансі) —
 // тому окремо повертаємо receivableCollect і payablePay.
 import { supabase } from './supabase'
-import { computeOrderPlan, expenseNet, itemCost } from './orderPlan'
+import { computeOrderPlan, expenseNet, itemCost, itemSale } from './orderPlan'
 import { countsAsDebt, debtDate, loadDocPayments } from './debts'
 import { fetchAll } from './fetchAll'
 
@@ -75,7 +75,8 @@ export async function buildOrderForecasts({ orderIds = null } = {}) {
   const flags = {}
 
   // Позиції (ґрейсфул до 067 — без cost_vat_rate)
-  let { data: items, error: iErr } = await inChunks('order_items', 'order_id, qty, unit_price, cost_price, vat_rate, cost_vat_rate, price_includes_vat, supplier_id, pay_days', 'order_id', ids)
+  let { data: items, error: iErr } = await inChunks('order_items', 'order_id, qty, unit_price, cost_price, vat_rate, cost_vat_rate, price_includes_vat, supplier_id, pay_days, ship_date', 'order_id', ids)
+  if (iErr) ({ data: items, error: iErr } = await inChunks('order_items', 'order_id, qty, unit_price, cost_price, vat_rate, cost_vat_rate, price_includes_vat, supplier_id, pay_days', 'order_id', ids))   // до 105
   if (iErr) ({ data: items, error: iErr } = await inChunks('order_items', 'order_id, qty, unit_price, cost_price, vat_rate, cost_vat_rate, price_includes_vat, supplier_id', 'order_id', ids))   // до 103
   if (iErr) { ({ data: items } = await inChunks('order_items', 'order_id, qty, unit_price, cost_price, vat_rate, price_includes_vat, supplier_id', 'order_id', ids)); flags.no067 = true }
   // Інші витрати (065), факт (057), графік (067), субзамовлення (дати оплати постачальнику)
@@ -149,7 +150,17 @@ export async function buildOrderForecasts({ orderIds = null } = {}) {
     const recvPart = Math.min(clientRemaining, Math.max(0, shipped - clientPaid))
     const recvPlan = Math.min(plan.revenueGross, shipped)
     push({ key: 'client-recv', kind: 'income', label: 'Оплата дебіторки (відвантажено)', plan: recvPlan, fact: recvPlan - recvPart, date: pClient?.plan_date || addDays(lastShipDoc || shipDate, clientDays), estimated: !pClient?.plan_date && pClient?.days == null, flag: 'receivable' })
-    push({ key: 'client', kind: 'income', label: 'Оплата від клієнта', plan: plan.revenueGross - recvPlan, fact: Math.max(0, clientPaid - recvPlan), date: clientDate, estimated: clientEst })
+    // Позиції з власною датою відвантаження (105) — окремі оплати клієнта / постачальнику / ПДВ від своєї дати
+    const lateDate = (it) => it.ship_date && String(it.ship_date).slice(0, 10) !== shipDate ? String(it.ship_date).slice(0, 10) : null
+    const lateSale = {}
+    oItems.forEach(it => { const d = lateDate(it); if (d) lateSale[d] = (lateSale[d] || 0) + itemSale(it, vatOn).gross })
+    const unshipped = Math.max(0, plan.revenueGross - recvPlan)
+    const lateTotal = Object.values(lateSale).reduce((a, v) => a + v, 0)
+    const lateK = lateTotal > EPS ? Math.min(1, unshipped / lateTotal) : 0   // уже відвантажене понад решту — не дублюємо
+    const cLines = [{ key: 'client', kind: 'income', label: 'Оплата від клієнта', plan: unshipped - lateTotal * lateK, date: clientDate, estimated: clientEst }]
+    Object.entries(lateSale).forEach(([d, v]) => cLines.push({ key: `client-s${d}`, kind: 'income', label: 'Оплата від клієнта', plan: v * lateK, date: addDays(d, clientDays), estimated: pClient?.days == null, itemShip: d }))
+    let cFact = Math.max(0, clientPaid - recvPlan)
+    cLines.sort((a, b) => (a.date || '').localeCompare(b.date || '')).forEach(l => { const f = Math.min(cFact, Math.max(0, l.plan)); cFact -= f; push({ ...l, fact: f }) })
 
     // ── Постачальники ──
     const expOts = oOts.filter(t => t.kind === 'expense')
@@ -176,12 +187,19 @@ export async function buildOrderForecasts({ orderIds = null } = {}) {
       const label = sid ? (supName[sid] || 'Постачальник') : 'Закупівля (постачальника не вказано)'
       // позиції з власною відстрочкою — окремі картки
       const own = {}
-      oItems.filter(it => (it.supplier_id || '__none__') === key && it.pay_days != null && it.pay_days !== '').forEach(it => {
+      oItems.filter(it => (it.supplier_id || '__none__') === key && !lateDate(it) && it.pay_days != null && it.pay_days !== '').forEach(it => {
         const d = Number(it.pay_days); own[d] = (own[d] || 0) + itemCost(it, vatOn).gross
       })
       const ownSum = Object.values(own).reduce((s, v) => s + v, 0)
-      const rest = Math.max(0, b.gross - ownSum)
       const parts = rows.length ? rows : [{ part_no: 1, share_pct: null, days: null, plan_date: null, is_manual: false }]
+      // позиції з власною датою відвантаження: від неї + дні позиції / першої частини / картки
+      const late = {}
+      oItems.filter(it => (it.supplier_id || '__none__') === key && lateDate(it)).forEach(it => {
+        const d = lateDate(it), days = it.pay_days != null && it.pay_days !== '' ? Number(it.pay_days) : parts[0].days != null ? Number(parts[0].days) : defDays
+        const k = d + '|' + days; (late[k] ||= { ship: d, days, v: 0 }).v += itemCost(it, vatOn).gross
+      })
+      const lateSum = Object.values(late).reduce((s, x) => s + x.v, 0)
+      const rest = Math.max(0, b.gross - ownSum - lateSum)
       const shared = parts.reduce((s, x) => s + (x.share_pct == null ? 0 : Number(x.share_pct)), 0)
       const blanks = parts.filter(x => x.share_pct == null).length
       const sLines = []
@@ -196,6 +214,8 @@ export async function buildOrderForecasts({ orderIds = null } = {}) {
       })
       Object.entries(own).forEach(([d, v]) => sLines.push({ key: `sup-${key}-i${d}`, partNo: null, sharePct: null, days: Number(d), manual: false, ownDays: true,
         plan: v, date: addDays(base, Number(d)), estimated: !baseDate && shipEst }))
+      Object.values(late).forEach(x => sLines.push({ key: `sup-${key}-s${x.ship}-d${x.days}`, partNo: null, sharePct: null, days: x.days, manual: false, ownDays: true, itemShip: x.ship,
+        plan: x.v, date: addDays(x.ship, x.days), estimated: false }))
       sLines.sort((x, y) => (x.date || '').localeCompare(y.date || ''))
       sLines.forEach(l => {
         const f = Math.min(Math.max(0, fact), l.plan); fact -= f
@@ -216,7 +236,13 @@ export async function buildOrderForecasts({ orderIds = null } = {}) {
         const done = due < today
         lines.push({ key: 'vat-shipped', kind: 'expense', label: 'ПДВ до сплати (відвантажено)', plan: r2(vatShipped), fact: done ? r2(vatShipped) : 0, remaining: done ? 0 : r2(vatShipped), date: due, estimated: false, note: done ? 'сплачено в декларації' : null })
       }
-      if (Math.abs(vatRest) > EPS) lines.push({ key: 'vat', kind: 'expense', label: 'ПДВ до сплати', plan: r2(vatRest), fact: 0, remaining: r2(vatRest), date: vatDueFor(shipDate), estimated: shipEst })
+      // позиції з власною датою відвантаження — ПДВ від їхньої дати (частка в невідвантаженому)
+      let vatMain = vatRest
+      if (unshipped > EPS) Object.entries(lateSale).forEach(([d, v]) => {
+        const part = vatRest * (v * lateK) / unshipped; vatMain -= part
+        if (Math.abs(part) > EPS) lines.push({ key: `vat-s${d}`, kind: 'expense', label: 'ПДВ до сплати', plan: r2(part), fact: 0, remaining: r2(part), date: vatDueFor(d), estimated: false, itemShip: d })
+      })
+      if (Math.abs(vatMain) > EPS) lines.push({ key: 'vat', kind: 'expense', label: 'ПДВ до сплати', plan: r2(vatMain), fact: 0, remaining: r2(vatMain), date: vatDueFor(shipDate), estimated: shipEst })
     }
 
     // ── Інші витрати та агентські (непов'язаний факт витрат гасить спершу їх) ──
