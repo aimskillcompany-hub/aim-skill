@@ -207,7 +207,7 @@ export default function OrderProfitNew({ o, onOrderChange }) {
       <section className="opn-card is-flush" aria-label="Оплати по замовленню">
         <div className="opn-head opn-pad">
           <h2>Оплати по замовленню</h2>
-          <div className="opn-acts"><Button variant="secondary" icon="ti-link" onClick={() => setPicker('income')}>Прив'язати з виписки</Button><Button variant="primary" icon="ti-plus" onClick={() => setPicker('expense')}>Витрата</Button></div>
+          <div className="opn-acts"><Button variant="secondary" icon="ti-link" onClick={() => setPicker('income')}>Оплата клієнта</Button><Button variant="secondary" icon="ti-link" onClick={() => setPicker('expense')}>Оплата постачальнику</Button></div>
         </div>
         {!o.paid_transaction_id && cands.length > 0 && (
           <div className="opn-cands">{cands.map(t => (
@@ -230,7 +230,7 @@ export default function OrderProfitNew({ o, onOrderChange }) {
       </section>
 
       {exp && <ExpenseForm o={o} kind={exp.kind} userId={user?.id} onClose={() => setExp(null)} onSaved={() => { setExp(null); changed() }} />}
-      {picker && <TxPicker kind={picker} orderId={o.id} clientId={o.client_id} userId={user?.id} onClose={() => setPicker(null)} onAdded={() => { setPicker(null); changed() }} />}
+      {picker && <TxPicker kind={picker} orderId={o.id} clientId={o.client_id} supplierIds={[...new Set(d.cards.filter(c => c.isSupplier && c.supplierId).map(c => c.supplierId))]} userId={user?.id} onClose={() => setPicker(null)} onAdded={() => { setPicker(null); changed() }} />}
     </div>
   )
 }
@@ -260,7 +260,7 @@ function ExpenseForm({ o, kind, userId, onClose, onSaved }) {
         <div className="form-group"><label>Сума, ₴ *</label><input className="form-input" inputMode="decimal" value={f.amount} onChange={e => set('amount', e.target.value)} autoFocus /></div>
         <div className="form-group"><label>ПДВ</label>
           <div className="opn-seg" role="group" aria-label="ПДВ"><button type="button" aria-pressed={!f.vat} onClick={() => set('vat', false)}>без ПДВ</button><button type="button" aria-pressed={f.vat} onClick={() => set('vat', true)}>з ПДВ</button></div></div>
-        <div className="form-group full"><label>Що це<InfoTip label="Нова витрата">Витрата одразу зменшує план. У «Факт» вона потрапить, коли прив’яжете оплату з виписки («Оплати по замовленню» → «Витрата»).</InfoTip></label><input className="form-input" value={f.name} onChange={e => set('name', e.target.value)} /></div>
+        <div className="form-group full"><label>Що це<InfoTip label="Нова витрата">Витрата одразу зменшує план. У «Факт» вона потрапить, коли прив’яжете оплату з виписки («Оплати по замовленню» → «Оплата постачальнику»).</InfoTip></label><input className="form-input" value={f.name} onChange={e => set('name', e.target.value)} /></div>
         <div className="form-group"><label>Контрагент (необов'язково)</label><ContractorSelect value={f.cname} placeholder="Кому платимо" onChange={v => setF(s => ({ ...s, cname: v, contractor_id: null }))} onContractorSelect={c => setF(s => ({ ...s, cname: c.name, contractor_id: c.id }))} /></div>
         <div className="form-group"><label>Дата</label><input type="date" className="form-input" value={f.date} onChange={e => set('date', e.target.value)} /></div>
       </div>
