@@ -9,7 +9,7 @@ import { computeOrderPlan } from '../lib/orderPlan'
 import OrderPaymentPlan from './OrderPaymentPlan'
 import { Modal, Button, Switch, TableSkeleton, useToast } from './ui'
 import { useNewUi } from '../lib/uiPrefs'
-import OrderProfitNew from './OrderProfitNew'
+import OrderProfitV2 from './OrderProfitV2'
 
 // Вкладка «Прибутковість» картки замовлення: касовий, РЕАЛЬНИЙ прибуток за
 // фактичними банківськими транзакціями. Оплата клієнта прив'язується тут (замість
@@ -20,7 +20,7 @@ const d = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('.') : ''
 
 export default function OrderFinanceTab({ o, onOrderChange }) {
   // Новий інтерфейс (ТЗ «Прибутковість у замовленні»): план / факт за оплатами, рух грошей, оплати
-  if (useNewUi()) return <OrderProfitNew o={o} onOrderChange={onOrderChange} />
+  if (useNewUi()) return <OrderProfitV2 o={o} onOrderChange={onOrderChange} />
   return <OrderFinanceTabOld o={o} onOrderChange={onOrderChange} />
 }
 

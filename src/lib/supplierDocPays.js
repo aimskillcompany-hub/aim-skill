@@ -124,3 +124,31 @@ export async function linkSupplierDocPay(p, userId) {
   })
   if (error) throw error
 }
+
+// ТЗ 05, 6.2.4: без накладних — транзакції того самого постачальника за 90 днів із сумою ±1% від неоплаченого планового
+// платежу (рядки «Платимо …»). lines: [{ key, supplierId, remaining }]. exclude — txId, уже запропоновані через накладні.
+export async function findAmountPays(orderId, lines, { exclude = new Set(), today = new Date().toISOString().slice(0, 10) } = {}) {
+  const ls = (lines || []).filter(l => l.supplierId && l.remaining > 0.5)
+  if (!ls.length) return []
+  const supIds = [...new Set(ls.map(l => l.supplierId))]
+  const since = new Date(Date.parse(today + 'T00:00:00Z') - 90 * 86400000).toISOString().slice(0, 10)
+  const txs = await fetchAllIn(() => supabase.from('bank_transactions').select('id, date, amount, counterparty, contractor_id, is_ignored').lt('amount', 0).gte('date', since), 'contractor_id', supIds)
+  const live = txs.filter(t => !t.is_ignored && !exclude.has(t.id))
+  if (!live.length) return []
+  const ids = live.map(t => t.id)
+  const [ots, paid] = await Promise.all([
+    fetchAllIn(() => supabase.from('order_transactions').select('order_id, transaction_id, amount'), 'transaction_id', ids),
+    fetchAllIn(() => supabase.from('orders').select('id, paid_transaction_id'), 'paid_transaction_id', ids),
+  ])
+  const used = {}; ots.forEach(o => { used[o.transaction_id] = (used[o.transaction_id] || 0) + Math.abs(Number(o.amount) || 0) })
+  const mine = new Set(ots.filter(o => o.order_id === orderId).map(o => o.transaction_id))
+  const direct = new Set(paid.map(o => o.paid_transaction_id))
+  const free = {}; live.forEach(t => { free[t.id] = direct.has(t.id) || mine.has(t.id) ? 0 : r2(Math.abs(Number(t.amount) || 0) - (used[t.id] || 0)) })
+  const out = [], taken = new Set()
+  ;[...ls].sort((a, b) => b.remaining - a.remaining).forEach(l => {
+    const c = live.filter(t => !taken.has(t.id) && t.contractor_id === l.supplierId && free[t.id] > 0.5 && Math.abs(free[t.id] - l.remaining) <= l.remaining * 0.01)
+      .sort((a, b) => Math.abs(free[a.id] - l.remaining) - Math.abs(free[b.id] - l.remaining))[0]
+    if (c) { taken.add(c.id); out.push({ orderId, docId: null, txId: c.id, amount: r2(Math.min(free[c.id], l.remaining)), share: 1, tx: c, doc: null, byAmount: true, lineKey: l.key }) }
+  })
+  return out
+}

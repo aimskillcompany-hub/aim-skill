@@ -151,3 +151,8 @@ a.ocn-meta-item:hover { color: var(--brand-dark); }
 .ocn-step.is-current[class*=" st-"] .ocn-step-bar { background: var(--st-c); }
 .ocn-step.is-current[class*=" st-"] .ocn-step-label { color: var(--st-c-fg); }
 .ocn-head .ocn-step.is-current[class*=" st-"] .ocn-step-label { color: var(--surface); }
+
+/* «Прибутковість» v2: без правої колонки, блоки вкладки — окремими картками на тлі сторінки */
+.ocn-grid.is-wide { grid-template-columns: minmax(0, 1fr); }
+.ocn-grid.is-wide .ocn-main { background: none; border: 0; padding: 0; }
+.ocn-grid.is-wide .ocn-main > .ui-tabs { margin: 0 0 14px; padding: 0 4px; }
