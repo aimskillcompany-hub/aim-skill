@@ -133,7 +133,7 @@ export default function OrdersNew({
               <button key={x.s} type="button" className={`on-tile is-${tone}`} aria-pressed={on} onClick={() => setStage(on ? null : x.s)}
                 title={`${labelForStatus(x.s)}: ${x.n} · заробимо ${formatAmount(x.earn, { decimals: 0 })} ₴ · замовлень на ${formatAmount(x.sum)} ₴ з ПДВ${x.s === 'needs_payment' ? ` · до оплати ${formatAmount(x.due)} ₴` : ''}${x.noItems ? ` · без позицій: ${x.noItems}` : ''}`}>
                 <span className="on-tile-head"><span className="on-tile-dot" aria-hidden="true" />{labelForStatus(x.s)}<span className="on-tile-n">{x.n}</span></span>
-                <span className={`on-tile-sum${x.earn < 0 ? ' is-neg' : ''}`}>{plans ? formatShort(x.earn) : '…'} <small>₴ заробимо</small></span>
+                <span className={`on-tile-sum${x.earn < 0 ? ' is-neg' : ''}`}>{plans ? formatShort(x.earn) : '…'} <small>₴</small></span>
                 <span className="on-tile-sub">з {formatShort(x.s === 'needs_payment' ? x.due : x.sum)} ₴{x.s === 'needs_payment' ? ' до оплати' : ' замовлень'}</span>
                 <span className="on-tile-bar" aria-hidden="true"><span style={{ width: `${openEarn > 0 ? Math.max(2, Math.max(0, x.earn) / openEarn * 100) : 0}%` }} /></span>
               </button>
