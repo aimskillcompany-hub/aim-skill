@@ -185,8 +185,10 @@ function QuickView({ d, dupe, onClose, onOpen, onRecognize, reload }) {
   const [order, setOrder] = useState(null)
   const [busy, setBusy] = useState('')
   const t = getDocType(d.type)
-  const path = hasScan(d) ? (d.storage_path || d.file_path) : null
-  const isPdf = /\.pdf$/i.test(d.file_name || path || '') || d.file_type === 'application/pdf'
+  // підписаний скан (масове завантаження до сформованого документа) — у пріоритеті
+  const scan = d.signed_scan_url && d.signed_scan_url !== d.storage_path ? d.signed_scan_url : null
+  const path = scan || (hasScan(d) ? (d.storage_path || d.file_path) : null)
+  const isPdf = scan ? /\.pdf$/i.test(scan) : /\.pdf$/i.test(d.file_name || path || '') || d.file_type === 'application/pdf'
   useEffect(() => {
     setUrl(null)
     if (!path) return
