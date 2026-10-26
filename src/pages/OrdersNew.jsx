@@ -74,7 +74,7 @@ function Flags({ o, toggleInvestor, toggleForecast, toggleCommission }) {
 
 export default function OrdersNew({
   orders, rows, loading, q, setQ, filter, setFilter, filters, view, setView, views, manager, setManager, stage, setStage,
-  linking, autoLinkPayments, onNew, navigate, flags, sort, onSort, kanban, report,
+  linking, autoLinkPayments, onNew, navigate, flags, sort, onSort, kanban, report, onExcel,
 }) {
   // «у роботі» — не архівні; плитки етапів рахуються з них (незалежно від пошуку)
   const open = useMemo(() => orders.filter(o => !o.archived_at), [orders])
@@ -120,6 +120,7 @@ export default function OrdersNew({
         <div className="on-actions">
           <Button variant="secondary" icon="ti-refresh" onClick={autoLinkPayments} loading={linking} aria-label="Підтягнути оплати" className="on-hide-sm">{linking ? 'Підбір…' : 'Підтягнути оплати'}</Button>
           <Button variant="secondary" iconOnly icon="ti-refresh" onClick={autoLinkPayments} loading={linking} aria-label="Підтягнути оплати" className="on-show-sm" />
+          {onExcel && <Button variant="secondary" icon="ti-file-spreadsheet" onClick={onExcel} className="on-hide-sm">Excel</Button>}
           <Button variant="brand" icon="ti-plus" onClick={onNew}>Нове замовлення</Button>
         </div>
       </div>
