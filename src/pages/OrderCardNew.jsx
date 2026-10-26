@@ -54,7 +54,7 @@ function StageBars({ o, onChange }) {
       {steps.map((st, i) => {
         const cls = i < cur ? 'is-done' : i === cur ? (st.accent ? 'is-current is-attention' : 'is-current') : ''
         return (
-          <button key={st.s} type="button" className={`ocn-step ${cls}`} aria-current={i === cur ? 'step' : undefined}
+          <button key={st.s} type="button" className={`ocn-step ${cls} st-${st.s}`} aria-current={i === cur ? 'step' : undefined}
             onClick={() => onChange(st.s)} title={i === cur ? 'Поточний етап' : `Перевести в «${st.label}»`}>
             <span className="ocn-step-bar" aria-hidden="true" />
             <span className="ocn-step-label">{i < cur && <i className="ti ti-check" aria-hidden="true" />}{st.label}</span>
