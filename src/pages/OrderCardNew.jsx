@@ -17,7 +17,8 @@ import './OrderCardNew.css'
 const fmtD = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('.') : ''
 
 // План з позицій замовлення — той самий розрахунок, що у вкладці «Прибутковість» і «Прогнозі»
-export function useOrderPlan(o) {
+// rev — лічильник збережень позицій: зміна лише закупки не змінює суму замовлення (o.total), тож без нього план лишався старим
+export function useOrderPlan(o, rev = 0) {
   const { active } = useCompany()
   const vatOn = active?.is_vat_payer !== false
   const [state, setState] = useState(null)
@@ -31,7 +32,7 @@ export function useOrderPlan(o) {
       if (alive) setState({ count: (rows || []).length, plan: computeOrderPlan(rows || [], { vatOn, agentPct: o.agent_commission_pct, otherExpenses: other }) })
     })()
     return () => { alive = false }
-  }, [o.id, o.total, o.agent_commission_pct, vatOn])
+  }, [o.id, o.total, o.agent_commission_pct, vatOn, rev])
   return state
 }
 
