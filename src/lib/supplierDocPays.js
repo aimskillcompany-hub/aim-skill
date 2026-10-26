@@ -47,7 +47,7 @@ export async function findSupplierDocPays(orderIds) {
   ])
   const docOrder = {}; docs.forEach(d => { docOrder[d.id] = d.order_id })
   const soOrder = {}; sos.forEach(s => { soOrder[s.id] = s.order_id })
-  const cols = 'id, type, document_id, order_id, supplier_order_id, quantity, price'
+  const cols = 'id, type, document_id, order_id, supplier_order_id, assembly_id, quantity, price'
   const mv = {}
   const add = (list) => (list || []).forEach(m => { mv[m.id] = m })
   add(await fetchAllIn(() => supabase.from('stock_movements').select(cols), 'order_id', orderIds))
@@ -59,14 +59,30 @@ export async function findSupplierDocPays(orderIds) {
   const outs = Object.values(mv).filter(m => m.type !== 'in' && orderOf(m))
   const outOrder = {}; outs.forEach(m => { outOrder[m.id] = orderOf(m) })
   const al = outs.length ? await fetchAllIn(() => supabase.from('stock_allocations').select('out_movement_id, in_movement_id, qty'), 'out_movement_id', outs.map(m => m.id)) : []
-  const inIds = [...new Set(al.map(a => a.in_movement_id))]
-  const ins = inIds.length ? await fetchAllIn(() => supabase.from('stock_movements').select(cols), 'id', inIds) : []
-  const inById = {}; ins.forEach(m => { inById[m.id] = m })
+  // від партії до прихідної; партія без документа зі збірки (assembly_id) — далі через компоненти збірки
+  // (частка = скільки виробу пішло в замовлення ÷ скільки зібрано), до 3 рівнів вкладеності
   const allocs = []
-  al.forEach(a => {
-    const im = inById[a.in_movement_id]; if (!im?.document_id) return
-    allocs.push({ orderId: outOrder[a.out_movement_id], docId: im.document_id, value: (Number(a.qty) || 0) * (Number(im.price) || 0) })
-  })
+  let level = al.map(a => ({ inId: a.in_movement_id, qty: Number(a.qty) || 0, orderId: outOrder[a.out_movement_id], factor: 1 }))
+  for (let depth = 0; depth < 4 && level.length; depth++) {
+    const ids = [...new Set(level.map(x => x.inId))]
+    const ins = await fetchAllIn(() => supabase.from('stock_movements').select(cols), 'id', ids)
+    const inById = {}; ins.forEach(m => { inById[m.id] = m })
+    const next = []
+    const asm = {}   // assembly_id → [{ orderId, share }]
+    level.forEach(x => {
+      const im = inById[x.inId]; if (!im) return
+      if (im.document_id) { allocs.push({ orderId: x.orderId, docId: im.document_id, value: x.factor * x.qty * (Number(im.price) || 0) }); return }
+      if (im.assembly_id && depth < 3 && Number(im.quantity) > 0) (asm[im.assembly_id] ||= []).push({ orderId: x.orderId, share: x.factor * x.qty / Number(im.quantity) })
+    })
+    const asmIds = Object.keys(asm)
+    if (asmIds.length) {
+      const comps = await fetchAllIn(() => supabase.from('stock_movements').select('id, assembly_id').eq('type', 'out'), 'assembly_id', asmIds)
+      const compAsm = {}; comps.forEach(c => { compAsm[c.id] = c.assembly_id })
+      const ca = comps.length ? await fetchAllIn(() => supabase.from('stock_allocations').select('out_movement_id, in_movement_id, qty'), 'out_movement_id', comps.map(c => c.id)) : []
+      ca.forEach(a => (asm[compAsm[a.out_movement_id]] || []).forEach(t => next.push({ inId: a.in_movement_id, qty: Number(a.qty) || 0, orderId: t.orderId, factor: t.share })))
+    }
+    level = next
+  }
   // прихідні, прив'язані до замовлення напряму, без списань — уся вартість на замовлення
   const allocDocs = new Set(allocs.map(a => a.docId))
   docs.filter(d => (IN_TYPES.includes(d.type) || d.direction === 'payable') && !allocDocs.has(d.id)).forEach(d => allocs.push({ orderId: d.order_id, docId: d.id, value: null, whole: true }))
