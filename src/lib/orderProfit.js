@@ -35,7 +35,8 @@ export async function loadOrderProfit(o, { vatOn = true } = {}) {
     supabase.from('order_expenses').select('*').eq('order_id', o.id).order('created_at'),
     buildOrderForecasts({ orderIds: [o.id] }).catch(() => []),
     supabase.from('forecast_snapshots').select('*').eq('order_id', o.id).order('taken_at', { ascending: false }),
-    supabase.from('order_transactions').select('id, kind, amount, note, transaction_id, created_at').eq('order_id', o.id),
+    supabase.from('order_transactions').select('id, kind, amount, note, transaction_id, created_at, confirmed_at').eq('order_id', o.id)
+      .then(r => r.error ? supabase.from('order_transactions').select('id, kind, amount, note, transaction_id, created_at').eq('order_id', o.id) : r),   // до 106
     supabase.from('documents').select('id, type, direction, amount, doc_number, contractor_id').eq('order_id', o.id),
   ])
   const exps = expRes.data || []
@@ -87,6 +88,8 @@ export async function loadOrderProfit(o, { vatOn = true } = {}) {
       txId: id, date: t.date || null, amount: r2(l.amount), sign: l.kind === 'income' ? 1 : -1, cat, src,
       counterparty: t.contractors?.name || t.counterparty || '—', purpose: l.note || l.expense?.name || t.article || t.description || '',
       vatPayer: vatPayer(t.contractors), isShare: l.amount < total - 0.5, orderLinkId: (otsRes.data || []).find(x => x.transaction_id === id)?.id || null,
+      contractorId: t.contractor_id || null, description: t.description || '', txTotal: r2(total), direct: l.sources.has('paid'),
+      confirmed: l.sources.has('paid') ? !!o.paid_confirmed_at : !!(otsRes.data || []).find(x => x.transaction_id === id)?.confirmed_at,
     }
   }).sort((a, b) => (b.date || '').localeCompare(a.date || ''))
 

@@ -321,14 +321,15 @@ function NewCardLayout({ o, planRev, payment, busy, msg, overdue, tab, tabs, swi
           action={o.client_id ? { label: 'Картка клієнта', to: `/contractors/${o.client_id}` } : { label: 'Деталі', onClick: () => switchTab('details') }} />
       )}
       {overdue && <Callout tone="danger" title="КП без відповіді понад 48 год." text="Клієнт ще не відповів на комерційну пропозицію." action={{ label: 'КП', onClick: () => switchTab('proposals') }} />}
-      <div className={`ocn-grid${tab === 'items' ? ' is-items' : ''}`}>
+      <div className={`ocn-grid${tab === 'items' ? ' is-items' : ''}${tab === 'finance' ? ' is-wide' : ''}`}>
         <section className="ocn-main">
           <Tabs ariaLabel="Розділи замовлення" idPrefix="ocn-tab" value={tab} onChange={switchTab}
             tabs={tabs.map(t => ({ id: t.id, label: t.label, count: t.id === 'items' && plan?.count ? plan.count : undefined }))} />
           <div className="ocn-panel" role="tabpanel" aria-labelledby={`ocn-tab-${tab}`}>{panel}</div>
           {tab === 'items' && <OrderTotals o={o} plan={plan} />}
         </section>
-        <OrderAside o={o} plan={plan} payment={payment} onTab={switchTab} />
+        {/* «Прибутковість» v2 (ТЗ 05): права колонка дублює вкладку — на ній прихована */}
+        {tab !== 'finance' && <OrderAside o={o} plan={plan} payment={payment} onTab={switchTab} />}
       </div>
       {dialogs}
     </div>
