@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { useCompany } from '../lib/company'
 import { loadOrderProfit, EXPENSE_KINDS } from '../lib/orderProfit'
-import { loadPaymentPlan, savePaymentPlanEntry, DEFAULT_CLIENT_DAYS } from '../lib/forecast'
+import { loadPaymentPlan, savePaymentPlanEntry, saveSupplierTerms, DEFAULT_CLIENT_DAYS } from '../lib/forecast'
 import { paymentCandidates, unlinkOrderPayment } from '../lib/orderPayments'
 import { qc } from '../lib/companyScope'
 import { todayKyiv } from '../lib/dates'
@@ -34,6 +34,7 @@ export default function OrderProfitNew({ o, onOrderChange }) {
   const [picker, setPicker] = useState(null) // 'income' | 'expense'
   const [cands, setCands] = useState([])
   const [pp, setPp] = useState([])           // графік: ship / client
+  const [editDate, setEditDate] = useState(null)
   const load = () => {
     setErr(null)
     loadOrderProfit(o, { vatOn }).then(setD).catch(e => setErr(e.message))
@@ -66,6 +67,17 @@ export default function OrderProfitNew({ o, onOrderChange }) {
     const cur = kind === 'ship' ? ship : client
     try { await savePaymentPlanEntry(o.id, { kind, supplierId: null, planDate: 'planDate' in patch ? patch.planDate : cur.plan_date, days: 'days' in patch ? patch.days : cur.days }); load() }
     catch (e) { toast(e.message, { type: 'error' }) }
+  }
+  // ── Умови оплати постачальників (103) ──
+  const supRows = (sid) => pp.filter(x => x.kind === 'supplier' && (x.supplier_id || null) === (sid || null)).sort((a, b) => (a.part_no || 1) - (b.part_no || 1))
+  const termsOf = (sid) => { const rows = supRows(sid); return { baseDate: rows.find(x => x.base_date)?.base_date || '', parts: rows.length ? rows.map(x => ({ sharePct: x.share_pct ?? '', days: x.days ?? '', planDate: x.plan_date || '' })) : [{ sharePct: '', days: '', planDate: '' }] } }
+  const saveTerms = async (sid, t) => { try { await saveSupplierTerms(o.id, sid || null, t); toast('Умови оплати збережено'); load() } catch (e) { toast(e.message, { type: 'error' }) } }
+  // клік по даті картки постачальника — ручна дата цієї частини (або повернути розрахунок)
+  const setPartDate = (c, date) => {
+    const t = termsOf(c.supplierId), i = Math.max(0, (c.partNo || 1) - 1)
+    while (t.parts.length <= i) t.parts.push({ sharePct: '', days: '', planDate: '' })
+    t.parts[i] = { ...t.parts[i], planDate: date || '' }
+    saveTerms(c.supplierId, t)
   }
   const unlink = async (p) => {
     try {
@@ -147,10 +159,21 @@ export default function OrderProfitNew({ o, onOrderChange }) {
         {d.cards.length === 0 ? <p className="opn-muted">Немає платежів у графіку.</p> : (
           <div className="opn-cards">{d.cards.map(c => (
             <div key={c.key} className={`opn-pay${d.minCard?.key === c.key ? ' is-low' : ''}`}>
-              <div className="opn-pay-h"><b>{dm(c.date)}</b>
+              <div className="opn-pay-h">{c.isSupplier && c.supplierId && !c.ownDays && !c.paid
+                ? (editDate === c.key
+                  ? <input type="date" className="form-input opn-date-in" autoFocus defaultValue={c.date || ''} aria-label="Дата оплати постачальнику"
+                      onBlur={e => { setEditDate(null); if (e.target.value && e.target.value !== c.date) setPartDate(c, e.target.value) }}
+                      onKeyDown={e => { if (e.key === 'Escape') setEditDate(null); if (e.key === 'Enter') e.currentTarget.blur() }} />
+                  : <button type="button" className="opn-date-btn" onClick={() => setEditDate(c.key)} title="Змінити дату вручну"><b>{dm(c.date)}</b><i className="ti ti-pencil" aria-hidden="true" /></button>)
+                : <b>{dm(c.date)}</b>}
                 <span className={`opn-st ${c.paid ? (c.late > 0 ? 'is-late' : 'is-ok') : c.part ? 'is-part' : c.overdue ? 'is-late' : ''}`}>
                   {c.paid ? `${c.kind === 'income' ? 'отримано' : 'оплачено'}${c.when ? ' ' + dm(c.when) : ''}${c.late > 0 ? ` · +${c.late} дн.` : ''}` : c.part ? `отримано ${n0(c.fact)} з ${n0(c.plan)}` : c.overdue ? 'прострочено' : c.estimated ? 'орієнтовно' : 'заплановано'}</span></div>
               <span className="opn-pay-l">{c.label}</span>
+              {c.isSupplier && <span className="opn-terms">
+                {c.ownDays ? `відстрочка позиції · ${c.days > 0 ? 'через ' + c.days : c.days < 0 ? 'за ' + -c.days + ' до' : 'у день'} дн.`
+                  : <>{c.partsCount > 1 ? `частина ${c.partNo}/${c.partsCount} · ${Math.round(c.sharePct)}% · ` : ''}{c.manual ? 'дата вручну' : c.days > 0 ? `через ${c.days} дн. від ${c.baseDate ? 'отримання' : 'відвантаження'}` : c.days < 0 ? `передоплата за ${-c.days} дн.` : `у день ${c.baseDate ? 'отримання' : 'відвантаження'}`}</>}
+                {c.manual && !c.paid && <button type="button" onClick={() => setPartDate(c, '')} title="Повернути розрахункову дату">скинути</button>}
+              </span>}
               <b className={`opn-pay-a ${c.amount < 0 ? 'is-neg' : 'is-pos'}`}>{sg2(c.amount)} ₴</b>
               {c.part && <span className="opn-prog"><i style={{ width: `${Math.min(100, (c.fact / c.plan) * 100)}%` }} /></span>}
               {c.warn === 'supplier' && <span className="opn-warn">Постачальника не вказано. <button type="button" onClick={() => document.getElementById('ocn-tab-items')?.click()}>Вказати</button></span>}
@@ -166,6 +189,19 @@ export default function OrderProfitNew({ o, onOrderChange }) {
           {d.flow && <span className={d.flow.ok ? '' : 'is-neg'}>чистий потік <b>{sg2(d.flow.planNet)} ₴</b> {d.flow.ok ? <span className="is-pos">✓ сходиться з планом</span> : `не сходиться з планом на ${n2(d.flow.planNet - d.flow.check)} ₴`} <InfoTip label="Чистий потік" placement="left">Податок 18% у грошовий потік не входить, тому потік = чистий прибуток + податок.</InfoTip></span>}
         </div>
       </section>
+
+      {/* ── Умови оплати постачальникам (103) ── */}
+      {(() => {
+        const sups = []; const seen = new Set()
+        d.cards.filter(c => c.isSupplier && c.supplierId && !c.ownDays).forEach(c => { const k = c.supplierId; if (!seen.has(k)) { seen.add(k); sups.push(c) } })
+        if (!sups.length) return null
+        return (
+          <section className="opn-card opn-terms-card" aria-label="Умови оплати постачальникам">
+            <h2>Умови оплати постачальникам<InfoTip label="Умови оплати постачальникам">Дні — від дати відвантаження замовлення або від дати отримання товару від цього постачальника, якщо її вказано. Від’ємне число — передоплата до відвантаження.<br />Порожньо — відстрочка з картки постачальника. Вписане тут зберігається саме в цьому замовленні й не змінюється, коли міняють картку постачальника.<br />Відстрочку окремої позиції можна вказати у «Товарах».</InfoTip></h2>
+            {sups.map(c => <SupplierTerms key={c.supplierId || 'none'} c={c} init={termsOf(c.supplierId)} onSave={t => saveTerms(c.supplierId, t)} />)}
+          </section>
+        )
+      })()}
 
       {/* ── Оплати ── */}
       <section className="opn-card is-flush" aria-label="Оплати по замовленню">
@@ -230,5 +266,38 @@ function ExpenseForm({ o, kind, userId, onClose, onSaved }) {
       </div>
       {err && <p className="is-neg">{err}</p>}
     </Modal>
+  )
+}
+
+// Умови одного постачальника: дата отримання + частини (% і дні). Частини разом — 100%.
+function SupplierTerms({ c, init, onSave }) {
+  const [t, setT] = useState(init)
+  const [dirty, setDirty] = useState(false)
+  const set = (f) => { setT(f); setDirty(true) }
+  const setPart = (i, patch) => set({ ...t, parts: t.parts.map((x, k) => k === i ? { ...x, ...patch } : x) })
+  const filled = t.parts.filter(x => x.sharePct !== '' && x.sharePct != null)
+  const sum = filled.reduce((s, x) => s + Number(x.sharePct || 0), 0)
+  const blanks = t.parts.length - filled.length
+  const bad = t.parts.length > 1 && (blanks ? sum >= 100 : Math.abs(sum - 100) > 0.01)
+  return (
+    <div className="opn-st-row">
+      <div className="opn-st-h"><b>{c.supplierId ? c.label.replace(/^Платимо /, '') : 'Постачальника не вказано'}</b>
+        {c.defDays != null && <small>у картці постачальника: {c.defDays} дн.</small>}</div>
+      <label className="opn-st-base">Отримання товару<input type="date" className="form-input" value={t.baseDate || ''} onChange={e => set({ ...t, baseDate: e.target.value })} /></label>
+      <div className="opn-st-parts">
+        {t.parts.map((x, i) => (
+          <div key={i} className="opn-st-part">
+            {t.parts.length > 1 && <label>%<input className="form-input" inputMode="decimal" value={x.sharePct} placeholder={blanks ? String(Math.max(0, Math.round((100 - sum) / blanks))) : ''} onChange={e => setPart(i, { sharePct: e.target.value })} /></label>}
+            <label>платимо через<input className="form-input" inputMode="numeric" value={x.days} placeholder={c.defDays != null ? String(c.defDays) : '0'} onChange={e => setPart(i, { days: e.target.value })} />дн.</label>
+            {x.planDate && <span className="opn-st-man">вручну {x.planDate.split('-').reverse().join('.')}<button type="button" onClick={() => setPart(i, { planDate: '' })} aria-label="Прибрати ручну дату">×</button></span>}
+            {t.parts.length > 1 && <button type="button" className="opn-st-del" onClick={() => set({ ...t, parts: t.parts.filter((_, k) => k !== i) })} aria-label="Видалити частину"><i className="ti ti-x" aria-hidden="true" /></button>}
+          </div>
+        ))}
+        <button type="button" className="opn-st-add" onClick={() => set({ ...t, parts: t.parts.length === 1 ? [{ ...t.parts[0], sharePct: t.parts[0].sharePct || '50' }, { sharePct: '50', days: '', planDate: '' }] : [...t.parts, { sharePct: '', days: '', planDate: '' }] })} disabled={t.parts.length >= 12}>+ частина</button>
+      </div>
+      {bad && <p className="opn-st-bad">Частини разом мають давати 100% (зараз {Math.round(sum * 100) / 100}%).</p>}
+      {dirty && <div className="opn-st-acts"><Button size="sm" variant="secondary" onClick={() => { setT(init); setDirty(false) }}>Скасувати</Button>
+        <Button size="sm" variant="brand" disabled={bad} onClick={() => { onSave(t); setDirty(false) }}>Зберегти</Button></div>}
+    </div>
   )
 }

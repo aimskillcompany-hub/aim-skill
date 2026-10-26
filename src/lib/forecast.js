@@ -16,7 +16,7 @@
 // Для балансу: оплата дебіторки / кредиторки змінює лише гроші, не капітал (борг уже в балансі) —
 // тому окремо повертаємо receivableCollect і payablePay.
 import { supabase } from './supabase'
-import { computeOrderPlan, expenseNet } from './orderPlan'
+import { computeOrderPlan, expenseNet, itemCost } from './orderPlan'
 import { countsAsDebt, debtDate, loadDocPayments } from './debts'
 import { fetchAll } from './fetchAll'
 
@@ -75,7 +75,8 @@ export async function buildOrderForecasts({ orderIds = null } = {}) {
   const flags = {}
 
   // Позиції (ґрейсфул до 067 — без cost_vat_rate)
-  let { data: items, error: iErr } = await inChunks('order_items', 'order_id, qty, unit_price, cost_price, vat_rate, cost_vat_rate, price_includes_vat, supplier_id', 'order_id', ids)
+  let { data: items, error: iErr } = await inChunks('order_items', 'order_id, qty, unit_price, cost_price, vat_rate, cost_vat_rate, price_includes_vat, supplier_id, pay_days', 'order_id', ids)
+  if (iErr) ({ data: items, error: iErr } = await inChunks('order_items', 'order_id, qty, unit_price, cost_price, vat_rate, cost_vat_rate, price_includes_vat, supplier_id', 'order_id', ids))   // до 103
   if (iErr) { ({ data: items } = await inChunks('order_items', 'order_id, qty, unit_price, cost_price, vat_rate, price_includes_vat, supplier_id', 'order_id', ids)); flags.no067 = true }
   // Інші витрати (065), факт (057), графік (067), субзамовлення (дати оплати постачальнику)
   let { data: exps, error: eErr } = await inChunks('order_expenses', 'order_id, amount, vat_included', 'order_id', ids)
@@ -83,7 +84,8 @@ export async function buildOrderForecasts({ orderIds = null } = {}) {
   if (eErr) flags.no065 = true
   const { data: ots, error: tErr } = await inChunks('order_transactions', 'order_id, kind, amount, transaction_id, bank_transactions(date, contractor_id)', 'order_id', ids)
   if (tErr) flags.no057 = true
-  const { data: plans, error: pErr } = await inChunks('order_payment_plan', 'order_id, kind, supplier_id, plan_date, days', 'order_id', ids)
+  let { data: plans, error: pErr } = await inChunks('order_payment_plan', 'order_id, kind, supplier_id, plan_date, days, part_no, share_pct, base_date, is_manual', 'order_id', ids)
+  if (pErr) ({ data: plans, error: pErr } = await inChunks('order_payment_plan', 'order_id, kind, supplier_id, plan_date, days', 'order_id', ids))   // до 103
   if (pErr) flags.no067 = true
   const { data: subs } = await inChunks('supplier_orders', 'order_id, supplier_id, payment_due_date', 'order_id', ids)
   // Прив'язані оплати клієнта (orders.paid_transaction_id)
@@ -98,8 +100,8 @@ export async function buildOrderForecasts({ orderIds = null } = {}) {
   docPays.forEach(t => { (paysOfDoc[t.document_id] ||= []).push(t) })
   // Назви постачальників
   const supIds = [...new Set((items || []).map(i => i.supplier_id).filter(Boolean))]
-  const supName = {}
-  if (supIds.length) { const { data } = await inChunks('contractors', 'id, name', 'id', supIds); (data || []).forEach(c => supName[c.id] = c.name) }
+  const supName = {}, supDelay = {}
+  if (supIds.length) { const { data } = await inChunks('contractors', 'id, name, payment_delay_days', 'id', supIds); (data || []).forEach(c => { supName[c.id] = c.name; supDelay[c.id] = c.payment_delay_days == null ? null : Number(c.payment_delay_days) }) }
 
   const group = (arr) => { const m = {}; (arr || []).forEach(x => (m[x.order_id] ||= []).push(x)); return m }
   const itemsBy = group(items), expBy = group(exps), otBy = group(ots), planBy = group(plans), subBy = group(subs), docBy = group(debtDocs)
@@ -154,20 +156,52 @@ export async function buildOrderForecasts({ orderIds = null } = {}) {
     const supKeys = Object.keys(plan.bySupplier)
     let pool = 0 // факт витрат, не віднесений до жодного постачальника замовлення
     expOts.forEach(t => { const cid = t.bank_transactions?.contractor_id; if (!cid || !plan.bySupplier[cid]) pool += Number(t.amount) || 0 })
+    // Умови оплати постачальнику (103): окремо для замовлення × постачальника; кілька частин (% і дні від відвантаження /
+    // отримання товару); ручна дата частини не перераховується. Дні: позиція (pay_days) → постачальник у замовленні →
+    // картка постачальника (payment_delay_days) → 0. Факт оплати постачальнику гасить його частини по черзі за датою.
     supKeys.forEach(key => {
       const b = plan.bySupplier[key]
       const sid = b.supplierId
       const sDocs = sid ? payDocs.filter(d => d.contractor_id === sid) : []
-      const fact = sid ? paidAcrossSources([
+      let fact = sid ? paidAcrossSources([
         perTx(expOts.filter(t => t.bank_transactions?.contractor_id === sid).map(t => ({ txId: t.transaction_id, amount: Number(t.amount) || 0 }))),
         perTx(sDocs.flatMap(d => (paysOfDoc[d.id] || []).map(t => ({ txId: t.transaction_id, amount: t.amount })))),
       ]) : 0
-      const pPlan = pl.find(x => x.kind === 'supplier' && (x.supplier_id || null) === sid)
+      let received = sDocs.reduce((s, d) => s + Math.abs(Number(d.amount) || 0), 0)
+      const rows = pl.filter(x => x.kind === 'supplier' && (x.supplier_id || null) === sid).sort((x, y) => (x.part_no || 1) - (y.part_no || 1))
       const subDue = (subBy[o.id] || []).find(s => (s.supplier_id || null) === sid && s.payment_due_date)?.payment_due_date
-      const received = sDocs.reduce((s, d) => s + Math.abs(Number(d.amount) || 0), 0)
-      push({ key: 'sup-' + key, kind: 'expense', label: sid ? (supName[sid] || 'Постачальник') : 'Закупівля (постачальника не вказано)', supplierId: sid,
-        plan: b.gross, fact, date: pPlan?.plan_date || subDue || shipDate, estimated: !pPlan?.plan_date && !subDue && shipEst,
-        payableShare: received })
+      const baseDate = rows.find(x => x.base_date)?.base_date || null
+      const base = baseDate || shipDate
+      const defDays = sid && supDelay[sid] != null ? supDelay[sid] : 0
+      const label = sid ? (supName[sid] || 'Постачальник') : 'Закупівля (постачальника не вказано)'
+      // позиції з власною відстрочкою — окремі картки
+      const own = {}
+      oItems.filter(it => (it.supplier_id || '__none__') === key && it.pay_days != null && it.pay_days !== '').forEach(it => {
+        const d = Number(it.pay_days); own[d] = (own[d] || 0) + itemCost(it, vatOn).gross
+      })
+      const ownSum = Object.values(own).reduce((s, v) => s + v, 0)
+      const rest = Math.max(0, b.gross - ownSum)
+      const parts = rows.length ? rows : [{ part_no: 1, share_pct: null, days: null, plan_date: null, is_manual: false }]
+      const shared = parts.reduce((s, x) => s + (x.share_pct == null ? 0 : Number(x.share_pct)), 0)
+      const blanks = parts.filter(x => x.share_pct == null).length
+      const sLines = []
+      parts.forEach(x => {
+        const share = x.share_pct != null ? Number(x.share_pct) : blanks ? Math.max(0, 100 - shared) / blanks : 0
+        // дата частини зберігається лише коли її вписано вручну (до 103 — єдина можлива дата постачальника, теж ручна)
+        const manual = !!x.plan_date
+        const days = x.days != null ? Number(x.days) : defDays
+        const date = manual ? x.plan_date : (!rows.length && subDue) ? subDue : addDays(base, days)
+        sLines.push({ key: `sup-${key}-p${x.part_no || 1}`, partNo: x.part_no || 1, sharePct: r2(share), days, manual, ownDays: false,
+          plan: rest * share / 100, date, estimated: !manual && !baseDate && !(!rows.length && subDue) && shipEst })
+      })
+      Object.entries(own).forEach(([d, v]) => sLines.push({ key: `sup-${key}-i${d}`, partNo: null, sharePct: null, days: Number(d), manual: false, ownDays: true,
+        plan: v, date: addDays(base, Number(d)), estimated: !baseDate && shipEst }))
+      sLines.sort((x, y) => (x.date || '').localeCompare(y.date || ''))
+      sLines.forEach(l => {
+        const f = Math.min(Math.max(0, fact), l.plan); fact -= f
+        const rcv = Math.min(Math.max(0, received), l.plan); received -= rcv
+        push({ ...l, kind: 'expense', label, supplierId: sid, baseDate, defDays, partsCount: parts.length, fact: f, payableShare: rcv })
+      })
     })
     // кредиторка: частина залишку, на яку вже є прихідні (отримано, не оплачено)
     lines.filter(l => l.key.startsWith('sup-')).forEach(l => { l.payablePart = r2(Math.min(l.remaining, Math.max(0, (l.payableShare || 0) - l.fact))); delete l.payableShare })
@@ -276,6 +310,25 @@ export async function savePaymentPlanEntry(orderId, { kind, supplierId = null, p
   if (dErr) throw dErr
   if (!planDate && (days === null || days === '' || days === undefined)) return
   const { error } = await supabase.from('order_payment_plan').insert({ order_id: orderId, kind, supplier_id: supplierId, plan_date: planDate || null, days: days === '' || days == null ? null : Number(days) })
+  if (error) throw error
+}
+
+// Умови оплати постачальника в замовленні (103): parts = [{ sharePct, days, planDate }] (planDate — ручна дата частини),
+// baseDate — дата отримання товару від постачальника. Порожні умови — видалити (повертається відстрочка з картки постачальника).
+export async function saveSupplierTerms(orderId, supplierId, { parts = [], baseDate = null } = {}) {
+  let del = supabase.from('order_payment_plan').delete().eq('order_id', orderId).eq('kind', 'supplier')
+  del = supplierId ? del.eq('supplier_id', supplierId) : del.is('supplier_id', null)
+  const { error: dErr } = await del
+  if (dErr) throw dErr
+  const clean = parts.filter(x => x && (x.planDate || (x.days !== '' && x.days != null) || (x.sharePct !== '' && x.sharePct != null && Number(x.sharePct) !== 100)))
+  if (!clean.length && !baseDate) return
+  const rows = (clean.length ? clean : [{}]).map((x, i) => ({
+    order_id: orderId, kind: 'supplier', supplier_id: supplierId, part_no: i + 1,
+    share_pct: x.sharePct === '' || x.sharePct == null ? null : Number(x.sharePct),
+    days: x.days === '' || x.days == null ? null : Number(x.days),
+    plan_date: x.planDate || null, is_manual: !!x.planDate, base_date: baseDate || null,
+  }))
+  const { error } = await supabase.from('order_payment_plan').insert(rows)
   if (error) throw error
 }
 

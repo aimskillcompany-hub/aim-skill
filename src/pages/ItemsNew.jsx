@@ -95,6 +95,9 @@ export default function ItemsNew(p) {
                               <option value="__new__">＋ новий…</option>
                             </select>
                           </span>
+                          {r.supplier_id && <label className="itn-paydays" title="Відстрочка оплати постачальнику саме за цю позицію (порожньо — умови постачальника в замовленні)">
+                            <span>відстрочка позиції</span><input type="number" inputMode="numeric" aria-label={`Відстрочка оплати постачальнику, позиція ${i + 1}`} value={r.pay_days ?? ''} placeholder="—"
+                              onChange={e => setRow(i, { pay_days: e.target.value === '' ? null : Number(e.target.value) })} /><span>дн.</span></label>}
                         </div>
                       </td>
                       <td className="r" data-label="Кількість"><input className="itn-cell" type="number" inputMode="decimal" aria-label={`Кількість, позиція ${i + 1}`} value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} /></td>
