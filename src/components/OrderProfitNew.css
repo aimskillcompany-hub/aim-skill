@@ -104,3 +104,8 @@
 .opn-cands-h { background: none !important; padding: 0 2px !important; font-size: 13px; color: var(--muted); }
 .opn-cands-h > span { display: inline-flex; align-items: center; }
 .opn-cands small { color: var(--muted); }
+
+.opn-settle { align-self: flex-start; border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 12px; font-weight: 600; color: var(--brand-dark); cursor: pointer; }
+.opn-settle:hover { background: var(--brand-soft); }
+.opn-settled { font-size: 12px; color: var(--muted); }
+.opn-settled button { border: 0; background: none; padding: 0; font: inherit; font-size: 12px; font-weight: 600; color: var(--brand-dark); text-decoration: underline; cursor: pointer; }

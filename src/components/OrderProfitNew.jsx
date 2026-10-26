@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase'
 import { useUser } from '../lib/auth'
 import { useCompany } from '../lib/company'
 import { loadOrderProfit, EXPENSE_KINDS } from '../lib/orderProfit'
-import { loadPaymentPlan, savePaymentPlanEntry, saveSupplierTerms, DEFAULT_CLIENT_DAYS } from '../lib/forecast'
+import { loadPaymentPlan, savePaymentPlanEntry, saveSupplierTerms, setSupplierSettled, DEFAULT_CLIENT_DAYS } from '../lib/forecast'
 import { paymentCandidates, unlinkOrderPayment } from '../lib/orderPayments'
 import { qc } from '../lib/companyScope'
 import { todayKyiv } from '../lib/dates'
@@ -47,6 +47,10 @@ export default function OrderProfitNew({ o, onOrderChange }) {
   }
   useEffect(load, [o.id, o.total, o.paid_transaction_id, o.status, o.agent_commission_pct, vatOn])
   const changed = () => { load(); onOrderChange?.() }
+  const settle = async (c, on) => {
+    try { await setSupplierSettled(o.id, c.supplierId, on); toast(on ? 'Залишок постачальнику закрито' : 'Залишок знову відкрито'); changed() }
+    catch (e) { toast('Не вдалося: ' + e.message, { type: 'error' }) }
+  }
   const linkSup = async (list) => {
     setSupBusy(list.length > 1 ? 'all' : list[0].txId)
     try { for (const p of list) await linkSupplierDocPay(p, user?.id); toast(list.length > 1 ? `Прив'язано ${list.length} оплат` : 'Оплату прив\'язано'); changed() }
@@ -188,6 +192,8 @@ export default function OrderProfitNew({ o, onOrderChange }) {
               </span>}
               <b className={`opn-pay-a ${c.amount < 0 ? 'is-neg' : 'is-pos'}`}>{sg2(c.amount)} ₴</b>
               {c.part && <span className="opn-prog"><i style={{ width: `${Math.min(100, (c.fact / c.plan) * 100)}%` }} /></span>}
+              {c.isSupplier && c.settled && <span className="opn-settled">закрито вручну{c.saving > 0.5 ? ` · заплатили на ${n0(c.saving)} ₴ менше за план` : ''} <button type="button" onClick={() => settle(c, false)}>відкрити</button></span>}
+              {c.isSupplier && !c.paid && !c.settled && c.factReal > 0.5 && <button type="button" className="opn-settle" onClick={() => settle(c, true)} title="Постачальнику більше нічого не платимо: заплатили менше за план, залишок закривається">Оплачено повністю</button>}
               {c.warn === 'supplier' && <span className="opn-warn">Постачальника не вказано. <button type="button" onClick={() => document.getElementById('ocn-tab-items')?.click()}>Вказати</button></span>}
               {c.warn === 'client' && <span className="opn-warn">У виписці ще не знайдено. <button type="button" onClick={() => setPicker('income')}>Прив'язати вручну</button></span>}
               <small className="opn-after">по замовленню після цього: <b className={c.after < 0 ? 'is-neg' : 'is-pos'}>{sg2(c.after)} ₴</b></small>

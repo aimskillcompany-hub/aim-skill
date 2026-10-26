@@ -59,4 +59,14 @@ describe('умови оплати постачальнику', () => {
     const a = o.lines.filter(l => l.supplierId === A)
     expect(a.map(l => [l.date, l.plan])).toEqual([['2026-11-20', 2400]])
   })
+  it('«Оплачено повністю»: заплатили менше за план — залишок закрито, різниця — економія', async () => {
+    base()
+    T.order_payment_plan = [T.order_payment_plan[0], { order_id: O, kind: 'supplier_settled', supplier_id: A }]
+    T.order_transactions = [{ order_id: O, kind: 'expense', amount: 2300, transaction_id: 't1', bank_transactions: { date: '2026-11-01', contractor_id: A } }]
+    const [o] = await buildOrderForecasts({ orderIds: [O] })
+    const a = o.lines.filter(l => l.supplierId === A)
+    expect(a.every(l => l.remaining === 0 && l.settled)).toBe(true)
+    expect(a[0].saving).toBe(100)
+    expect(o.lines.filter(l => l.supplierId === B).some(l => l.remaining > 0)).toBe(true)   // інший постачальник — без змін
+  })
 })

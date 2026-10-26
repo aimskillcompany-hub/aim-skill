@@ -153,7 +153,7 @@ export async function loadOrderProfit(o, { vatOn = true } = {}) {
       key: l.key, date: l.date, label: isClient ? `Оплата від ${o.contractors?.name || 'клієнта'}` : l.key.startsWith('sup-') ? (l.supplierId ? `Платимо ${l.label}` : 'Постачальника не вказано') : l.label,
       // постачальник (103): частина оплати, дні, ручна дата
       supplierId: l.supplierId ?? null, isSupplier: l.key.startsWith('sup-'), partNo: l.partNo ?? null, partsCount: l.partsCount ?? 1, sharePct: l.sharePct ?? null,
-      days: l.days ?? null, manual: !!l.manual, ownDays: !!l.ownDays, itemShip: l.itemShip ?? null, baseDate: l.baseDate ?? null, defDays: l.defDays ?? null,
+      days: l.days ?? null, manual: !!l.manual, ownDays: !!l.ownDays, itemShip: l.itemShip ?? null, settled: !!l.settled, saving: l.saving || 0, factReal: l.factReal ?? l.fact, baseDate: l.baseDate ?? null, defDays: l.defDays ?? null,
       kind: l.kind, amount: r2(sign * l.plan), fact: r2(l.fact), plan: r2(l.plan), paid, part, when, late,
       estimated: l.estimated && !paid, overdue: l.overdue, after: run,
       warn: l.key.startsWith('sup-') && !l.supplierId ? 'supplier' : (isClient && !paid && !l.fact && (l.overdue || !o.paid_transaction_id)) ? 'client' : null,
