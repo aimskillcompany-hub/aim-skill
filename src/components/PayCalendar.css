@@ -90,8 +90,11 @@
 .pc-row-g th, .pc-row-g td { font-weight: 700; }
 .pc-row-g button { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; color: var(--text); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
 .pc-row-g button .ti { font-size: 14px; color: var(--muted); }
-.pc-row-s th { padding-left: 34px; white-space: normal; }
-.pc-row-s th small { color: var(--muted); margin-left: 6px; }
+.pc-row-s th { padding-left: 30px; white-space: normal; }
+.pc-sub-row { display: flex; align-items: baseline; gap: 10px; }
+.pc-ord { flex: none; width: 54px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pc-ord a { color: var(--brand-dark); text-decoration: none; } .pc-ord a:hover { text-decoration: underline; }
+.pc-cp { min-width: 0; }
 .pc-row-s td { color: var(--text2); }
 .pc-row-net th, .pc-row-net td { font-weight: 700; background: var(--surface-sunken); }
 .pc-row-net td.is-today { background: var(--brand-soft); }

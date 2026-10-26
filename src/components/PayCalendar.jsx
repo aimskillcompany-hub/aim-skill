@@ -290,14 +290,15 @@ function BalanceChart({ days, gap, today }) {
   )
 }
 
-// групи → рядки за контрагентом
+// групи → рядки за замовленням (№ зліва, контрагент справа); у замовленні з кількома постачальниками — рядок на кожного
+const subName = (r) => r.type === 'supplier' || r.type === 'manual' ? (r.counterparty || '—') : (r.client || r.counterparty || '—')
 function groupRows(rows) {
   return GROUPS.map(g => {
     const list = rows.filter(r => r.type === g.id)
     if (!list.length) return null
     const by = {}
-    list.forEach(r => { const k = r.counterparty || '—'; const s = (by[k] ||= { name: k, rows: [], nums: new Set() }); s.rows.push(r); if (r.number) s.nums.add(r.number) })
-    const subs = Object.values(by).sort((a, b) => a.name.localeCompare(b.name, 'uk'))
+    list.forEach(r => { const k = (r.orderId || '') + '|' + subName(r); (by[k] ||= { key: k, orderId: r.orderId, number: r.number, name: subName(r), rows: [] }).rows.push(r) })
+    const subs = Object.values(by).sort((a, b) => String(a.number || '~').localeCompare(String(b.number || '~')) || a.name.localeCompare(b.name, 'uk'))
     return { ...g, list, subs }
   }).filter(Boolean)
 }
@@ -327,10 +328,13 @@ function CashTable({ days, rows, open, setOpen, today }) {
                 <td className="is-num"><b>{cell(total(g.list))}</b></td>
               </tr>
               {open[g.id] && g.subs.map(s => (
-                <tr key={s.name} className="pc-row-s">
-                  <th className="pc-sticky"><span className="pc-cp">{s.name}</span>{s.nums.size > 0 && <small>{[...s.nums].sort().map((n, i) => <Fragment key={n}>{i ? ', ' : ''}<Link to={`/orders/${s.rows.find(r => r.number === n).orderId}?tab=finance`}>№{n}</Link></Fragment>)}</small>}
-                    {s.rows.some(r => r.overdue) && <span className="pc-tag is-late">простр.</span>}
-                    {s.rows.some(r => r.estimated) && <span className="pc-tag is-est">орієнт.</span>}</th>
+                <tr key={s.key} className="pc-row-s">
+                  <th className="pc-sticky"><span className="pc-sub-row">
+                    <span className="pc-ord">{s.orderId ? <Link to={`/orders/${s.orderId}?tab=finance`}>№{s.number}</Link> : '—'}</span>
+                    <span className="pc-cp">{s.name}
+                      {s.rows.some(r => r.overdue) && <span className="pc-tag is-late">простр.</span>}
+                      {s.rows.some(r => r.estimated) && <span className="pc-tag is-est">орієнт.</span>}</span>
+                  </span></th>
                   {days.map(d => { const v = sumOn(s.rows, d.date); return <td key={d.date} className={'is-num' + dayCls(d)}>{cell(v)}</td> })}
                   <td className="is-num">{cell(total(s.rows))}</td>
                 </tr>
@@ -359,7 +363,7 @@ function DayList({ days, rows, today }) {
             <b className="pc-day-end">{n0(d.end)}</b><i className={`ti ti-chevron-${isOpen ? 'up' : 'down'}`} aria-hidden="true" />
           </button>
           {isOpen && <ul className="pc-day-rows">{list.length ? list.map((r, i) => (
-            <li key={i}><span>{r.counterparty}{r.number && <small> <Link to={`/orders/${r.orderId}?tab=finance`}>№{r.number}</Link></small>}{r.overdue && <span className="pc-tag is-late">простр.</span>}{r.estimated && <span className="pc-tag is-est">орієнт.</span>}</span><b className={r.amount < 0 ? 'is-neg' : 'is-pos'}>{sg(r.amount)}</b></li>
+            <li key={i}><span>{r.number && <small><Link to={`/orders/${r.orderId}?tab=finance`}>№{r.number}</Link> </small>}{subName(r)}{r.overdue && <span className="pc-tag is-late">простр.</span>}{r.estimated && <span className="pc-tag is-est">орієнт.</span>}</span><b className={r.amount < 0 ? 'is-neg' : 'is-pos'}>{sg(r.amount)}</b></li>
           )) : <li><span>Руху немає</span></li>}</ul>}
         </li>
       )
