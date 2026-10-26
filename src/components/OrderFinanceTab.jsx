@@ -285,7 +285,7 @@ function PlannedProfit({ o, userId }) {
 }
 
 // Вибір банківської транзакції + сума частки
-export function TxPicker({ kind, orderId, clientId, userId, onClose, onAdded }) {
+export function TxPicker({ kind, orderId, clientId, supplierIds = [], userId, onClose, onAdded }) {
   const toast = useToast()
   const [q, setQ] = useState('')
   const [rows, setRows] = useState(null)
@@ -294,20 +294,23 @@ export function TxPicker({ kind, orderId, clientId, userId, onClose, onAdded }) 
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [onlyClient, setOnlyClient] = useState(kind === 'income' && !!clientId)
+  const [onlySup, setOnlySup] = useState(kind === 'expense' && supplierIds.length > 0)
 
   const search = async (term) => {
     let query = qc('bank_transactions')
       .select('id, date, counterparty, description, amount, direction, edrpou, contractor_id')
       .eq('is_ignored', false).order('date', { ascending: false }).limit(60)
-    if (kind === 'income') query = query.eq('direction', 'Доходи')
-    else if (kind === 'expense') query = query.eq('direction', 'Витрати')
+    // напрям — за знаком суми (поле direction заповнене не в усіх рядках виписки)
+    if (kind === 'income') query = query.gt('amount', 0)
+    else if (kind === 'expense') query = query.lt('amount', 0)
     if (onlyClient && clientId) query = query.eq('contractor_id', clientId)
+    if (onlySup && supplierIds.length) query = query.in('contractor_id', supplierIds)
     const t = term.trim()
     if (t) query = query.or(`counterparty.ilike.%${t}%,description.ilike.%${t}%,edrpou.ilike.%${t}%`)
     const { data } = await query
     setRows(data || [])
   }
-  useEffect(() => { const id = setTimeout(() => search(q), q ? 300 : 0); return () => clearTimeout(id) }, [q, onlyClient])
+  useEffect(() => { const id = setTimeout(() => search(q), q ? 300 : 0); return () => clearTimeout(id) }, [q, onlyClient, onlySup])
 
   // Скільки з транзакції вже розподілено на замовлення (частки + пряма прив'язка оплати клієнта) —
   // щоб одна транзакція не потрапила повною сумою в кілька замовлень (подвійний факт у прибутковості/прогнозі).
@@ -345,7 +348,7 @@ export function TxPicker({ kind, orderId, clientId, userId, onClose, onAdded }) 
   }
 
   return (
-    <Modal open onClose={onClose} size="lg" title={`Додати ${kind === 'income' ? 'надходження' : 'витрату'} з банку`}
+    <Modal open onClose={onClose} size="lg" title={kind === 'income' ? 'Оплата клієнта з виписки' : 'Оплата постачальнику з виписки'}
       footer={chosen ? <>
         <Button variant="secondary" icon="ti-arrow-left" onClick={() => setChosen(null)}>Інша транзакція</Button>
         <Button variant="dark" loading={busy} onClick={add}>Додати</Button>
@@ -356,6 +359,7 @@ export function TxPicker({ kind, orderId, clientId, userId, onClose, onAdded }) 
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
               <input className="form-input" type="search" aria-label="Пошук транзакції" placeholder="Пошук: контрагент / опис / ЄДРПОУ…" value={q} onChange={e => setQ(e.target.value)} style={{ flex: '1 1 240px' }} />
               {kind === 'income' && clientId && <Switch checked={onlyClient} onChange={setOnlyClient} label="Лише від клієнта" />}
+              {kind === 'expense' && supplierIds.length > 0 && <Switch checked={onlySup} onChange={setOnlySup} label="Лише постачальники замовлення" />}
             </div>
             {rows == null ? <TableSkeleton rows={5} cols={3} />
               : rows.length === 0 ? <p style={{ color: 'var(--text3)', fontSize: 13 }}>Транзакцій не знайдено.</p> : (

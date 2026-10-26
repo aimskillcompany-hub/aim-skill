@@ -61,7 +61,23 @@ describe('платіжний календар', () => {
       { id: 't3', date: '2026-10-23', amount: -470000, edrpou: '999' },             // інший контрагент
     ]
     const p = matchPaid(lines, txs, sups, T)
-    expect(p).toHaveLength(1); expect(p[0].tx.id).toBe('t1')
-    expect(matchPaid(lines, [{ id: 't4', date: '2026-09-01', amount: -470000, edrpou: '123' }], sups, T)).toHaveLength(0)   // старше 30 днів
+    expect(p[0]).toMatchObject({ partial: false, amount: 470040 }); expect(p[0].tx.id).toBe('t1')
+    expect(p.filter(x => x.tx.id === 't3')).toHaveLength(0)                       // інший контрагент — ніколи
+    expect(matchPaid(lines, [{ id: 't4', date: '2026-07-01', amount: -470000, edrpou: '123' }], sups, T)).toHaveLength(0)   // старше 90 днів
+  })
+
+  it('часткові оплати: залишок платежу розкладається на прострочені замовлення від найстаріших', () => {
+    const sups = { s9: { id: 's9', name: 'ІП «I-AP-CI»', edrpou: '555' } }
+    const lines = [
+      { key: 'sup-s9-p1', orderId: 'o89', number: '0089', supplierId: 's9', amount: -100000, origDate: '2026-10-10' },
+      { key: 'sup-s9-p1', orderId: 'o55', number: '0055', supplierId: 's9', amount: -60000, origDate: '2026-10-01' },
+    ]
+    const txs = [
+      { id: 'a', date: '2026-10-15', amount: -90000, edrpou: '555' },
+      { id: 'b', date: '2026-10-20', amount: -200000, edrpou: '555', free: 30000 },   // уже частково розподілена
+    ]
+    const p = matchPaid(lines, txs, sups, T)
+    expect(p.every(x => x.partial)).toBe(true)
+    expect(p.map(x => [x.tx.id, x.line.number, x.amount])).toEqual([['a', '0055', 60000], ['a', '0089', 30000], ['b', '0089', 30000]])
   })
 })

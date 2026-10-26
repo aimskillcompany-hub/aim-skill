@@ -5,7 +5,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useUser } from '../lib/auth'
 import { useCompany } from '../lib/company'
 import { loadForecast, currentCashByCompany } from '../lib/forecast'
-import { buildCalendar, findPossiblyPaid, linkPaidPair, GROUPS, addDaysIso } from '../lib/payCalendar'
+import { buildCalendar, findPossiblyPaid, linkPaidPair, pairKey, GROUPS, addDaysIso } from '../lib/payCalendar'
 import { createTask } from '../lib/tasks'
 import { todayKyiv } from '../lib/dates'
 import { formatAmount, plural } from '../utils/format'
@@ -110,10 +110,13 @@ export default function PayCalendar({ co, onMeta }) {
     btn: gapCause ? <Link className="btn btn-secondary btn-sm" to={`/orders/${gapCause.orderId}?tab=finance`}>Відкрити №{gapCause.number}</Link>
       : <Button size="sm" variant="secondary" onClick={() => document.getElementById('pc-hold')?.scrollIntoView({ behavior: 'smooth' })}>Варіанти</Button>,
   })
+  const fullP = pairs.filter(p => !p.partial), partP = pairs.filter(p => p.partial)
   if (pairs.length) actions.push({
     tone: 'info', title: 'Можливо, вже оплачено',
-    text: `${pairs.length} ${plural(pairs.length, ['«прострочена» оплата', '«прострочені» оплати', '«прострочених» оплат'])} постачальникам є у виписці: ${pairs.map(p => `№${p.line.number} — ${n0(Math.abs(p.tx.amount))} ₴ ${dmy(p.tx.date).slice(0, 5)}`).join(', ')}. Прив'яжіть — і сьогоднішній мінус зменшиться.`,
-    amount: -pairs.reduce((s, p) => s + p.tx.amount, 0), amountTone: 'info',
+    text: [fullP.length ? `${fullP.length} ${plural(fullP.length, ['«прострочена» оплата', '«прострочені» оплати', '«прострочених» оплат'])} постачальникам є у виписці: ${fullP.map(p => `№${p.line.number} — ${n0(p.amount)} ₴ ${dmy(p.tx.date).slice(0, 5)}`).join(', ')}.` : '',
+      partP.length ? `Часткові оплати, ще не прив'язані: ${[...new Set(partP.map(p => '№' + p.line.number))].join(', ')} — разом ${n0(partP.reduce((s, p) => s + p.amount, 0))} ₴.` : '',
+      'Прив\'яжіть — і сьогоднішній мінус зменшиться.'].filter(Boolean).join(' '),
+    amount: pairs.reduce((s, p) => s + p.amount, 0), amountTone: 'info',
     btn: <Button size="sm" variant="secondary" onClick={() => setLinking(true)}>Прив'язати</Button>,
   })
   if (supOver.length) actions.push({
@@ -325,7 +328,7 @@ function CashTable({ days, rows, open, setOpen, today }) {
               </tr>
               {open[g.id] && g.subs.map(s => (
                 <tr key={s.name} className="pc-row-s">
-                  <th className="pc-sticky"><span className="pc-cp">{s.name}</span>{s.nums.size > 0 && <small>{[...s.nums].sort().map(n => '№' + n).join(', ')}</small>}
+                  <th className="pc-sticky"><span className="pc-cp">{s.name}</span>{s.nums.size > 0 && <small>{[...s.nums].sort().map((n, i) => <Fragment key={n}>{i ? ', ' : ''}<Link to={`/orders/${s.rows.find(r => r.number === n).orderId}?tab=finance`}>№{n}</Link></Fragment>)}</small>}
                     {s.rows.some(r => r.overdue) && <span className="pc-tag is-late">простр.</span>}
                     {s.rows.some(r => r.estimated) && <span className="pc-tag is-est">орієнт.</span>}</th>
                   {days.map(d => { const v = sumOn(s.rows, d.date); return <td key={d.date} className={'is-num' + dayCls(d)}>{cell(v)}</td> })}
@@ -356,7 +359,7 @@ function DayList({ days, rows, today }) {
             <b className="pc-day-end">{n0(d.end)}</b><i className={`ti ti-chevron-${isOpen ? 'up' : 'down'}`} aria-hidden="true" />
           </button>
           {isOpen && <ul className="pc-day-rows">{list.length ? list.map((r, i) => (
-            <li key={i}><span>{r.counterparty}{r.number && <small> №{r.number}</small>}{r.overdue && <span className="pc-tag is-late">простр.</span>}{r.estimated && <span className="pc-tag is-est">орієнт.</span>}</span><b className={r.amount < 0 ? 'is-neg' : 'is-pos'}>{sg(r.amount)}</b></li>
+            <li key={i}><span>{r.counterparty}{r.number && <small> <Link to={`/orders/${r.orderId}?tab=finance`}>№{r.number}</Link></small>}{r.overdue && <span className="pc-tag is-late">простр.</span>}{r.estimated && <span className="pc-tag is-est">орієнт.</span>}</span><b className={r.amount < 0 ? 'is-neg' : 'is-pos'}>{sg(r.amount)}</b></li>
           )) : <li><span>Руху немає</span></li>}</ul>}
         </li>
       )
@@ -371,9 +374,9 @@ function LinkModal({ pairs, userId, onClose, onDone }) {
   const [busy, setBusy] = useState(null)
   const [done, setDone] = useState(0)
   const link = async (list) => {
-    setBusy(list.length > 1 ? 'all' : list[0].tx.id)
+    setBusy(list.length > 1 ? 'all' : pairKey(list[0]))
     try {
-      for (const p of list) { await linkPaidPair(p, userId); setLeft(l => l.filter(x => x.tx.id !== p.tx.id)); setDone(n => n + 1) }
+      for (const p of list) { await linkPaidPair(p, userId); setLeft(l => l.filter(x => pairKey(x) !== pairKey(p))); setDone(n => n + 1) }
     } catch (e) { toast('Не вдалося прив\'язати: ' + e.message, { type: 'error' }) }
     setBusy(null)
   }
@@ -381,12 +384,12 @@ function LinkModal({ pairs, userId, onClose, onDone }) {
   return (
     <Modal open onClose={done ? onDone : onClose} size="lg" title="Можливо, вже оплачено"
       footer={<><Button variant="secondary" onClick={done ? onDone : onClose}>Готово</Button><Button variant="dark" loading={busy === 'all'} disabled={!left.length || !!busy} onClick={() => link(left)}>Прив'язати всі ({left.length})</Button></>}>
-      <p className="pc-modal-p">Ці оплати є у виписці, але не прив'язані до замовлень: той самий постачальник, сума збігається (±1% або ±50 ₴). Після прив'язки рядок прогнозу закривається як оплачений.</p>
+      <p className="pc-modal-p">Ці оплати є у виписці, але не прив'язані до замовлень (або розподілені не повністю). <b>Повна</b> — той самий постачальник, сума збігається (±1% або ±50 ₴). <b>Часткова</b> — вільний залишок платежу цього постачальника, розкладений на його прострочені замовлення від найстаріших. Після прив'язки рядок прогнозу закривається або зменшується.</p>
       <ul className="pc-pairs">{left.map(p => (
-        <li key={p.tx.id}>
-          <div><b>№{p.line.number} · {p.line.counterparty}</b><small>план {dmy(p.line.origDate)} · {n0(Math.abs(p.line.amount))} ₴</small></div>
-          <div><b>{n0(Math.abs(p.tx.amount))} ₴</b><small>виписка {dmy(p.tx.date)} · {p.tx.counterparty || '—'}</small></div>
-          <Button size="sm" variant="secondary" loading={busy === p.tx.id} disabled={!!busy} onClick={() => link([p])}>Прив'язати</Button>
+        <li key={pairKey(p)}>
+          <div><b><Link to={`/orders/${p.line.orderId}?tab=finance`}>№{p.line.number}</Link> · {p.line.counterparty}</b><small>план {dmy(p.line.origDate)} · до оплати {n0(Math.abs(p.line.amount))} ₴</small></div>
+          <div><b>{n0(p.amount)} ₴{p.partial && <span className="pc-tag is-part">частково</span>}</b><small>виписка {dmy(p.tx.date)} · платіж {n0(Math.abs(p.tx.amount))} ₴</small></div>
+          <Button size="sm" variant="secondary" loading={busy === pairKey(p)} disabled={!!busy} onClick={() => link([p])}>Прив'язати</Button>
         </li>
       ))}</ul>
       {!left.length && <p className="pc-modal-p">Усе прив'язано.</p>}

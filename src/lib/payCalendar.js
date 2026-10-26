@@ -154,18 +154,41 @@ const normName = (s) => String(s || '').toLowerCase()
   .replace(/товариство\s+з\s+обмеженою\s+відповідальністю/g, 'тов').replace(/[«»"'`ʼ’.,]/g, '').replace(/\s+/g, ' ').trim()
 export const amountMatches = (tx, plan) => Math.abs(Math.abs(tx) - plan) <= Math.max(plan * 0.01, 50)
 
-// Чиста частина: пари «прострочений рядок постачальнику ↔ неприв'язана витрата у виписці»
+// Чиста частина: пари «прострочений рядок постачальнику ↔ неприв'язана (або не до кінця розподілена) витрата у виписці».
+// 1) повний збіг: сума ±1% або ±50 ₴, виписка за 30 днів; 2) часткові: решта вільних витрат того самого постачальника
+// (за 90 днів) розподіляється на його прострочені рядки — від найстаріших; одна витрата може закрити кілька замовлень.
+// tx.free — ще не розподілена сума транзакції (за замовчуванням уся).
+export const PARTIAL_DAYS = 90
 export function matchPaid(lines, txs, sups, today) {
-  const used = new Set(), pairs = []
-  const since = addDaysIso(today, -30)
+  const pairs = []
+  const free = {}; txs.forEach(t => { free[t.id] = r2(t.free != null ? t.free : Math.abs(Number(t.amount) || 0)) })
+  const left = {}; lines.forEach(l => { left[l.key + '|' + l.orderId] = Math.abs(l.amount) })
+  const lk = (l) => l.key + '|' + l.orderId
+  const sameSup = (t, l, sup) => t.contractor_id === l.supplierId || (sup.edrpou ? t.edrpou === sup.edrpou : (normName(t.counterparty) && normName(t.counterparty) === normName(sup.name)))
+  const since30 = addDaysIso(today, -30), since90 = addDaysIso(today, -PARTIAL_DAYS)
+  const okDate = (t, l, since) => t.date >= since && t.date >= addDaysIso(l.origDate || today, -30)
+  // 1) повний збіг
   ;[...lines].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).forEach(l => {
     const sup = sups[l.supplierId]; if (!sup) return
     const plan = Math.abs(l.amount)
-    const minDate = addDaysIso(l.origDate || today, -30)
-    const cands = txs.filter(t => !used.has(t.id) && t.date >= since && t.date >= minDate && amountMatches(t.amount, plan)
-      && (t.contractor_id === l.supplierId || (sup.edrpou ? t.edrpou === sup.edrpou : (normName(t.counterparty) && normName(t.counterparty) === normName(sup.name)))))
-    const best = cands.sort((a, b) => Math.abs(Math.abs(a.amount) - plan) - Math.abs(Math.abs(b.amount) - plan))[0]
-    if (best) { used.add(best.id); pairs.push({ line: l, tx: best }) }
+    const cands = txs.filter(t => free[t.id] > 0.5 && okDate(t, l, since30) && amountMatches(free[t.id], plan) && sameSup(t, l, sup))
+    const best = cands.sort((a, b) => Math.abs(free[a.id] - plan) - Math.abs(free[b.id] - plan))[0]
+    if (best) { pairs.push({ line: l, tx: best, amount: r2(free[best.id]), partial: false }); free[best.id] = 0; left[lk(l)] = 0 }
+  })
+  // 2) часткові
+  const bySup = {}
+  lines.filter(l => left[lk(l)] > 0.5 && sups[l.supplierId]).forEach(l => (bySup[l.supplierId] ||= []).push(l))
+  Object.values(bySup).forEach(ls => {
+    ls.sort((a, b) => String(a.origDate).localeCompare(String(b.origDate)) || String(a.number).localeCompare(String(b.number)))
+    const sup = sups[ls[0].supplierId]
+    txs.filter(t => free[t.id] > 0.5 && sameSup(t, ls[0], sup)).sort((a, b) => a.date.localeCompare(b.date)).forEach(t => {
+      ls.forEach(l => {
+        if (free[t.id] <= 0.5 || left[lk(l)] <= 0.5 || !okDate(t, l, since90)) return
+        const amt = r2(Math.min(free[t.id], left[lk(l)]))
+        pairs.push({ line: l, tx: t, amount: amt, partial: true })
+        free[t.id] = r2(free[t.id] - amt); left[lk(l)] = r2(left[lk(l)] - amt)
+      })
+    })
   })
   return pairs
 }
@@ -177,27 +200,33 @@ export async function findPossiblyPaid(rows, today) {
   const { data: cs } = await supabase.from('contractors').select('id, name, edrpou').in('id', supIds)
   const sups = {}; (cs || []).forEach(c => { sups[c.id] = c })
   const { data: txs, error } = await supabase.from('bank_transactions').select('id, date, amount, counterparty, edrpou, contractor_id, direction')
-    .eq('is_ignored', false).lt('amount', 0).gte('date', addDaysIso(today, -30)).limit(2000)
+    .eq('is_ignored', false).lt('amount', 0).gte('date', addDaysIso(today, -PARTIAL_DAYS)).limit(5000)
   if (error) throw error
   const ids = (txs || []).map(t => t.id)
   if (!ids.length) return []
-  const linked = new Set()
+  const used = {}, direct = new Set()
   for (let i = 0; i < ids.length; i += 200) {
     const part = ids.slice(i, i + 200)
     const [{ data: ot }, { data: po }] = await Promise.all([
-      supabase.from('order_transactions').select('transaction_id').in('transaction_id', part),
+      supabase.from('order_transactions').select('transaction_id, amount').in('transaction_id', part),
       supabase.from('orders').select('paid_transaction_id').in('paid_transaction_id', part),
     ])
-    ;(ot || []).forEach(x => linked.add(x.transaction_id)); (po || []).forEach(x => linked.add(x.paid_transaction_id))
+    ;(ot || []).forEach(x => { used[x.transaction_id] = (used[x.transaction_id] || 0) + Math.abs(Number(x.amount) || 0) })
+    ;(po || []).forEach(x => direct.add(x.paid_transaction_id))
   }
-  return matchPaid(lines, (txs || []).filter(t => !linked.has(t.id)), sups, today)
+  const avail = (txs || []).filter(t => !direct.has(t.id))
+    .map(t => ({ ...t, free: r2(Math.abs(Number(t.amount) || 0) - (used[t.id] || 0)) }))
+    .filter(t => t.free > 0.5)
+  return matchPaid(lines, avail, sups, today)
 }
 
-// Прив'язати транзакцію до замовлення як оплату постачальнику (те саме, що «Прив'язати з виписки» в замовленні)
-export async function linkPaidPair({ line, tx }, userId) {
+export const pairKey = (p) => `${p.tx.id}|${p.line.orderId}|${p.line.key}`
+
+// Прив'язати транзакцію (або її частину) до замовлення як оплату постачальнику (те саме, що «Прив'язати з виписки» в замовленні)
+export async function linkPaidPair({ line, tx, amount, partial }, userId) {
   const { error } = await supabase.from('order_transactions').insert({
-    order_id: line.orderId, transaction_id: tx.id, kind: 'expense', amount: r2(Math.abs(Number(tx.amount) || 0)),
-    note: 'Платіжний календар: можливо, вже оплачено', created_by: userId || null,
+    order_id: line.orderId, transaction_id: tx.id, kind: 'expense', amount: r2(amount != null ? amount : Math.abs(Number(tx.amount) || 0)),
+    note: partial ? 'Платіжний календар: часткова оплата' : 'Платіжний календар: можливо, вже оплачено', created_by: userId || null,
   })
   if (error) throw error
 }
