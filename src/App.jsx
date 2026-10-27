@@ -29,6 +29,7 @@ const Orders = lazyPage(() => import('./pages/Orders'))
 const OrderCard = lazyPage(() => import('./pages/OrderCard'))
 const Contractors = lazyPage(() => import('./pages/Contractors'))
 const ContractorCard = lazyPage(() => import('./pages/ContractorCard'))
+const Portals = lazyPage(() => import('./pages/Portals'))
 const BankCash = lazyPage(() => import('./pages/BankCash'))
 const Warehouse = lazyPage(() => import('./pages/Warehouse'))
 const ProductPage = lazyPage(() => import('./pages/Warehouse').then(m => ({ default: m.ProductPage })))
@@ -97,6 +98,7 @@ export default function App() {
               <Route path="/orders/:id" element={<Gate section="orders"><OrderCard /></Gate>} />
               <Route path="/contractors" element={<Gate section="contractors"><Contractors /></Gate>} />
               <Route path="/contractors/:id" element={<Gate section="contractors"><ContractorCard /></Gate>} />
+              <Route path="/portals" element={<Gate section="contractors"><Portals /></Gate>} />
               <Route path="/bank" element={<Gate section="bank"><BankCash /></Gate>} />
               <Route path="/inventory" element={<Gate section="inventory"><Warehouse /></Gate>} />
               <Route path="/inventory/product/:id" element={<Gate section="inventory"><ProductPage /></Gate>} />

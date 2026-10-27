@@ -23,6 +23,7 @@ export const NAV_GROUPS = [
     { to: '/orders', section: 'orders', label: 'Замовлення', icon: 'ti-clipboard-list', desc: 'реєстр і картки замовлень' },
     { to: '/tasks', section: 'tasks', label: 'Задачі', icon: 'ti-square-check', badge: 'tasks', desc: 'мої та командні задачі' },
     { to: '/contractors', section: 'contractors', label: 'Контрагенти', icon: 'ti-users', desc: 'клієнти й постачальники' },
+    { to: '/portals', section: 'contractors', label: 'Портали постачальників', icon: 'ti-key', desc: 'входи на B2B-портали дистриб’юторів' },
     { to: '/bank', section: 'bank', label: 'Банк / Каса', icon: 'ti-building-bank', badge: 'bank', desc: 'рахунки й операції' },
     { to: '/inventory', section: 'inventory', label: 'Склад', icon: 'ti-box', desc: 'склад і картки товарів' },
     { to: '/prices', section: 'prices', label: 'Прайси', icon: 'ti-tag', desc: 'ціни постачальників' },
