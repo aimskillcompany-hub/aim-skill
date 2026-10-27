@@ -1,3 +1,4 @@
+import PortalList from '../components/PortalList'
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -30,7 +31,7 @@ const TABS = [
 ]
 
 // Новий інтерфейс (макет Contractor): + «Договори»; на телефоні «Реквізити» — не першою (макет ContractorMobile)
-const TABS_NEW = [TABS[0], { id: 'contracts', label: 'Договори' }, ...TABS.slice(1)]
+const TABS_NEW = [TABS[0], { id: 'contracts', label: 'Договори' }, ...TABS.slice(1), { id: 'portals', label: 'Портали' }]
 const isPhone = () => typeof window !== 'undefined' && window.matchMedia?.('(max-width: 767px)').matches
 
 export default function ContractorCard() {
@@ -150,6 +151,7 @@ export default function ContractorCard() {
             {tab === 'transactions' && <TransactionsTab id={id} />}
             {tab === 'products' && <ProductsTab id={id} />}
             {tab === 'notes' && <NotesTab id={id} />}
+            {tab === 'portals' && <PortalList contractorId={c.id} contractorName={c.name} />}
           </div>
         </section>
         {newOrder && <NewOrderModal presetClientId={c.id} onClose={() => setNewOrder(false)} onCreated={(oid) => { setNewOrder(false); navigate(`/orders/${oid}`) }} />}
