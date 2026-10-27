@@ -76,7 +76,7 @@ export default function PayCalendar({ co, onMeta }) {
   if (err) return <Callout tone="danger" title="Не вдалося побудувати календар." text={err} />
   if (!cal) return <TableSkeleton rows={8} cols={6} label="Рахую платіжний календар…" />
 
-  const { gap, cause, totals, days, rows, holding } = cal
+  const { gap, cause, totals, days, rows } = cal
   const supOver = rows.filter(r => r.type === 'supplier' && r.overdue)
   const cliOver = rows.filter(r => r.type === 'client' && r.overdue)
   const estRows = rows.filter(r => r.estimated)
@@ -113,7 +113,7 @@ export default function PayCalendar({ co, onMeta }) {
     text: `Передоплата від клієнта, відстрочка постачальнику або кредитна лінія. Без них рахунки в мінусі з ${gap.from === today ? 'сьогодні' : dShort(gap.from)} ${gap.to ? 'до ' + dShort(gap.to) : 'до кінця прогнозу'}.`,
     amount: gap.value,
     btn: gapCause ? <Link className="btn btn-secondary btn-sm" to={`/orders/${gapCause.orderId}?tab=finance`}>Відкрити №{gapCause.number}</Link>
-      : <Button size="sm" variant="secondary" onClick={() => document.getElementById('pc-hold')?.scrollIntoView({ behavior: 'smooth' })}>Варіанти</Button>,
+      : <Button size="sm" variant="secondary" onClick={() => openTable({ supplier: true })}>Переглянути</Button>,
   })
   // платіж, що вже пропонується через прихідну, не дублюємо в «Можливо, вже оплачено»
   const docTx = new Set(docPays.map(p => p.txId))
@@ -208,21 +208,6 @@ export default function PayCalendar({ co, onMeta }) {
         </div>
         <BalanceChart days={days} gap={gap} today={today} />
       </section>
-
-      {/* ── Тримають гроші ── */}
-      {holding.length > 0 && (
-        <section className="pc-card" id="pc-hold" aria-label="Які замовлення тримають гроші">
-          <h2>Які замовлення тримають гроші<InfoTip label="Які замовлення тримають гроші">Для кожного замовлення рядки йдуть за датою, рахується наростаючий підсумок. «Тримає» — найглибший мінус цього підсумку: скільки ми вже заплатили, а клієнт ще не повернув. Період — від дати, коли підсумок пішов у мінус, до дати, коли він знову ≥ 0.</InfoTip></h2>
-          <ul className="pc-hold">{holding.map(h => (
-            <li key={h.orderId}>
-              <span className="pc-hold-n"><Link to={`/orders/${h.orderId}?tab=finance`}>№{h.number}</Link> <small>{h.client}</small></span>
-              <span className="pc-hold-bar" aria-hidden="true"><i className={h.to ? '' : 'is-bad'} style={{ width: `${Math.max(2, Math.abs(h.hold) / Math.abs(holding[0].hold) * 100)}%` }} /></span>
-              <b className="pc-hold-v">{n0(h.hold)}</b>
-              <small className={`pc-hold-p${h.to ? '' : ' is-bad'}`}>з {h.from === today ? 'сьогодні' : dShort(h.from)} · {h.to ? `${h.days} дн.` : 'не повертається'}</small>
-            </li>
-          ))}</ul>
-        </section>
-      )}
 
       {/* ── Таблиця ── */}
       <section className="pc-card pc-tbl-card" ref={tableRef} aria-label="Рух грошей по датах">
