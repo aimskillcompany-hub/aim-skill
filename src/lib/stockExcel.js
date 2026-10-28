@@ -19,7 +19,7 @@ const H = {
   movId: 'ID руху', cardId: 'ID картки', card: 'Картка', sku: 'Артикул картки', warn: '⚠ різні назви', docName: 'Назва в документі',
   type: 'Тип руху', doc: 'Документ', date: 'Дата', contractor: 'Контрагент', qty: 'К-сть', price: 'Ціна приходу / собівартість',
   source: 'Джерело', move: 'Перенести на картку', moveQty: 'К-сть до перенесення',
-  cType: 'Тип', cStatus: 'Статус', cMovs: 'Рухів', cIn: 'Прийшло', cOut: 'Продано', cStock: 'Залишок', cNames: 'Різних назв у документах',
+  cType: 'Тип', cStatus: 'Статус', cUnit: 'Од.', cMovs: 'Рухів', cIn: 'Прийшло', cOut: 'Продано', cStock: 'Залишок', cNames: 'Різних назв у документах',
   newSku: 'Новий артикул', newName: 'Нова назва',
   alias: 'Синонім', conflict: 'Конфлікт',
   docId: 'ID документа', dType: 'Тип', dNum: 'Номер', dLines: 'Рядків', dSum: 'Сума', dOrder: 'Порядок у дні', dWarn: '⚠',
@@ -135,7 +135,7 @@ export function buildWorkbookRows(data) {
       }
     })
   const cardRows = [...products].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'uk')).map(p => ({
-    [H.card]: p.name, [H.sku]: p.sku || '', [H.cType]: TYPE_LABEL[p.product_type] || p.product_type || '', [H.cStatus]: STATUS_LABEL[p.status] || p.status || '',
+    [H.card]: p.name, [H.sku]: p.sku || '', [H.cType]: TYPE_LABEL[p.product_type] || p.product_type || '', [H.cStatus]: STATUS_LABEL[p.status] || p.status || '', [H.cUnit]: p.unit || 'шт',
     [H.newSku]: '', [H.newName]: '',
     [H.cMovs]: cnt.get(p.id) || 0, [H.cIn]: Number(p.total_in) || 0, [H.cOut]: Number(p.total_out) || 0,
     [H.cStock]: Number(p.computed_stock) || 0, [H.cNames]: names.get(p.id)?.size || 0, [H.cardId]: p.id,
@@ -209,7 +209,7 @@ const HELP = [
   ['Порядок застосування: Картки → Документи → Рухи → Збірки → Синоніми (тож рух можна перенести на картку, перейменовану в тому ж файлі).'],
   [''],
   ['КАРТКИ'],
-  ['  Тип: Товар / Послуга / Розхідний матеріал.   Статус: активна / архів.'],
+  ['  Тип: Товар / Послуга / Розхідний матеріал.   Статус: активна / архів.   Од.: шт, м, кг, компл, пара, уп… (змінюється прямо в колонці).'],
   ['  Новий артикул: напр. W5170.  «-» — очистити артикул. Якщо такий артикул уже є в іншій картці — попередження (не заборона).'],
   ['  Нова назва: перейменувати картку. Стара назва автоматично стає синонімом. Назва, що вже є в іншій картці, — заборонено (використайте «Перенести на картку»).'],
   [''],
@@ -256,8 +256,8 @@ export async function exportStockXlsx(data) {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(HELP), 'Як заповнювати')
   XLSX.utils.book_append_sheet(wb, sheet(movRows, [H.card, H.sku, H.warn, H.docName, H.type, H.doc, H.date, H.contractor, H.qty, H.price, H.source, H.move, H.moveQty, H.movId, H.cardId],
     [40, 16, 6, 50, 9, 16, 11, 26, 7, 12, 10, 36, 12, 38, 38]), 'Рухи')
-  XLSX.utils.book_append_sheet(wb, sheet(cardRows, [H.card, H.sku, H.cType, H.cStatus, H.newSku, H.newName, H.cMovs, H.cIn, H.cOut, H.cStock, H.cNames, H.cardId],
-    [50, 18, 18, 10, 16, 40, 7, 9, 9, 9, 10, 38]), 'Картки')
+  XLSX.utils.book_append_sheet(wb, sheet(cardRows, [H.card, H.sku, H.cType, H.cStatus, H.cUnit, H.newSku, H.newName, H.cMovs, H.cIn, H.cOut, H.cStock, H.cNames, H.cardId],
+    [50, 18, 18, 10, 8, 16, 40, 7, 9, 9, 9, 10, 38]), 'Картки')
   XLSX.utils.book_append_sheet(wb, sheet(docRows, [H.docId, H.dType, H.dNum, H.date, H.contractor, H.dLines, H.dSum, H.dOrder, H.dWarn, H.dNewDate, H.dNewNum, H.dNewOrder],
     [38, 14, 18, 11, 30, 7, 12, 12, 40, 12, 14, 12]), 'Документи')
   XLSX.utils.book_append_sheet(wb, sheet(asmRows, [H.asmId, H.lineId, H.role, H.card, H.asmSku, H.asmDate, H.qty, H.asmCost, H.asmCurCost, H.asmMismatch, H.asmComp, H.snapQty, H.snapDate],
@@ -324,7 +324,14 @@ export function buildPlan(file, data) {
     if (status === undefined) { skip(line, `невідомий статус «${r[H.cStatus]}» (активна / архів)`); return }
     if (type && type !== p.product_type) ch.product_type = type
     if (status && status !== p.status) ch.status = status
-    const op = { id: p.id, name: p.name, from: { product_type: p.product_type, status: p.status, sku: p.sku }, ch, warnings: [] }
+    // одиниця виміру: колонки «Од.» може не бути в старому файлі — тоді не чіпаємо
+    if (H.cUnit in r) {
+      const u = String(r[H.cUnit] ?? '').trim()
+      if (!u) { skip(line, 'одиниця виміру не може бути порожньою'); return }
+      if (u.length > 20) { skip(line, `одиниця «${u}» задовга`); return }
+      if (u !== (p.unit || 'шт')) ch.unit = u
+    }
+    const op = { id: p.id, name: p.name, from: { product_type: p.product_type, status: p.status, sku: p.sku, unit: p.unit || 'шт' }, ch, warnings: [] }
     if (ns) {
       const to = ns === '-' ? null : ns
       if ((to || null) !== (p.sku || null)) {

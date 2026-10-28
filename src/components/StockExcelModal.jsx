@@ -61,7 +61,7 @@ export default function StockExcelModal({ onClose, onDone }) {
         {tab === 'journal' ? <FixJournal key={jrev} /> : <>
           <ol style={{ fontSize: 13, color: 'var(--text2)', margin: '0 0 12px', paddingLeft: 18, lineHeight: 1.6 }}>
             <li>Вивантажте файл: аркуші «Рухи», «Картки», «Документи», «Збірки», «Синоніми» і «Як заповнювати» з прикладами.</li>
-            <li>В Excel заповніть лише редаговані колонки (перенесення, артикул, назва, дата, номер, порядок у дні, склад збірки, «видалити» для синоніму).</li>
+            <li>В Excel заповніть лише редаговані колонки (перенесення, артикул, назва, тип, статус, одиниця виміру, дата, номер, порядок у дні, склад збірки, «видалити» для синоніму).</li>
             <li>Завантажте файл — побачите план. Нічого не змінюється, доки не натиснете «Застосувати». Кожну зміну потім можна скасувати у «Журналі».</li>
           </ol>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -89,7 +89,8 @@ export default function StockExcelModal({ onClose, onDone }) {
                   {c.rename && <div>назва → <b>«{c.rename.to}»</b> (стара — синонім) {res('card', c, 'name')}</div>}
                   {c.ch.product_type && <div>тип: {TYPE_LABEL[c.from.product_type] || c.from.product_type} → <b>{TYPE_LABEL[c.ch.product_type]}</b></div>}
                   {c.ch.status && <div>статус: {STATUS_LABEL[c.from.status] || c.from.status} → <b>{STATUS_LABEL[c.ch.status]}</b></div>}
-                  {(c.ch.product_type || c.ch.status) && res('card', c, 'type')}
+                  {c.ch.unit && <div>од.: {c.from.unit} → <b>{c.ch.unit}</b></div>}
+                  {(c.ch.product_type || c.ch.status || c.ch.unit) && res('card', c, 'type')}
                 </td></tr>)}</tbody></table></>}
 
             {plan.docs.length > 0 && <><H3>ДОКУМЕНТИ ({plan.docs.length})</H3>
