@@ -469,3 +469,10 @@ button.pln-warn { width: 100%; text-align: left; font: inherit; cursor: pointer;
 }
 @media (max-width: 767px) { .an-export { width: var(--h-touch) !important; min-width: var(--h-touch); padding: 0 !important; justify-content: center; } .an-export-t { display: none; } }
 @media (max-width: 767px) { .pln-fc .ui-tip.is-dark { border-color: var(--tip-ring); color: var(--muted); } }
+
+/* P&L: довільний період «з … по …» */
+.pl-range-wrap { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.pl-range { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+.pl-range .form-input { height: 34px; width: 148px; font-size: 13px; }
+@media (max-width: 767px) { .pl-range-wrap { width: 100%; justify-content: flex-start; } .pl-range .form-input { width: 132px; } }
+.pln-mbar:disabled { cursor: default; opacity: 1; }

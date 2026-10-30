@@ -237,14 +237,14 @@ function plSummary(bd) {
   return { rev: t(head('revenue')), cogs: t(head('cogs')), gp: t(subs[0]), opex: t(head('opex')), ebit: t(subs[1]), oth: t(head('other_income')), np: t(subs[2]), below: t(head('below_line')), net: t(subs[3]), subs }
 }
 
-export function PLNew({ bd, acc, recon, plErr, year, month, setMonth, accrual, mode, planRows, setDrill, forecast, children }) {
+export function PLNew({ bd, acc, recon, plErr, year, month, setMonth, accrual, mode, planRows, setDrill, forecast, children, range = null }) {
   const [open, setOpen] = useState(() => new Set(['revenue']))
   const [mCol, setMCol] = useState('total')   // телефон: яку колонку показати в списку (чипи місяців)
   const cols = useMemo(() => {
     if (!bd) return []
-    if (month || year !== NOW.getFullYear()) return bd.cols
+    if (range || month || year !== NOW.getFullYear()) return bd.cols
     return bd.cols.filter(c => Number(c.key) <= NOW.getMonth() + 1)
-  }, [bd, year, month])
+  }, [bd, year, month, range])
   if (plErr) return <div className="cfn-card cfn-err">Не вдалося порахувати P&L: {plErr}</div>
   if (mode !== 'fact' && !accrual) return <PlanTable rows={planRows} mode={mode} />
   if (!bd) return <TableSkeleton rows={10} cols={6} label="Рахую прибуток…" />
@@ -274,7 +274,7 @@ export function PLNew({ bd, acc, recon, plErr, year, month, setMonth, accrual, m
       <div className="pln-top">
         <section className="cfn-card pln-wf" aria-label="Від виручки до чистого прибутку">
           <div className="pln-wf-head">
-            <div><span className="cfn-muted cfn-sm">Чистий прибуток · {periodLabel(year, month)}</span>
+            <div><span className="cfn-muted cfn-sm">Чистий прибуток · {range ? `${range.from.split('-').reverse().join('.')} – ${range.to.split('-').reverse().join('.')}` : periodLabel(year, month)}</span>
               <div className={`pln-big${s.net < 0 ? ' is-neg' : ''}`}>{formatAmount(s.net, { decimals: 0 })} <small>₴</small></div></div>
             <dl className="pln-marg"><div><dt>Валова маржа</dt><dd>{pct(s.gp)}</dd></div><div><dt>Чиста маржа</dt><dd>{pct(s.net)}</dd></div></dl>
           </div>
@@ -307,13 +307,13 @@ export function PLNew({ bd, acc, recon, plErr, year, month, setMonth, accrual, m
 
       {monthly && (
         <section className="cfn-card pln-months" aria-label="По місяцях">
-          <div className="pln-months-head"><h2>По місяцях</h2>
+          <div className="pln-months-head"><h2>{range && cols[0]?.key.length === 10 ? 'По днях' : 'По місяцях'}</h2>
             <div className="pln-legend"><span><i className="is-rev" />Виручка</span><span><i className="is-gp" />Валовий прибуток</span><span><i className="is-net" />Чистий прибуток</span></div></div>
           <div className="pln-mbars">
             {cols.map(c => {
               const rv = revRow?.cells[c.key] || 0, gp = s.subs[0]?.cells[c.key] || 0, nt = s.subs[3]?.cells[c.key] || 0
               return (
-                <button key={c.key} type="button" className="pln-mbar" onClick={() => setMonth(Number(c.key))} aria-label={`${c.label}: виручка ${plain(rv)}, валовий ${formatAmount(gp, { decimals: 0 })}, чистий ${formatAmount(nt, { decimals: 0 })}`}>
+                <button key={c.key} type="button" className="pln-mbar" onClick={range ? undefined : () => setMonth(Number(c.key))} disabled={!!range} aria-label={`${c.label}: виручка ${plain(rv)}, валовий ${formatAmount(gp, { decimals: 0 })}, чистий ${formatAmount(nt, { decimals: 0 })}`}>
                   <span className="pln-mbar-area">
                     {(rv || nt) ? <span className={`pln-mbar-net${nt < 0 ? ' is-neg' : ''}`}>{short(nt)}</span> : null}
                     <span className="pln-mbar-rev" style={{ height: `${(Math.max(0, rv) / mMax) * 100}%` }}>
@@ -346,7 +346,7 @@ export function PLNew({ bd, acc, recon, plErr, year, month, setMonth, accrual, m
                     <th scope="row">{r.type === 'header' && bd.rows.some(x => x.type === 'row' && x.level === r.level)
                       ? <button type="button" aria-expanded={open.has(r.level)} onClick={() => toggle(r.level)}><i className={`ti ${open.has(r.level) ? 'ti-chevron-down' : 'ti-chevron-right'}`} aria-hidden="true" />{r.label}</button>
                       : r.label}</th>
-                    {cols.map(c => <PlNum key={c.key} m={mCol === c.key} v={k * (r.cells[c.key] || 0)} onClick={r.articles ? () => drill(r, c.key, `${c.label} ${year}`) : null} />)}
+                    {cols.map(c => <PlNum key={c.key} m={mCol === c.key} v={k * (r.cells[c.key] || 0)} onClick={r.articles ? () => drill(r, c.key, range ? c.label : `${c.label} ${year}`) : null} />)}
                     <PlNum v={k * r.total} m={mCol === 'total' || cols.length <= 1} strong onClick={r.articles ? () => drill(r, 'total', `Разом ${year}`) : null} />
                   </tr>
                 )
