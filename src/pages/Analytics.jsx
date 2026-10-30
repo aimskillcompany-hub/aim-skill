@@ -414,6 +414,9 @@ export function PLView({ fixedYear = null, fixedMonth = null } = {}) {
   useEffect(() => { if (locked) { setYear(fixedYear); setMonth(fixedMonth) } }, [fixedYear, fixedMonth])
   const [mode, setMode] = useState('fact') // fact | plan | compare
   const [basis, setBasis] = useState('accrual') // accrual (за замовчуванням) | cash
+  // довільний період «з … по …» (лише факт; план ведеться по місяцях)
+  const [range, setRange] = useState(null)
+  const [rf, setRf] = useState({ from: '', to: '' })
   const [data, setData] = useState(null)
   const [bd, setBd] = useState(null)
   const [acc, setAcc] = useState(null)   // результат нарахування (документи без собівартості тощо)
@@ -424,22 +427,27 @@ export function PLView({ fixedYear = null, fixedMonth = null } = {}) {
   const accrual = basis === 'accrual'
   const newUi = useNewUi()
   const [fc, setFc] = useState(null)   // прогноз для темної картки нового інтерфейсу
-  useEffect(() => { if (newUi && !locked) { setFc(null); computeForecast(year, month || null).then(setFc) } }, [year, month, newUi, locked])
+  useEffect(() => { if (newUi && !locked && !range) { setFc(null); computeForecast(year, month || null).then(setFc) } }, [year, month, newUi, locked, range])
 
   useEffect(() => {
     let cancelled = false
     setData(null); setBd(null); setAcc(null); setRecon(null); setPlErr(null)
     const fail = (e) => { if (!cancelled) setPlErr(e.message || String(e)) }
     if (accrual) {
-      computeAccrualPL(year, month || null).then(r => {
+      computeAccrualPL(year, month || null, { range }).then(r => {
         if (cancelled) return
         setBd(r); setAcc(r)
-        accrualReconciliation(year, month || null, r.netTotal).then(x => { if (!cancelled) setRecon(x) }).catch(fail)
+        accrualReconciliation(year, month || null, r.netTotal, { range }).then(x => { if (!cancelled) setRecon(x) }).catch(fail)
       }).catch(fail)
-    } else if (mode === 'fact') computePLBreakdown(year, month || null, { includePending: showPending }).then(r => { if (!cancelled) setBd(r) }).catch(fail)
+    } else if (mode === 'fact' || range) computePLBreakdown(year, month || null, { includePending: showPending, range }).then(r => { if (!cancelled) setBd(r) }).catch(fail)
     else computePL(year, month || null).then(r => { if (!cancelled) setData(r) }).catch(fail)
     return () => { cancelled = true }
-  }, [year, month, mode, showPending, basis])
+  }, [year, month, mode, showPending, basis, range])
+  const applyRange = () => {
+    if (!rf.from || !rf.to) return
+    const [a, b] = rf.from <= rf.to ? [rf.from, rf.to] : [rf.to, rf.from]
+    setRf({ from: a, to: b }); setRange({ from: a, to: b }); setMode('fact')
+  }
 
   const rows = useMemo(() => {
     if (!data) return []
@@ -465,19 +473,27 @@ export function PLView({ fixedYear = null, fixedMonth = null } = {}) {
       <div className="an-toolbar pln-switches">
         <Segmented ariaLabel="Метод" value={basis} onChange={k => { setBasis(k); if (k === 'accrual') setMode('fact') }}
           options={[{ value: 'accrual', label: 'Нарахування' }, { value: 'cash', label: 'Касовий' }]} />
-        {!accrual && <Segmented ariaLabel="Факт чи план" value={mode} onChange={setMode}
+        {!accrual && !range && <Segmented ariaLabel="Факт чи план" value={mode} onChange={setMode}
           options={[{ value: 'fact', label: 'Факт' }, { value: 'plan', label: 'План' }, { value: 'compare', label: 'План vs факт' }]} />}
         {!accrual && mode === 'fact' && <Switch checked={showPending} onChange={setShowPending} label="Показати непідтверджені" />}
         <InfoTip label="Нарахування чи касовий метод">{accrual ? 'Виручка й собівартість — за датою документа. План — у касовому методі.' : 'Тільки фактичні гроші — підтверджені оплати за датою оплати.'}</InfoTip>
-        <span className="an-right"><PeriodMenu year={year} month={month} onChange={p => { setYear(p.year); setMonth(p.month) }} years={YEARS} /></span>
+        <span className="an-right pl-range-wrap">
+          <span className="pl-range" role="group" aria-label="Довільний період">
+            <span>з</span><input type="date" className="form-input" aria-label="Період з" value={rf.from} onChange={e => setRf(x => ({ ...x, from: e.target.value }))} />
+            <span>по</span><input type="date" className="form-input" aria-label="Період по" value={rf.to} onChange={e => setRf(x => ({ ...x, to: e.target.value }))} />
+            <Button size="sm" variant={range ? 'brand' : 'secondary'} disabled={!rf.from || !rf.to} onClick={applyRange}>Показати</Button>
+            {range && <Button size="sm" variant="ghost" iconOnly icon="ti-x" aria-label="Скинути період з–по" onClick={() => { setRange(null); setRf({ from: '', to: '' }) }} />}
+          </span>
+          {!range && <PeriodMenu year={year} month={month} onChange={p => { setYear(p.year); setMonth(p.month) }} years={YEARS} />}
+        </span>
       </div>
-      <PLNew bd={bd} acc={acc} recon={recon} plErr={plErr} year={year} month={month} setMonth={setMonth} accrual={accrual} mode={mode}
+      <PLNew bd={bd} acc={acc} recon={recon} plErr={plErr} year={year} month={month} setMonth={setMonth} accrual={accrual} mode={range ? 'fact' : mode} range={range}
         planRows={data ? rows : null} setDrill={setDrill}
-        forecast={<ForecastHero f0={fc} accrualNet={accrual ? (acc ? acc.netTotal : undefined) : null} />}>
+        forecast={range ? null : <ForecastHero f0={fc} accrualNet={accrual ? (acc ? acc.netTotal : undefined) : null} />}>
         {accrual && acc?.missing?.length > 0 && <div id="pl-missing"><MissingCostCard missing={acc.missing} /></div>}
         {accrual && (acc?.estimated?.length > 0 || acc?.writeoffs?.length > 0) && <EstimateWriteoffCard estimated={acc.estimated || []} writeoffs={acc.writeoffs || []} />}
       </PLNew>
-      {drill && <DrillModal drill={drill} year={year} month={month || null} onClose={() => setDrill(null)} />}
+      {drill && <DrillModal drill={drill} year={year} month={month || null} range={range} onClose={() => setDrill(null)} />}
     </>
   )
 
@@ -816,9 +832,9 @@ function ForecastCard({ year, month, accrualNet = null }) {
   )
 }
 
-function DrillModal({ drill, year, month, onClose }) {
+function DrillModal({ drill, year, month, range = null, onClose }) {
   const [rows, setRows] = useState(null)
-  useEffect(() => { plDrill(year, month, drill.bucketKey, drill.articles, { validated: drill.validated }).then(setRows) }, [drill])
+  useEffect(() => { plDrill(year, month, drill.bucketKey, drill.articles, { validated: drill.validated, range }).then(setRows) }, [drill])
   const total = (rows || []).reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0)
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', zIndex: 1000, overflow: 'auto' }}>

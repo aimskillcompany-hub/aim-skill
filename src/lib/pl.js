@@ -18,6 +18,37 @@ export function periodRange(year, month) {
   return { from: `${year}-01-01`, to: `${year}-12-31`, ym: null }
 }
 
+// ── Довільний період «з … по …» (ТЗ власника 30.10.2026): колонки — дні (до 31 дня) або місяці ──
+const MS_SHORT = ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Лип', 'Сер', 'Вер', 'Жов', 'Лис', 'Гру']
+const dayCount = (from, to) => Math.round((Date.parse(to + 'T00:00:00Z') - Date.parse(from + 'T00:00:00Z')) / 86400000) + 1
+export function rangeCols(from, to) {
+  const out = []
+  if (dayCount(from, to) <= 31) {
+    for (let t = Date.parse(from + 'T00:00:00Z'); t <= Date.parse(to + 'T00:00:00Z'); t += 86400000) {
+      const d = new Date(t).toISOString().slice(0, 10)
+      out.push({ key: d, label: `${Number(d.slice(8, 10))}.${d.slice(5, 7)}` })
+    }
+    return out
+  }
+  let y = Number(from.slice(0, 4)), m = Number(from.slice(5, 7))
+  const ey = Number(to.slice(0, 4)), em = Number(to.slice(5, 7))
+  const multiYear = y !== ey
+  while (y < ey || (y === ey && m <= em)) {
+    out.push({ key: `${y}-${pad(m)}`, label: multiYear ? `${MS_SHORT[m - 1]} ${String(y).slice(2)}` : MS_SHORT[m - 1] })
+    m++; if (m > 12) { m = 1; y++ }
+  }
+  return out
+}
+export const rangeBucket = (from, to) => dayCount(from, to) <= 31 ? (d) => String(d).slice(0, 10) : (d) => String(d).slice(0, 7)
+// ключ колонки → межі дат (для розкриття клітинки)
+export function rangeKeyBounds(range, key) {
+  if (key === 'total') return { from: range.from, to: range.to }
+  if (key.length === 10) return { from: key, to: key }
+  const y = Number(key.slice(0, 4)), m = Number(key.slice(5, 7))
+  const f = `${key}-01`, t = `${key}-${pad(monthEnd(y, m))}`
+  return { from: f < range.from ? range.from : f, to: t > range.to ? range.to : t }
+}
+
 // ── P&L Факт + План по статтях, структуровано за pl_level ──
 export async function computePL(year, month) {
   const { from, to, ym } = periodRange(year, month)
@@ -69,17 +100,18 @@ const MONTHS_UA = ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', '
 
 export async function computePLBreakdown(year, month, opts = {}) {
   const includePending = !!opts.includePending
-  const { from, to } = periodRange(year, month)
+  const range = opts.range || null
+  const { from, to } = range || periodRange(year, month)
   const [{ data: txs }, { data: arts }] = await Promise.all([
     fetchAllData(() => qc('bank_transactions').select('amount, article, direction, date, is_validated').eq('is_ignored', false).gte('date', from).lte('date', to)),
     supabase.from('articles').select('name, type, pl_level, sort_order'),
   ])
   const meta = {}; (arts || []).forEach(a => { meta[a.name] = a })
 
-  const cols = month
+  const cols = range ? rangeCols(from, to) : month
     ? Array.from({ length: monthEnd(year, month) }, (_, i) => ({ key: String(i + 1), label: String(i + 1) }))
     : MONTHS_UA.map((m, i) => ({ key: String(i + 1), label: m }))
-  const bucketOf = (d) => month ? String(Number(d.slice(8, 10))) : String(Number(d.slice(5, 7)))
+  const bucketOf = range ? rangeBucket(from, to) : (d) => month ? String(Number(d.slice(8, 10))) : String(Number(d.slice(5, 7)))
 
   const factV = {}, factP = {} // article -> { bucketKey: sum }: V=підтверджені, P=непідтверджені (превʼю)
   ;(txs || []).forEach(t => {
@@ -140,7 +172,8 @@ export async function computePLBreakdown(year, month, opts = {}) {
 // ── Drill-down: транзакції, що формують клітинку P&L ──
 export async function plDrill(year, month, bucketKey, articleNames, opts = {}) {
   let from, to
-  if (month) {
+  if (opts.range) ({ from, to } = rangeKeyBounds(opts.range, String(bucketKey)))
+  else if (month) {
     if (bucketKey === 'total') ({ from, to } = periodRange(year, month))
     else { const d = `${year}-${pad(month)}-${pad(Number(bucketKey))}`; from = d; to = d }
   } else {

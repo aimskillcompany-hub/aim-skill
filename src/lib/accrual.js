@@ -12,7 +12,7 @@
 import { supabase } from './supabase'
 import { qc } from './companyScope'
 import { fetchAll, fetchAllIn } from './fetchAll'
-import { computePLBreakdown, periodRange } from './pl'
+import { computePLBreakdown, periodRange, rangeBucket } from './pl'
 import { countsAsDebt, debtDate, loadDocPayments } from './debts'
 import { computeOrderPlan, itemCost, itemSale } from './orderPlan'
 import { getCompany } from './companyConfig'
@@ -287,11 +287,12 @@ export async function accrualSalesDocs(from, to) {
 }
 
 // ── P&L за нарахуванням у форматі computePLBreakdown (той самий рендер таблиці) ──
-export async function computeAccrualPL(year, month) {
-  const { from, to } = periodRange(year, month)
-  const [cash, sales, writeoffs] = await Promise.all([computePLBreakdown(year, month), accrualSalesDocs(from, to), accrualWriteoffs(from, to).catch(() => [])])
+export async function computeAccrualPL(year, month, opts = {}) {
+  const range = opts.range || null
+  const { from, to } = range || periodRange(year, month)
+  const [cash, sales, writeoffs] = await Promise.all([computePLBreakdown(year, month, { range }), accrualSalesDocs(from, to), accrualWriteoffs(from, to).catch(() => [])])
   const cols = cash.cols
-  const bucketOf = (d) => month ? String(Number(d.slice(8, 10))) : String(Number(d.slice(5, 7)))
+  const bucketOf = range ? rangeBucket(from, to) : (d) => month ? String(Number(d.slice(8, 10))) : String(Number(d.slice(5, 7)))
   const zero = () => Object.fromEntries(cols.map(c => [c.key, 0]))
   const sumCells = (c) => Object.values(c).reduce((s, v) => s + v, 0)
 
@@ -368,8 +369,8 @@ async function inventoryAsOf(date) {
 }
 
 // ── Звірка: прибуток за нарахуванням − Δдебіторки + Δкредиторки − Δзапасів ≈ чистий грошовий потік ──
-export async function accrualReconciliation(year, month, netProfit) {
-  const { from, to } = periodRange(year, month)
+export async function accrualReconciliation(year, month, netProfit, opts = {}) {
+  const { from, to } = opts.range || periodRange(year, month)
   const before = addDaysIso(from, -1)
   const [d0, d1, i0, i1, txs, periodDocs] = await Promise.all([
     debtsAsOf(before), debtsAsOf(to), inventoryAsOf(before), inventoryAsOf(to),
