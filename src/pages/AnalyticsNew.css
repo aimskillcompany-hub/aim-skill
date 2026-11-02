@@ -477,3 +477,20 @@ button.pln-warn { width: 100%; text-align: left; font: inherit; cursor: pointer;
 @media (max-width: 767px) { .pl-range-wrap { width: 100%; justify-content: flex-start; } .pl-range .form-input { width: 132px; } }
 .pln-mbar:disabled { cursor: default; opacity: 1; }
 .cfn-with-f { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* звірка прибутку з грошима: розкриття рядків */
+.pln-bridge li.is-click { cursor: pointer; border-radius: 8px; }
+.pln-bridge li.is-click:hover { background: var(--surface-sunken); }
+.pln-bridge li.is-click:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.pln-bridge .pln-br-l .ti { font-size: 13px; color: var(--muted); margin-right: 4px; }
+.pln-bridge .pln-br-l small { color: var(--muted); font-weight: 400; }
+.pln-bridge li.is-group .pln-br-l { font-weight: 600; }
+.pln-bridge li.is-sub .pln-br-l { padding-left: 18px; color: var(--text2, var(--muted)); }
+.pln-bridge li.pln-br-det { display: block; padding: 4px 0 10px 18px; }
+.pln-br-det table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pln-br-det td { padding: 6px 8px; border-top: 1px solid var(--divider); vertical-align: top; }
+.pln-br-det td small { display: block; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.pln-br-d { white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; width: 90px; }
+.pln-br-a { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--brand-dark); }
+.pln-br-a.is-neg { color: var(--danger-fg); }
+.pln-br-more { margin-top: 6px; border: 0; background: none; padding: 0; font: inherit; font-size: 13px; font-weight: 600; color: var(--brand-dark); cursor: pointer; text-decoration: underline; }
