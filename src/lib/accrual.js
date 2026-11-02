@@ -344,17 +344,19 @@ export async function computeAccrualPL(year, month, opts = {}) {
 
 // ── Борги і запаси станом на дату (для звірки) ──
 async function debtsAsOf(date) {
-  const docs = (await fetchAll(() => qc('documents').select('id, type, direction, amount, doc_date, created_at').not('amount', 'is', null).not('direction', 'is', null)))
+  const docs = (await fetchAll(() => qc('documents').select('id, type, direction, amount, doc_date, created_at, doc_number, contractors(name)').not('amount', 'is', null).not('direction', 'is', null)))
     .filter(d => countsAsDebt(d.type) && (d.direction === 'receivable' || d.direction === 'payable') && debtDate(d) && debtDate(d) <= date)
   const paid = {}
   ;(await loadDocPayments(docs.map(d => d.id))).forEach(p => { if (!p.date || p.date <= date) paid[p.document_id] = (paid[p.document_id] || 0) + p.amount })
   let receivable = 0, payable = 0
+  const open = {}   // id → { doc, out } — неоплачений залишок документа на дату (для розкриття)
   docs.forEach(d => {
     const out = Math.abs(Number(d.amount) || 0) - (paid[d.id] || 0)
     if (out <= 0.5) return
+    open[d.id] = { d, out }
     if (d.direction === 'receivable') receivable += out; else payable += out
   })
-  return { receivable, payable }
+  return { receivable, payable, open }
 }
 async function inventoryAsOf(date) {
   // запаси = FIFO-шари з рухів складу (lib/batches.js) — не залежить від перебудови FIFO
@@ -374,8 +376,8 @@ export async function accrualReconciliation(year, month, netProfit, opts = {}) {
   const before = addDaysIso(from, -1)
   const [d0, d1, i0, i1, txs, periodDocs] = await Promise.all([
     debtsAsOf(before), debtsAsOf(to), inventoryAsOf(before), inventoryAsOf(to),
-    fetchAll(() => qc('bank_transactions').select('id, amount, direction, article, is_validated').eq('is_ignored', false).gte('date', from).lte('date', to)),
-    fetchAll(() => qc('documents').select('id, type, direction, amount, vat_amount, doc_date, created_at')),
+    fetchAll(() => qc('bank_transactions').select('id, date, amount, direction, article, is_validated, counterparty, description, contractor_id').eq('is_ignored', false).gte('date', from).lte('date', to)),
+    fetchAll(() => qc('documents').select('id, type, direction, amount, vat_amount, doc_date, created_at, doc_number, contractors(name)')),
   ])
   // ПДВ у документах періоду: у боргах (з ПДВ), але не в прибутку (без ПДВ) → вихідний − вхідний
   const docsInPeriod = periodDocs.filter(d => d.amount != null && d.direction && countsAsDebt(d.type) && debtDate(d) >= from && debtDate(d) <= to)
@@ -400,11 +402,58 @@ export async function accrualReconciliation(year, month, netProfit, opts = {}) {
   const cat = (t) => t.direction === 'ПФД' ? 'loans' : t.direction === 'ОЗ' ? 'fixedAssets' : isVatArticle(t.article) ? 'vat'
     : isWithdraw(t) ? 'withdrawals' : t.direction === 'Інше' ? 'other' : !(t.article || '').trim() ? 'noArticle' : !t.is_validated ? 'unvalidated' : null
   const explained = { loans: 0, fixedAssets: 0, vat: 0, withdrawals: 0, other: 0, noArticle: 0, unvalidated: 0, vatInDocs }
-  txs.forEach(t => { const k = cat(t); if (k) explained[k] += Number(t.amount) || 0 })
+  const details = {}   // ключ рядка → [{ kind: 'tx'|'doc'|'item', date, title, sub, amount }]
+  const txItem = (t) => ({ kind: 'tx', id: t.id, date: t.date, title: t.counterparty || '—', sub: [t.article, t.description].filter(Boolean).join(' · '), amount: r2(Number(t.amount) || 0) })
+  const add = (k, it) => (details[k] ||= []).push(it)
+  txs.forEach(t => { const k = cat(t); if (k) { explained[k] += Number(t.amount) || 0; add(k, txItem(t)) } })
   Object.keys(explained).forEach(k => { explained[k] = r2(explained[k]) })
+
+  // дебіторка / кредиторка: зміна неоплаченого залишку кожного документа за період
+  const docTitle = (d) => `${d.doc_number ? '№' + d.doc_number : 'без номера'} · ${d.contractors?.name || '—'}`
+  ;[['dAR', 'receivable'], ['dAP', 'payable']].forEach(([key, dir]) => {
+    const ids = new Set([...Object.keys(d0.open), ...Object.keys(d1.open)])
+    ids.forEach(id => {
+      const a = d0.open[id], b = d1.open[id], doc = (b || a).d
+      if (doc.direction !== dir) return
+      const delta = (b?.out || 0) - (a?.out || 0)
+      if (Math.abs(delta) < 0.5) return
+      add(key, { kind: 'doc', id, date: debtDate(doc), title: docTitle(doc), sub: `сума ${r2(Math.abs(Number(doc.amount) || 0))}, неоплачено ${r2(b?.out || 0)}`, amount: r2(delta) })
+    })
+  })
+  // ПДВ у документах періоду: вихідний (+), вхідний (−)
+  docsInPeriod.filter(d => Math.abs(Number(d.vat_amount) || 0) > 0.5).forEach(d => add('vatInDocs', { kind: 'doc', id: d.id, date: debtDate(d), title: docTitle(d), sub: d.direction === 'receivable' ? 'ПДВ у видатковій / акті' : 'ПДВ у прихідній', amount: r2((d.direction === 'receivable' ? 1 : -1) * Math.abs(Number(d.vat_amount) || 0)) }))
+
+  // «Решта» — розклад: підтверджені операції зі статтею, які не потрапили в інші рядки
+  const rest = txs.filter(t => !cat(t))
+  const restIds = rest.map(t => t.id)
+  const links = restIds.length ? await fetchAllIn(() => supabase.from('transaction_documents').select('transaction_id, document_id'), 'transaction_id', restIds).catch(() => []) : []
+  const linkedDocs = {}; links.forEach(l => { (linkedDocs[l.transaction_id] ||= []).push(l.document_id) })
+  const docById = {}; periodDocs.forEach(d => { docById[d.id] = d })
+  const { data: arts } = await supabase.from('articles').select('name, type, pl_level')
+  const lvl = {}; (arts || []).forEach(a => { lvl[a.name] = a.pl_level || (a.type === 'income' ? 'revenue' : 'opex') })
+  const payDocIds = [...new Set(links.map(l => l.document_id).filter(id => docById[id]?.direction === 'payable'))]
+  const inMov = payDocIds.length ? await fetchAllIn(() => qc('stock_movements').select('document_id').eq('type', 'in'), 'document_id', payDocIds).catch(() => []) : []
+  const posted = new Set(inMov.map(m => m.document_id))
+  rest.forEach(t => {
+    const amt = Number(t.amount) || 0, docs = (linkedDocs[t.id] || []).map(id => docById[id]).filter(Boolean)
+    const level = lvl[t.article] || ''
+    if (amt < 0 && level === 'cogs') {
+      const payDoc = docs.find(d => d.direction === 'payable')
+      if (!payDoc) add('rest_advance', txItem(t))
+      else if (!posted.has(payDoc.id)) add('rest_unposted', { ...txItem(t), sub: `прихідна ${payDoc.doc_number || ''} не проведена на склад · ${t.article}` })
+    } else if (amt > 0 && level === 'revenue' && !docs.some(d => d.direction === 'receivable')) add('rest_income', txItem(t))
+  })
+  const sum = (k) => r2((details[k] || []).reduce((a, x) => a + x.amount, 0))
+  const restParts = { advance: sum('rest_advance'), unposted: sum('rest_unposted'), income: sum('rest_income') }
+  // запаси: найбільші позиції на кінець / на початок
+  details.dInv = [
+    ...i1.items.map(x => ({ kind: 'item', title: x.name, sub: `на кінець: ${x.qty} ${x.unit} × ${r2(x.price)}`, amount: r2(-x.value) })),
+    ...i0.items.map(x => ({ kind: 'item', title: x.name, sub: `на початок: ${x.qty} ${x.unit} × ${r2(x.price)}`, amount: r2(x.value) })),
+  ]
+  Object.values(details).forEach(list => list.sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)))
   return {
     netProfit: r2(netProfit), dAR: r2(dAR), dAP: r2(dAP), dInv: r2(dInv),
-    estimated: r2(estimated), cashFlow: r2(cashFlow), diff: r2(cashFlow - estimated), explained, dataIssues,
+    estimated: r2(estimated), cashFlow: r2(cashFlow), diff: r2(cashFlow - estimated), explained, dataIssues, details, restParts,
     opening: { receivable: r2(d0.receivable), payable: r2(d0.payable), inventory: r2(i0.value), date: before },
     inventoryTop: { opening: i0.items, closing: i1.items, closingValue: r2(i1.value), to },
   }

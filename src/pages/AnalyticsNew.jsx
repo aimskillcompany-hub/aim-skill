@@ -400,33 +400,60 @@ function PlanTable({ rows, mode }) {
 function ReconBridge({ recon: r }) {
   // телефон: згорнутий акордеон (макет PnLMobile)
   const [shut, setShut] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 767px)').matches)
+  const [open, setOpen] = useState(null)   // ключ розгорнутого рядка
+  const [all, setAll] = useState(false)
   if (!r) return <TableSkeleton rows={6} cols={2} label="Звіряю з грошима…" />
-  const ex = r.explained
+  const ex = r.explained, det = r.details || {}, rp = r.restParts || {}
   const known = ex.loans + ex.fixedAssets + ex.vat + ex.withdrawals + ex.other + ex.noArticle + ex.unvalidated + (ex.vatInDocs || 0)
+  const rest = r.diff - known
+  const restLeft = rest - (rp.advance || 0) - (rp.unposted || 0) - (rp.income || 0)
+  // [підпис, сума, вид рядка, ключ розкриття, множник для сум у розкритті (вплив на гроші)]
   const lines = [
     ['Прибуток за нарахуванням', r.netProfit, 'total'],
-    ['− дебіторка: виписано, ще не оплачено', -r.dAR], ['+ кредиторка: отримано, ще не оплачено', r.dAP], ['− запаси: куплено, ще не продано', -r.dInv],
+    ['− дебіторка: виписано, ще не оплачено', -r.dAR, null, 'dAR', -1], ['+ кредиторка: отримано, ще не оплачено', r.dAP, null, 'dAP', 1], ['− запаси: куплено, ще не продано', -r.dInv, null, 'dInv', 1],
     ['= Розрахунковий грошовий потік', r.estimated, 'total'],
-    ['ПДВ у документах (у боргах, не в прибутку)', ex.vatInDocs || 0], ['ПДВ, сплачений до бюджету', ex.vat], ['Позики (ПФД)', ex.loans], ['Основні засоби', ex.fixedAssets],
-    ['Вивід коштів', ex.withdrawals], ['Інше поза P&L', ex.other], ['Без статті', ex.noArticle], ['Непідтверджені транзакції', ex.unvalidated],
-    ['Решта: оцінка складу, оплати без документів, аванси', r.diff - known],
+    ['ПДВ у документах (у боргах, не в прибутку)', ex.vatInDocs || 0, null, 'vatInDocs', 1], ['ПДВ, сплачений до бюджету', ex.vat, null, 'vat', 1], ['Позики (ПФД)', ex.loans, null, 'loans', 1], ['Основні засоби', ex.fixedAssets, null, 'fixedAssets', 1],
+    ['Вивід коштів', ex.withdrawals, null, 'withdrawals', 1], ['Інше поза P&L', ex.other, null, 'other', 1], ['Без статті', ex.noArticle, null, 'noArticle', 1], ['Непідтверджені транзакції', ex.unvalidated, null, 'unvalidated', 1],
+    ['Решта — з чого складається:', rest, 'group'],
+    ['оплати постачальникам без прихідної (аванси)', rp.advance || 0, 'sub', 'rest_advance', 1],
+    ['оплати за прихідними, не проведеними на склад', rp.unposted || 0, 'sub', 'rest_unposted', 1],
+    ['надходження від клієнтів без видаткової', rp.income || 0, 'sub', 'rest_income', 1],
+    ['ще не пояснено (оцінка складу, інші розбіжності)', restLeft, 'sub'],
     ['= Фактичний грошовий потік (банк + каса)', r.cashFlow, 'final'],
-  ].filter(([, v, k]) => k || Math.abs(v) >= 1)
+  ].filter(([, v, k]) => (k && k !== 'sub') || Math.abs(v) >= 1)
   const max = Math.max(1, ...lines.map(l => Math.abs(l[1])))
+  const dmy = (d) => d ? String(d).slice(0, 10).split('-').reverse().join('.') : ''
   return (
     <section className={`cfn-card pln-bridge${shut ? ' is-shut' : ''}`} aria-label="Звірка прибутку з грошима">
       <button type="button" className="pln-br-head" aria-expanded={!shut} onClick={() => setShut(x => !x)}>
-        <span><h2>Чому прибуток {short(r.netProfit)}, а грошей {short(r.cashFlow)}<InfoTip label="Чому прибуток не дорівнює грошам">Звірка прибутку за нарахуванням із фактичним рухом грошей.</InfoTip></h2></span>
+        <span><h2>Чому прибуток {short(r.netProfit)}, а грошей {short(r.cashFlow)}<InfoTip label="Чому прибуток не дорівнює грошам">Звірка прибутку за нарахуванням із фактичним рухом грошей. Рядок зі стрілкою розгортається — видно документи чи операції, з яких складається сума.</InfoTip></h2></span>
         <i className={`ti ti-chevron-${shut ? 'down' : 'up'}`} aria-hidden="true" /></button>
       {!shut && <>
       <ul>
-        {lines.map(([label, v, k]) => (
-          <li key={label} className={k ? `is-${k}` : ''}>
-            <span className="pln-br-l">{label}</span>
-            <span className="pln-br-track"><span className={`pln-br-bar${v < 0 ? ' is-neg' : ''}`} style={{ width: `${(Math.abs(v) / max) * 50}%` }} /></span>
-            <span className={`pln-br-v${v < 0 ? ' is-neg' : k ? '' : ' is-pos'}`}>{formatAmount(v, { decimals: 0, sign: k ? 'auto' : 'always' })}</span>
-          </li>
-        ))}
+        {lines.map(([label, v, k, key, mul]) => {
+          const items = key ? (det[key] || []) : []
+          const can = items.length > 0, isOpen = open === key
+          return (
+            <Fragment key={label}>
+              <li className={`${k ? `is-${k}` : ''}${can ? ' is-click' : ''}`} onClick={can ? () => { setOpen(isOpen ? null : key); setAll(false) } : undefined}
+                role={can ? 'button' : undefined} tabIndex={can ? 0 : undefined} aria-expanded={can ? isOpen : undefined}
+                onKeyDown={can ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(isOpen ? null : key) } } : undefined}>
+                <span className="pln-br-l">{can && <i className={`ti ti-chevron-${isOpen ? 'down' : 'right'}`} aria-hidden="true" />}{label}{can && <small> · {items.length}</small>}</span>
+                <span className="pln-br-track"><span className={`pln-br-bar${v < 0 ? ' is-neg' : ''}`} style={{ width: `${(Math.abs(v) / max) * 50}%` }} /></span>
+                <span className={`pln-br-v${v < 0 ? ' is-neg' : k && k !== 'sub' ? '' : ' is-pos'}`}>{formatAmount(v, { decimals: 0, sign: k && k !== 'sub' ? 'auto' : 'always' })}</span>
+              </li>
+              {isOpen && <li className="pln-br-det"><table><tbody>
+                {(all ? items : items.slice(0, 30)).map((it, n) => (
+                  <tr key={n}><td className="pln-br-d">{dmy(it.date)}</td><td><b>{it.title}</b>{it.sub && <small>{it.sub}</small>}</td>
+                    <td className={`pln-br-a${it.amount * mul < 0 ? ' is-neg' : ''}`}>{formatAmount(it.amount * mul, { decimals: 0, sign: 'always' })}</td></tr>
+                ))}
+              </tbody></table>
+                {items.length > 30 && !all && <button type="button" className="pln-br-more" onClick={() => setAll(true)}>Показати всі {items.length}</button>}
+                {key === 'dInv' && <p className="cfn-muted cfn-sm">Найбільші позиції складу на початок і на кінець періоду.</p>}
+              </li>}
+            </Fragment>
+          )
+        })}
       </ul>
       {r.opening && <p className="cfn-muted cfn-sm">На початок ({r.opening.date.split('-').reverse().join('.')}): дебіторка {plain(r.opening.receivable)}, кредиторка {plain(r.opening.payable)}, запаси {plain(r.opening.inventory)} ₴. Борги — з ПДВ, прибуток — без ПДВ, тому різниця на суму ПДВ очікувана.</p>}
       </>}
