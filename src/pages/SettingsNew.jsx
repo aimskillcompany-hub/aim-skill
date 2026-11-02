@@ -252,9 +252,15 @@ function AccountsSection() {
   const spread = dates.length > 1 ? Math.round((new Date(dates[dates.length - 1]) - new Date(dates[0])) / 86400000) : 0
   const late = rows.filter(a => a.is_active !== false && a.opening_balance_date && a.opening_balance_date > dates[0])
   const save = async () => {
-    const { error } = edit.id
-      ? await qc('accounts').update({ name: edit.name, bank_name: edit.bank_name || null, opening_balance: Number(edit.opening_balance) || 0, opening_balance_date: edit.opening_balance_date || null }).eq('id', edit.id)
-      : await qc('accounts').insert(withCompany({ name: edit.name.trim(), type: edit.type, bank_name: edit.bank_name || null, opening_balance: Number(edit.opening_balance) || 0, opening_balance_date: edit.opening_balance_date || null, sort_order: rows.length + 1 }))
+    const iban = String(edit.iban || '').replace(/\s/g, '').toUpperCase() || null
+    if (iban && !/^UA\d{27}$/.test(iban)) return toast('IBAN має бути у форматі UA + 27 цифр', { type: 'error' })
+    const base = { name: edit.name.trim(), bank_name: edit.bank_name || null, opening_balance: Number(edit.opening_balance) || 0, opening_balance_date: edit.opening_balance_date || null }
+    const run = (row) => edit.id ? qc('accounts').update(row).eq('id', edit.id) : qc('accounts').insert(withCompany({ ...row, type: edit.type, sort_order: rows.length + 1 }))
+    let { error } = await run({ ...base, iban })
+    if (error && /iban/.test(error.message || '')) {   // до міграції 108
+      if (iban) return toast('Щоб зберегти IBAN, запустіть міграцію 108', { type: 'error' })
+      ;({ error } = await run(base))
+    }
     if (error) return toast(error.message, { type: 'error' })
     setEdit(null); load()
   }
@@ -264,6 +270,7 @@ function AccountsSection() {
         <div><h2>Рахунки {active?.short_name || active?.name || ''}<InfoTip label="Рахунки">Залишок зараз = початковий залишок + усі рухи після дати старту.</InfoTip></h2></div>
         <Button variant="primary" icon="ti-plus" onClick={() => setEdit({ name: '', type: 'bank', bank_name: '', opening_balance: 0, opening_balance_date: '' })}>Рахунок або каса</Button>
       </section>
+      <MonoCard companyId={active?.id} accounts={rows} onSynced={load} />
       {spread > 60 && <Callout tone="warn" title="Дати старту рахунків сильно розходяться."
         text={`${late.map(a => `«${a.name}» стартує ${dmy(a.opening_balance_date)}`).join(', ')}, а найраніший рахунок — ${dmy(dates[0])} (різниця ${spread} дн.). Рухи до дати старту не враховуються, тож залишок групи на ранні місяці неповний. Звірте початкові залишки.`} />}
       <div className="stn-accs">
@@ -271,7 +278,7 @@ function AccountsSection() {
           <div key={a.id} className={`cfn-card stn-acc${a.is_active === false ? ' is-off' : ''}`}>
             <div className="stn-acc-h">
               <span className={`stn-acc-av${a.type === 'cash' ? ' is-cash' : ''}`} aria-hidden="true">{a.type === 'cash' ? '₴' : (a.name || '?').replace(/[^A-Za-zА-Яа-яІіЇїЄєҐґ]/g, '').slice(0, 2).toUpperCase()}</span>
-              <span className="stn-acc-t"><b>{a.name}</b><small>{a.type === 'cash' ? 'Каса' : `Банк${a.bank_name ? ' · ' + a.bank_name : ''}`}</small></span>
+              <span className="stn-acc-t"><b>{a.name}</b><small>{a.type === 'cash' ? 'Каса' : `Банк${a.bank_name ? ' · ' + a.bank_name : ''}${a.iban ? ' · …' + a.iban.slice(-6) : ''}`}</small></span>
               <em className={`stn-co-st${a.is_active === false ? '' : ' is-ok'}`}>{a.is_active === false ? 'вимкнено' : 'активний'}</em>
               <Menu trigger={<Button variant="ghost" size="sm" iconOnly icon="ti-dots" aria-label={`Дії: ${a.name}`} />} items={[
                 { label: 'Змінити', icon: 'ti-pencil', onClick: () => setEdit({ ...a }) },
@@ -303,12 +310,76 @@ function AccountsSection() {
             <div className="form-group"><label>Назва *</label><input className="form-input" value={edit.name} onChange={e => setEdit(s => ({ ...s, name: e.target.value }))} /></div>
             {!edit.id && <div className="form-group"><label>Тип</label><select className="form-input" value={edit.type} onChange={e => setEdit(s => ({ ...s, type: e.target.value }))}><option value="bank">Банк</option><option value="cash">Каса</option></select></div>}
             <div className="form-group"><label>Банк</label><input className="form-input" value={edit.bank_name || ''} onChange={e => setEdit(s => ({ ...s, bank_name: e.target.value }))} /></div>
+            {(edit.type || 'bank') === 'bank' && <div className="form-group full"><label>IBAN<InfoTip label="IBAN">Потрібен для автоматичної виписки monobank: операції потрапляють на рахунок із тим самим IBAN.</InfoTip></label><input className="form-input" value={edit.iban || ''} placeholder="UA…" onChange={e => setEdit(s => ({ ...s, iban: e.target.value }))} /></div>}
             <div className="form-group"><label>Початковий залишок, ₴</label><input className="form-input" inputMode="decimal" value={edit.opening_balance ?? 0} onChange={e => setEdit(s => ({ ...s, opening_balance: e.target.value }))} /></div>
             <div className="form-group"><label>Станом на</label><input className="form-input" type="date" value={edit.opening_balance_date || ''} onChange={e => setEdit(s => ({ ...s, opening_balance_date: e.target.value }))} /></div>
           </div>
         </Modal>
       )}
     </div>
+  )
+}
+
+// ── monobank: автоматична виписка (міграція 108, api/mono-sync) ──
+function MonoCard({ companyId, accounts, onSynced }) {
+  const { user } = useUser()
+  const toast = useToast()
+  const canEdit = ['admin', 'accountant'].includes(user?.role)
+  const [has, setHas] = useState(null)       // токен задано?
+  const [missing, setMissing] = useState(false)
+  const [tok, setTok] = useState('')
+  const [edit, setEdit] = useState(false)
+  const [from, setFrom] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [log, setLog] = useState([])
+  const [last, setLast] = useState(null)
+  const load = () => {
+    if (!companyId) return
+    supabase.rpc('mono_token_set', { p_company: companyId }).then(({ data, error }) => { if (error) { setMissing(true); setHas(false) } else setHas(!!data) })
+    supabase.from('bank_sync_log').select('at, added, skipped, error, account_id').eq('company_id', companyId).order('at', { ascending: false }).limit(6).then(({ data }) => setLog(data || []))
+  }
+  useEffect(load, [companyId])
+  const saveTok = async (value) => {
+    const { error } = await supabase.rpc('set_mono_token', { p_company: companyId, p_token: value })
+    if (error) return toast(/MONO_FORBIDDEN/.test(error.message) ? 'Лише адміністратор або бухгалтер' : error.message, { type: 'error' })
+    setTok(''); setEdit(false); toast(value ? 'Токен monobank збережено' : 'Токен прибрано'); load()
+  }
+  const sync = async () => {
+    setBusy(true); setLast(null)
+    try {
+      const { data: s } = await supabase.auth.getSession()
+      const r = await fetch('/api/mono-sync', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s?.session?.access_token || ''}` }, body: JSON.stringify({ company_id: companyId, from: from || undefined }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j.error || `Помилка ${r.status}`)
+      const rep = j.results?.[0] || {}
+      if (rep.error) throw new Error(rep.error)
+      setLast(rep); toast(`Додано операцій: ${rep.added || 0}${rep.skipped ? `, пропущено (вже є): ${rep.skipped}` : ''}`)
+      onSynced?.(); load()
+    } catch (e) { toast('monobank: ' + e.message, { type: 'error' }) }
+    setBusy(false)
+  }
+  const monoAccs = (accounts || []).filter(a => a.type !== 'cash' && /mono/i.test(a.bank_name || ''))
+  const withIban = (accounts || []).filter(a => a.iban)
+  const accName = (id) => (accounts || []).find(a => a.id === id)?.name || '—'
+  return (
+    <section className="cfn-card stn-mono" aria-label="Автоматична виписка monobank">
+      <div className="stn-mono-h">
+        <div><h2>monobank — автоматична виписка<InfoTip label="monobank API">Операції з рахунків юрособи в monobank підтягуються щогодини (і кнопкою «Синхронізувати зараз») у «Банк» — непідтвердженими, як після імпорту файлу. Дублі пропускаються. Рахунки зіставляються за IBAN.<br />Токен створюється у web.monobank.ua → «Токени» для цієї компанії. Він зберігається лише на сервері.</InfoTip></h2>
+          <small className="stn-mono-st">{missing ? 'Потрібна міграція 108' : has == null ? '…' : has ? '● Токен задано' : '○ Токен не задано'}{withIban.length ? ` · рахунків з IBAN: ${withIban.length}` : ''}</small></div>
+        {canEdit && !missing && (has && !edit
+          ? <div className="stn-mono-acts"><Button size="sm" variant="secondary" onClick={() => setEdit(true)}>Змінити токен</Button><Button size="sm" variant="ghost" onClick={() => saveTok('')}>Прибрати</Button></div>
+          : <div className="stn-mono-tok"><input className="form-input" type="password" autoComplete="off" placeholder="Токен API monobank" aria-label="Токен API monobank" value={tok} onChange={e => setTok(e.target.value)} />
+              <Button size="sm" variant="brand" disabled={!tok.trim()} onClick={() => saveTok(tok.trim())}>Зберегти</Button>{edit && <Button size="sm" variant="ghost" onClick={() => setEdit(false)}>Скасувати</Button>}</div>)}
+      </div>
+      {has && monoAccs.some(a => !a.iban) && <Callout tone="warn" title="Вкажіть IBAN рахунків monobank." text={`${monoAccs.filter(a => !a.iban).map(a => `«${a.name}»`).join(', ')} — без IBAN операції не потраплять на рахунок. «⋯ → Змінити» у картці рахунку.`} />}
+      {has && <div className="stn-mono-sync">
+        <label><span>Завантажити з дати (необов’язково)</span><input className="form-input" type="date" value={from} onChange={e => setFrom(e.target.value)} /></label>
+        {canEdit && <Button variant="primary" icon="ti-refresh" loading={busy} onClick={sync}>Синхронізувати зараз</Button>}
+        <small className="stn-mono-st">Без дати — з останньої синхронізації (перший раз — за 30 днів).</small>
+      </div>}
+      {last?.accounts?.length > 0 && <ul className="stn-mono-res">{last.accounts.map((a, i) => <li key={i}><b>{a.account || a.iban}</b> — {a.skipped && typeof a.skipped === 'string' ? a.skipped : `додано ${a.added}, вже були ${a.skipped}${a.error ? ` · помилка: ${a.error}` : ''}`}</li>)}</ul>}
+      {log.length > 0 && <details className="stn-mono-log"><summary>Останні синхронізації</summary><ul>{log.map((l, i) => <li key={i}>{new Date(l.at).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv' })} · {accName(l.account_id)} · {l.error ? <span className="rpt-late">{l.error}</span> : `+${l.added}, пропущено ${l.skipped}`}</li>)}</ul></details>}
+    </section>
   )
 }
 

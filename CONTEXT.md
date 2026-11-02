@@ -516,6 +516,8 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 
 - **Портали постачальників** (`pages/Portals.jsx`, `components/PortalList.jsx`, `lib/portals.js`, 27.10.2026): меню «Портали постачальників» (`#/portals`, секція доступу contractors) і вкладка «Портали» в картці контрагента. «Відкрити портал» — нова вкладка; логін / пароль — копіюванням (пароль видає сервер, показ на 30 с). Паролі в коді й файлах не зберігаються.
 
+- **monobank → Банк** (`api/mono-sync.js`, `SettingsNew` → «Рахунки» → картка monobank, 02.11.2026): corp-api.monobank.ua `/ext/v1/accounts` + `/ext/v1/statement/{iban}/{from}/{to}` (сторінки по 500, лише DONE, без реверсів). Дублі: `reference` = id операції; для старих рядків (файл) — рахунок + дата + сума + ЄДРПОУ. Контрагент за ЄДРПОУ (створюється), напрям / стаття — найчастіші в історії ЄДРПОУ, інакше за знаком. Вставка партіями, при помилці (закритий місяць) — по одній. Лише гривневі рахунки. Тест `monoSync.test.js`.
+
 ## 7. Відомі проблеми / баги (не виправлені)
 
 - **Aging/борги майже порожні** — бо `documents.amount` у 159 мігрованих документів = null. Наповниться після «Розпізнати» по кожному або backfill.
@@ -616,6 +618,7 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `105_item_ship_date.sql` | `order_items.ship_date` — окрема планова дата відвантаження позиції (часткове відвантаження). Прогноз: оплата клієнта (`client-s<дата>`), постачальнику (`sup-…-s<дата>`) і ПДВ (`vat-s<дата>`) за позицію — від її дати. Тест: `tests_105_pglite.mjs`, `itemShipDate.test.js` | ✅ запущена 26.10.2026 |
 | `106_payment_confirmed.sql` | «Прибутковість» v2 (ТЗ 05, 6.3): `order_transactions.confirmed_at/confirmed_by`, `orders.paid_confirmed_at` — «Це оплата клієнта» для підозрілої оплати. Тест: `tests_106_pglite.mjs` | ✅ запущена 27.10.2026 |
 | `107_supplier_portals.sql` | Портали постачальників: `supplier_portals` (контрагент, назва, посилання, логін, примітка); пароль — у Supabase Vault (`supplier_portal_secrets` без політик), `portal_get_password` / `portal_set_password` — усі ролі, крім viewer; журнал `supplier_portal_log`. Тест: `tests_107_pglite.mjs` (заглушка Vault) | ✅ запущена 27.10.2026 |
+| `108_mono_sync.sql` | Автоматична виписка monobank (corp API): `accounts.iban`, `accounts.mono_synced_at`, `bank_sync_log`; токен — `app_secrets 'mono_token:<company>'` через `set_mono_token` (адмін / бухгалтер), `mono_token_set`; pg_cron `aim_mono_sync` щогодини о :07 → `/api/mono-sync` | ✅ запущена 02.11.2026 |
 | `validate.mjs` | Перевірка цілісності Фази 1 (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 | `probe.mjs` | Звірка наявності колонок/таблиць усіх міграцій у БД (`SUPABASE_SERVICE_KEY=... node migrations/probe.mjs`) | — |
 
