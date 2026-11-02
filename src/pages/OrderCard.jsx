@@ -706,7 +706,7 @@ function ItemsTab({ o, onChange, onDirty }) {
   const load = () => supabase.from('order_items').select('*, contractors(name)').eq('order_id', o.id).order('created_at')
     .then(({ data }) => { setRows((data || []).map(r => ({ ...r, supplier_name: r.contractors?.name || null }))); setDirty(false); onDirty?.(false) })
   useEffect(() => { load() }, [o.id])
-  useEffect(() => { supabase.from('contractors').select('id, name').eq('is_supplier', true).order('name').then(({ data }) => setSuppliers(data || [])) }, [])
+  useEffect(() => { supabase.from('contractors').select('id, name, edrpou').eq('is_supplier', true).order('name').then(({ data }) => setSuppliers(data || [])) }, [])
   // Створити постачальника (назва — з поля або з запиту); повертає { id, name } або null
   const createSupplier = async (preset) => {
     const name = (preset || window.prompt('Назва нового постачальника') || '').trim()
@@ -717,6 +717,15 @@ function ItemsTab({ o, onChange, onDirty }) {
     return data
   }
   // Обрати наявного постачальника або створити нового (колонка «Постачальник»)
+  // вибір із пошуку (ItemsNew → SupplierPicker): контрагент може бути ще не позначений постачальником — позначаємо
+  const pickSupplier = async (i, c) => {
+    if (!c) return setRow(i, { supplier_id: null, supplier_name: null })
+    if (!suppliers.some(s => s.id === c.id)) {
+      setSuppliers(s => [...s, { id: c.id, name: c.name, edrpou: c.edrpou }].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'uk')))
+      supabase.from('contractors').update({ is_supplier: true }).eq('id', c.id).then(() => {})
+    }
+    setRow(i, { supplier_id: c.id, supplier_name: c.name })
+  }
   const chooseSupplier = async (i, v) => {
     if (v === '__new__') {
       const data = await createSupplier()
@@ -868,7 +877,7 @@ function ItemsTab({ o, onChange, onDirty }) {
     <>
       <ItemsNew rows={rows} vatOn={vatOn} defVat={defVat} suppliers={suppliers} newIncl={false}
         h={{ rowMargin, marginPct, netCost, grossCost, netUnit, grossUnit, rowTotal, rowNet, fmtMarkup, setMarkup }}
-        setRow={setRow} removeRow={removeRow} addRowWith={addRowWith} splitRow={splitRow} setAllIncl={setAllIncl} chooseSupplier={chooseSupplier} createSupplier={createSupplier}
+        setRow={setRow} removeRow={removeRow} addRowWith={addRowWith} splitRow={splitRow} pickSupplier={pickSupplier} setAllIncl={setAllIncl} chooseSupplier={chooseSupplier} createSupplier={createSupplier}
         bulkMarkup={bulkMarkup} setBulkMarkup={setBulkMarkup} applyBulkMarkup={applyBulkMarkup}
         save={save} saving={saving} saved={saved} dirty={dirty} aiMsg={aiMsg} aiLoading={aiLoading}
         actions={{ table: () => tableRef.current?.click(), price: () => setShowPicker(true), spec: () => specRef.current?.click(), cost: () => costRef.current?.click() }}

@@ -3,7 +3,7 @@
 //   рядок інструментів «Ціни вводяться: з ПДВ / без ПДВ» · ПДВ · «Націнка на всі» · Дії · + Позиція;
 //   у заголовках цін — «з ПДВ» / «без ПДВ», друга ціна — сірим під основною;
 //   додавання: Товар → Кількість і ціни → Постачальник останнім кроком.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ProductSelect from '../components/ui/ProductSelect'
 import { Button, Menu, Segmented, Callout, EmptyState, InfoTip } from '../components/ui'
 import { formatAmount } from '../utils/format'
@@ -13,7 +13,7 @@ const n = (v) => Number(v) || 0
 const r2 = (v) => Math.round(v * 100) / 100
 
 export default function ItemsNew(p) {
-  const { rows, vatOn, defVat, suppliers, h, setRow, removeRow, addRowWith, splitRow, setAllIncl, chooseSupplier, createSupplier,
+  const { rows, vatOn, defVat, suppliers, h, setRow, removeRow, addRowWith, splitRow, pickSupplier, setAllIncl, chooseSupplier, createSupplier,
     bulkMarkup, setBulkMarkup, applyBulkMarkup, totals, save, saving, saved, dirty, aiMsg, aiLoading, actions, onReport } = p
   const [adding, setAdding] = useState(false)
   const [open, setOpen] = useState({})
@@ -89,12 +89,15 @@ export default function ItemsNew(p) {
                               : setRow(i, { name: x.name, product_id: x.id, sku: x.sku || r.sku || '', unit: x.unit || 'шт', cost_price: r.cost_price || x.buy_price || 0, unit_price: r.unit_price || x.sell_price || 0, price_includes_vat: false, supplier_id: null, supplier_name: null })} />
                           {r.characteristics && <span className="itn-chars">{r.characteristics}</span>}
                           <span className="itn-supplier"><i className="ti ti-truck-delivery" aria-hidden="true" />Постачальник:{' '}
-                            <select aria-label={`Постачальник позиції ${i + 1}`} className={r.supplier_id ? '' : 'is-none'} value={r.supplier_id || ''} onChange={e => chooseSupplier(i, e.target.value)}>
+                            {pickSupplier
+                              ? <SupplierPicker label={`Постачальник позиції ${i + 1}`} id={r.supplier_id} name={r.supplier_name || suppliers.find(x => x.id === r.supplier_id)?.name} suppliers={suppliers}
+                                  onPick={(c) => pickSupplier(i, c)} onCreate={async (name) => { const d = await createSupplier(name); if (d) pickSupplier(i, d) }} />
+                              : <select aria-label={`Постачальник позиції ${i + 1}`} className={r.supplier_id ? '' : 'is-none'} value={r.supplier_id || ''} onChange={e => chooseSupplier(i, e.target.value)}>
                               <option value="">не вказано</option>
                               {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                               {r.supplier_id && !suppliers.some(s => s.id === r.supplier_id) && <option value={r.supplier_id}>{r.supplier_name || '—'}</option>}
                               <option value="__new__">＋ новий…</option>
-                            </select>
+                            </select>}
                             {splitRow && Number(r.qty) > 1 && split?.i !== i && <button type="button" className="itn-split" onClick={() => setSplit({ i, qty: '' })} title="Розділити між постачальниками: частина кількості — від іншого постачальника, окремим рядком. У документах для клієнта рядки зіллються в один." aria-label="Розділити між постачальниками"><i className="ti ti-arrows-split-2" aria-hidden="true" />Розділити</button>}
                           </span>
                           {split?.i === i && <span className="itn-split-f">
@@ -267,5 +270,67 @@ function AddItem({ no, vatOn, defVat, incl, suppliers, usedSupplierIds, createSu
         <Button variant="primary" onClick={add} disabled={!ready}>{!item.name.trim() ? 'Оберіть товар' : sup === undefined ? 'Оберіть постачальника' : 'Додати позицію'}</Button>
       </div>
     </section>
+  )
+}
+
+// Постачальник позиції: пошук за назвою або ЄДРПОУ (спершу серед постачальників, далі — усі контрагенти),
+// «＋ Створити «…»» — новий постачальник з введеною назвою. Esc — закрити, ↑↓ / Enter — вибір.
+function SupplierPicker({ label, id, name, suppliers, onPick, onCreate }) {
+  const [open, setOpen] = useState(false)
+  const [q, setQ] = useState('')
+  const [remote, setRemote] = useState([])
+  const [hi, setHi] = useState(0)
+  const [pos, setPos] = useState(null)   // список — поверх таблиці (position: fixed), щоб рамка рядка не обрізала
+  const inRef = useRef(null)
+  useEffect(() => {
+    if (!open) return
+    const place = () => { const r = inRef.current?.getBoundingClientRect(); if (r) setPos({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 350) }) }
+    place()
+    window.addEventListener('scroll', place, true); window.addEventListener('resize', place)
+    return () => { window.removeEventListener('scroll', place, true); window.removeEventListener('resize', place) }
+  }, [open])
+  const norm = (t) => String(t || '').toLowerCase().replace(/[«»"'`ʼ’]/g, '').replace(/\s+/g, ' ').trim()
+  const nq = norm(q)
+  const local = useMemo(() => (nq ? suppliers.filter(s => norm(s.name).includes(nq) || (s.edrpou && String(s.edrpou).includes(nq))) : suppliers).slice(0, 8), [nq, suppliers])
+  useEffect(() => {
+    if (!open || nq.length < 2) { setRemote([]); return }
+    const t = setTimeout(async () => {
+      const { supabase } = await import('../lib/supabase')
+      const safe = q.trim().replace(/[,()%]/g, ' ')
+      const { data } = await supabase.from('contractors').select('id, name, edrpou').or(`name.ilike.%${safe}%,short_name.ilike.%${safe}%,edrpou.ilike.%${safe}%`).limit(8)
+      setRemote((data || []).filter(c => !suppliers.some(s => s.id === c.id)))
+    }, 250)
+    return () => clearTimeout(t)
+  }, [q, open])
+  const list = [...local.map(c => ({ ...c, known: true })), ...remote]
+  const canCreate = q.trim().length >= 2 && !list.some(c => norm(c.name) === nq)
+  const total = list.length + (canCreate ? 1 : 0)
+  const pick = (k) => { if (k < list.length) onPick(list[k]); else if (canCreate) onCreate(q.trim()); setOpen(false); setQ('') }
+  if (!open) return (
+    <button type="button" className={`itn-sp-btn${id ? '' : ' is-none'}`} aria-label={`${label}: ${name || 'не вказано'} — змінити`} onClick={() => { setOpen(true); setHi(0) }}>
+      {name || 'не вказано'}<i className="ti ti-search" aria-hidden="true" />
+    </button>
+  )
+  return (
+    <span className="itn-sp" onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) { setOpen(false); setQ('') } }}>
+      <input ref={inRef} autoFocus className="itn-sp-in" aria-label={label} placeholder="Назва або ЄДРПОУ…" value={q}
+        onChange={e => { setQ(e.target.value); setHi(0) }}
+        onKeyDown={e => {
+          if (e.key === 'Escape') { setOpen(false); setQ('') }
+          else if (e.key === 'ArrowDown') { e.preventDefault(); setHi(h => Math.min(total - 1, h + 1)) }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => Math.max(0, h - 1)) }
+          else if (e.key === 'Enter' && total) { e.preventDefault(); pick(hi) }
+        }} />
+      <span className="itn-sp-list" role="listbox" style={pos ? { position: 'fixed', top: pos.top, left: Math.max(8, pos.left) } : undefined}>
+        {id && <button type="button" className="itn-sp-opt is-clear" onMouseDown={e => e.preventDefault()} onClick={() => { onPick(null); setOpen(false); setQ('') }}>Прибрати постачальника</button>}
+        {list.map((c, k) => (
+          <button key={c.id} type="button" role="option" aria-selected={k === hi} className={`itn-sp-opt${k === hi ? ' is-hi' : ''}`} onMouseDown={e => e.preventDefault()} onClick={() => pick(k)}>
+            <b>{c.name}</b>{c.edrpou && <small>{c.edrpou}</small>}{!c.known && <small> · ще не постачальник</small>}
+          </button>
+        ))}
+        {canCreate && <button type="button" className={`itn-sp-opt is-new${hi === list.length ? ' is-hi' : ''}`} onMouseDown={e => e.preventDefault()} onClick={() => pick(list.length)}>＋ Створити «{q.trim()}»</button>}
+        {!total && <span className="itn-sp-empty">Почніть вводити назву</span>}
+      </span>
+    </span>
   )
 }
