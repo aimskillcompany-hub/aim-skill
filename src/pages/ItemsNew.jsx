@@ -13,10 +13,11 @@ const n = (v) => Number(v) || 0
 const r2 = (v) => Math.round(v * 100) / 100
 
 export default function ItemsNew(p) {
-  const { rows, vatOn, defVat, suppliers, h, setRow, removeRow, addRowWith, setAllIncl, chooseSupplier, createSupplier,
+  const { rows, vatOn, defVat, suppliers, h, setRow, removeRow, addRowWith, splitRow, setAllIncl, chooseSupplier, createSupplier,
     bulkMarkup, setBulkMarkup, applyBulkMarkup, totals, save, saving, saved, dirty, aiMsg, aiLoading, actions, onReport } = p
   const [adding, setAdding] = useState(false)
   const [open, setOpen] = useState({})
+  const [split, setSplit] = useState(null)   // { i, qty } — «Розділити між постачальниками»
 
   // «Ціни вводяться»: усі позиції в одному режимі; змішаний стан — жоден не обраний
   const inclAll = rows.length && rows.every(r => !!r.price_includes_vat)
@@ -94,7 +95,16 @@ export default function ItemsNew(p) {
                               {r.supplier_id && !suppliers.some(s => s.id === r.supplier_id) && <option value={r.supplier_id}>{r.supplier_name || '—'}</option>}
                               <option value="__new__">＋ новий…</option>
                             </select>
+                            {splitRow && Number(r.qty) > 1 && split?.i !== i && <button type="button" className="itn-split" onClick={() => setSplit({ i, qty: '' })} title="Розділити між постачальниками: частина кількості — від іншого постачальника, окремим рядком. У документах для клієнта рядки зіллються в один." aria-label="Розділити між постачальниками"><i className="ti ti-arrows-split-2" aria-hidden="true" />Розділити</button>}
                           </span>
+                          {split?.i === i && <span className="itn-split-f">
+                            <span>Від іншого постачальника</span>
+                            <input type="number" inputMode="decimal" autoFocus aria-label="Кількість від іншого постачальника" value={split.qty} min="1" max={Number(r.qty) - 1}
+                              onChange={e => setSplit({ i, qty: e.target.value })} onKeyDown={e => { if (e.key === 'Enter') { splitRow(i, split.qty); setSplit(null) } if (e.key === 'Escape') setSplit(null) }} />
+                            <span>з {r.qty} {r.unit || 'шт'}</span>
+                            <button type="button" className="itn-split-ok" disabled={!(Number(split.qty) > 0 && Number(split.qty) < Number(r.qty))} onClick={() => { splitRow(i, split.qty); setSplit(null) }}>Розділити</button>
+                            <button type="button" className="itn-split-x" onClick={() => setSplit(null)} aria-label="Скасувати">×</button>
+                          </span>}
                           {r.supplier_id && <label className="itn-paydays" title="Відстрочка оплати постачальнику саме за цю позицію (порожньо — умови постачальника в замовленні)">
                             <span>відстрочка позиції</span><input type="number" inputMode="numeric" aria-label={`Відстрочка оплати постачальнику, позиція ${i + 1}`} value={r.pay_days ?? ''} placeholder="—"
                               onChange={e => setRow(i, { pay_days: e.target.value === '' ? null : Number(e.target.value) })} /><span>дн.</span></label>}

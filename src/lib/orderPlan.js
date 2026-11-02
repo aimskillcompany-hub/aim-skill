@@ -56,3 +56,17 @@ export function computeOrderPlan(items, { vatOn = true, agentPct = 0, otherExpen
 
 // Сума «іншої витрати» замовлення без ПДВ (міграція 102: vat_included; старі витрати — без ПДВ, як і раніше)
 export const expenseNet = (e) => Math.round(((Number(e.amount) || 0) / (e.vat_included ? 1.2 : 1)) * 100) / 100
+
+// Позиції для документів клієнта (КП, рахунок, видаткова, акт): рядки одного товару, розділені між постачальниками
+// («Розділити між постачальниками»), — одним рядком. Ключ: назва + характеристики + од. + ціна продажу + ПДВ + «з ПДВ»
+// + товар складу. Порядок — за першою появою; кількість — сума.
+export function mergeSameLines(items) {
+  const out = [], byKey = new Map()
+  ;(items || []).forEach(it => {
+    const key = [String(it.name || '').trim().toLowerCase(), String(it.characteristics || '').trim(), it.unit || 'шт', Number(it.unit_price) || 0, Number(it.vat_rate) || 0, !!it.price_includes_vat, it.product_id || ''].join('¦')
+    const prev = byKey.get(key)
+    if (prev) { prev.qty = Math.round(((Number(prev.qty) || 0) + (Number(it.qty) || 0)) * 10000) / 10000; return }
+    const row = { ...it }; byKey.set(key, row); out.push(row)
+  })
+  return out
+}
