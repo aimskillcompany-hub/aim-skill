@@ -26,6 +26,7 @@ import './OrderCard.css'
 import { OrderHeadNew, OrderAside, OrderTotals, useOrderPlan } from './OrderCardNew'
 import ItemsNew from './ItemsNew'
 import { useNewUi } from '../lib/uiPrefs'
+import { mergeSameLines } from '../lib/orderPlan'
 import { Tabs, Callout } from '../components/ui'
 import {
   ORDER_TYPES, TYPE_COLORS, OUTCOME, flowFor, proposalOverdue,
@@ -752,6 +753,18 @@ function ItemsTab({ o, onChange, onDirty }) {
   const removeRow = (i) => { markDirty(); setRows(rs => rs.filter((_, j) => j !== i)) }
   // Нова позиція з форми додавання (новий інтерфейс)
   const addRowWith = (row) => { markDirty(); setRows(rs => [...rs, row]) }
+  // «Розділити між постачальниками»: частина кількості — окремим рядком (той самий товар і ціна продажу, свій постачальник
+  // і закупка). У документах для клієнта такі рядки зливаються в один (mergeSameLines).
+  const splitRow = (i, qty) => {
+    markDirty()
+    setRows(rs => {
+      const r = rs[i]; const total = Number(r.qty) || 0; const q = Math.min(Number(qty) || 0, total)
+      if (!(q > 0) || q >= total) return rs
+      const { id, created_at, contractors, ...copy } = r
+      const part = { ...copy, qty: q, supplier_id: null, supplier_name: null, pay_days: null }
+      return [...rs.slice(0, i), { ...r, qty: Math.round((total - q) * 10000) / 10000 }, part, ...rs.slice(i + 1)]
+    })
+  }
   // unit_price трактується залежно від price_includes_vat:
   //   true  → ціна вже з ПДВ (прайс); false → ціна без ПДВ, ПДВ зверху (склад)
   // Неплатник ПДВ: ігноруємо ПДВ-прапорці рядка (можуть лишитися з прайсу/іншої юрособи) → net = gross
@@ -855,7 +868,7 @@ function ItemsTab({ o, onChange, onDirty }) {
     <>
       <ItemsNew rows={rows} vatOn={vatOn} defVat={defVat} suppliers={suppliers} newIncl={false}
         h={{ rowMargin, marginPct, netCost, grossCost, netUnit, grossUnit, rowTotal, rowNet, fmtMarkup, setMarkup }}
-        setRow={setRow} removeRow={removeRow} addRowWith={addRowWith} setAllIncl={setAllIncl} chooseSupplier={chooseSupplier} createSupplier={createSupplier}
+        setRow={setRow} removeRow={removeRow} addRowWith={addRowWith} splitRow={splitRow} setAllIncl={setAllIncl} chooseSupplier={chooseSupplier} createSupplier={createSupplier}
         bulkMarkup={bulkMarkup} setBulkMarkup={setBulkMarkup} applyBulkMarkup={applyBulkMarkup}
         save={save} saving={saving} saved={saved} dirty={dirty} aiMsg={aiMsg} aiLoading={aiLoading}
         actions={{ table: () => tableRef.current?.click(), price: () => setShowPicker(true), spec: () => specRef.current?.click(), cost: () => costRef.current?.click() }}
@@ -1042,6 +1055,7 @@ function ProposalsTab({ o, onChange }) {
     let { data: items, error } = await supabase.from('order_items').select('name, characteristics, unit, qty, unit_price, vat_rate, price_includes_vat').eq('order_id', o.id).order('created_at')
     if (error && /characteristics/.test(error.message || '')) // ґрейсфул до 050
       ({ data: items } = await supabase.from('order_items').select('name, unit, qty, unit_price, vat_rate, price_includes_vat').eq('order_id', o.id).order('created_at'))
+    items = mergeSameLines(items || [])
     const seed = (items || []).length
       ? items.map(it => ({ name: it.name, characteristics: it.characteristics || '', unit: it.unit || 'шт', qty: Number(it.qty) || 1, price: Number(it.unit_price) || 0, vat: Number(it.vat_rate) || 0, incl: !!it.price_includes_vat }))
       : [{ name: '', characteristics: '', unit: 'шт', qty: 1, price: 0, vat: 20, incl: false }]
@@ -1257,7 +1271,7 @@ function DocumentsTab({ o }) {
       supabase.from('contractors').select('*').eq('id', o.client_id).single(),
       supabase.from('order_items').select('*').eq('order_id', o.id).order('created_at'),
     ])
-    const items = (oi || []).map(it => {
+    const items = mergeSameLines(oi || []).map(it => {
       const storedV = Number(it.vat_rate) || 0
       // Продавець — платник ПДВ, але позиція без ставки (напр. замовлення перенесене від неплатника ФОП):
       // ставимо 20% і трактуємо ціну як З ПДВ («всередині») — сума для клієнта не змінюється.
