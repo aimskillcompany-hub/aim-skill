@@ -146,10 +146,11 @@ export function CashFlowNew({ d, debt, year, month, setMonth, openDrill }) {
             <span><span className="cfn-muted cfn-sm">Ми винні · кредиторка</span><b>{debt ? `${plain(pay)} ₴` : '…'}</b></span>
             <i className="ti ti-chevron-right cfn-chev" aria-hidden="true" />
           </button>
-          {recv > 0 && (
+          {(recv > 0 || pay > 0) && (
             <div className="cfn-card cfn-with">
-              <span className="cfn-with-t">З урахуванням дебіторки<InfoTip label="З урахуванням дебіторки">Гроші вже зароблені за виписаними видатковими й актами, але ще не надійшли на рахунок.</InfoTip></span>
-              <b>{signed(d.netTotal + recv)} ₴</b>
+              <span className="cfn-with-t">Якщо всі розрахуються<InfoTip label="Якщо всі розрахуються">Залишок на рахунках на кінець періоду + нам винні (дебіторка) − ми винні (кредиторка).<br />Дебіторка й кредиторка — станом на сьогодні, за виписаними документами мінус прив’язані оплати.</InfoTip></span>
+              <b>{formatAmount(d.closingCash + recv - pay, { decimals: 0 })} ₴</b>
+              <small className="cfn-with-f">{formatAmount(d.closingCash, { decimals: 0 })} + {plain(recv)} − {plain(pay)}</small>
             </div>
           )}
         </div>
