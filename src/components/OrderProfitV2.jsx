@@ -466,7 +466,7 @@ function CalcTable({ d, o, vatOn }) {
     ['gross', 'Валовий прибуток', `Виручка − собівартість. Валова маржа ${pc(pl.revenue > 0 ? pl.gross / pl.revenue : null)}.`, 1, 'sub'],
     ['other', 'Інші витрати', otherTypes.length ? otherTypes.join(', ') + '.' : 'Доставка, монтаж, комісії — додаються в «Інших витратах».', -1],
     ['tax', 'Податок 18%', vatOn ? '18% від валового прибутку.' : 'Неплатник ПДВ — не нараховується.', -1],
-    ['agent', 'Агентські', o.agent_commission_pct ? `${o.agent_commission_pct}% агента${d.decisionNotes.length ? `; протокол: ${d.decisionNotes.join(', ')}` : ''}.` : d.decisionNotes.length ? `Протокол: ${d.decisionNotes.join(', ')}.` : 'Не вказано.', -1],
+    ['agent', 'Агентські', o.agent_commission_pct ? `${Math.round(o.agent_commission_pct * 10000) / 100}% агента${d.decisionNotes.length ? `; протокол: ${d.decisionNotes.join(', ')}` : ''}.` : d.decisionNotes.length ? `Протокол: ${d.decisionNotes.join(', ')}.` : 'Не вказано.', -1],
     ['net', 'Чистий прибуток', `Валовий − інші витрати − податок − агентські.${d.planFrom === 'snapshot' ? ` План — зі знімка ${dm(d.snap?.taken_at?.slice(0, 10))}.` : ''}`, 1, 'net'],
   ]
   return (

@@ -73,7 +73,7 @@ export function buildRows(data) {
       [OH.client]: cById[o.client_id]?.name || '', [OH.clientEdrpou]: cById[o.client_id]?.edrpou || '',
       [OH.status]: STATUSES.find(x => x[0] === o.status)?.[1] || o.status || '', [OH.manager]: pById[o.manager_id]?.full_name || pById[o.manager_id]?.email || '',
       [OH.description]: o.description || '', [OH.subject]: o.procurement_subject || '', [OH.inForecast]: o.in_forecast ? 'так' : 'ні',
-      [OH.agentPct]: o.agent_commission_pct ?? '', [OH.shipDate]: dmy(ship?.plan_date || ''), [OH.clientDays]: cli?.days ?? '',
+      [OH.agentPct]: o.agent_commission_pct == null ? '' : Math.round(o.agent_commission_pct * 10000) / 100, [OH.shipDate]: dmy(ship?.plan_date || ''), [OH.clientDays]: cli?.days ?? '',
       [OH.total]: r2(o.total), [OH.items]: (itemsBy[o.id] || []).length,
       [OH.state]: o.archived_at ? (o.outcome === 'lost' ? 'архів · програно' : 'архів') : o.status === 'closed' ? 'закрито' : 'в роботі',
     })
@@ -173,7 +173,8 @@ export function buildPlan(file, data, allContractors) {
       else if (v !== !!o.in_forecast) ch.push({ f: 'in_forecast', label: 'В прогнозі', from: o.in_forecast ? 'так' : 'ні', to: v ? 'так' : 'ні', val: v }) }
     if (OH.agentPct in r) { const v = num(r[OH.agentPct])
       if (Number.isNaN(v) || (v != null && (v < 0 || v > 100))) errors.push(`${line} (№${o.order_number}): «Агентські, %» — число від 0 до 100`)
-      else if ((v ?? null) !== (o.agent_commission_pct == null ? null : Number(o.agent_commission_pct))) ch.push({ f: 'agent_commission_pct', label: 'Агентські, %', from: o.agent_commission_pct ?? '—', to: v ?? '—', val: v }) }
+      // у базі — частка (0.35), у файлі — відсотки (35)
+      else if ((v ?? null) !== (o.agent_commission_pct == null ? null : Math.round(o.agent_commission_pct * 10000) / 100)) ch.push({ f: 'agent_commission_pct', label: 'Агентські, %', from: o.agent_commission_pct == null ? '—' : Math.round(o.agent_commission_pct * 10000) / 100, to: v ?? '—', val: v == null ? null : v / 100 }) }
     if (OH.shipDate in r) { const raw = r[OH.shipDate]; const v = s(raw) === '' ? null : toISO(raw)
       if (v === undefined) errors.push(`${line} (№${o.order_number}): «Дата відвантаження» — ДД.ММ.РРРР`)
       else if ((v || null) !== (ship?.plan_date || null)) ch.push({ f: 'plan:ship', label: 'Дата відвантаження', from: dmy(ship?.plan_date) || 'орієнтовно', to: dmy(v) || 'орієнтовно', val: v }) }
