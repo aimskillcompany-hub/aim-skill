@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { useUser } from '../lib/auth'
 import { qc } from '../lib/companyScope'
 import { fmt } from '../lib/fmt'
 import { getDocType, generatedDocBlob, previewPdf, generatePdf } from '../lib/docgen'
+const DocGenModal = lazy(() => import('./DocGenModal'))
 
 // Перегляд згенерованого документа: зліва прев'ю PDF (регенерація в blob), справа — інформація.
 // Файлу у сховищі немає — PDF будується з даних картки documents (items, print_data).
-export default function GeneratedDocModal({ doc, onClose, onDeleted, onScanUploaded }) {
+export default function GeneratedDocModal({ doc, onClose, onDeleted, onScanUploaded, onChanged }) {
   const [gd, setGd] = useState(null)
   const [contractor, setContractor] = useState(null)
   const [items, setItems] = useState([])
@@ -14,11 +16,16 @@ export default function GeneratedDocModal({ doc, onClose, onDeleted, onScanUploa
   const [state, setState] = useState('loading') // loading | ready | fallback
   const [err, setErr] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [rev, setRev] = useState(0) // після редагування — перечитати документ і перебудувати PDF
+  const { user } = useUser()
+  const canEdit = user?.role !== 'viewer'
 
   useEffect(() => () => { if (blobUrl) URL.revokeObjectURL(blobUrl) }, [blobUrl])
 
   useEffect(() => {
     (async () => {
+      setState('loading'); setErr(null)
       try {
         // етап 3 об'єднання: дані для PDF — у самій картці documents (items, print_data)
         const { loadGenDoc } = await import('../lib/docgen')
@@ -34,7 +41,7 @@ export default function GeneratedDocModal({ doc, onClose, onDeleted, onScanUploa
         } catch { setState('fallback') } // getBlob не вдався — покажемо кнопки
       } catch (e) { setErr(e.message); setState('fallback') }
     })()
-  }, [doc.id, doc.generated_doc_id])
+  }, [doc.id, doc.generated_doc_id, rev])
 
   const optsOf = (g) => ({
     docNumber: g.doc_number, docDate: g.doc_date, notes: g.notes,
@@ -144,6 +151,7 @@ export default function GeneratedDocModal({ doc, onClose, onDeleted, onScanUploa
             )}
 
             <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+              {canEdit && <button className="btn btn-primary" onClick={() => setEditing(true)} disabled={!gd || busy} title="Змінити позиції, дату, номер, реквізити"><i className="ti ti-pencil" /> Редагувати</button>}
               <button className="btn" onClick={openTab}><i className="ti ti-external-link" /> Відкрити у вкладці</button>
               <button className="btn" onClick={download}><i className="ti ti-file-download" /> Завантажити</button>
               <label className="btn" style={{ cursor: busy ? 'wait' : 'pointer' }} title="Прикріпити підписаний скан/PDF — далі як звичайний документ">
@@ -158,6 +166,14 @@ export default function GeneratedDocModal({ doc, onClose, onDeleted, onScanUploa
           </div>
         </div>
       </div>
+      {editing && gd && (
+        <div onClick={e => e.stopPropagation()}>
+          <Suspense fallback={null}>
+            <DocGenModal contractor={contractor} userId={user?.id} orderId={gd.order_id || undefined} editDoc={gd}
+              onClose={() => setEditing(false)} onSaved={() => { setEditing(false); setRev(r => r + 1); onChanged?.() }} />
+          </Suspense>
+        </div>
+      )}
     </div>
   )
 }
