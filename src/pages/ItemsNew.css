@@ -158,3 +158,4 @@
 .itn-sp-opt.is-new { color: var(--brand-dark); font-weight: 600; }
 .itn-sp-opt.is-clear { color: var(--muted); }
 .itn-sp-empty { padding: 8px 10px; font-size: 12px; color: var(--muted); }
+.itn-alt.is-nonvat { color: var(--warn-fg); font-weight: 600; }

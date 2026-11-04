@@ -119,7 +119,9 @@ export default function ItemsNew(p) {
                       <td className="r" data-label="Кількість"><input className="itn-cell" type="number" inputMode="decimal" aria-label={`Кількість, позиція ${i + 1}`} value={r.qty} onChange={e => setRow(i, { qty: e.target.value })} /></td>
                       <td className="r" data-label={vatOn ? `Закупка, ${incl ? 'з ПДВ' : 'без ПДВ'}` : 'Закупка'}>
                         <input className="itn-cell" type="number" inputMode="decimal" aria-label={`Закупка, позиція ${i + 1}`} value={r.cost_price ?? ''} onChange={e => setRow(i, { cost_price: e.target.value })} />
-                        {vatOn && <small className="itn-alt">{incl ? 'без ПДВ ' + formatAmount(h.netCost(r)) : 'з ПДВ ' + formatAmount(h.grossCost(r))}</small>}
+                        {vatOn && (r.cost_vat_rate !== null && r.cost_vat_rate !== undefined && r.cost_vat_rate !== '' && n(r.cost_vat_rate) === 0
+                          ? <small className="itn-alt is-nonvat" title="Постачальник не платник ПДВ — податкового кредиту немає. Змінити: розгорнути позицію → «ПДВ закупки».">без ПДВ · неплатник</small>
+                          : <small className="itn-alt">{incl ? 'без ПДВ ' + formatAmount(h.netCost(r)) : 'з ПДВ ' + formatAmount(h.grossCost(r))}</small>)}
                       </td>
                       <td className="r" data-label="Націнка"><span className="itn-markup-cell">
                         <input className="itn-cell is-markup" type="number" inputMode="decimal" placeholder="—" aria-label={`Націнка, %, позиція ${i + 1}`} value={h.fmtMarkup(r)} onChange={e => h.setMarkup(i, e.target.value)} disabled={noMarkup} /><span aria-hidden="true">%</span></span></td>

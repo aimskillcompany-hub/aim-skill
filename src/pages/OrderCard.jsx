@@ -706,7 +706,7 @@ function ItemsTab({ o, onChange, onDirty }) {
   const load = () => supabase.from('order_items').select('*, contractors(name)').eq('order_id', o.id).order('created_at')
     .then(({ data }) => { setRows((data || []).map(r => ({ ...r, supplier_name: r.contractors?.name || null }))); setDirty(false); onDirty?.(false) })
   useEffect(() => { load() }, [o.id])
-  useEffect(() => { supabase.from('contractors').select('id, name, edrpou').eq('is_supplier', true).order('name').then(({ data }) => setSuppliers(data || [])) }, [])
+  useEffect(() => { supabase.from('contractors').select('id, name, edrpou, is_vat_payer').eq('is_supplier', true).order('name').then(({ data }) => setSuppliers(data || [])) }, [])
   // Створити постачальника (назва — з поля або з запиту); повертає { id, name } або null
   const createSupplier = async (preset) => {
     const name = (preset || window.prompt('Назва нового постачальника') || '').trim()
@@ -718,13 +718,22 @@ function ItemsTab({ o, onChange, onDirty }) {
   }
   // Обрати наявного постачальника або створити нового (колонка «Постачальник»)
   // вибір із пошуку (ItemsNew → SupplierPicker): контрагент може бути ще не позначений постачальником — позначаємо
+  // постачальник-неплатник ПДВ (ФОП): закупка без ПДВ — ставка ПДВ закупки позиції 0% (без податкового кредиту)
+  const nonVat = (c) => c && (c.is_vat_payer === false || (c.is_vat_payer == null && /^\s*ФОП\b/i.test(c.name || '')))
+  const vatPatch = async (c, row) => {
+    if (!vatOn || !c) return {}
+    let info = c
+    if (info.is_vat_payer === undefined) { const { data } = await supabase.from('contractors').select('id, name, is_vat_payer').eq('id', c.id).maybeSingle(); info = data || c }
+    if (nonVat(info)) return { cost_vat_rate: 0 }
+    return Number(row?.cost_vat_rate) === 0 ? { cost_vat_rate: null } : {}   // змінили ФОП на платника — ПДВ закупки знову «як продаж»
+  }
   const pickSupplier = async (i, c) => {
     if (!c) return setRow(i, { supplier_id: null, supplier_name: null })
     if (!suppliers.some(s => s.id === c.id)) {
       setSuppliers(s => [...s, { id: c.id, name: c.name, edrpou: c.edrpou }].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'uk')))
       supabase.from('contractors').update({ is_supplier: true }).eq('id', c.id).then(() => {})
     }
-    setRow(i, { supplier_id: c.id, supplier_name: c.name })
+    setRow(i, { supplier_id: c.id, supplier_name: c.name, ...(await vatPatch(suppliers.find(s => s.id === c.id) || c, rows[i])) })
   }
   const chooseSupplier = async (i, v) => {
     if (v === '__new__') {
@@ -732,7 +741,7 @@ function ItemsTab({ o, onChange, onDirty }) {
       if (data) setRow(i, { supplier_id: data.id, supplier_name: data.name })
     } else {
       const sup = suppliers.find(s => s.id === v)
-      setRow(i, { supplier_id: v || null, supplier_name: sup?.name || null })
+      setRow(i, { supplier_id: v || null, supplier_name: sup?.name || null, ...(sup ? await vatPatch(sup, rows[i]) : {}) })
     }
   }
 
