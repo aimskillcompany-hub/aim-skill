@@ -20,6 +20,16 @@ export async function loadAgents(docIds) {
   return map
 }
 
+// % агентських із замовлень (orders.agent_commission_pct — частка: 0.35 = 35%) → { orderId: { percent, number } }
+export async function loadOrderAgentPct(orderIds) {
+  const map = {}
+  for (let i = 0; i < orderIds.length; i += 200) {
+    const { data } = await supabase.from('orders').select('id, order_number, agent_commission_pct').in('id', orderIds.slice(i, i + 200))
+    ;(data || []).forEach(o => { const p = Number(o.agent_commission_pct) || 0; if (p > 0) map[o.id] = { percent: r2(p * 100), number: o.order_number } })
+  }
+  return map
+}
+
 export async function saveAgent(documentId, { agentName, percent, userId }) {
   const { error } = await supabase.from('agent_commissions').upsert({
     document_id: documentId, agent_name: agentName || null, percent: Number(percent) || 0,
@@ -34,7 +44,7 @@ export async function computeProfitability(companyId, companyIsVat, from, to) {
       setReportScope(companyId); clearCompanyCache()
 
       const docs = (await fetchAll(() => qc('documents')
-        .select('id, doc_number, doc_date, contractor_id, amount, vat_amount')
+        .select('id, doc_number, doc_date, contractor_id, order_id, amount, vat_amount')
         .eq('type', 'waybill').gte('doc_date', from).lte('doc_date', to)))
         .sort((a, b) => (a.doc_date || '').localeCompare(b.doc_date || '') || String(a.doc_number || '').localeCompare(String(b.doc_number || '')))
       if (!docs?.length) return { invoices: [], totals: emptyTotals() }
@@ -49,6 +59,8 @@ export async function computeProfitability(companyId, companyIsVat, from, to) {
       }
       // агенти
       const agents = await loadAgents(docIds)
+      // немає ручного % на накладній → беремо % агентських із замовлення накладної
+      const orderAgent = await loadOrderAgentPct([...new Set(docs.map(d => d.order_id).filter(Boolean))])
       // OUT-рухи всіх цих видаткових
       const moves = await fetchAllIn(() => qc('stock_movements')
           .select('id, document_id, product_id, quantity, price, cost_price, created_at').eq('type', 'out'), 'document_id', docIds)
@@ -88,7 +100,8 @@ export async function computeProfitability(companyId, companyIsVat, from, to) {
         const profit = r2(items.reduce((s, x) => s + x.profit, 0))
         const vatToPay = r2(items.reduce((s, x) => s + x.vatToPay, 0))
         const ag = agents[d.id]
-        const percent = ag ? Number(ag.percent) || 0 : 0
+        const fromOrder = !ag && d.order_id ? orderAgent[d.order_id] : null
+        const percent = ag ? Number(ag.percent) || 0 : fromOrder ? fromOrder.percent : 0
         const commission = profit > 0 ? r2(profit * percent / 100) : 0
         const net = r2(profit - commission)
         return {
@@ -97,6 +110,7 @@ export async function computeProfitability(companyId, companyIsVat, from, to) {
           items, sellSum, buySum, profit, vatToPay,
           margin: sellSum > 0 ? profit / sellSum : null,
           agentName: ag?.agent_name || '', percent, commission, net,
+          pctSource: ag ? 'manual' : fromOrder ? 'order' : null, orderNumber: fromOrder?.number || null,
         }
       })
 

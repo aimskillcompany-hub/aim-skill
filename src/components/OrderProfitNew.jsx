@@ -73,7 +73,7 @@ export default function OrderProfitNew({ o, onOrderChange }) {
     ['gross', 'Валовий прибуток', `валова маржа ${pc(marg(pl.gross, pl.revenue))}`, 1, 'sub'],
     ['other', 'Інші витрати', otherTypes.length ? otherTypes.join(', ').toLowerCase() : 'доставка, монтаж, комісії', -1],
     ['tax', 'Податок 18%', vatOn ? 'від валового прибутку' : 'неплатник ПДВ — не нараховується', -1],
-    ['agent', 'Агентські', o.agent_commission_pct ? `${o.agent_commission_pct}% агента${d.decisionNotes.length ? ` · протокол: ${d.decisionNotes.join(', ')}` : ''}` : d.decisionNotes.length ? `протокол: ${d.decisionNotes.join(', ')}` : 'не вказано', -1],
+    ['agent', 'Агентські', o.agent_commission_pct ? `${Math.round(o.agent_commission_pct * 10000) / 100}% агента${d.decisionNotes.length ? ` · протокол: ${d.decisionNotes.join(', ')}` : ''}` : d.decisionNotes.length ? `протокол: ${d.decisionNotes.join(', ')}` : 'не вказано', -1],
     ['net', 'Чистий прибуток', hasFact && final ? `${pc(marg(fact.net, fact.revenue))} · план ${pc(marg(pl.net, pl.revenue))}` : `чиста маржа ${pc(marg(pl.net, pl.revenue))}`, 1, 'net'],
   ]
   const ship = pp.find(x => x.kind === 'ship') || {}, client = pp.find(x => x.kind === 'client') || {}
