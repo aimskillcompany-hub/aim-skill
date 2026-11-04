@@ -84,43 +84,51 @@ export default function AccountantReport({ ctl = null } = {}) {
 
   useEffect(() => { setList(null); setReport(null); setSel(''); listOutgoingDocs().then(setList).catch(e => setErr(e.message)) }, [activeId])
 
-  // Архів місяця (новий інтерфейс): усі видаткові й акти місяця з прихідними та сканами одним .zip
+  // Архів за період (новий інтерфейс): усі видаткові й акти періоду з прихідними та сканами одним .zip.
+  // Період — місяць із шапки «Звітів» або довільний «з … по» (рішення власника 04.11.2026).
   const newUi = useNewUi()
-  const [arcMonth, setArcMonth] = useState(() => todayKyiv().slice(0, 7))
-  useEffect(() => { if (ctl?.year && ctl?.month) setArcMonth(`${ctl.year}-${String(ctl.month).padStart(2, '0')}`) }, [ctl?.year, ctl?.month])
+  const monthBounds = (y, m) => [`${y}-${String(m).padStart(2, '0')}-01`, `${y}-${String(m).padStart(2, '0')}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`]
   useEffect(() => { ctl?.registerExport?.(null) }, [ctl?.registerExport])
-  // новий інтерфейс: список — за місяцем із шапки «Звітів»
+  // новий інтерфейс: період — за замовчуванням місяць із шапки «Звітів» (або поточний)
   useEffect(() => {
-    if (!newUi || !ctl?.year || !ctl?.month) return
-    const mm = String(ctl.month).padStart(2, '0')
-    setFFrom(`${ctl.year}-${mm}-01`); setFTo(`${ctl.year}-${mm}-${String(new Date(ctl.year, ctl.month, 0).getDate()).padStart(2, '0')}`)
+    if (!newUi) return
+    const t = todayKyiv()
+    const [a, b] = ctl?.year && ctl?.month ? monthBounds(ctl.year, ctl.month) : monthBounds(+t.slice(0, 4), +t.slice(5, 7))
+    setFFrom(a); setFTo(b)
   }, [newUi, ctl?.year, ctl?.month])
   const [arcProg, setArcProg] = useState(null)   // { i, n } під час збирання
   const [arcNote, setArcNote] = useState(null)
-  const monthDocs = useMemo(() => (list || []).filter(x => (x.doc_date || '').startsWith(arcMonth)), [list, arcMonth])
-  const monthSum = monthDocs.reduce((a, x) => a + (Number(x.amount) || 0), 0)
+  const periodDocs = useMemo(() => (list || []).filter(x => (!fFrom || (x.doc_date || '') >= fFrom) && (!fTo || (x.doc_date || '') <= fTo)), [list, fFrom, fTo])
+  const periodSum = periodDocs.reduce((a, x) => a + (Number(x.amount) || 0), 0)
+  const dmy = (v) => (v || '').split('-').reverse().join('.')
+  const isWholeMonth = !!fFrom && !!fTo && fFrom.slice(0, 7) === fTo.slice(0, 7) && monthBounds(+fFrom.slice(0, 4), +fFrom.slice(5, 7)).join() === [fFrom, fTo].join()
+  const periodLabel = isWholeMonth ? fFrom.slice(0, 7) : `${dmy(fFrom) || '…'}–${dmy(fTo) || '…'}`
+  const badRange = !!fFrom && !!fTo && fFrom > fTo
   const downloadMonth = async () => {
-    if (!monthDocs.length || arcProg) return
-    setArcNote(null); setArcProg({ i: 0, n: monthDocs.length })
+    if (!periodDocs.length || arcProg || badRange) return
+    setArcNote(null); setArcProg({ i: 0, n: periodDocs.length })
     try {
       const { zipSync } = await import('fflate')
-      const { files, missing, fileCount } = await buildMonthArchive(monthDocs, { onProgress: (i, n) => setArcProg({ i, n }) })
+      const { files, missing, fileCount } = await buildMonthArchive(periodDocs, { onProgress: (i, n) => setArcProg({ i, n }) })
       const blob = new Blob([zipSync(files)], { type: 'application/zip' })
       const url = URL.createObjectURL(blob)
-      const a = document.createElement('a'); a.href = url; a.download = `Документи для бухгалтера ${arcMonth}.zip`; a.click(); URL.revokeObjectURL(url)
+      const a = document.createElement('a'); a.href = url; a.download = `Документи для бухгалтера ${periodLabel}.zip`; a.click(); URL.revokeObjectURL(url)
       setArcNote(`Архів готовий: ${fileCount} ${plural(fileCount, ['файл', 'файли', 'файлів'])}${missing.length ? `; без файлу — ${missing.length} (див. «Перелік.txt»)` : ''}.`)
     } catch (e) { setArcNote('Не вдалося зібрати архів: ' + e.message) } finally { setArcProg(null) }
   }
   const monthBanner = newUi && (
-    <section className="acc-pack" aria-label="Пакет за місяць">
+    <section className="acc-pack" aria-label="Пакет за період">
       <div className="acc-pack-t">
-        <span>Пакет за місяць<InfoTip tone="onDark" label="Пакет за місяць">Видаткові й акти місяця, до кожного товару — прихідна накладна (FIFO) зі сканом. Одним архівом, з переліком.</InfoTip></span>
-        <b>{list ? `${monthDocs.length} ${plural(monthDocs.length, ['документ', 'документи', 'документів'])} на ${formatAmount(monthSum, { decimals: 0 })} ₴` : '…'}</b>
+        <span>Пакет за {isWholeMonth ? 'місяць' : 'період'}<InfoTip tone="onDark" label="Пакет за період">Видаткові й акти за період, до кожного товару — прихідна накладна (FIFO) зі сканом. Одним архівом, з переліком. Період можна задати довільно: з … по.</InfoTip></span>
+        <b>{badRange ? 'Дата «з» пізніша за «по»' : list ? `${periodDocs.length} ${plural(periodDocs.length, ['документ', 'документи', 'документів'])} на ${formatAmount(periodSum, { decimals: 0 })} ₴` : '…'}</b>
         <small>{arcProg ? `Збираю ${arcProg.i} з ${arcProg.n}…` : arcNote || ''}</small>
       </div>
-      {!ctl && <input type="month" className="form-input acc-pack-m" aria-label="Місяць" value={arcMonth} max={todayKyiv().slice(0, 7)} onChange={e => e.target.value && setArcMonth(e.target.value)} />}
-      <button type="button" className="btn btn-brand" onClick={downloadMonth} disabled={!monthDocs.length || !!arcProg}>
-        <i className="ti ti-file-zip" aria-hidden="true" />{arcProg ? 'Архівую…' : 'Завантажити архів місяця (.zip)'}
+      <div className="acc-pack-range">
+        <label><span>з</span><input type="date" className="form-input" aria-label="Період з" value={fFrom} max={fTo || undefined} onChange={e => setFFrom(e.target.value)} /></label>
+        <label><span>по</span><input type="date" className="form-input" aria-label="Період по" value={fTo} min={fFrom || undefined} onChange={e => setFTo(e.target.value)} /></label>
+      </div>
+      <button type="button" className="btn btn-brand" onClick={downloadMonth} disabled={!periodDocs.length || !!arcProg || badRange}>
+        <i className="ti ti-file-zip" aria-hidden="true" />{arcProg ? 'Архівую…' : `Завантажити архів ${isWholeMonth ? 'місяця' : 'за період'} (.zip)`}
       </button>
     </section>
   )
@@ -430,7 +438,7 @@ export default function AccountantReport({ ctl = null } = {}) {
     <div>
       {monthBanner}
       <div className="acc-split">
-        <section className="acc-list" aria-label="Документи місяця">
+        <section className="acc-list" aria-label="Документи за період">
           <div className="acc-list-head">
             <Segmented ariaLabel="Тип документа" size="sm" value={fType} onChange={setFType} options={[{ value: 'all', label: 'Усі' }, { value: 'waybill', label: 'Видаткові' }, { value: 'serviceAct', label: 'Акти' }]} />
             <input type="search" className="form-input" placeholder="№, покупець або сума" aria-label="Пошук документа" value={fQ} onChange={e => setFQ(e.target.value)} />
