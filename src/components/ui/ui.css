@@ -219,6 +219,11 @@
 .ui-pm-year button { width: 32px; height: 32px; border-radius: 10px; border: 0; background: var(--surface-sunken); cursor: pointer; color: var(--text); }
 .ui-pm-year button:disabled { opacity: .35; cursor: default; }
 .ui-pm-all { height: 36px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text); }
+.ui-pm-range { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px solid var(--border); }
+.ui-pm-range > span { font-size: 12px; font-weight: 600; color: var(--muted); }
+.ui-pm-range label { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.ui-pm-range .form-input { height: 36px; min-width: 0; width: 100%; }
+.ui-pm-range .ui-pm-all:disabled { opacity: .45; cursor: default; }
 .ui-pm-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .ui-pm-grid button { height: 36px; border-radius: 10px; border: 0; background: var(--surface-sunken); font: inherit; font-size: 13px; cursor: pointer; color: var(--text); }
 .ui-pm-grid button:disabled { opacity: .35; cursor: default; }

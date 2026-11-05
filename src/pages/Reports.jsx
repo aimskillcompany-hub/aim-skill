@@ -64,12 +64,15 @@ export default function Reports() {
   const fig = useTileFigures(companies, active)
   // ТЗ 5.4: спільні для всіх вкладок — період, юрособа, експорт Excel / PDF
   const now = new Date()
-  const [period, setPeriod] = useState({ year: now.getFullYear(), month: now.getMonth() + 1 })
+  const [period, setPeriod] = useState({ year: now.getFullYear(), month: now.getMonth() + 1, range: null })
   const [scope, setScope] = useState('all')
   const [exp, setExp] = useState(null)
   const registerExport = useCallback((x) => setExp(() => x), [])
   useEffect(() => { setExp(null) }, [tab])
-  const ctl = { year: period.year, month: period.month, scope, registerExport }
+  // довільний «з … по» — лише в «Прибутковості»; на інших вкладках — місяць
+  const range = tab === 'profit' ? period.range : null
+  useEffect(() => { if (tab !== 'profit' && period.range) setPeriod(p => ({ ...p, month: p.month || now.getMonth() + 1, range: null })) }, [tab])
+  const ctl = { year: period.year, month: period.month, range, scope, registerExport }
   return (
     <div className="rpt-page">
       <div className="rpt-head rpt-head-row">
@@ -77,7 +80,8 @@ export default function Reports() {
           <h1 className="rpt-h1">Звіти<InfoTip label="Звіти">Хто нам винен, кому винні ми, на чому заробили, і пакет документів для бухгалтера.</InfoTip></h1>
         </div>
         <div className="rpt-head-acts">
-          <PeriodMenu year={period.year} month={period.month} allowYear={tab === 'profit'} onChange={p => setPeriod({ year: p.year, month: p.month || (tab === 'profit' ? 0 : now.getMonth() + 1) })} />
+          <PeriodMenu year={period.year} month={period.month} allowYear={tab === 'profit'} allowRange={tab === 'profit'} range={range}
+            onChange={p => setPeriod({ year: p.year, month: p.month || (tab === 'profit' ? 0 : now.getMonth() + 1), range: p.range || null })} />
           <Button variant="secondary" icon="ti-file-spreadsheet" disabled={!exp?.xlsx} onClick={() => exp?.xlsx?.()} aria-label="Excel" className="rpt-exp"><span className="rpt-exp-t">Excel</span></Button>
           <Button variant="primary" icon="ti-file-download" disabled={!exp?.pdf} onClick={() => exp?.pdf?.()} aria-label="PDF" className="rpt-exp"><span className="rpt-exp-t">PDF</span></Button>
         </div>
