@@ -1,7 +1,7 @@
 // «Прибутковість реалізації» — новий інтерфейс (ТЗ редизайну 5.4; макет ReportsProfit). Дані — computeProfitability,
 // агентські зберігаються тим самим saveAgent, що й раніше; тут лише показ.
 import { Fragment, useEffect, useState } from 'react'
-import { saveAgent, saveOrderAgentPct, setAgentPaid, computeTotals } from '../lib/profitability'
+import { saveAgent, saveOrderAgentPct, setAgentPaid, computeTotals, agentCalc } from '../lib/profitability'
 import { useGroupContractors } from '../lib/group'
 import { exportReportXlsx, exportReportPdf } from '../lib/reportExport'
 import { listDecisions } from '../lib/decisions'
@@ -23,9 +23,9 @@ export default function ProfitabilityNew({ data, loading, err, from, to, setFrom
   useEffect(() => {
     if (!ctl?.registerExport) return
     const spec = { fileName: `Прибутковість ${from} — ${to}`, title: 'Прибутковість реалізації', subtitle: `${from.split('-').reverse().join('.')} — ${to.split('-').reverse().join('.')} · суми без ПДВ`, sheet: 'Прибутковість',
-      columns: [{ key: 'doc', label: 'Накладна' }, { key: 'date', label: 'Дата' }, { key: 'order', label: 'Замовлення' }, { key: 'client', label: 'Клієнт' }, { key: 'cpay', label: 'Оплата клієнта' }, { key: 'sell', label: 'Реалізація', num: true }, { key: 'profit', label: 'Прибуток', num: true }, { key: 'margin', label: 'Маржа, %', num: true }, { key: 'vat', label: 'ПДВ до сплати', num: true }, { key: 'agent', label: 'Агентські', num: true }, { key: 'apaid', label: 'Агентські сплачено' }, { key: 'net', label: 'Чистий', num: true }],
-      rows: invoices.map(i => ({ doc: i.doc_number, date: d2(i.doc_date), order: i.orderNumber || '', client: i.client, cpay: payLabel(i.clientPay), apaid: i.commission > 0 ? (i.agentPaid ? 'так' : 'ні') : '', sell: i.sellSum, profit: i.profit, margin: i.margin == null ? '' : Math.round(i.margin * 1000) / 10, vat: i.vatToPay, agent: i.commission, net: i.net })),
-      total: t ? { doc: 'Разом', sell: t.sellSum, profit: t.profit, vat: t.vatToPay, agent: t.commission, net: t.net } : null }
+      columns: [{ key: 'doc', label: 'Накладна' }, { key: 'date', label: 'Дата' }, { key: 'order', label: 'Замовлення' }, { key: 'client', label: 'Клієнт' }, { key: 'cpay', label: 'Оплата клієнта' }, { key: 'sell', label: 'Реалізація', num: true }, { key: 'profit', label: 'Прибуток', num: true }, { key: 'margin', label: 'Маржа, %', num: true }, { key: 'vat', label: 'ПДВ до сплати', num: true }, { key: 'tax', label: 'Податок 18%', num: true }, { key: 'agent', label: 'Агентські', num: true }, { key: 'apaid', label: 'Агентські сплачено' }, { key: 'net', label: 'Чистий', num: true }],
+      rows: invoices.map(i => ({ doc: i.doc_number, date: d2(i.doc_date), order: i.orderNumber || '', client: i.client, cpay: payLabel(i.clientPay), apaid: i.commission > 0 ? (i.agentPaid ? 'так' : 'ні') : '', sell: i.sellSum, profit: i.profit, margin: i.margin == null ? '' : Math.round(i.margin * 1000) / 10, vat: i.vatToPay, tax: i.tax, agent: i.commission, net: i.net })),
+      total: t ? { doc: 'Разом', sell: t.sellSum, profit: t.profit, vat: t.vatToPay, tax: t.tax, agent: t.commission, net: t.net } : null }
     ctl.registerExport(data ? { xlsx: () => exportReportXlsx(spec), pdf: () => exportReportPdf(spec) } : null)
   }, [data, showGroup, ctl?.registerExport])
   const noAgents = t && t.count > 0 && invoices.every(i => !(Number(i.percent) > 0))
@@ -56,6 +56,8 @@ export default function ProfitabilityNew({ data, loading, err, from, to, setFrom
             <i aria-hidden="true">−</i>
             <div><span>Собівартість (FIFO)</span><b className="is-out">{n0(t.sellSum - t.profit)} ₴</b></div>
             <i aria-hidden="true">−</i>
+            <div><span>Податок на прибуток 18%</span><b className="is-out">{n0(t.tax)} ₴</b></div>
+            <i aria-hidden="true">−</i>
             <div><span>Агентські</span><b className="is-out">{n0(t.commission)} ₴</b></div>
             <i aria-hidden="true">=</i>
             <div className="is-net"><span>Чистий прибуток · маржа {pct(t.margin)}</span><b className={t.net < 0 ? 'is-neg' : ''}>{n0(t.net)} ₴</b></div>
@@ -70,11 +72,11 @@ export default function ProfitabilityNew({ data, loading, err, from, to, setFrom
         </section>
         {noAgents && <Callout tone="warn" title="Агентські в жодній накладній не вказані" text={protoAgent
           ? `— а в протоколах нарад на цей період ухвалено агентських на ${n0(protoAgent.sum)} ₴ (${protoAgent.n} ${plural(protoAgent.n, ['рішення', 'рішення', 'рішень'])}). Реальний прибуток менший: впишіть «Агент, %» у відповідних накладних.`
-          : '— тож чистий прибуток дорівнює валовому. Якщо за цими накладними домовлені агентські (наприклад, рішенням наради), впишіть «Агент, %» у рядку: реальний прибуток буде меншим.'} />}
+          : '— тож у чистому прибутку агентські не враховані. Якщо за цими накладними домовлені агентські (наприклад, рішенням наради), впишіть «Агент, %» у рядку: реальний прибуток буде меншим.'} />}
         <section className="rpt-card is-flush">
           {invoices.length === 0 ? <EmptyState icon="ti-receipt" title="Немає видаткових за період" text="Змініть період або юрособу." />
             : <>
-              <div className="cfn-report-head"><h2 className="rpt-h3">Видаткові накладні · від найприбутковішої<InfoTip label="Як рахується прибутковість"><b>Прибуток</b> = реалізація − закупка (FIFO).<br /><b>Маржа</b> = прибуток ÷ реалізація.<br /><b>Агентські</b> = прибуток × % (при збитку не нараховуються).<br /><b>ПДВ до сплати</b> = ПДВ з реалізації − вхідний ПДВ (кредит лише по закупках у платника ПДВ).</InfoTip></h2><span className="rpt-muted rpt-note">усі суми без ПДВ</span></div>
+              <div className="cfn-report-head"><h2 className="rpt-h3">Видаткові накладні · від найприбутковішої<InfoTip label="Як рахується прибутковість"><b>Прибуток</b> = реалізація − закупка (FIFO).<br /><b>Маржа</b> = прибуток ÷ реалізація.<br /><b>Податок на прибуток</b> = прибуток × 18% (юрособа-платник ПДВ; ФОП — 0).<br /><b>Агентські</b> = (прибуток − податок 18%) × % — від чистого прибутку (при збитку не нараховуються).<br /><b>Чистий</b> = прибуток − податок − агентські.<br /><b>ПДВ до сплати</b> = ПДВ з реалізації − вхідний ПДВ (кредит лише по закупках у платника ПДВ).</InfoTip></h2><span className="rpt-muted rpt-note">усі суми без ПДВ</span></div>
               <div className="tbl-wrap rpt-table prf-table"><table>
                 <thead><tr><th>Накладна</th><th>Клієнт</th><th className="r">Реалізація</th><th className="r">Прибуток</th><th className="c-scale">Маржа</th><th className="r">ПДВ до сплати</th><th className="r">Агент, % · сплата</th><th className="r">Чистий</th></tr></thead>
                 <tbody>{invoices.map(inv => <Row key={`${inv.id}:${inv.percent}`} inv={inv} group={grp.has(inv.contractorId)} userId={userId} onChanged={onChanged} />)}</tbody>
@@ -95,8 +97,9 @@ function Row({ inv, group, userId, onChanged }) {
   const [saved, setSaved] = useState({ p: Number(inv.percent) || 0, a: inv.agentName || '' })
   const loss = inv.profit <= 0
   const live = Number(pctVal) || 0
-  const commission = loss ? 0 : Math.round(inv.profit * live / 100)
-  const net = inv.profit - commission
+  const calc = agentCalc(inv.profit, live, inv.taxOn !== false)
+  const commission = loss ? 0 : Math.round(calc.commission)
+  const net = calc.net
   const persist = async () => {
     const p = Number(pctVal) || 0
     if (p === saved.p && agent === saved.a) return
@@ -155,7 +158,7 @@ function Row({ inv, group, userId, onChanged }) {
             <div className="prf-agent" onClick={e => e.stopPropagation()}>
               <b>Агентські</b>
               <label>Агент <input className="form-input" value={agent} onChange={e => setAgent(e.target.value)} onBlur={persist} placeholder="Ім'я агента" /></label>
-              <span className="rpt-num">{n0(inv.profit)} × {live}% = <b className="rpt-late">{commission ? `−${n0(commission)}` : '0'}</b></span>
+              <span className="rpt-num">({n0(inv.profit)}{calc.tax ? ` − податок 18% ${n0(calc.tax)}` : ''}) × {live}% = <b className="rpt-late">{commission ? `−${n0(commission)}` : '0'}</b></span>
               <span className="prf-agent-net">Чистий прибуток <b>{n0(net)} ₴</b></span>
             </div>
           )}

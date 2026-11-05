@@ -18,3 +18,18 @@ describe('Прибутковість: оплата клієнта і агент�
     expect(t.agentDue).toBe(70); expect(t.unpaidCount).toBe(1); expect(t.unpaidSum).toBe(700)
   })
 })
+
+import { agentCalc } from './profitability'
+describe('Агентські від чистого прибутку', () => {
+  it('платник ПДВ: (прибуток − 18%) × %', () => {
+    const c = agentCalc(20000, 35, true)
+    expect(c.tax).toBe(3600); expect(c.commission).toBe(5740); expect(c.net).toBe(10660)
+  })
+  it('ФОП: без податку на прибуток', () => {
+    expect(agentCalc(20000, 35, false).commission).toBe(7000)
+  })
+  it('збиток: нічого', () => {
+    const c = agentCalc(-500, 35, true)
+    expect(c.tax).toBe(0); expect(c.commission).toBe(0); expect(c.net).toBe(-500)
+  })
+})

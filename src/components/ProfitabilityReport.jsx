@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useCompany } from '../lib/company'
 import { useUser } from '../lib/auth'
-import { computeProfitability, saveAgent, saveOrderAgentPct, computeTotals } from '../lib/profitability'
+import { computeProfitability, saveAgent, saveOrderAgentPct, computeTotals, agentCalc } from '../lib/profitability'
 import { useNewUi } from '../lib/uiPrefs'
 import ProfitabilityNew from './ProfitabilityNew'
 
@@ -161,8 +161,9 @@ function InvoiceRow({ inv, userId, onChanged }) {
 
   const loss = inv.profit <= 0
   const livePct = Number(pctVal) || 0
-  const commission = loss ? 0 : Math.round(inv.profit * livePct / 100)
-  const net = inv.profit - commission
+  const calc = agentCalc(inv.profit, livePct, inv.taxOn !== false)
+  const commission = loss ? 0 : Math.round(calc.commission)
+  const net = calc.net
 
   const persist = async (p, a) => {
     try {
@@ -221,7 +222,7 @@ function InvoiceRow({ inv, userId, onChanged }) {
                 ? <span style={{ fontSize: 13, color: '#5E5A6B' }}>% замовлення {inv.orderNumber || ''} — зміна тут оновить його всюди (картка, прогноз, звіт інвестору, інші накладні замовлення)</span>
                 : <span style={{ fontSize: 13, color: '#5E5A6B' }}>Накладна без замовлення — % лише для цього звіту</span>}
               {!loss
-                ? <span style={{ ...MONO, color: '#5E5A6B' }}>{si(inv.profit)} × {livePct}% = <span style={{ color: '#C62828', fontWeight: 600 }}>−{_int.format(commission)}</span></span>
+                ? <span style={{ ...MONO, color: '#5E5A6B' }}>({si(inv.profit)}{calc.tax ? ` − 18% ${si(calc.tax)}` : ''}) × {livePct}% = <span style={{ color: '#C62828', fontWeight: 600 }}>−{_int.format(commission)}</span></span>
                 : <span style={{ fontSize: 13, color: '#8A849C' }}>Збиток — агентські не нараховуються</span>}
               <span style={{ marginLeft: 'auto' }}>Чистий прибуток <span style={{ ...MONO, fontWeight: 800, color: '#5B2FD6', fontSize: 16 }}>{si(net)} ₴</span></span>
             </div>
