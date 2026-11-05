@@ -20,14 +20,21 @@ export async function loadAgents(docIds) {
   return map
 }
 
-// % агентських із замовлень (orders.agent_commission_pct — частка: 0.35 = 35%) → { orderId: { percent, number } }
+// % агентських із замовлень (orders.agent_commission_pct — частка: 0.35 = 35%) → { orderId: { percent (у %), number } }
 export async function loadOrderAgentPct(orderIds) {
   const map = {}
   for (let i = 0; i < orderIds.length; i += 200) {
     const { data } = await supabase.from('orders').select('id, order_number, agent_commission_pct').in('id', orderIds.slice(i, i + 200))
-    ;(data || []).forEach(o => { const p = Number(o.agent_commission_pct) || 0; if (p > 0) map[o.id] = { percent: r2(p * 100), number: o.order_number } })
+    ;(data || []).forEach(o => { map[o.id] = { percent: r2((Number(o.agent_commission_pct) || 0) * 100), number: o.order_number } })
   }
   return map
+}
+
+// % агентських накладної, прив'язаної до замовлення, — це % самого замовлення (рішення власника 05.11.2026):
+// змінюється всюди (картка, прогноз, план оплат, звіт інвестору, інші накладні замовлення).
+export async function saveOrderAgentPct(orderId, percent) {
+  const { error } = await supabase.from('orders').update({ agent_commission_pct: Math.max(0, Number(percent) || 0) / 100 }).eq('id', orderId)
+  if (error) throw error
 }
 
 export async function saveAgent(documentId, { agentName, percent, userId }) {
@@ -100,8 +107,10 @@ export async function computeProfitability(companyId, companyIsVat, from, to) {
         const profit = r2(items.reduce((s, x) => s + x.profit, 0))
         const vatToPay = r2(items.reduce((s, x) => s + x.vatToPay, 0))
         const ag = agents[d.id]
-        const fromOrder = !ag && d.order_id ? orderAgent[d.order_id] : null
-        const percent = ag ? Number(ag.percent) || 0 : fromOrder ? fromOrder.percent : 0
+        // накладна із замовленням: % замовлення — головний; ручний % накладної лише якщо в замовленні не вказано
+        const ord = d.order_id ? orderAgent[d.order_id] : null
+        const fromOrder = ord && (ord.percent > 0 || !ag) ? ord : null
+        const percent = fromOrder ? fromOrder.percent : ag ? Number(ag.percent) || 0 : 0
         const commission = profit > 0 ? r2(profit * percent / 100) : 0
         const net = r2(profit - commission)
         return {
@@ -110,7 +119,7 @@ export async function computeProfitability(companyId, companyIsVat, from, to) {
           items, sellSum, buySum, profit, vatToPay,
           margin: sellSum > 0 ? profit / sellSum : null,
           agentName: ag?.agent_name || '', percent, commission, net,
-          pctSource: ag ? 'manual' : fromOrder ? 'order' : null, orderNumber: fromOrder?.number || null,
+          pctSource: fromOrder ? 'order' : ag ? 'manual' : null, orderId: d.order_id || null, orderNumber: ord?.number || null,
         }
       })
 

@@ -1,7 +1,7 @@
 // «Прибутковість реалізації» — новий інтерфейс (ТЗ редизайну 5.4; макет ReportsProfit). Дані — computeProfitability,
 // агентські зберігаються тим самим saveAgent, що й раніше; тут лише показ.
 import { Fragment, useEffect, useState } from 'react'
-import { saveAgent, computeTotals } from '../lib/profitability'
+import { saveAgent, saveOrderAgentPct, computeTotals } from '../lib/profitability'
 import { useGroupContractors } from '../lib/group'
 import { exportReportXlsx, exportReportPdf } from '../lib/reportExport'
 import { listDecisions } from '../lib/decisions'
@@ -74,7 +74,7 @@ export default function ProfitabilityNew({ data, loading, err, from, to, setFrom
               <div className="cfn-report-head"><h2 className="rpt-h3">Видаткові накладні · від найприбутковішої<InfoTip label="Як рахується прибутковість"><b>Прибуток</b> = реалізація − закупка (FIFO).<br /><b>Маржа</b> = прибуток ÷ реалізація.<br /><b>Агентські</b> = прибуток × % (при збитку не нараховуються).<br /><b>ПДВ до сплати</b> = ПДВ з реалізації − вхідний ПДВ (кредит лише по закупках у платника ПДВ).</InfoTip></h2><span className="rpt-muted rpt-note">усі суми без ПДВ</span></div>
               <div className="tbl-wrap rpt-table prf-table"><table>
                 <thead><tr><th>Накладна</th><th>Клієнт</th><th className="r">Реалізація</th><th className="r">Прибуток</th><th className="c-scale">Маржа</th><th className="r">ПДВ до сплати</th><th className="r">Агент, %</th><th className="r">Чистий</th></tr></thead>
-                <tbody>{invoices.map(inv => <Row key={inv.id} inv={inv} group={grp.has(inv.contractorId)} userId={userId} onChanged={onChanged} />)}</tbody>
+                <tbody>{invoices.map(inv => <Row key={`${inv.id}:${inv.percent}`} inv={inv} group={grp.has(inv.contractorId)} userId={userId} onChanged={onChanged} />)}</tbody>
                 <tfoot><tr><td>Разом · {t.count} накл.</td><td /><td className="r rpt-num">{n0(t.sellSum)}</td><td className="r rpt-num">{n0(t.profit)}</td><td className="c-scale r">{pct(t.margin)}</td><td className="r rpt-num">{n0(t.vatToPay)}</td><td className="r rpt-num">{t.commission ? `−${n0(t.commission)}` : ''}</td><td className="r rpt-num prf-net">{n0(t.net)}</td></tr></tfoot>
               </table></div>
             </>}
@@ -97,7 +97,12 @@ function Row({ inv, group, userId, onChanged }) {
   const persist = async () => {
     const p = Number(pctVal) || 0
     if (p === saved.p && agent === saved.a) return
-    try { await saveAgent(inv.id, { agentName: agent, percent: p, userId }); setSaved({ p, a: agent }); onChanged() }
+    try {
+      // накладна із замовленням → % пишемо в замовлення: зміниться всюди (картка, прогноз, звіт інвестору, інші накладні)
+      if (inv.orderId && p !== saved.p) await saveOrderAgentPct(inv.orderId, p)
+      await saveAgent(inv.id, { agentName: agent, percent: p, userId }); setSaved({ p, a: agent }); onChanged()
+      if (inv.orderId && p !== saved.p) toast(`% агентських оновлено в замовленні ${inv.orderNumber || ''}`.trim())
+    }
     catch (e) { toast(`Не збережено: ${e.message}`, { type: 'error' }) }
   }
   const m = inv.margin
@@ -113,7 +118,7 @@ function Row({ inv, group, userId, onChanged }) {
         <td className="r rpt-num rpt-muted c-vat">{n0(inv.vatToPay)}</td>
         <td className="r c-agent" onClick={e => e.stopPropagation()}>
           {loss ? <span className="rpt-muted">збиток</span>
-            : <label className="prf-pct"><input value={pctVal} inputMode="decimal" aria-label={`Агент, % — накладна ${inv.doc_number}`} placeholder="—"
+            : <label className="prf-pct" title={inv.orderId ? `% замовлення ${inv.orderNumber || ''} — зміна оновить його всюди` : 'Накладна без замовлення — % лише для цього звіту'}><input value={pctVal} inputMode="decimal" aria-label={`Агент, % — накладна ${inv.doc_number}`} placeholder="—"
                 onChange={e => setPctVal(e.target.value.replace(/[^\d.]/g, ''))} onBlur={persist} onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()} />%</label>}
         </td>
         <td className={`r rpt-num prf-net c-net${net < 0 ? ' is-neg' : ''}`}>{n0(net)}</td>

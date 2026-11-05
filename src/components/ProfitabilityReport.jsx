@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useCompany } from '../lib/company'
 import { useUser } from '../lib/auth'
-import { computeProfitability, saveAgent, computeTotals } from '../lib/profitability'
+import { computeProfitability, saveAgent, saveOrderAgentPct, computeTotals } from '../lib/profitability'
 import { useNewUi } from '../lib/uiPrefs'
 import ProfitabilityNew from './ProfitabilityNew'
 
@@ -129,7 +129,7 @@ function InvoicesTable({ data, userId, onChanged }) {
             </tr>
           </thead>
           <tbody>
-            {data.invoices.map(inv => <InvoiceRow key={inv.id} inv={inv} userId={userId} onChanged={onChanged} />)}
+            {data.invoices.map(inv => <InvoiceRow key={`${inv.id}:${inv.percent}`} inv={inv} userId={userId} onChanged={onChanged} />)}
             <tr style={{ background: '#FAF9FC', fontWeight: 700 }}>
               <td style={tdL}>Разом · {data.totals.count} накл.</td><td style={tdL} />
               <td style={{ ...td, ...MONO }}>{si(data.totals.sellSum)}</td>
@@ -164,7 +164,11 @@ function InvoiceRow({ inv, userId, onChanged }) {
   const net = inv.profit - commission
 
   const persist = async (p, a) => {
-    try { await saveAgent(inv.id, { agentName: a, percent: p, userId }); setSavedPct(p); onChanged() }
+    try {
+      // накладна із замовленням → % пишемо в замовлення (зміниться всюди), ручний % накладної — синхронно
+      if (inv.orderId && p !== (Number(savedPct) || 0)) await saveOrderAgentPct(inv.orderId, p)
+      await saveAgent(inv.id, { agentName: a, percent: p, userId }); setSavedPct(p); onChanged()
+    }
     catch (e) { alert(e.message) }
   }
   const onPctBlur = () => { if ((Number(pctVal) || 0) !== (Number(savedPct) || 0)) persist(Number(pctVal) || 0, agent) }
@@ -190,7 +194,7 @@ function InvoiceRow({ inv, userId, onChanged }) {
                 <input value={pctVal} onChange={e => setPctVal(e.target.value.replace(/[^\d.]/g, ''))} onBlur={onPctBlur} placeholder="—"
                   style={{ width: 52, height: 32, padding: '0 8px', border: '1px solid #E6D9B0', borderRadius: 8, background: '#fff', ...MONO, fontSize: 13, textAlign: 'right' }} />
                 <span style={{ color: '#5E5A6B', fontSize: 13 }}>%</span>
-                {inv.pctSource === 'order' && Number(pctVal) === Number(savedPct) && <i className="ti ti-link" title={`% із замовлення ${inv.orderNumber || ''}`.trim()} style={{ color: '#8A849C', fontSize: 14 }} />}
+                {inv.orderId && <i className="ti ti-link" title={`% замовлення ${inv.orderNumber || ''} — зміна тут оновить його всюди`} style={{ color: '#8A849C', fontSize: 14 }} />}
               </span>}
         </td>
         <td style={{ ...td, ...MONO, background: '#FFFCF2', color: commission > 0 ? '#C62828' : '#B8B4C4' }}>{commission > 0 ? '−' + _int.format(commission) : '0'}</td>
@@ -212,7 +216,9 @@ function InvoiceRow({ inv, userId, onChanged }) {
                 <input value={pctVal} onChange={e => setPctVal(e.target.value.replace(/[^\d.]/g, ''))} onBlur={onPctBlur} placeholder="—" disabled={loss}
                   style={{ width: 56, height: 36, padding: '0 8px', border: '1px solid #E6D9B0', borderRadius: 8, background: loss ? '#F0EFF4' : '#fff', ...MONO, fontSize: 14, textAlign: 'right' }} />
               </span>
-              {inv.pctSource === 'order' && Number(pctVal) === Number(savedPct) && <span style={{ fontSize: 13, color: '#5E5A6B' }}>% із замовлення {inv.orderNumber || ''} — змініть тут, щоб задати вручну для цієї накладної</span>}
+              {inv.orderId
+                ? <span style={{ fontSize: 13, color: '#5E5A6B' }}>% замовлення {inv.orderNumber || ''} — зміна тут оновить його всюди (картка, прогноз, звіт інвестору, інші накладні замовлення)</span>
+                : <span style={{ fontSize: 13, color: '#5E5A6B' }}>Накладна без замовлення — % лише для цього звіту</span>}
               {!loss
                 ? <span style={{ ...MONO, color: '#5E5A6B' }}>{si(inv.profit)} × {livePct}% = <span style={{ color: '#C62828', fontWeight: 600 }}>−{_int.format(commission)}</span></span>
                 : <span style={{ fontSize: 13, color: '#8A849C' }}>Збиток — агентські не нараховуються</span>}
