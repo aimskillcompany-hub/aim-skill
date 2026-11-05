@@ -6,6 +6,7 @@ import { qc, setReportScope, runExclusive } from './companyScope'
 import { fetchAll, fetchAllIn } from './fetchAll'
 import { clearCompanyCache } from './companyConfig'
 import { supabase } from './supabase'
+import { loadDocPayments } from './debts'
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100
 const VAT = 0.20
@@ -14,7 +15,9 @@ export async function loadAgents(docIds) {
   if (!docIds.length) return {}
   const map = {}
   for (let i = 0; i < docIds.length; i += 200) {
-    const { data } = await supabase.from('agent_commissions').select('document_id, agent_name, percent').in('document_id', docIds.slice(i, i + 200))
+    const part = docIds.slice(i, i + 200)
+    let { data, error } = await supabase.from('agent_commissions').select('document_id, agent_name, percent, paid, paid_at').in('document_id', part)
+    if (error && /paid/.test(error.message || '')) ({ data } = await supabase.from('agent_commissions').select('document_id, agent_name, percent').in('document_id', part)) // до міграції 109
     ;(data || []).forEach(a => map[a.document_id] = a)
   }
   return map
@@ -24,8 +27,8 @@ export async function loadAgents(docIds) {
 export async function loadOrderAgentPct(orderIds) {
   const map = {}
   for (let i = 0; i < orderIds.length; i += 200) {
-    const { data } = await supabase.from('orders').select('id, order_number, agent_commission_pct').in('id', orderIds.slice(i, i + 200))
-    ;(data || []).forEach(o => { map[o.id] = { percent: r2((Number(o.agent_commission_pct) || 0) * 100), number: o.order_number } })
+    const { data } = await supabase.from('orders').select('id, order_number, agent_commission_pct, commission_paid').in('id', orderIds.slice(i, i + 200))
+    ;(data || []).forEach(o => { map[o.id] = { percent: r2((Number(o.agent_commission_pct) || 0) * 100), number: o.order_number, paid: !!o.commission_paid } })
   }
   return map
 }
@@ -35,6 +38,21 @@ export async function loadOrderAgentPct(orderIds) {
 export async function saveOrderAgentPct(orderId, percent) {
   const { error } = await supabase.from('orders').update({ agent_commission_pct: Math.max(0, Number(percent) || 0) / 100 }).eq('id', orderId)
   if (error) throw error
+}
+
+// «Агентські сплачено»: накладна із замовленням — відмітка замовлення (orders.commission_paid, як у списку замовлень);
+// без замовлення — agent_commissions.paid (міграція 109).
+export async function setAgentPaid(inv, paid) {
+  if (inv.orderId) {
+    const { error } = await supabase.from('orders').update({ commission_paid: paid }).eq('id', inv.orderId)
+    if (error) throw error
+    return
+  }
+  const { error } = await supabase.from('agent_commissions').upsert({
+    document_id: inv.id, agent_name: inv.agentName || null, percent: Number(inv.percent) || 0,
+    paid, paid_at: paid ? new Date().toISOString().slice(0, 10) : null, updated_at: new Date().toISOString(),
+  }, { onConflict: 'document_id' })
+  if (error) throw new Error(/paid/.test(error.message || '') ? 'Потрібна міграція 109 (агентські сплачено)' : error.message)
 }
 
 export async function saveAgent(documentId, { agentName, percent, userId }) {
@@ -68,6 +86,12 @@ export async function computeProfitability(companyId, companyIsVat, from, to) {
       const agents = await loadAgents(docIds)
       // немає ручного % на накладній → беремо % агентських із замовлення накладної
       const orderAgent = await loadOrderAgentPct([...new Set(docs.map(d => d.order_id).filter(Boolean))])
+      // оплати клієнта, прив'язані до накладної (те саме правило, що «Дебіторка»)
+      const payByDoc = {}
+      ;(await loadDocPayments(docIds)).forEach(x => {
+        const p = (payByDoc[x.document_id] ||= { sum: 0, last: null })
+        p.sum += x.amount; if (x.date && (!p.last || x.date > p.last)) p.last = x.date
+      })
       // OUT-рухи всіх цих видаткових
       const moves = await fetchAllIn(() => qc('stock_movements')
           .select('id, document_id, product_id, quantity, price, cost_price, created_at').eq('type', 'out'), 'document_id', docIds)
@@ -120,6 +144,8 @@ export async function computeProfitability(companyId, companyIsVat, from, to) {
           margin: sellSum > 0 ? profit / sellSum : null,
           agentName: ag?.agent_name || '', percent, commission, net,
           pctSource: fromOrder ? 'order' : ag ? 'manual' : null, orderId: d.order_id || null, orderNumber: ord?.number || null,
+          agentPaid: d.order_id && ord ? ord.paid : !!ag?.paid,
+          clientPay: payStatus(Math.abs(Number(d.amount) || 0), payByDoc[d.id]),
         }
       })
 
@@ -154,7 +180,14 @@ async function computeInputVat(prodIds) {
   return res
 }
 
-function emptyTotals() { return { count: 0, sellSum: 0, profit: 0, vatToPay: 0, commission: 0, net: 0, margin: null, lossCount: 0, lossSum: 0 } }
+// стан оплати клієнтом: paid (залишок ≤ 0,5 грн) | partial | none; сума з ПДВ, як у документі
+export function payStatus(amount, p) {
+  const paid = r2(p?.sum || 0)
+  const rest = r2(amount - paid)
+  return { amount: r2(amount), paid, rest: rest > 0 ? rest : 0, last: p?.last || null, state: amount > 0 && rest <= 0.5 ? 'paid' : paid > 0.5 ? 'partial' : 'none' }
+}
+
+function emptyTotals() { return { count: 0, sellSum: 0, profit: 0, vatToPay: 0, commission: 0, net: 0, margin: null, lossCount: 0, lossSum: 0, agentDue: 0, unpaidCount: 0, unpaidSum: 0 } }
 export function computeTotals(invoices) {
   const t = emptyTotals()
   t.count = invoices.length
@@ -162,6 +195,8 @@ export function computeTotals(invoices) {
     t.sellSum = r2(t.sellSum + v.sellSum); t.profit = r2(t.profit + v.profit)
     t.vatToPay = r2(t.vatToPay + v.vatToPay); t.commission = r2(t.commission + v.commission); t.net = r2(t.net + v.net)
     if (v.profit < 0) { t.lossCount++; t.lossSum = r2(t.lossSum + v.profit) }
+    if (v.commission > 0 && !v.agentPaid) t.agentDue = r2(t.agentDue + v.commission)
+    if (v.clientPay && v.clientPay.state !== 'paid') { t.unpaidCount++; t.unpaidSum = r2(t.unpaidSum + v.clientPay.rest) }
   })
   t.margin = t.sellSum > 0 ? t.profit / t.sellSum : null
   return t

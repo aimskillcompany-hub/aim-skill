@@ -128,6 +128,13 @@
 .prf-pct { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 13px; }
 .prf-pct input { width: 56px; height: 32px; padding: 0 8px; border: 1px dashed var(--border-strong); border-radius: 8px; background: var(--surface); font: inherit; font-variant-numeric: tabular-nums; text-align: right; color: var(--text); }
 .prf-pct input:focus { border-style: solid; border-color: var(--brand); outline: none; }
+.prf-ord { color: var(--brand-dark); text-decoration: none; font-weight: 600; } .prf-ord:hover { text-decoration: underline; }
+.prf-pay { display: block; width: fit-content; margin-top: 4px; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.prf-pay.is-paid { background: var(--brand-soft); color: var(--brand-dark); }
+.prf-pay.is-partial { background: var(--warn-bg); color: var(--warn-fg); }
+.prf-pay.is-none { background: var(--danger-bg); color: var(--danger-fg); }
+.prf-paid { display: flex; align-items: center; gap: 4px; margin: 4px 0 0 auto; padding: 0; border: 0; background: none; font: inherit; font-size: 12px; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.prf-paid i { font-size: 16px; } .prf-paid.is-on { color: var(--brand-dark); }
 .prf-note { padding: 12px 18px 16px; }
 .prf-agent { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; margin-top: 10px; padding: 10px 14px; border-radius: 12px; background: var(--warn-bg); color: var(--warn-fg); font-size: 13px; }
 .prf-agent label { display: inline-flex; align-items: center; gap: 8px; }

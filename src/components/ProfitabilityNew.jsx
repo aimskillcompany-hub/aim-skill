@@ -1,7 +1,7 @@
 // «Прибутковість реалізації» — новий інтерфейс (ТЗ редизайну 5.4; макет ReportsProfit). Дані — computeProfitability,
 // агентські зберігаються тим самим saveAgent, що й раніше; тут лише показ.
 import { Fragment, useEffect, useState } from 'react'
-import { saveAgent, saveOrderAgentPct, computeTotals } from '../lib/profitability'
+import { saveAgent, saveOrderAgentPct, setAgentPaid, computeTotals } from '../lib/profitability'
 import { useGroupContractors } from '../lib/group'
 import { exportReportXlsx, exportReportPdf } from '../lib/reportExport'
 import { listDecisions } from '../lib/decisions'
@@ -12,6 +12,7 @@ import '../pages/AnalyticsNew.css'
 const n0 = (v) => formatAmount(v, { decimals: 0 })
 const pct = (f) => f == null ? '—' : `${f < 0 ? '−' : ''}${Math.abs(f * 100).toFixed(1).replace('.', ',')}%`
 const d2 = (s) => s ? String(s).slice(8, 10) + '.' + String(s).slice(5, 7) : ''
+const payLabel = (cp) => !cp ? '' : cp.state === 'paid' ? `оплачено${cp.last ? ' ' + d2(cp.last) : ''}` : cp.state === 'partial' ? `частково · борг ${n0(cp.rest)}` : 'не оплачено'
 
 export default function ProfitabilityNew({ data, loading, err, from, to, setFrom, setTo, companies, companyId, setCompanyId, userId, onChanged, showGroup = true, ctl = null }) {
   const grp = useGroupContractors()
@@ -22,8 +23,8 @@ export default function ProfitabilityNew({ data, loading, err, from, to, setFrom
   useEffect(() => {
     if (!ctl?.registerExport) return
     const spec = { fileName: `Прибутковість ${from} — ${to}`, title: 'Прибутковість реалізації', subtitle: `${from.split('-').reverse().join('.')} — ${to.split('-').reverse().join('.')} · суми без ПДВ`, sheet: 'Прибутковість',
-      columns: [{ key: 'doc', label: 'Накладна' }, { key: 'date', label: 'Дата' }, { key: 'client', label: 'Клієнт' }, { key: 'sell', label: 'Реалізація', num: true }, { key: 'profit', label: 'Прибуток', num: true }, { key: 'margin', label: 'Маржа, %', num: true }, { key: 'vat', label: 'ПДВ до сплати', num: true }, { key: 'agent', label: 'Агентські', num: true }, { key: 'net', label: 'Чистий', num: true }],
-      rows: invoices.map(i => ({ doc: i.doc_number, date: d2(i.doc_date), client: i.client, sell: i.sellSum, profit: i.profit, margin: i.margin == null ? '' : Math.round(i.margin * 1000) / 10, vat: i.vatToPay, agent: i.commission, net: i.net })),
+      columns: [{ key: 'doc', label: 'Накладна' }, { key: 'date', label: 'Дата' }, { key: 'order', label: 'Замовлення' }, { key: 'client', label: 'Клієнт' }, { key: 'cpay', label: 'Оплата клієнта' }, { key: 'sell', label: 'Реалізація', num: true }, { key: 'profit', label: 'Прибуток', num: true }, { key: 'margin', label: 'Маржа, %', num: true }, { key: 'vat', label: 'ПДВ до сплати', num: true }, { key: 'agent', label: 'Агентські', num: true }, { key: 'apaid', label: 'Агентські сплачено' }, { key: 'net', label: 'Чистий', num: true }],
+      rows: invoices.map(i => ({ doc: i.doc_number, date: d2(i.doc_date), order: i.orderNumber || '', client: i.client, cpay: payLabel(i.clientPay), apaid: i.commission > 0 ? (i.agentPaid ? 'так' : 'ні') : '', sell: i.sellSum, profit: i.profit, margin: i.margin == null ? '' : Math.round(i.margin * 1000) / 10, vat: i.vatToPay, agent: i.commission, net: i.net })),
       total: t ? { doc: 'Разом', sell: t.sellSum, profit: t.profit, vat: t.vatToPay, agent: t.commission, net: t.net } : null }
     ctl.registerExport(data ? { xlsx: () => exportReportXlsx(spec), pdf: () => exportReportPdf(spec) } : null)
   }, [data, showGroup, ctl?.registerExport])
@@ -63,6 +64,8 @@ export default function ProfitabilityNew({ data, loading, err, from, to, setFrom
             <span>ПДВ до сплати: <b>{n0(t.vatToPay)} ₴</b></span>
             <span>Накладних: <b>{t.count}</b></span>
             <span>Збиткових: <b className={t.lossCount ? 'is-neg' : ''}>{t.lossCount}{t.lossCount ? ` · ${n0(t.lossSum)} ₴` : ''}</b></span>
+            <span>Клієнти не розрахувались: <b className={t.unpaidCount ? 'is-neg' : ''}>{t.unpaidCount}{t.unpaidCount ? ` · ${n0(t.unpaidSum)} ₴ з ПДВ` : ''}</b></span>
+            <span>Агентські до сплати: <b>{n0(t.agentDue)} ₴</b></span>
           </div>
         </section>
         {noAgents && <Callout tone="warn" title="Агентські в жодній накладній не вказані" text={protoAgent
@@ -73,7 +76,7 @@ export default function ProfitabilityNew({ data, loading, err, from, to, setFrom
             : <>
               <div className="cfn-report-head"><h2 className="rpt-h3">Видаткові накладні · від найприбутковішої<InfoTip label="Як рахується прибутковість"><b>Прибуток</b> = реалізація − закупка (FIFO).<br /><b>Маржа</b> = прибуток ÷ реалізація.<br /><b>Агентські</b> = прибуток × % (при збитку не нараховуються).<br /><b>ПДВ до сплати</b> = ПДВ з реалізації − вхідний ПДВ (кредит лише по закупках у платника ПДВ).</InfoTip></h2><span className="rpt-muted rpt-note">усі суми без ПДВ</span></div>
               <div className="tbl-wrap rpt-table prf-table"><table>
-                <thead><tr><th>Накладна</th><th>Клієнт</th><th className="r">Реалізація</th><th className="r">Прибуток</th><th className="c-scale">Маржа</th><th className="r">ПДВ до сплати</th><th className="r">Агент, %</th><th className="r">Чистий</th></tr></thead>
+                <thead><tr><th>Накладна</th><th>Клієнт</th><th className="r">Реалізація</th><th className="r">Прибуток</th><th className="c-scale">Маржа</th><th className="r">ПДВ до сплати</th><th className="r">Агент, % · сплата</th><th className="r">Чистий</th></tr></thead>
                 <tbody>{invoices.map(inv => <Row key={`${inv.id}:${inv.percent}`} inv={inv} group={grp.has(inv.contractorId)} userId={userId} onChanged={onChanged} />)}</tbody>
                 <tfoot><tr><td>Разом · {t.count} накл.</td><td /><td className="r rpt-num">{n0(t.sellSum)}</td><td className="r rpt-num">{n0(t.profit)}</td><td className="c-scale r">{pct(t.margin)}</td><td className="r rpt-num">{n0(t.vatToPay)}</td><td className="r rpt-num">{t.commission ? `−${n0(t.commission)}` : ''}</td><td className="r rpt-num prf-net">{n0(t.net)}</td></tr></tfoot>
               </table></div>
@@ -105,13 +108,23 @@ function Row({ inv, group, userId, onChanged }) {
     }
     catch (e) { toast(`Не збережено: ${e.message}`, { type: 'error' }) }
   }
+  const [agentPaid, setAgentPaidState] = useState(!!inv.agentPaid)
+  const togglePaid = async () => {
+    const v = !agentPaid
+    setAgentPaidState(v)
+    try { await setAgentPaid({ ...inv, agentName: agent, percent: live }, v); onChanged() }
+    catch (e) { setAgentPaidState(!v); toast(`Не збережено: ${e.message}`, { type: 'error' }) }
+  }
   const m = inv.margin
   const tone = m == null ? '' : m < 0 ? 'is-bad' : m < 0.1 ? 'is-low' : ''
+  const cp = inv.clientPay
   return (
     <>
       <tr className="is-click" onClick={() => setOpen(o => !o)}>
-        <td className="c-name"><b className="prf-doc">{inv.doc_number}</b><small className="rpt-muted">{d2(inv.doc_date)}</small></td>
-        <td className="c-client">{inv.client}{group && <span className="grp-chip">група</span>}</td>
+        <td className="c-name"><b className="prf-doc">{inv.doc_number}</b><small className="rpt-muted">{d2(inv.doc_date)}
+          {inv.orderId && <> · <a className="prf-ord" href={`#/orders/${inv.orderId}`} onClick={e => e.stopPropagation()} title="Відкрити замовлення">зам. {inv.orderNumber || '—'}</a></>}</small></td>
+        <td className="c-client">{inv.client}{group && <span className="grp-chip">група</span>}
+          {cp && <span className={`prf-pay is-${cp.state}`} title={cp.state === 'none' ? 'Оплат, прив\'язаних до накладної, немає' : `Оплачено ${n0(cp.paid)} з ${n0(cp.amount)} ₴${cp.last ? ` · остання ${d2(cp.last)}` : ''}`}>{payLabel(cp)}</span>}</td>
         <td className="r rpt-num c-real">{n0(inv.sellSum)}</td>
         <td className={`r rpt-num c-profit${inv.profit < 0 ? ' rpt-late' : ''}`}><b>{n0(inv.profit)}</b></td>
         <td className="c-scale"><span className="mgn-scale"><span className={`mgn-track prf-track ${tone}`}><i style={{ width: `${m == null ? 0 : Math.max(2, Math.min(1, Math.abs(m) / 0.35) * 100)}%` }} /></span><b className={tone ? 'is-warn' : ''}>{pct(m)}</b></span></td>
@@ -120,6 +133,11 @@ function Row({ inv, group, userId, onChanged }) {
           {loss ? <span className="rpt-muted">збиток</span>
             : <label className="prf-pct" title={inv.orderId ? `% замовлення ${inv.orderNumber || ''} — зміна оновить його всюди` : 'Накладна без замовлення — % лише для цього звіту'}><input value={pctVal} inputMode="decimal" aria-label={`Агент, % — накладна ${inv.doc_number}`} placeholder="—"
                 onChange={e => setPctVal(e.target.value.replace(/[^\d.]/g, ''))} onBlur={persist} onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()} />%</label>}
+          {!loss && commission > 0 && (
+            <button type="button" className={`prf-paid${agentPaid ? ' is-on' : ''}`} onClick={togglePaid} aria-pressed={agentPaid}
+              title={inv.orderId ? `Відмітка замовлення ${inv.orderNumber || ''} (як у списку замовлень)` : 'Агентські по цій накладній'}>
+              <i className={`ti ${agentPaid ? 'ti-square-check-filled' : 'ti-square'}`} aria-hidden="true" />{agentPaid ? 'сплачено' : 'не сплачено'}
+            </button>)}
         </td>
         <td className={`r rpt-num prf-net c-net${net < 0 ? ' is-neg' : ''}`}>{n0(net)}</td>
       </tr>
