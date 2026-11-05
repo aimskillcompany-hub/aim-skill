@@ -33,10 +33,11 @@ export default function ProfitabilityReport({ showGroup = true, ctl = null } = {
 
   // спільна шапка: місяць (або рік) → період; юрособа → companyId (усі — кожна окремо, разом)
   useEffect(() => {
+    if (ctl?.range) { setFrom(ctl.range.from); setTo(ctl.range.to); return }
     if (!ctl?.year) return
     const y = ctl.year, m = ctl.month
     setFrom(m ? firstDay(y, m) : `${y}-01-01`); setTo(m ? lastDay(y, m) : `${y}-12-31`)
-  }, [ctl?.year, ctl?.month])
+  }, [ctl?.year, ctl?.month, ctl?.range?.from, ctl?.range?.to])
   const ids = ctl ? (ctl.scope && ctl.scope !== 'all' ? [ctl.scope] : (companies || []).map(c => c.id)) : (companyId ? [companyId] : [])
   useEffect(() => {
     if (!ids.length) return
