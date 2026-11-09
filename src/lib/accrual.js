@@ -367,7 +367,20 @@ async function inventoryAsOf(date) {
     id: p.id, name: p.name, unit: p.unit || '', qty: at[p.id].qty, value: at[p.id].value,
     price: at[p.id].qty ? at[p.id].value / at[p.id].qty : 0, negative: at[p.id].negative || 0,
   }))
-  return { value: items.reduce((s, x) => s + x.value, 0), items: items.filter(x => x.value > 0).sort((a, b) => b.value - a.value).slice(0, 10) }
+  return { value: items.reduce((s, x) => s + x.value, 0), all: items, items: items.filter(x => x.value > 0).sort((a, b) => b.value - a.value).slice(0, 10) }
+}
+
+// Зміна запасів по кожному товару: лише те, що змінилось; сума amount = −Δзапасів (знак рядка у звірці)
+export function inventoryChanges(opening = [], closing = []) {
+  const byId = {}
+  opening.forEach(x => { byId[x.id] = { name: x.name, unit: x.unit, q0: x.qty, v0: x.value, q1: 0, v1: 0 } })
+  closing.forEach(x => { byId[x.id] = { q0: 0, v0: 0, ...byId[x.id], name: x.name, unit: x.unit, q1: x.qty, v1: x.value } })
+  return Object.values(byId)
+    .filter(x => Math.abs(x.v1 - x.v0) >= 0.005)
+    .map(x => {
+      const qty = (q) => `${r2(q)}${x.unit ? ' ' + x.unit : ''}`
+      return { kind: 'item', title: x.name, sub: `було ${qty(x.q0)}, стало ${qty(x.q1)}`, amount: r2(x.v0 - x.v1) }
+    })
 }
 
 // ── Звірка: прибуток за нарахуванням − Δдебіторки + Δкредиторки − Δзапасів ≈ чистий грошовий потік ──
@@ -445,11 +458,8 @@ export async function accrualReconciliation(year, month, netProfit, opts = {}) {
   })
   const sum = (k) => r2((details[k] || []).reduce((a, x) => a + x.amount, 0))
   const restParts = { advance: sum('rest_advance'), unposted: sum('rest_unposted'), income: sum('rest_income') }
-  // запаси: найбільші позиції на кінець / на початок
-  details.dInv = [
-    ...i1.items.map(x => ({ kind: 'item', title: x.name, sub: `на кінець: ${x.qty} ${x.unit} × ${r2(x.price)}`, amount: r2(-x.value) })),
-    ...i0.items.map(x => ({ kind: 'item', title: x.name, sub: `на початок: ${x.qty} ${x.unit} × ${r2(x.price)}`, amount: r2(x.value) })),
-  ]
+  // запаси: зміна по кожному товару за період
+  details.dInv = inventoryChanges(i0.all, i1.all)
   Object.values(details).forEach(list => list.sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)))
   return {
     netProfit: r2(netProfit), dAR: r2(dAR), dAP: r2(dAP), dInv: r2(dInv),
