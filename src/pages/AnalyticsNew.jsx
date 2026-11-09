@@ -449,7 +449,7 @@ function ReconBridge({ recon: r }) {
                 ))}
               </tbody></table>
                 {items.length > 30 && !all && <button type="button" className="pln-br-more" onClick={() => setAll(true)}>Показати всі {items.length}</button>}
-                {key === 'dInv' && <p className="cfn-muted cfn-sm">Найбільші позиції складу на початок і на кінець періоду.</p>}
+                {key === 'dInv' && <p className="cfn-muted cfn-sm">Товари, вартість залишку яких змінилась за період: мінус — запас зріс, плюс — зменшився.</p>}
               </li>}
             </Fragment>
           )
