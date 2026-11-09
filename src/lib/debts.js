@@ -7,6 +7,7 @@ import { fetchAll, fetchAllIn } from './fetchAll'
 import { supabase } from './supabase'
 import { kyivDateOfTs, todayKyiv } from './dates'
 import { classifyPfd } from './pfd'
+import { withSplitArticles } from './txSplits'
 
 const sum = (arr, f) => (arr || []).reduce((s, x) => s + (Number(f(x)) || 0), 0)
 
@@ -51,7 +52,7 @@ export async function getContractorBalance(contractorId, companyIds = null) {
 
   const [docs, txs] = await Promise.all([
     fetchAll(() => q('documents', 'id, amount, direction, type, doc_date, created_at').eq('contractor_id', contractorId).not('amount', 'is', null)),
-    fetchAll(() => q('bank_transactions', 'id, amount, direction, date, article').eq('contractor_id', contractorId).eq('is_ignored', false)),
+    fetchAll(() => q('bank_transactions', 'id, is_split, amount, direction, date, article').eq('contractor_id', contractorId).eq('is_ignored', false)).then(withSplitArticles),
   ])
 
   const debtDocs = (docs || []).filter(d => countsAsDebt(d.type) && (d.direction === 'receivable' || d.direction === 'payable') && debtDate(d) <= today)

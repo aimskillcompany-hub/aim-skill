@@ -120,7 +120,9 @@ function ArticlesSection() {
     l.splice(i, 0, byGroup[g].find(a => a.id === drag.id)); setDrag(null); reorder(g, l)
   }
   const del = async (a) => {
-    const { count } = await supabase.from('bank_transactions').select('id', { count: 'exact', head: true }).eq('article_id', a.id)
+    const { count: nTx } = await supabase.from('bank_transactions').select('id', { count: 'exact', head: true }).eq('article_id', a.id)
+    const { count: nParts } = await supabase.from('bank_transaction_splits').select('id', { count: 'exact', head: true }).eq('article_id', a.id)
+    const count = (nTx || 0) + (nParts || 0)   // частини розбитих операцій теж (міграція 110)
     if (count) return toast(`У статті «${a.name}» є ${count} ${plural(count, ['операція', 'операції', 'операцій'])} — спершу об'єднайте її з іншою.`, { type: 'error' })
     const { error } = await supabase.from('articles').delete().eq('id', a.id)
     if (error) return toast(error.message, { type: 'error' })

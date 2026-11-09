@@ -163,3 +163,4 @@ select.bkn-chip.is-missing { --dot: var(--expense-chart); }
   .bkn-day > .bkn-row:last-child { border-bottom: 1px solid var(--border); border-bottom-left-radius: var(--r-card-mobile); border-bottom-right-radius: var(--r-card-mobile); }
   .bkn-day > .bkn-row.is-sel { background: var(--brand-soft); }
 }
+.bkn-chip.is-split { background: var(--group-bg); border-color: var(--group-bg); color: var(--group-fg); }

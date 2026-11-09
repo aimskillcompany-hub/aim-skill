@@ -9,6 +9,7 @@ import { qc } from './companyScope'
 import { PL_ORDER, PL_LABELS, PL_SIGN } from './articles'
 import { getAccountBalances } from './accounts'
 import { countsAsDebt, debtDate, loadDocPayments } from './debts'
+import { withSplits } from './txSplits'
 
 const pad = n => String(n).padStart(2, '0')
 const monthEnd = (y, m) => new Date(y, m, 0).getDate()
@@ -52,11 +53,12 @@ export function rangeKeyBounds(range, key) {
 // ── P&L Факт + План по статтях, структуровано за pl_level ──
 export async function computePL(year, month) {
   const { from, to, ym } = periodRange(year, month)
-  const [{ data: txs }, { data: arts }, { data: plans }] = await Promise.all([
-    fetchAllData(() => qc('bank_transactions').select('amount, article, direction').eq('is_validated', true).eq('is_ignored', false).gte('date', from).lte('date', to)),
+  const [{ data: txsRaw }, { data: arts }, { data: plans }] = await Promise.all([
+    fetchAllData(() => qc('bank_transactions').select('id, is_split, amount, article, direction').eq('is_validated', true).eq('is_ignored', false).gte('date', from).lte('date', to)),
     supabase.from('articles').select('name, type, pl_level, sort_order'),
     qc('plans').select('article, amount, year_month'),
   ])
+  const txs = await withSplits(txsRaw || [])   // розбиті операції — частинами (міграція 110)
   const meta = {}; (arts || []).forEach(a => { meta[a.name] = a })
 
   const fact = {}; (txs || []).forEach(t => {
@@ -102,10 +104,11 @@ export async function computePLBreakdown(year, month, opts = {}) {
   const includePending = !!opts.includePending
   const range = opts.range || null
   const { from, to } = range || periodRange(year, month)
-  const [{ data: txs }, { data: arts }] = await Promise.all([
-    fetchAllData(() => qc('bank_transactions').select('amount, article, direction, date, is_validated').eq('is_ignored', false).gte('date', from).lte('date', to)),
+  const [{ data: txsRaw }, { data: arts }] = await Promise.all([
+    fetchAllData(() => qc('bank_transactions').select('id, is_split, amount, article, direction, date, is_validated').eq('is_ignored', false).gte('date', from).lte('date', to)),
     supabase.from('articles').select('name, type, pl_level, sort_order'),
   ])
+  const txs = await withSplits(txsRaw || [])
   const meta = {}; (arts || []).forEach(a => { meta[a.name] = a })
 
   const cols = range ? rangeCols(from, to) : month
@@ -181,12 +184,13 @@ export async function plDrill(year, month, bucketKey, articleNames, opts = {}) {
     else { const m = Number(bucketKey); from = `${year}-${pad(m)}-01`; to = `${year}-${pad(m)}-${pad(monthEnd(year, m))}` }
   }
   const { data } = await fetchAllData(() => qc('bank_transactions')
-    .select('id, date, amount, article, direction, counterparty, contractor_id, description')
+    .select('id, is_split, date, amount, article, direction, counterparty, contractor_id, description')
     .eq('is_validated', opts.validated === false ? false : true).eq('is_ignored', false)
     .gte('date', from).lte('date', to)
-    .in('article', articleNames)
+    .or(articleNames.length ? `is_split.eq.true,article.in.(${articleNames.map(n => `"${String(n).replace(/"/g, '\\"')}"`).join(',')})` : 'is_split.eq.true')
     .order('date', { ascending: true }))
-  const list = (data || []).filter(t => t.direction !== 'Інше' && t.direction !== 'ПФД' && t.direction !== 'ОЗ')
+  const names = new Set(articleNames)
+  const list = (await withSplits(data || [])).filter(t => names.has(t.article) && t.direction !== 'Інше' && t.direction !== 'ПФД' && t.direction !== 'ОЗ')
   // прив'язані документи (transaction_documents → documents) для звірки
   const ids = list.map(t => t.id)
   if (ids.length) {

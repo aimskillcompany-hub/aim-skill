@@ -16,7 +16,7 @@ export async function loadBadges(userId) {
   const head = { count: 'exact', head: true }
   const [documents, bank, tasks] = await Promise.all([
     count(qc('documents').select('id', head).not('posted', 'is', false).or('is_verified.is.false,is_verified.is.null,amount.is.null,amount.eq.0')),
-    count(qc('bank_transactions').select('id', head).eq('is_ignored', false).or('is_validated.eq.false,article.is.null,article.eq.')),
+    count(qc('bank_transactions').select('id', head).eq('is_ignored', false).or('is_validated.eq.false,and(is_split.eq.false,or(article.is.null,article.eq.))')),
     (async () => {
       if (!userId) return 0
       const { data, error } = await supabase.from('tasks').select('id, status, due_at, due_date').eq('assignee_id', userId).not('status', 'in', '(done,cancelled,on_hold)')

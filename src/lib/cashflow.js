@@ -6,6 +6,7 @@ import { qc } from './companyScope'
 import { supabase } from './supabase'
 import { periodRange } from './pl'
 import { fetchAllData } from './fetchAll'
+import { withSplits } from './txSplits'
 
 // Підтягнути прив'язані документи (transaction_documents → documents) до списку транзакцій.
 // Кожній транзакції додає t.docs = [{ id, type, doc_number, ... }] (або [] якщо не прив'язано).
@@ -30,8 +31,8 @@ const pad = (n) => String(n).padStart(2, '0')
 export async function computeCashFlow(year, month) {
   const { from, to } = periodRange(year, month)
 
-  const [{ data: txsAll }, { data: accs }, { data: prevTxs }] = await Promise.all([
-    fetchAllData(() => qc('bank_transactions').select('account_id, amount, article, direction, date').eq('is_ignored', false).gte('date', from).lte('date', to)),
+  const [{ data: txsAllRaw }, { data: accs }, { data: prevTxs }] = await Promise.all([
+    fetchAllData(() => qc('bank_transactions').select('id, is_split, account_id, amount, article, direction, date').eq('is_ignored', false).gte('date', from).lte('date', to)),
     qc('accounts').select('id, opening_balance, opening_balance_date'),
     fetchAllData(() => qc('bank_transactions').select('account_id, amount, date').eq('is_ignored', false).lt('date', from)),
   ])
@@ -44,7 +45,8 @@ export async function computeCashFlow(year, month) {
   const beforeOpening = (t) => { const acc = accById[t.account_id]; return !!(acc?.opening_balance_date && t.date && t.date < acc.opening_balance_date) }
   let openingCash = (accs || []).reduce((s, a) => s + (!a.opening_balance_date || a.opening_balance_date <= to ? (Number(a.opening_balance) || 0) : 0), 0)
   ;(prevTxs || []).forEach(t => { if (!beforeOpening(t)) openingCash += Number(t.amount) || 0 })
-  const txs = (txsAll || []).filter(t => !beforeOpening(t))
+  const txsAll = await withSplits(txsAllRaw || [])   // розбиті операції — частинами (міграція 110)
+  const txs = txsAll.filter(t => !beforeOpening(t))
 
   const cols = month
     ? Array.from({ length: monthEnd(year, month) }, (_, i) => ({ key: String(i + 1), label: String(i + 1) }))
@@ -100,10 +102,10 @@ export async function cashFlowDrill(year, month, { bucketKey, article, sign } = 
   else { const m = Number(bucketKey); from = `${year}-${pad(m)}-01`; to = `${year}-${pad(m)}-${pad(monthEnd(year, m))}` }
 
   const { data } = await fetchAllData(() => qc('bank_transactions')
-    .select('id, date, amount, article, direction, counterparty, contractor_id, description, is_validated, account_id')
+    .select('id, is_split, date, amount, article, direction, counterparty, contractor_id, description, is_validated, account_id')
     .eq('is_ignored', false).gte('date', from).lte('date', to).order('date', { ascending: true }))
 
-  let list = (data || []).filter(t => Number(t.amount) !== 0)
+  let list = (await withSplits(data || [])).filter(t => Number(t.amount) !== 0)
   if (sign === 'in') list = list.filter(t => Number(t.amount) >= 0)
   else if (sign === 'out') list = list.filter(t => Number(t.amount) < 0)
   if (article != null) {

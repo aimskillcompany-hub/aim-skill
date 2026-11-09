@@ -18,6 +18,7 @@ import { computeOrderPlan, itemCost, itemSale } from './orderPlan'
 import { getCompany } from './companyConfig'
 import { addDaysIso, daysBetween } from './dates'
 import { loadBatches } from './batches'
+import { withSplits } from './txSplits'
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100
 const isVatArticle = (name) => /ПДВ/i.test(name || '')
@@ -376,7 +377,7 @@ export async function accrualReconciliation(year, month, netProfit, opts = {}) {
   const before = addDaysIso(from, -1)
   const [d0, d1, i0, i1, txs, periodDocs] = await Promise.all([
     debtsAsOf(before), debtsAsOf(to), inventoryAsOf(before), inventoryAsOf(to),
-    fetchAll(() => qc('bank_transactions').select('id, date, amount, direction, article, is_validated, counterparty, description, contractor_id').eq('is_ignored', false).gte('date', from).lte('date', to)),
+    fetchAll(() => qc('bank_transactions').select('id, is_split, date, amount, direction, article, is_validated, counterparty, description, contractor_id').eq('is_ignored', false).gte('date', from).lte('date', to)).then(withSplits),
     fetchAll(() => qc('documents').select('id, type, direction, amount, vat_amount, doc_date, created_at, doc_number, contractors(name)')),
   ])
   // ПДВ у документах періоду: у боргах (з ПДВ), але не в прибутку (без ПДВ) → вихідний − вхідний

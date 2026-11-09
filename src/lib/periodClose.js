@@ -105,7 +105,7 @@ export async function runChecklist(year, month) {
 export async function computeCompleteness(year, month) {
   const { from, to } = periodRange(year, month)
   const txs = await fetchAll('bank_transactions',
-    'id, date, amount, direction, article, counterparty, description, is_validated, is_ignored, account_id',
+    'id, is_split, date, amount, direction, article, counterparty, description, is_validated, is_ignored, account_id',
     q => q.gte('date', from).lte('date', to))
   const num = x => Math.abs(Number(x) || 0)
   const mk = () => ({ n: 0, sum: 0, items: [] })
@@ -117,7 +117,7 @@ export async function computeCompleteness(year, month) {
     if (t.is_ignored) { b.ignored.n++; b.ignored.sum += a; b.ignored.items.push(t); return }
     active.n++; active.sum += a
     if (!t.is_validated) { b.unvalidated.n++; b.unvalidated.sum += a; b.unvalidated.items.push(t); return }
-    if (!String(t.article || '').trim()) { b.noArticle.n++; b.noArticle.sum += a; b.noArticle.items.push(t); return }
+    if (!t.is_split && !String(t.article || '').trim()) { b.noArticle.n++; b.noArticle.sum += a; b.noArticle.items.push(t); return }
     if (t.direction === 'Інше' || t.direction === 'ПФД' || t.direction === 'ОЗ') { b.otherFin.n++; b.otherFin.sum += a; b.otherFin.items.push(t); return }
     b.inPL.n++; b.inPL.sum += a
   })

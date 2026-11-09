@@ -73,6 +73,8 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 
 Усі **8 фаз ТЗ v2 завершені**, система розгорнута на Vercel (https://aim-skill.vercel.app). Дані реальні (476 транзакцій, 102 контрагенти, 298 товарів, 159 документів).
 
+- **Розбиття операції на кілька статей (2026-11-09, міграція 110).** Операція лишається одним рядком `bank_transactions` (рахунок, дата, сума, контрагент, прив'язки до документів і ПФД-зарахування не змінюються → залишки й борги як раніше); статті й суми — у `bank_transaction_splits`, напрям спільний. `lib/txSplits.js`: `withSplits` розгортає операцію в частини для звітів за статтями (P&L + розшифровка, рух коштів + розшифровка, CashFlow-звіт, звірка нарахувань), `withSplitArticles` — текст статей частин для правил за статтею без розгортання (ПФД, борг контрагента, перевірка прив'язок), `attachSplits` — для «Банку». Повнота даних і лічильник «без статті» не рахують розбиту операцію як без статті; автокласифікація її пропускає. UI: картка операції → «Розбити на кілька статей» (`components/SplitEditor.jsx`), у рядку — чип «N статті», фільтр «Розбиті на кілька статей»; фільтр за статтею знаходить і частини. Поки не розгорнуто: замовлення/точність прогнозу й картка контрагента показують розбиту операцію без статті.
+
 | Фаза | Стан | Що працює |
 |---|---|---|
 | 1. БД | ✅ | Additive-схема: 22 таблиці, в'юхи `product_stock`/`contractor_balances`, RLS |
@@ -621,6 +623,7 @@ api/                  — ai.js (проксі Claude), vkursi.js, edr.js (Vercel
 | `106_payment_confirmed.sql` | «Прибутковість» v2 (ТЗ 05, 6.3): `order_transactions.confirmed_at/confirmed_by`, `orders.paid_confirmed_at` — «Це оплата клієнта» для підозрілої оплати. Тест: `tests_106_pglite.mjs` | ✅ запущена 27.10.2026 |
 | `107_supplier_portals.sql` | Портали постачальників: `supplier_portals` (контрагент, назва, посилання, логін, примітка); пароль — у Supabase Vault (`supplier_portal_secrets` без політик), `portal_get_password` / `portal_set_password` — усі ролі, крім viewer; журнал `supplier_portal_log`. Тест: `tests_107_pglite.mjs` (заглушка Vault) | ✅ запущена 27.10.2026 |
 | `108_mono_sync.sql` | Автоматична виписка monobank (corp API): `accounts.iban`, `accounts.mono_synced_at`, `bank_sync_log`; токен — `app_secrets 'mono_token:<company>'` через `set_mono_token` (адмін / бухгалтер), `mono_token_set`; pg_cron `aim_mono_sync` щогодини о :07 → `/api/mono-sync` | ✅ запущена 02.11.2026 |
+| `110_transaction_splits.sql` | Розбиття операції на кілька статей: `bank_transactions.is_split`, таблиця `bank_transaction_splits` (стаття + сума частини), RPC `split_transaction(p_tx, p_parts)` / `unsplit_transaction(p_tx, p_article_id)`; сума й одна стаття розбитої операції заблоковані (SPLIT_LOCKED); закритий місяць — PERIOD_CLOSED; перейменування й `merge_articles` оновлюють частини. Тести: `tests_110_pglite.mjs` | ✅ застосовано (2026-11-09) |
 | `validate.mjs` | Перевірка цілісності Фази 1 (`SUPABASE_SERVICE_KEY=... node migrations/validate.mjs`) | — |
 | `probe.mjs` | Звірка наявності колонок/таблиць усіх міграцій у БД (`SUPABASE_SERVICE_KEY=... node migrations/probe.mjs`) | — |
 

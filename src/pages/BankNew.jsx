@@ -7,19 +7,20 @@ import { useGroupContractors } from '../lib/group'
 import { Button, Menu, Segmented, EmptyState, TableSkeleton, InfoTip } from '../components/ui'
 import PeriodMenu from '../components/ui/PeriodMenu'
 import { formatAmount } from '../utils/format'
+import { articleText } from '../lib/txSplits'
 import './BankNew.css'
 
 const DAY = new Intl.DateTimeFormat('uk-UA', { weekday: 'short', day: 'numeric', month: 'long', timeZone: 'UTC' })
 const dayLabel = (iso) => DAY.format(new Date(iso + 'T00:00:00Z')).replace('.', '').toUpperCase()
 const NO_DOC_OK = /податк|зарплат|банківськ|комісі|єсв|пдфо|військов/i
 // документ не потрібен: ПФД, внутрішні операції, податки, зарплата, комісії банку
-const docNotNeeded = (r) => r.direction === 'ПФД' || r.direction === 'Інше' || NO_DOC_OK.test(r.article || '')
+const docNotNeeded = (r) => r.direction === 'ПФД' || r.direction === 'Інше' || NO_DOC_OK.test(articleText(r))
 export const issuesOf = (r) => ({
   noDoc: !(r._docs?.length) && !docNotNeeded(r),
-  noArticle: !(r.article || '').trim(),
+  noArticle: !r.is_split && !(r.article || '').trim(),
   noContractor: !r.contractor_id && !r.counterparty,
 })
-export const isReady = (r) => !r.is_validated && !!(r.contractor_id || r.counterparty) && !!r.direction && !!(r.article || '').trim() && ((r._docs?.length > 0) || docNotNeeded(r))
+export const isReady = (r) => !r.is_validated && !!(r.contractor_id || r.counterparty) && !!r.direction && !!(r.is_split || (r.article || '').trim()) && ((r._docs?.length > 0) || docNotNeeded(r))
 
 function TxIcon({ r }) {
   const k = r.direction === 'ПФД' || r.direction === 'Інше' ? 'swap' : Number(r.amount) >= 0 ? 'in' : 'out'
@@ -73,6 +74,7 @@ export default function BankNew(p) {
           <select className="form-input bkn-select" aria-label="Стаття" value={art} onChange={e => setArt(e.target.value)}>
             <option value="all">Усі статті</option><option value="__none__">Без статті</option>
             <option value="__nolink__">Стаття не з довідника</option><option value="__nocontractor__">Без контрагента</option>
+            <option value="__split__">Розбиті на кілька статей</option>
             {articleOptions}
           </select>
           {setPeriod && <span className="bkn-period"><PeriodMenu year={period.year} month={period.month} onChange={setPeriod} allowAll /></span>}
@@ -145,7 +147,7 @@ export default function BankNew(p) {
                           <button type="button" className="bkn-main" onClick={() => selectMode ? toggleSel(r.id) : onOpen(r)}>
                             <span className={`bkn-name${name ? '' : ' is-none'}`}>{name || (/^Переказ (на|з) /.test(r.description || '') ? 'Внутрішній переказ' : 'Контрагента не вказано')}</span>{r.contractor_id && grp.has(r.contractor_id) && <span className="grp-chip">група</span>}
                             {r.description && <span className="bkn-desc">{r.description}</span>}
-                            <span className="bkn-mobile-meta">{r.article || 'без статті'}
+                            <span className="bkn-mobile-meta">{r.is_split ? `розбито: ${r._splits?.map(p => p.article).join(', ')}` : (r.article || 'без статті')}
                               {i.noDoc && <span className="bkn-tag is-warn">Без документа</span>}
                               {i.noContractor && <span className="bkn-tag is-danger">Без контрагента</span>}</span>
                           </button>
@@ -154,11 +156,16 @@ export default function BankNew(p) {
                               onChange={e => quickUpdate(r, { direction: e.target.value || null })}>
                               <option value="">Напрям?</option>{directions.map(d => <option key={d} value={d}>{d}</option>)}
                             </select>
-                            <select className={`bkn-chip${r.article ? '' : ' is-missing'}`} value={r.article || ''} aria-label="Стаття"
-                              onChange={e => quickUpdate(r, { article: e.target.value || null })}>
+                            {r.is_split
+                              ? <button type="button" className="bkn-chip is-split" onClick={() => onOpen(r)} aria-label="Статті частин операції"
+                                  title={(r._splits || []).map(p => `${p.article}: ${formatAmount(Math.abs(p.amount))}`).join('\n')}>
+                                  <i className="ti ti-arrows-split-2" aria-hidden="true" />{r._splits?.length || ''} статті</button>
+                              : <select className={`bkn-chip${r.article ? '' : ' is-missing'}`} value={r.article || ''} aria-label="Стаття"
+                              onChange={e => e.target.value === '__split__' ? onOpen(r, { split: true }) : quickUpdate(r, { article: e.target.value || null })}>
                               <option value="">{r.direction ? 'Стаття?' : 'Спершу напрям'}</option>{articleOptions}
                               {r.article && !Object.values(grouped).flat().some(a => a.name === r.article) && <option value={r.article}>{r.article}</option>}
-                            </select>
+                              <option value="__split__">Розбити на кілька статей…</option>
+                            </select>}
                             {r._docs?.length
                               ? <button type="button" className="bkn-chip is-doc" onClick={() => onLink(r)} title="Прив'язані документи"><i className="ti ti-file-check" aria-hidden="true" />{r._docs.length > 1 ? `${r._docs.length} документи` : 'документ'}</button>
                               : !docNotNeeded(r) && <button type="button" className="bkn-chip is-add" onClick={() => onLink(r)}>+ документ</button>}
