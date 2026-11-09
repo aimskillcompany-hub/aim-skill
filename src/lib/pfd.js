@@ -11,6 +11,7 @@
 // Зв'язок тіло↔погашення — loan_allocations (receipt_tx_id=тіло, return_tx_id=погашення; назви історичні).
 import { qc, withCompany } from './companyScope'
 import { supabase } from './supabase'
+import { withSplitArticles } from './txSplits'
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100
 const EPS = 0.005
@@ -42,8 +43,9 @@ export function classifyPfd(article, amount = 0) {
 export async function loadPfd() {
   const [{ data: txs }, allocRes, { data: contractors }] = await Promise.all([
     qc('bank_transactions')
-      .select('id, date, amount, counterparty, description, article, contractor_id, account_id')
-      .eq('is_ignored', false).eq('direction', 'ПФД').order('date'),
+      .select('id, is_split, date, amount, counterparty, description, article, contractor_id, account_id')
+      .eq('is_ignored', false).eq('direction', 'ПФД').order('date')
+      .then(async r => r.error ? r : { ...r, data: await withSplitArticles(r.data || []) }),
     qc('loan_allocations').select('id, receipt_tx_id, return_tx_id, amount'),
     supabase.from('contractors').select('id, name'),
   ])

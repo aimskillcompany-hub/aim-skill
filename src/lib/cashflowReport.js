@@ -3,6 +3,7 @@
 // (bank_transactions.project_id → finance_projects). Решта — за статтею.
 import { qc } from './companyScope'
 import { fetchAllData } from './fetchAll'
+import { withSplits } from './txSplits'
 
 export const REVENUE_ART = 'Виручка: товари / ПЗ'
 export const PURCHASE_ART = 'Закупівля товарів'
@@ -11,11 +12,12 @@ const emptyMonths = () => Array(12).fill(0)
 
 export async function computeCashflow(year) {
   const from = `${year}-01-01`, to = `${year}-12-31`
-  const [{ data: txs }, { data: projects }] = await Promise.all([
-    fetchAllData(() => qc('bank_transactions').select('date, amount, article, direction, project_id, is_ignored')
+  const [{ data: txsRaw }, { data: projects }] = await Promise.all([
+    fetchAllData(() => qc('bank_transactions').select('id, is_split, date, amount, article, direction, project_id, is_ignored')
       .eq('is_ignored', false).gte('date', from).lte('date', to)),
     qc('finance_projects').select('id, name').then(r => r).catch(() => ({ data: [] })),
   ])
+  const txs = await withSplits(txsRaw || [])
   const projName = {}; (projects || []).forEach(p => projName[p.id] = p.name)
 
   // key → { label, months[12] }

@@ -368,7 +368,7 @@ function CashFlowDrillModal({ drill, onClose, onSaved }) {
                 {rows.map(t => {
                   const changed = edits[t.id] && (edits[t.id].direction !== undefined || edits[t.id].article !== undefined)
                   return (
-                    <tr key={t.id} style={{ background: changed ? 'var(--surface2)' : undefined }}>
+                    <tr key={t.split_id || t.id} style={{ background: changed ? 'var(--surface2)' : undefined }}>
                       <td style={{ whiteSpace: 'nowrap', fontSize: 12, color: 'var(--text2)' }}>{t.date}</td>
                       <td><div className="trunc" title={t.counterparty || ''}>{t.counterparty || '—'}</div>{t.description && <div className="trunc" style={{ fontSize: 11, color: 'var(--text3)' }}>{t.description}</div>}</td>
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: Number(t.amount) >= 0 ? GREEN : RED, fontWeight: 600 }}>{Number(t.amount) >= 0 ? '+' : '−'}{fmtInt(Math.abs(Number(t.amount) || 0))}</td>
@@ -849,7 +849,7 @@ function DrillModal({ drill, year, month, range = null, onClose }) {
               <thead><tr><th>Дата</th><th>Контрагент</th><th>Стаття</th><th style={{ textAlign: 'right' }}>Сума</th><th>Документ</th></tr></thead>
               <tbody>
                 {rows.map(t => (
-                  <tr key={t.id}>
+                  <tr key={t.split_id || t.id}>
                     <td style={{ whiteSpace: 'nowrap' }}>{t.date}</td>
                     <td><div className="trunc" title={t.counterparty || ''}>{t.counterparty || '—'}</div>{t.description && <div className="trunc" style={{ fontSize: 11, color: 'var(--text3)' }}>{t.description}</div>}</td>
                     <td><div className="trunc">{t.article}</div></td>
@@ -1192,7 +1192,7 @@ function BalanceDrillModal({ drill, snap, onClose }) {
         <thead><tr style={{ color: 'var(--text3)' }}><th style={{ textAlign: 'left' }}>Дата</th><th style={{ textAlign: 'left' }}>Опис</th><th style={{ textAlign: 'right' }}>Сума</th></tr></thead>
         <tbody>
           {txs.map(t => (
-            <tr key={t.id}>
+            <tr key={t.split_id || t.id}>
               <td style={{ whiteSpace: 'nowrap' }}>{t.date}</td>
               <td><div className="trunc" title={t.counterparty || ''}>{t.counterparty || t.description || '—'}</div>{t.article && <div className="trunc" style={{ fontSize: 11, color: 'var(--text3)' }}>{t.article}</div>}</td>
               <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: Number(t.amount) < 0 ? GREEN : RED }}>{Number(t.amount) < 0 ? '+' : '−'}{fmtInt(Math.abs(Number(t.amount) || 0))}</td>
@@ -1212,7 +1212,7 @@ function BalanceDrillModal({ drill, snap, onClose }) {
         <thead><tr style={{ color: 'var(--text3)' }}><th style={{ textAlign: 'left' }}>Дата</th><th style={{ textAlign: 'left' }}>Контрагент</th><th style={{ textAlign: 'right' }}>Сума</th></tr></thead>
         <tbody>
           {txs.map(t => (
-            <tr key={t.id}>
+            <tr key={t.split_id || t.id}>
               <td style={{ whiteSpace: 'nowrap' }}>{t.date}</td>
               <td><div className="trunc" title={t.counterparty || ''}>{t.counterparty || t.description || '—'}</div>{t.article && <div className="trunc" style={{ fontSize: 11, color: 'var(--text3)' }}>{t.article}</div>}</td>
               <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: Number(t.amount) >= 0 ? GREEN : RED }}>{Number(t.amount) >= 0 ? '+' : '−'}{fmtInt(Math.abs(Number(t.amount) || 0))}</td>

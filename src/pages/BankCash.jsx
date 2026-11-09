@@ -21,6 +21,8 @@ import { useNewUi } from '../lib/uiPrefs'
 import { Button, useToast } from '../components/ui'
 import { formatAmount, plural } from '../utils/format'
 import BankNew from './BankNew'
+import SplitEditor from '../components/SplitEditor'
+import { attachSplits, validateSplit, splitTransaction, unsplitTransaction } from '../lib/txSplits'
 
 // поля документа для DocModal
 const DOC_FIELDS = 'id, type, doc_number, doc_date, file_name, amount, vat_amount, is_signed, created_at, direction, contractor_id, storage_path, file_path, file_type, doc_role, contractors(name)'
@@ -170,15 +172,21 @@ function TransactionsTab({ accounts, onChange, newUi = false, addSignal = 0, acc
   const load = async () => {
     setLoading(true)
     let qb = qc('bank_transactions')
-      .select('id, date, amount, counterparty, description, edrpou, direction, article, article_id, contractor_id, account_id, is_validated, project_id')
+      .select('id, date, amount, counterparty, description, edrpou, direction, article, article_id, is_split, contractor_id, account_id, is_validated, project_id')
       .eq('is_ignored', status === 'ignored').order('date', { ascending: false }).limit(limit)
     if (status === 'unconfirmed') qb = qb.eq('is_validated', false)
     if (acc !== 'all') qb = qb.eq('account_id', acc)
     qb = withPeriod(qb, period)
-    if (art === '__none__') qb = qb.or('article.is.null,article.eq.')          // порожній текст теж «без статті»
+    if (art === '__none__') qb = qb.or('article.is.null,article.eq.').eq('is_split', false)   // порожній текст теж «без статті»; розбита — зі статтями в частинах
     else if (art === '__nocontractor__') qb = qb.is('contractor_id', null)
     else if (art === '__nolink__') qb = qb.not('article', 'is', null).neq('article', '').is('article_id', null)   // стаття, якої немає в довіднику
-    else if (art !== 'all') qb = qb.eq('article', art)
+    else if (art === '__split__') qb = qb.eq('is_split', true)
+    else if (art !== 'all') {
+      // операції з цією статтею + розбиті, де вона є в одній із частин
+      const { data: sp } = await supabase.from('bank_transaction_splits').select('transaction_id').eq('article', art).limit(1000)
+      const sIds = [...new Set((sp || []).map(s => s.transaction_id))]
+      qb = sIds.length ? qb.or(`article.eq."${art.replace(/"/g, '\\"')}",id.in.(${sIds.join(',')})`) : qb.eq('article', art)
+    }
     const term = q.trim()
     if (term) {
       const esc = term.replace(/[%,()]/g, ' ')
@@ -220,6 +228,7 @@ function TransactionsTab({ accounts, onChange, newUi = false, addSignal = 0, acc
       ;(tds || []).forEach(t => { if (t.documents) (byTx[t.transaction_id] ||= []).push(t.documents) })
       list.forEach(r => { r._docs = byTx[r.id] || [] })
     }
+    await attachSplits(list).catch(() => {})   // частини розбитих операцій (міграція 110)
     setRows(list)
     setSel(new Set())
     setLoading(false)
@@ -249,7 +258,7 @@ function TransactionsTab({ accounts, onChange, newUi = false, addSignal = 0, acc
     resetClassifyCache()
     const matcher = await getContractorMatcher()
     const updated = await Promise.all(rows.map(async r => {
-      if (r.is_validated) return r
+      if (r.is_validated || r.is_split) return r   // розбиту операцію не класифікуємо однією статтею
       const s = await classifyTransaction(r)
       const m = matcher(r)
       const contractor_id = m?.contractor.id || r.contractor_id || s.contractor_id || null
@@ -407,7 +416,7 @@ function TransactionsTab({ accounts, onChange, newUi = false, addSignal = 0, acc
     <>
       <BankNew rows={view} loading={loading} status={status} setStatus={setStatus} period={period} setPeriod={setPeriod} tabCounts={tabCounts} q={q} setQ={setQ} acc={acc} setAcc={setAcc} accounts={accounts}
         art={art} setArt={setArt} grouped={grouped} typeLabels={TYPE_LABELS} directions={DIRECTIONS}
-        sel={sel} toggleSel={toggleSel} setSel={setSel} onOpen={setEditTx} onLink={setLinkTx} onAdd={() => setShowAdd(true)}
+        sel={sel} toggleSel={toggleSel} setSel={setSel} onOpen={(r, o) => setEditTx(o?.split ? { ...r, _startSplit: true } : r)} onLink={setLinkTx} onAdd={() => setShowAdd(true)}
         autoLink={autoLink} linking={linking} linkMsg={linkMsg} autoFill={autoFill} onCheck={() => setShowCheck(true)}
         quickUpdate={quickUpdate} bulkUpdate={bulkUpdate} unignore={unignore} hasMore={rows.length >= limit} onMore={() => setLimit(l => l + 500)} />
       {showCheck && <LinkCheckModal onClose={() => setShowCheck(false)} onChanged={() => { load(); onChange() }} />}
@@ -438,6 +447,7 @@ function TransactionsTab({ accounts, onChange, newUi = false, addSignal = 0, acc
           <option value="__none__">Без статті</option>
           <option value="__nolink__">Стаття не з довідника</option>
           <option value="__nocontractor__">Без контрагента</option>
+          <option value="__split__">Розбиті на кілька статей</option>
           {Object.entries(grouped).map(([type, arts]) => (
             <optgroup key={type} label={TYPE_LABELS[type] || type}>
               {arts.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
@@ -505,7 +515,8 @@ function TransactionsTab({ accounts, onChange, newUi = false, addSignal = 0, acc
                   </td>
                   <td className={r.amount >= 0 ? 'amt-pos' : 'amt-neg'} style={{ textAlign: 'right', fontWeight: 600 }}>{r.amount >= 0 ? '+' : ''}{fmt(r.amount)}</td>
                   <td style={{ fontSize: 13 }}>{r.direction || <span style={{ color: 'var(--red)' }}>—</span>}</td>
-                  <td style={{ fontSize: 12, color: 'var(--text2)' }}><div className="trunc">{r.article || '—'}</div></td>
+                  <td style={{ fontSize: 12, color: 'var(--text2)' }}><div className="trunc" title={r.is_split ? r._splits?.map(p => `${p.article}: ${fmt(Math.abs(p.amount))}`).join('\n') : undefined}>
+                    {r.is_split ? <><i className="ti ti-arrows-split-2" /> {r._splits?.length || ''} статті: {r._splits?.map(p => p.article).join(', ')}</> : (r.article || '—')}</div></td>
                   <td style={{ fontSize: 12 }}>
                     {r._docs?.length
                       ? <a onClick={(e) => { e.stopPropagation(); setOpenDoc(r._docs[0]) }} style={{ color: 'var(--blue)', cursor: 'pointer' }} title={r._docs.map(d => getDocLabel(d)).join('\n')}>
@@ -645,26 +656,46 @@ function TxModal({ tx, grouped, accounts = [], onClose, onSaved, onLink, onOpenD
   const [busy, setBusy] = useState(false)
   const [projects, setProjects] = useState([])
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
-  const projectArticle = PROJECT_ARTICLES.includes(f.article)
+  const arts = Object.values(grouped).flat()
+  // розбиття на статті (міграція 110): null — одна стаття; масив — частини { article_id, amount (модулем) }
+  const absAmount = Math.abs(Number(tx.amount) || 0)
+  const [split, setSplit] = useState(() => tx.is_split
+    ? (tx._splits || []).map(p => ({ article_id: p.article_id || '', amount: String(Math.abs(Number(p.amount) || 0)) }))
+    : tx._startSplit ? [{ article_id: arts.find(a => a.name === tx.article)?.id || '', amount: String(absAmount) }, { article_id: '', amount: '' }] : null)
+  const startSplit = () => setSplit([{ article_id: arts.find(a => a.name === f.article)?.id || '', amount: String(absAmount) }, { article_id: '', amount: '' }])
+  const cancelSplit = () => {
+    const biggest = [...(split || [])].sort((a, b) => (Number(b.amount) || 0) - (Number(a.amount) || 0))[0]
+    if (!f.article && biggest?.article_id) set('article', arts.find(a => a.id === biggest.article_id)?.name || '')
+    setSplit(null)
+  }
+  const projectArticle = !split && PROJECT_ARTICLES.includes(f.article)
   useEffect(() => {
     if (projectArticle && !projects.length) qc('finance_projects').select('id, name').is('archived_at', null).order('name').then(({ data }) => setProjects(data || []))
   }, [projectArticle])
 
   const persist = async (validate) => {
+    const sv = split ? validateSplit(tx.amount, split) : null
+    if (sv && !sv.ok) { alert(sv.error); return }
     setBusy(true)
-    const arts = Object.values(grouped).flat()
     const article = arts.find(a => a.name === f.article)
+    try { if (!split && tx.is_split) await unsplitTransaction(tx.id, article?.id || null) }
+    catch (e) { setBusy(false); alert(e.message); return }
     const { error } = await qc('bank_transactions').update({
-      direction: f.direction || null, article: f.article || null, article_id: article?.id || null,
+      direction: f.direction || null,
+      ...(split ? {} : { article: f.article || null, article_id: article?.id || null }),   // розбита — статті в частинах
       contractor_id: f.contractor_id || null,
       counterparty: f.cname || tx.counterparty || null, // оновлюємо й відображувану назву контрагента
       date: f.date || tx.date, // дозволяємо змінити дату транзакції
       account_id: f.account_id || tx.account_id, // дозволяємо перенести на інший рахунок (банк/каса)
-      ...(PROJECT_ARTICLES.includes(f.article) ? { project_id: f.project_id || null } : (tx.project_id ? { project_id: null } : {})), // проект лише для проектних статей; ґрейсфул до міграції 062
+      ...(split ? {} : PROJECT_ARTICLES.includes(f.article) ? { project_id: f.project_id || null } : (tx.project_id ? { project_id: null } : {})), // проект лише для проектних статей; ґрейсфул до міграції 062
       ...(validate ? { is_validated: true } : {}),
     }).eq('id', tx.id)
+    if (error) { setBusy(false); alert(/PERIOD_CLOSED/.test(error.message) ? 'Період закрито — зміна дати/даних заблокована. Спершу відкрийте період.' : 'Не вдалося зберегти: ' + error.message); return }
+    if (split) {
+      try { await splitTransaction(tx.id, sv.parts) }
+      catch (e) { setBusy(false); alert('Інші поля збережено, а розбиття — ні: ' + e.message); return }
+    }
     setBusy(false)
-    if (error) { alert(/PERIOD_CLOSED/.test(error.message) ? 'Період закрито — зміна дати/даних заблокована. Спершу відкрийте період.' : 'Не вдалося зберегти: ' + error.message); return }
     onSaved()
   }
   const ignore = async () => { setBusy(true); await qc('bank_transactions').update({ is_ignored: true }).eq('id', tx.id); setBusy(false); onSaved() }
@@ -718,6 +749,13 @@ function TxModal({ tx, grouped, accounts = [], onClose, onSaved, onLink, onOpenD
               <option value="">—</option>{DIRECTIONS.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
           </div>
+          {split ? (
+            <div className="form-group full">
+              <SplitEditor total={tx.amount} parts={split} onChange={setSplit} grouped={grouped} typeLabels={TYPE_LABELS} disabled={busy} />
+              <button type="button" className="btn" onClick={cancelSplit} disabled={busy} style={{ marginTop: 6, color: 'var(--text3)' }}>
+                <i className="ti ti-arrow-merge" /> {tx.is_split ? 'Скасувати розбиття: одна стаття' : 'Не розбивати'}</button>
+            </div>
+          ) : (
           <div className="form-group"><label>Стаття</label>
             <select className="form-input" value={f.article} onChange={e => set('article', e.target.value)}>
               <option value="">—</option>
@@ -727,7 +765,11 @@ function TxModal({ tx, grouped, accounts = [], onClose, onSaved, onLink, onOpenD
                 </optgroup>
               ))}
             </select>
+            {absAmount > 0 && <a onClick={startSplit} role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') startSplit() }}
+              style={{ fontSize: 12, color: 'var(--blue)', cursor: 'pointer', marginTop: 4, display: 'inline-block' }}>
+              <i className="ti ti-arrows-split-2" /> Розбити на кілька статей</a>}
           </div>
+          )}
           {projectArticle && (
             <div className="form-group full"><label>Проект <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(для CashFlow-звіту)</span></label>
               <select className="form-input" value={f.project_id || ''} onChange={e => set('project_id', e.target.value)}>

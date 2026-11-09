@@ -6,6 +6,7 @@
 // Лише читання; виправлення — окремими функціями нижче (кожна — після підтвердження в інтерфейсі).
 import { supabase } from './supabase'
 import { fetchAll, fetchAllIn } from './fetchAll'
+import { withSplitArticles } from './txSplits'
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100
 const code = (s) => String(s ?? '').replace(/\D/g, '')
@@ -13,11 +14,11 @@ const badCode = (s) => !code(s) || /^0+$/.test(code(s))
 
 export async function findLinkProblems(companyIds) {
   const txQ = () => {
-    const q = supabase.from('bank_transactions').select('id, date, amount, counterparty, edrpou, contractor_id, direction, article, company_id').eq('is_ignored', false)
+    const q = supabase.from('bank_transactions').select('id, is_split, date, amount, counterparty, edrpou, contractor_id, direction, article, company_id').eq('is_ignored', false)
     return companyIds?.length ? q.in('company_id', companyIds) : q
   }
   const [txs, links, contractors, { data: companies }] = await Promise.all([
-    fetchAll(txQ),
+    fetchAll(txQ).then(withSplitArticles),
     fetchAll(() => supabase.from('transaction_documents').select('id, transaction_id, document_id, amount')),
     fetchAll(() => supabase.from('contractors').select('id, name, edrpou')),
     supabase.from('companies').select('edrpou, ipn'),
