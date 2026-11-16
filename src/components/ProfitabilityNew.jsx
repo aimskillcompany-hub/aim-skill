@@ -21,21 +21,24 @@ export default function ProfitabilityNew({ data, loading, err, from, to, setFrom
   const all = data ? (showGroup ? data.invoices : data.invoices.filter(i => !grp.has(i.contractorId))) : []
   const t = data ? (showGroup ? data.totals : computeTotals(all)) : null
   const invoices = [...all].sort((a, b) => b.profit - a.profit)
+  // компанія-продавець (наша юрособа, від якої видаткова)
+  const seller = (id) => { const c = (companies || []).find(x => x.id === id); return c ? (c.short_name || c.name) : '' }
+  const manySellers = new Set(invoices.map(i => i.companyId)).size > 1
   useEffect(() => {
     if (!ctl?.registerExport) return
     const spec = { fileName: `Прибутковість ${from} — ${to}`, title: 'Прибутковість реалізації', subtitle: `${from.split('-').reverse().join('.')} — ${to.split('-').reverse().join('.')} · суми без ПДВ`, sheet: 'Прибутковість',
-      columns: [{ key: 'doc', label: 'Накладна' }, { key: 'date', label: 'Дата', date: true }, { key: 'order', label: 'Замовлення' }, { key: 'client', label: 'Клієнт' }, { key: 'cpay', label: 'Оплата клієнта' }, { key: 'sell', label: 'Реалізація', num: true }, { key: 'buy', label: 'Собівартість (FIFO)', num: true }, { key: 'profit', label: 'Прибуток', num: true }, { key: 'margin', label: 'Маржа, %', num: true }, { key: 'vat', label: 'ПДВ до сплати', num: true }, { key: 'tax', label: 'Податок 18%', num: true }, { key: 'agent', label: 'Агентські', num: true }, { key: 'apaid', label: 'Агентські сплачено' }, { key: 'net', label: 'Чистий', num: true }],
-      rows: invoices.map(i => ({ doc: i.doc_number, date: i.doc_date || '', order: i.orderNumber || '', client: i.client, cpay: payLabel(i.clientPay), apaid: i.commission > 0 ? (i.agentPaid ? 'так' : 'ні') : '', sell: i.sellSum, buy: i.buySum, profit: i.profit, margin: i.margin == null ? '' : Math.round(i.margin * 1000) / 10, vat: i.vatToPay, tax: i.tax, agent: i.commission, net: i.net })),
+      columns: [{ key: 'doc', label: 'Накладна' }, { key: 'date', label: 'Дата', date: true }, { key: 'order', label: 'Замовлення' }, { key: 'seller', label: 'Продавець' }, { key: 'client', label: 'Клієнт' }, { key: 'cpay', label: 'Оплата клієнта' }, { key: 'sell', label: 'Реалізація', num: true }, { key: 'buy', label: 'Собівартість (FIFO)', num: true }, { key: 'profit', label: 'Прибуток', num: true }, { key: 'margin', label: 'Маржа, %', num: true }, { key: 'vat', label: 'ПДВ до сплати', num: true }, { key: 'tax', label: 'Податок 18%', num: true }, { key: 'agent', label: 'Агентські', num: true }, { key: 'apaid', label: 'Агентські сплачено' }, { key: 'net', label: 'Чистий', num: true }],
+      rows: invoices.map(i => ({ doc: i.doc_number, date: i.doc_date || '', order: i.orderNumber || '', seller: seller(i.companyId), client: i.client, cpay: payLabel(i.clientPay), apaid: i.commission > 0 ? (i.agentPaid ? 'так' : 'ні') : '', sell: i.sellSum, buy: i.buySum, profit: i.profit, margin: i.margin == null ? '' : Math.round(i.margin * 1000) / 10, vat: i.vatToPay, tax: i.tax, agent: i.commission, net: i.net })),
       total: t ? { doc: 'Разом', sell: t.sellSum, buy: r2(t.sellSum - t.profit), profit: t.profit, vat: t.vatToPay, tax: t.tax, agent: t.commission, net: t.net } : null }
     // аркуш «Товари»: кожен товар накладної — закупка (FIFO) і продаж
     const items = { sheet: 'Товари',
-      columns: [{ key: 'doc', label: 'Накладна' }, { key: 'date', label: 'Дата', date: true }, { key: 'order', label: 'Замовлення' }, { key: 'client', label: 'Клієнт' }, { key: 'name', label: 'Товар' }, { key: 'qty', label: 'К-сть', num: true }, { key: 'unit', label: 'Од.' },
+      columns: [{ key: 'doc', label: 'Накладна' }, { key: 'date', label: 'Дата', date: true }, { key: 'order', label: 'Замовлення' }, { key: 'seller', label: 'Продавець' }, { key: 'client', label: 'Клієнт' }, { key: 'name', label: 'Товар' }, { key: 'qty', label: 'К-сть', num: true }, { key: 'unit', label: 'Од.' },
         { key: 'buyUnit', label: 'Собівартість, ціна', num: true }, { key: 'buySum', label: 'Собівартість, сума', num: true }, { key: 'sellUnit', label: 'Продаж, ціна', num: true }, { key: 'sellSum', label: 'Продаж, сума', num: true }, { key: 'vat', label: 'ПДВ до сплати', num: true }, { key: 'profit', label: 'Прибуток', num: true }, { key: 'margin', label: 'Маржа, %', num: true }],
-      rows: invoices.flatMap(i => (i.items || []).map(x => ({ doc: i.doc_number, date: i.doc_date || '', order: i.orderNumber || '', client: i.client, name: x.name, qty: x.qty, unit: x.unit,
+      rows: invoices.flatMap(i => (i.items || []).map(x => ({ doc: i.doc_number, date: i.doc_date || '', order: i.orderNumber || '', seller: seller(i.companyId), client: i.client, name: x.name, qty: x.qty, unit: x.unit,
         buyUnit: x.buyUnit, buySum: x.buySum, sellUnit: x.sellUnit, sellSum: x.sellSum, vat: x.vatToPay, profit: x.profit, margin: x.margin == null ? '' : Math.round(x.margin * 1000) / 10 }))),
       total: t ? { doc: 'Разом', buySum: r2(t.sellSum - t.profit), sellSum: t.sellSum, vat: t.vatToPay, profit: t.profit } : null }
     ctl.registerExport(data ? { xlsx: () => exportReportXlsx({ ...spec, sheets: [items] }), pdf: () => exportReportPdf(spec) } : null)
-  }, [data, showGroup, ctl?.registerExport])
+  }, [data, showGroup, ctl?.registerExport, companies])
   const noAgents = t && t.count > 0 && invoices.every(i => !(Number(i.percent) > 0))
   // Помилка 12: агентські, ухвалені в протоколах за цей період (рішення 098; для не-адміна RLS віддає порожньо)
   const [protoAgent, setProtoAgent] = useState(null)
@@ -87,7 +90,7 @@ export default function ProfitabilityNew({ data, loading, err, from, to, setFrom
               <div className="cfn-report-head"><h2 className="rpt-h3">Видаткові накладні · від найприбутковішої<InfoTip label="Як рахується прибутковість"><b>Прибуток</b> = реалізація − закупка (FIFO).<br /><b>Маржа</b> = прибуток ÷ реалізація.<br /><b>Податок на прибуток</b> = прибуток × 18% (юрособа-платник ПДВ; ФОП — 0).<br /><b>Агентські</b> = (прибуток − податок 18%) × % — від чистого прибутку (при збитку не нараховуються).<br /><b>Чистий</b> = прибуток − податок − агентські.<br /><b>ПДВ до сплати</b> = ПДВ з реалізації − вхідний ПДВ (кредит лише по закупках у платника ПДВ).</InfoTip></h2><span className="rpt-muted rpt-note">усі суми без ПДВ</span></div>
               <div className="tbl-wrap rpt-table prf-table"><table>
                 <thead><tr><th>Накладна</th><th>Клієнт</th><th className="r">Реалізація</th><th className="r">Прибуток</th><th className="c-scale">Маржа</th><th className="r">ПДВ до сплати</th><th className="r">Агент, % · сплата</th><th className="r">Чистий</th></tr></thead>
-                <tbody>{invoices.map(inv => <Row key={`${inv.id}:${inv.percent}`} inv={inv} group={grp.has(inv.contractorId)} userId={userId} onChanged={onChanged} />)}</tbody>
+                <tbody>{invoices.map(inv => <Row key={`${inv.id}:${inv.percent}`} inv={inv} seller={manySellers ? seller(inv.companyId) : ''} group={grp.has(inv.contractorId)} userId={userId} onChanged={onChanged} />)}</tbody>
                 <tfoot><tr><td>Разом · {t.count} накл.</td><td /><td className="r rpt-num">{n0(t.sellSum)}</td><td className="r rpt-num">{n0(t.profit)}</td><td className="c-scale r">{pct(t.margin)}</td><td className="r rpt-num">{n0(t.vatToPay)}</td><td className="r rpt-num">{t.commission ? `−${n0(t.commission)}` : ''}</td><td className="r rpt-num prf-net">{n0(t.net)}</td></tr></tfoot>
               </table></div>
             </>}
@@ -97,7 +100,7 @@ export default function ProfitabilityNew({ data, loading, err, from, to, setFrom
   )
 }
 
-function Row({ inv, group, userId, onChanged }) {
+function Row({ inv, group, seller, userId, onChanged }) {
   const toast = useToast()
   const [open, setOpen] = useState(false)
   const [pctVal, setPctVal] = useState(inv.percent ? String(inv.percent) : '')
@@ -135,6 +138,7 @@ function Row({ inv, group, userId, onChanged }) {
         <td className="c-name"><b className="prf-doc">{inv.doc_number}</b><small className="rpt-muted">{d2(inv.doc_date)}
           {inv.orderId && <> · <a className="prf-ord" href={`#/orders/${inv.orderId}`} onClick={e => e.stopPropagation()} title="Відкрити замовлення">зам. {inv.orderNumber || '—'}</a></>}</small></td>
         <td className="c-client">{inv.client}{group && <span className="grp-chip">група</span>}
+          {seller && <small className="prf-seller" title="Компанія-продавець">від {seller}</small>}
           {cp && <span className={`prf-pay is-${cp.state}`} title={cp.state === 'none' ? 'Оплат, прив\'язаних до накладної, немає' : `Оплачено ${n0(cp.paid)} з ${n0(cp.amount)} ₴${cp.last ? ` · остання ${d2(cp.last)}` : ''}`}>{payLabel(cp)}</span>}</td>
         <td className="r rpt-num c-real">{n0(inv.sellSum)}</td>
         <td className={`r rpt-num c-profit${inv.profit < 0 ? ' rpt-late' : ''}`}><b>{n0(inv.profit)}</b></td>
