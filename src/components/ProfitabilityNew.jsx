@@ -144,7 +144,7 @@ function Row({ inv, group, seller, userId, onChanged }) {
         <td className="r rpt-num c-real">{n0(inv.sellSum)}</td>
         <td className={`r rpt-num c-profit${inv.profit < 0 ? ' rpt-late' : ''}`}><b>{n0(inv.profit)}</b></td>
         <td className="c-scale"><span className="mgn-scale"><span className={`mgn-track prf-track ${tone}`}><i style={{ width: `${m == null ? 0 : Math.max(2, Math.min(1, Math.abs(m) / 0.35) * 100)}%` }} /></span><b className={tone ? 'is-warn' : ''}>{pct(m)}</b></span></td>
-        <td className="r rpt-num rpt-muted c-vat">{n0(inv.vatToPay)}</td>
+        <td className="r rpt-num rpt-muted c-vat" title={inv.vatFree ? 'Операція звільнена від ПДВ: ПДВ з продажу 0, податковий кредит від закупівлі лишається (мінус)' : undefined}>{n0(inv.vatToPay)}{inv.vatFree && <small className="prf-vatfree"> без ПДВ</small>}</td>
         <td className="r c-agent" onClick={e => e.stopPropagation()}>
           {loss ? <span className="rpt-muted">збиток</span>
             : <label className="prf-pct" title={inv.orderId ? `% замовлення ${inv.orderNumber || ''} — зміна оновить його всюди` : 'Накладна без замовлення — % лише для цього звіту'}><input value={pctVal} inputMode="decimal" aria-label={`Агент, % — накладна ${inv.doc_number}`} placeholder="—"
