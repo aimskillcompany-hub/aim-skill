@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { qc, withCompany } from '../lib/companyScope'
@@ -14,6 +14,7 @@ import { useNewUi } from '../lib/uiPrefs'
 import { Button, Menu, Switch, Segmented, InfoTip } from './ui'
 import { formatAmount } from '../utils/format'
 import './DocEditNew.css'
+const DocGenModal = lazy(() => import('./DocGenModal'))
 
 export const dirFromType = (key) => {
   const t = getDocType(key)
@@ -78,6 +79,25 @@ const defaultForm = (fileName = '', posted = true) => ({
 // перегляд/редагування/видалення (existingDoc, autoOcr=false). Прев'ю файлу зліва, поля справа.
 export default function DocModal({ user, existingDoc, autoOcr = true, orderId, onClose, onSaved }) {
   const [files, setFiles] = useState([])
+  // «Створити акт за рахунком» (рішення власника 16.11.2026): наш рахунок клієнту → акт наданих послуг
+  // з тими ж позиціями, клієнтом, замовленням і посиланням на рахунок; перед збереженням — перевірка в редакторі
+  const [actGen, setActGen] = useState(null)
+  const isOurInvoice = !!existingDoc && existingDoc.type === 'invoice' && (existingDoc.doc_role === 'outgoing' || (!existingDoc.doc_role && existingDoc.direction === 'receivable'))
+  const makeAct = async () => {
+    // у списку документів немає order_id — дочитуємо картку рахунку
+    const { data: full } = await qc('documents').select('id, doc_number, doc_date, contractor_id, order_id, amount, vat_amount, ocr_data').eq('id', existingDoc.id).maybeSingle()
+    const d = { ...existingDoc, ...(full || {}) }
+    const { data: c } = d.contractor_id ? await supabase.from('contractors').select('*').eq('id', d.contractor_id).maybeSingle() : { data: null }
+    const src = Array.isArray(d.ocr_data?.items) && d.ocr_data.items.length ? d.ocr_data.items : []
+    const n = (v) => Number(v) || 0
+    const items = src.length ? src.map(it => {
+      const qty = n(it.quantity) || 1, vat = it.vatRate == null ? 20 : n(it.vatRate)
+      const unit = it.unitPrice != null ? n(it.unitPrice) : n(it.amount) / qty
+      return { name: it.name || 'Послуги', quantity: qty, unit: it.unit && it.unit !== 'грн' ? it.unit : 'посл.', unitPrice: Math.round(unit * 100) / 100, vatRate: vat, amount: '', productId: null }
+    }) : [{ name: `Послуги згідно рахунку № ${d.doc_number || ''}`.trim(), quantity: 1, unit: 'посл.', unitPrice: Math.round((n(d.amount) - n(d.vat_amount)) * 100) / 100, vatRate: n(d.vat_amount) > 0 ? 20 : 0, amount: '', productId: null }]
+    setActGen({ contractor: c || { id: d.contractor_id, name: '' }, orderId: d.order_id || null,
+      editDoc: { doc_type: 'serviceAct', items, _fromInvoice: d.doc_number || '', invoice_ref_date: d.doc_date || '', _parentDocId: d.id } })
+  }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [form, setForm] = useState(null)
@@ -474,6 +494,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
             {!existingDoc && form && <Button variant="secondary" onClick={() => setForm(null)} className="den-lg">Інший файл</Button>}
             {existingDoc && <Menu trigger={<Button variant="secondary" iconOnly icon="ti-dots" aria-label="Інші дії" />} items={[
               { label: autoOcr ? 'Розпізнати знову' : 'Розпізнати', icon: 'ti-scan', onClick: () => { setForm(null); recognizeExisting(true) } },
+              ...(isOurInvoice ? [{ label: 'Створити акт за рахунком', icon: 'ti-file-check', onClick: makeAct }] : []),
               ...(previewUrl ? [{ label: 'Відкрити файл у новій вкладці', icon: 'ti-external-link', onClick: () => window.open(previewUrl, '_blank') }] : []),
               { divider: true },
               { label: 'Видалити документ', icon: 'ti-trash', danger: true, onClick: del },
@@ -610,6 +631,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
                     <span><b>Замовлення №{linked.order.order_number}</b><small>відкрити картку</small></span><i className="ti ti-chevron-right" aria-hidden="true" /></button>}
                 </section>
               )}
+              {isOurInvoice && <Button variant="secondary" icon="ti-file-check" onClick={makeAct}>Створити акт за рахунком</Button>}
               {existingDoc && <button type="button" className="den-del" onClick={del} disabled={busy}>Видалити документ</button>}
             </div>
           </div>
@@ -619,7 +641,13 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
     )
   }
 
-  if (newUi) return renderNew()
+  const actModal = actGen && (
+    <Suspense fallback={null}>
+      <DocGenModal contractor={actGen.contractor} userId={user?.id} orderId={actGen.orderId || undefined} editDoc={actGen.editDoc}
+        onClose={() => setActGen(null)} onSaved={() => { setActGen(null); onSaved?.() }} />
+    </Suspense>
+  )
+  if (newUi) return <>{renderNew()}{actModal}</>
 
   return (
     <>
@@ -874,6 +902,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
                       <i className={`ti ${verified ? 'ti-checkbox' : 'ti-square'}`} /> {verified ? 'Перевірено' : 'Позначити перевіреним'}
                     </button>
                   )}
+                  {isOurInvoice && <button className="btn" onClick={makeAct}><i className="ti ti-file-check" /> Створити акт за рахунком</button>}
                   {existingDoc && <button className="btn" onClick={del} disabled={busy} style={{ color: 'var(--red)' }}><i className="ti ti-trash" /> Видалити</button>}
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -888,6 +917,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
         )}
       </div>
     </div>
+    {actModal}
     </>
   )
 }
