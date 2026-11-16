@@ -41,7 +41,7 @@ function useTileFigures(companies, active) {
       try {
         const c = active || companies[0]
         const r = await computeProfitability(c.id, c.is_vat_payer !== false, from, today)
-        set('profit', { value: r.totals.net, sub: `${MONTHS[Number(today.slice(5, 7)) - 1]}: ${r.totals.count} ${plural(r.totals.count, ['накладна', 'накладні', 'накладних'])}${r.totals.margin != null ? ` · маржа ${(r.totals.margin * 100).toFixed(1).replace('.', ',')}%` : ''}` })
+        set('profit', { value: r.totals.net, sub: `${MONTHS[Number(today.slice(5, 7)) - 1]}: ${r.totals.count} ${plural(r.totals.count, ['документ', 'документи', 'документів'])}${r.totals.margin != null ? ` · маржа ${(r.totals.margin * 100).toFixed(1).replace('.', ',')}%` : ''}` })
       } catch { set('profit', { error: true }) }
       try {
         const list = await listOutgoingDocs()

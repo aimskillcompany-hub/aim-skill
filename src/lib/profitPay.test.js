@@ -33,3 +33,44 @@ describe('Агентські від чистого прибутку', () => {
     expect(c.tax).toBe(0); expect(c.commission).toBe(0); expect(c.net).toBe(-500)
   })
 })
+
+describe('Акти наданих послуг у прибутковості', () => {
+  it('собівартість акту — вхідні акти замовлення, пропорційно', async () => {
+    vi.resetModules()
+    const rows = {
+      documents: [
+        { id: 'a1', type: 'serviceAct', doc_role: 'outgoing', doc_number: 'АКТ-1', doc_date: '2026-10-10', contractor_id: 'c1', order_id: 'o1', amount: 120000, vat_amount: 20000 },
+        { id: 'a2', type: 'serviceAct', doc_role: 'outgoing', doc_number: 'АКТ-2', doc_date: '2026-10-12', contractor_id: 'c1', order_id: 'o1', amount: 60000, vat_amount: 10000 },
+        { id: 'in1', type: 'serviceAct', doc_role: 'incoming', doc_number: 'П-1', doc_date: '2026-10-05', contractor_id: 's1', order_id: 'o1', amount: 72000, vat_amount: 12000 },
+        { id: 'a3', type: 'serviceAct', doc_role: 'outgoing', doc_number: 'АКТ-3', doc_date: '2026-10-15', contractor_id: 'c1', order_id: null, amount: 12000, vat_amount: 2000 },
+      ],
+    }
+    const q = (table) => {
+      let data = (rows[table] || []).slice()
+      const api = {
+        select: () => api, eq: (k, v) => { data = data.filter(r => r[k] === v); return api }, in: (k, vs) => { data = data.filter(r => vs.includes(r[k])); return api },
+        gte: (k, v) => { data = data.filter(r => (r[k] || '') >= v); return api }, lte: (k, v) => { data = data.filter(r => (r[k] || '') <= v); return api },
+        not: () => api, order: () => api, range: () => api, limit: () => api,
+        then: (res) => res({ data, error: null }),
+      }
+      return api
+    }
+    vi.doMock('./supabase', () => ({ supabase: { from: q } }))
+    vi.doMock('./companyScope', () => ({ qc: q, setReportScope: () => {}, runExclusive: (f) => f() }))
+    vi.doMock('./companyConfig', () => ({ clearCompanyCache: () => {} }))
+    vi.doMock('./fetchAll', () => ({
+      fetchAll: async (mk) => (await mk()).data || [],
+      fetchAllIn: async (mk, col, ids) => ((await mk()).data || []).filter(r => ids.includes(r[col])),
+    }))
+    vi.doMock('./debts', () => ({ loadDocPayments: async () => [] }))
+    const { computeProfitability } = await import('./profitability')
+    const r = await computeProfitability('co', true, '2026-10-01', '2026-10-31')
+    const by = Object.fromEntries(r.invoices.map(i => [i.doc_number, i]))
+    expect(Object.keys(by).sort()).toEqual(['АКТ-1', 'АКТ-2', 'АКТ-3']) // вхідний акт — не реалізація
+    expect(by['АКТ-1'].kind).toBe('act')
+    expect(by['АКТ-1'].sellSum).toBe(100000); expect(by['АКТ-1'].buySum).toBe(40000)   // 60 000 × 100/150
+    expect(by['АКТ-2'].buySum).toBe(20000)
+    expect(by['АКТ-1'].vatToPay).toBe(20000 - 8000)
+    expect(by['АКТ-3'].buySum).toBe(0); expect(by['АКТ-3'].costSource).toBe(null)
+  })
+})
