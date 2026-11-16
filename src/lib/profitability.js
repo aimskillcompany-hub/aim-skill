@@ -144,10 +144,11 @@ export async function computeProfitability(companyId, companyIsVat, from, to) {
           }
         }).sort((a, b) => a.name.localeCompare(b.name))
 
-        // Операція без ПДВ (звільнена — напр. ПРООН, ПЗ): ПДВ у документі 0 → ПДВ до сплати 0 (рішення власника 16.11.2026);
-        // вхідний ПДВ під такий продаж до кредиту не йде. Ставку компанії не нав'язуємо документу.
+        // Операція, звільнена від ПДВ (напр. ПРООН): ПДВ у документі 0 → ПДВ з продажу 0, а податковий кредит
+        // від закупівлі лишається (рішення власника 16.11.2026: купив 100 з ПДВ = 80 + 20 кредиту, продав 120 без ПДВ →
+        // прибуток 40, ПДВ до сплати −20). Тобто «ПДВ до сплати» = −вхідний ПДВ.
         const docVatFree = companyIsVat && Number(d.amount) > 0 && Math.abs(Number(d.vat_amount) || 0) < 0.005
-        if (docVatFree) items.forEach(x => { x.vatToPay = 0 })
+        if (docVatFree) items.forEach(x => { x.vatToPay = r2(x.vatToPay - x.sellSum * VAT) })
         const sellSum = r2(items.reduce((s, x) => s + x.sellSum, 0))
         const buySum = r2(items.reduce((s, x) => s + x.buySum, 0))
         const profit = r2(items.reduce((s, x) => s + x.profit, 0))

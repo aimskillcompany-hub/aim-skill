@@ -76,12 +76,14 @@ describe('Акти наданих послуг у прибутковості', (
 })
 
 describe('Операції без ПДВ', () => {
-  it('документ із ПДВ 0 → ПДВ до сплати 0', async () => {
+  it('звільнений від ПДВ: ПДВ з продажу 0, кредит від закупівлі лишається', async () => {
     vi.resetModules()
     const rows = {
       documents: [{ id: 'w1', type: 'waybill', doc_number: '3', doc_date: '2026-02-24', contractor_id: 'c1', order_id: null, amount: 1000, vat_amount: 0 },
-                  { id: 'w2', type: 'waybill', doc_number: '4', doc_date: '2026-02-25', contractor_id: 'c1', order_id: null, amount: 1200, vat_amount: 200 }],
-      stock_movements: [{ id: 'm1', document_id: 'w1', product_id: 'p', quantity: 1, price: 1000, cost_price: 600, type: 'out' },
+                  { id: 'w2', type: 'waybill', doc_number: '4', doc_date: '2026-02-25', contractor_id: 'c1', order_id: null, amount: 1200, vat_amount: 200 },
+                  { id: 'in1', type: 'incomingWaybill', doc_number: 'П1', doc_date: '2026-01-10', contractor_id: 's1', amount: 1440, vat_amount: 240 }],
+      stock_movements: [{ id: 'm0', document_id: 'in1', product_id: 'p', quantity: 2, price: 600, cost_price: 600, type: 'in' },
+                        { id: 'm1', document_id: 'w1', product_id: 'p', quantity: 1, price: 1000, cost_price: 600, type: 'out' },
                         { id: 'm2', document_id: 'w2', product_id: 'p', quantity: 1, price: 1000, cost_price: 600, type: 'out' }],
       products: [{ id: 'p', name: 'Ноутбук', unit: 'шт', buy_price: 600 }],
     }
@@ -100,8 +102,8 @@ describe('Операції без ПДВ', () => {
     const { computeProfitability } = await import('./profitability')
     const r = await computeProfitability('co', true, '2026-02-01', '2026-02-28')
     const by = Object.fromEntries(r.invoices.map(i => [i.doc_number, i]))
-    expect(by['3'].vatFree).toBe(true); expect(by['3'].vatToPay).toBe(0)
-    expect(by['4'].vatFree).toBe(false); expect(by['4'].vatToPay).toBe(200)
+    expect(by['3'].vatFree).toBe(true); expect(by['3'].vatToPay).toBe(-120)   // 0 − кредит 600×20%
+    expect(by['4'].vatFree).toBe(false); expect(by['4'].vatToPay).toBe(80)    // 200 − 120
     expect(by['3'].profit).toBe(400)
   })
 })
