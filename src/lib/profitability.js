@@ -149,7 +149,7 @@ export async function computeProfitability(companyId, companyIsVat, from, to) {
         const percent = fromOrder ? fromOrder.percent : ag ? Number(ag.percent) || 0 : 0
         const { tax, commission, net } = agentCalc(profit, percent, companyIsVat)
         return {
-          id: d.id, doc_number: d.doc_number || '(без №)', doc_date: d.doc_date,
+          id: d.id, companyId, doc_number: d.doc_number || '(без №)', doc_date: d.doc_date,
           client: cName[d.contractor_id] || 'Без контрагента', contractorId: d.contractor_id || null,
           items, sellSum, buySum, profit, vatToPay,
           margin: sellSum > 0 ? profit / sellSum : null,
