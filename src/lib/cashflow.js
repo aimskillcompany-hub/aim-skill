@@ -44,7 +44,11 @@ export async function computeCashFlow(year, month, { range = null } = {}) {
   // тоді «залишок на кінець» збігається з «Банк/Каса».
   const accById = Object.fromEntries((accs || []).map(a => [a.id, a]))
   const beforeOpening = (t) => { const acc = accById[t.account_id]; return !!(acc?.opening_balance_date && t.date && t.date < acc.opening_balance_date) }
-  let openingCash = (accs || []).reduce((s, a) => s + (!a.opening_balance_date || a.opening_balance_date <= to ? (Number(a.opening_balance) || 0) : 0), 0)
+  // Початковий залишок рахунку — з його дати: до початку періоду (або без дати) → у залишок на початок;
+  // усередині періоду → додається в колонці своєї дати (раніше потрапляв на самий початок періоду, і в
+  // багаторічному періоді залишок 01.01.2026 «з'являвся» вже в січні 2025); після періоду → не враховується.
+  const midOpenings = (accs || []).filter(a => a.opening_balance_date && a.opening_balance_date > from && a.opening_balance_date <= to && Number(a.opening_balance))
+  let openingCash = (accs || []).reduce((s, a) => s + (!a.opening_balance_date || a.opening_balance_date <= from ? (Number(a.opening_balance) || 0) : 0), 0)
   ;(prevTxs || []).forEach(t => { if (!beforeOpening(t)) openingCash += Number(t.amount) || 0 })
   const txsAll = await withSplits(txsAllRaw || [])   // розбиті операції — частинами (міграція 110)
   const txs = txsAll.filter(t => !beforeOpening(t))
@@ -82,14 +86,18 @@ export async function computeCashFlow(year, month, { range = null } = {}) {
 
   // Чистий потік і залишок (накопичувальний) по колонках
   const netTotal = cols.reduce((s, c) => s + (netByCol[c.key] || 0), 0)
+  const openingByCol = {}
+  midOpenings.forEach(a => { const b = bucketOf(a.opening_balance_date); openingByCol[b] = (openingByCol[b] || 0) + (Number(a.opening_balance) || 0) })
+  const midOpeningTotal = midOpenings.reduce((s, a) => s + (Number(a.opening_balance) || 0), 0)
   let running = openingCash
   const closingByCol = {}
-  cols.forEach(c => { running += (netByCol[c.key] || 0); closingByCol[c.key] = running })
+  cols.forEach(c => { running += (netByCol[c.key] || 0) + (openingByCol[c.key] || 0); closingByCol[c.key] = running })
 
   return {
     cols, inflow: inSec, outflow: outSec,
     netByCol, netTotal,
-    openingCash, closingCash: openingCash + netTotal, closingByCol,
+    openingCash, closingCash: openingCash + netTotal + midOpeningTotal, closingByCol,
+    openingByCol, midOpeningTotal,   // початкові залишки рахунків, відкритих усередині періоду
   }
 }
 

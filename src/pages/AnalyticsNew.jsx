@@ -133,7 +133,7 @@ export function CashFlowNew({ d, debt, year, month, setMonth, openDrill, range =
           <svg className="cfn-spark" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
             <path d={area} className="cfn-spark-area" /><path d={line} className="cfn-spark-line" vectorEffect="non-scaling-stroke" />
           </svg>
-          <div className="cfn-muted cfn-sm">Старт періоду: {formatAmount(d.openingCash, { decimals: 0 })} ₴</div>
+          <div className="cfn-muted cfn-sm">Старт періоду: {formatAmount(d.openingCash, { decimals: 0 })} ₴{d.midOpeningTotal ? ` · + початкові залишки нових рахунків ${formatAmount(d.midOpeningTotal, { decimals: 0 })} ₴` : ''}</div>
         </section>
 
         <div className="cfn-side">
