@@ -45,8 +45,8 @@ export default function PayablesReport({ showGroup = true, ctl = null } = {}) {
   const g = useMemo(() => data ? groupPayables(scoped) : null, [data, scoped])
   useEffect(() => {
     if (!ctl?.registerExport) return
-    const cols = [{ key: 'name', label: 'Постачальник' }, { key: 'doc', label: 'Документ' }, { key: 'date', label: 'Дата' }, { key: 'sum', label: 'Борг, з ПДВ', num: true }, { key: 'due', label: 'Строк оплати' }, { key: 'over', label: 'Прострочка, дн.', num: true }]
-    const rows = g ? g.contractors.flatMap(c => c.docs.map(d => ({ name: c.name, doc: `${getDocType(d.type)?.label || 'Документ'} № ${d.doc_number}`, date: dmy(d.doc_date), sum: d.outstanding, due: dmy(d.dueDate), over: d.overdueDays > 0 ? d.overdueDays : '' }))) : []
+    const cols = [{ key: 'name', label: 'Постачальник' }, { key: 'doc', label: 'Документ' }, { key: 'date', label: 'Дата', date: true }, { key: 'sum', label: 'Борг, з ПДВ', num: true }, { key: 'due', label: 'Строк оплати', date: true }, { key: 'over', label: 'Прострочка, дн.', num: true }]
+    const rows = g ? g.contractors.flatMap(c => c.docs.map(d => ({ name: c.name, doc: `${getDocType(d.type)?.label || 'Документ'} № ${d.doc_number}`, date: d.doc_date || '', sum: d.outstanding, due: d.dueDate || '', over: d.overdueDays > 0 ? d.overdueDays : '' }))) : []
     const spec = { fileName: `Кредиторка ${data?.asOf || ''}`, title: 'Кредиторка — ми винні', subtitle: `станом на ${dmy(data?.asOf)}`, sheet: 'Кредиторка', columns: cols, rows, total: g ? { name: 'Разом', sum: g.summary.total } : null }
     ctl.registerExport(g ? { xlsx: () => exportReportXlsx(spec), pdf: () => exportReportPdf(spec) } : null)
   }, [g, ctl?.registerExport])
