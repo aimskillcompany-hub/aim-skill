@@ -9,7 +9,7 @@ const TX = [
   { id: 't5', account_id: 'a', amount: 999, article: 'Продаж', date: '2026-11-20' },    // після періоду
 ]
 const q = (table) => {
-  let data = table === 'accounts' ? [{ id: 'a', opening_balance: 100, opening_balance_date: null }] : TX.slice()
+  let data = table === 'accounts' ? [{ id: 'a', opening_balance: 100, opening_balance_date: null }, { id: 'b', opening_balance: 50000, opening_balance_date: '2026-11-01' }] : TX.slice()
   const api = {
     select: () => api, eq: () => api, order: () => api,
     gte: (k, v) => { data = data.filter(r => r[k] >= v); return api }, lte: (k, v) => { data = data.filter(r => r[k] <= v); return api },
@@ -27,13 +27,19 @@ vi.mock('./txSplits', () => ({ withSplits: async (l) => l }))
 import { computeCashFlow } from './cashflow'
 
 describe('Cash Flow за довільний період', () => {
+  it('січень до відкриття рахунку — залишок без нього', async () => {
+    const d = await computeCashFlow(2026, null, { range: { from: '2025-01-01', to: '2025-01-31' } })
+    expect(d.openingCash).toBe(100); expect(d.closingCash).toBe(100)
+  })
   it('01.10–10.11: колонки-місяці, залишки', async () => {
     const d = await computeCashFlow(2026, null, { range: { from: '2026-10-01', to: '2026-11-10' } })
     expect(d.cols.map(c => c.key)).toEqual(['2026-10', '2026-11'])
-    expect(d.openingCash).toBe(1100)
+    expect(d.openingCash).toBe(1100)              // рахунок «b» (відкрито 01.11) — не на початку
     expect(d.inflow.total).toBe(5700); expect(d.outflow.total).toBe(2000)
     expect(d.netByCol['2026-10']).toBe(3000); expect(d.netByCol['2026-11']).toBe(700)
-    expect(d.closingCash).toBe(4800)
+    expect(d.closingByCol['2026-10']).toBe(4100)  // жовтень — без залишку нового рахунку
+    expect(d.closingByCol['2026-11']).toBe(54800) // листопад — з ним
+    expect(d.closingCash).toBe(54800)
   })
   it('до 31 дня — колонки-дні', async () => {
     const d = await computeCashFlow(2026, null, { range: { from: '2026-10-01', to: '2026-10-15' } })

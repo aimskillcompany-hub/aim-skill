@@ -140,6 +140,7 @@ export function CashFlowView({ fixedYear = null, fixedMonth = null } = {}) {
     secToAoa('ВИТРАТИ', d.outflow, -1)
     aoa.push(['Чистий грошовий потік', ...d.cols.map(c => d.netByCol[c.key] || ''), d.netTotal])
     aoa.push(['Залишок на початок', ...d.cols.map(() => ''), d.openingCash])
+    if (d.midOpeningTotal) aoa.push(['Початкові залишки рахунків (відкритих у періоді)', ...d.cols.map(c => d.openingByCol?.[c.key] || ''), d.midOpeningTotal])
     aoa.push(['Залишок на кінець', ...d.cols.map(c => d.closingByCol[c.key]), d.closingCash])
     const ws = XLSX.utils.aoa_to_sheet(aoa)
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Cash Flow')
