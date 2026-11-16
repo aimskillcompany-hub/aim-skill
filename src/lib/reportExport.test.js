@@ -20,4 +20,10 @@ describe('Excel звітів: дата — справжня дата', () => {
     expect(c.w).toBe('27.10.2026')               // формат ДД.ММ.РРРР
     expect(back.Sheets[back.SheetNames[0]].B3?.v ?? '').toBe('')
   })
+  it('додатковий аркуш «Товари»', () => {
+    exportReportXlsx({ fileName: 't', sheet: 'Прибутковість', columns: [{ key: 'doc', label: 'Накладна' }], rows: [{ doc: 'ВН-1' }],
+      sheets: [{ sheet: 'Товари', columns: [{ key: 'name', label: 'Товар' }, { key: 'buySum', label: 'Собівартість, сума', num: true }], rows: [{ name: 'Ноутбук', buySum: 25000 }] }] })
+    expect(written.wb.SheetNames).toEqual(['Прибутковість', 'Товари'])
+    expect(written.wb.Sheets['Товари'].B2.v).toBe(25000)
+  })
 })
