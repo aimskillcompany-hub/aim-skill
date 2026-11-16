@@ -4,7 +4,7 @@
 // Надходження/витрати групуються по статтях; колонки = місяці (рік) або дні (місяць).
 import { qc } from './companyScope'
 import { supabase } from './supabase'
-import { periodRange } from './pl'
+import { periodRange, rangeCols, rangeBucket, rangeKeyBounds } from './pl'
 import { fetchAllData } from './fetchAll'
 import { withSplits } from './txSplits'
 
@@ -28,8 +28,9 @@ const MONTHS = ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Л�
 const monthEnd = (y, m) => new Date(y, m, 0).getDate()
 const pad = (n) => String(n).padStart(2, '0')
 
-export async function computeCashFlow(year, month) {
-  const { from, to } = periodRange(year, month)
+// opts.range = { from, to } — довільний період «з … по» (колонки: дні до 31 дня, інакше місяці)
+export async function computeCashFlow(year, month, { range = null } = {}) {
+  const { from, to } = range || periodRange(year, month)
 
   const [{ data: txsAllRaw }, { data: accs }, { data: prevTxs }] = await Promise.all([
     fetchAllData(() => qc('bank_transactions').select('id, is_split, account_id, amount, article, direction, date').eq('is_ignored', false).gte('date', from).lte('date', to)),
@@ -48,10 +49,10 @@ export async function computeCashFlow(year, month) {
   const txsAll = await withSplits(txsAllRaw || [])   // розбиті операції — частинами (міграція 110)
   const txs = txsAll.filter(t => !beforeOpening(t))
 
-  const cols = month
+  const cols = range ? rangeCols(from, to) : month
     ? Array.from({ length: monthEnd(year, month) }, (_, i) => ({ key: String(i + 1), label: String(i + 1) }))
     : Array.from({ length: 12 }, (_, i) => ({ key: String(i + 1), label: MONTHS[i] }))
-  const bucketOf = (d) => month ? String(Number(d.slice(8, 10))) : String(Number(d.slice(5, 7)))
+  const bucketOf = range ? rangeBucket(from, to) : (d) => month ? String(Number(d.slice(8, 10))) : String(Number(d.slice(5, 7)))
 
   // Надходження (amount ≥ 0) і витрати (amount < 0) по статтях, по колонках
   const inflow = {}, outflow = {}
@@ -94,10 +95,11 @@ export async function computeCashFlow(year, month) {
 
 // Drill-down: транзакції, з яких складається клітинка Cash Flow.
 // opts: { bucketKey ('total'|'1'|'2'…), article (назва|'Без статті'|null=всі), sign ('in'|'out'|null=всі) }
-export async function cashFlowDrill(year, month, { bucketKey, article, sign } = {}) {
-  const base = periodRange(year, month)
+export async function cashFlowDrill(year, month, { bucketKey, article, sign, range = null } = {}) {
+  const base = range || periodRange(year, month)
   let from, to
-  if (!bucketKey || bucketKey === 'total') { from = base.from; to = base.to }
+  if (range) ({ from, to } = rangeKeyBounds(range, bucketKey || 'total'))
+  else if (!bucketKey || bucketKey === 'total') { from = base.from; to = base.to }
   else if (month) { const d = `${year}-${pad(month)}-${pad(Number(bucketKey))}`; from = d; to = d }
   else { const m = Number(bucketKey); from = `${year}-${pad(m)}-01`; to = `${year}-${pad(m)}-${pad(monthEnd(year, m))}` }
 

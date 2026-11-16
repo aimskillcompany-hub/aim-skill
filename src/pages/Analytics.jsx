@@ -109,16 +109,24 @@ export function CashFlowView({ fixedYear = null, fixedMonth = null } = {}) {
   const [debt, setDebt] = useState(null)   // дебіторка/кредиторка (нам винні / ми винні)
   const [drill, setDrill] = useState(null)
   const [aging, setAging] = useState(null) // { title, data, color } для модалки боргів
+  // довільний період «з … по …» (рішення власника 16.11.2026)
+  const [range, setRange] = useState(null)
+  const [rf, setRf] = useState({ from: '', to: '' })
+  const applyRange = () => {
+    if (!rf.from || !rf.to) return
+    const [a, b] = rf.from <= rf.to ? [rf.from, rf.to] : [rf.to, rf.from]
+    setRf({ from: a, to: b }); setRange({ from: a, to: b })
+  }
 
-  const reload = () => { setD(null); computeCashFlow(year, month || null).then(setD) }
-  useEffect(() => { reload() }, [year, month])
+  const reload = () => { setD(null); computeCashFlow(year, month || null, { range }).then(setD) }
+  useEffect(() => { reload() }, [year, month, range])
   // Дебіторка/кредиторка (computeAging) — поточний борг по всій історії, НЕ прив'язаний до періоду.
   // У режимі закриття (locked) не показуємо — правильний борг станом на кінець періоду є у звіті «Баланс».
   useEffect(() => { if (!locked) computeAging().then(setDebt) }, [locked])
 
   // Відкрити перелік транзакцій за клітинкою (стаття × період × напрям руху)
   const openDrill = (article, bucketKey, sign, name, colLabel) =>
-    setDrill({ year, month: month || null, article, bucketKey, sign, title: `${name} · ${colLabel}` })
+    setDrill({ year, month: month || null, range, article, bucketKey, sign, title: `${name} · ${colLabel}` })
 
   const exportXlsx = () => {
     if (!d) return
@@ -135,7 +143,7 @@ export function CashFlowView({ fixedYear = null, fixedMonth = null } = {}) {
     aoa.push(['Залишок на кінець', ...d.cols.map(c => d.closingByCol[c.key]), d.closingCash])
     const ws = XLSX.utils.aoa_to_sheet(aoa)
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Cash Flow')
-    XLSX.writeFile(wb, `CashFlow_${year}${month ? '-' + String(month).padStart(2, '0') : ''}.xlsx`)
+    XLSX.writeFile(wb, range ? `CashFlow_${range.from}_${range.to}.xlsx` : `CashFlow_${year}${month ? '-' + String(month).padStart(2, '0') : ''}.xlsx`)
   }
 
   const modals = <>
@@ -146,11 +154,18 @@ export function CashFlowView({ fixedYear = null, fixedMonth = null } = {}) {
   if (newUi && !locked) return (
     <>
       <div className="an-toolbar">
-        <PeriodChips year={year} setYear={setYear} month={month} setMonth={setMonth} years={YEARS} noYear />
-        <span className="an-right"><PeriodMenu yearOnly year={year} onChange={p => { setYear(p.year); setMonth(0) }} years={YEARS} />
+        {!range && <PeriodChips year={year} setYear={setYear} month={month} setMonth={setMonth} years={YEARS} noYear />}
+        <span className="an-right pl-range-wrap">
+          <span className="pl-range" role="group" aria-label="Довільний період">
+            <span>з</span><input type="date" className="form-input" aria-label="Період з" value={rf.from} onChange={e => setRf(x => ({ ...x, from: e.target.value }))} />
+            <span>по</span><input type="date" className="form-input" aria-label="Період по" value={rf.to} onChange={e => setRf(x => ({ ...x, to: e.target.value }))} />
+            <Button size="sm" variant={range ? 'brand' : 'secondary'} disabled={!rf.from || !rf.to} onClick={applyRange}>Показати</Button>
+            {range && <Button size="sm" variant="ghost" iconOnly icon="ti-x" aria-label="Скинути період з–по" onClick={() => { setRange(null); setRf({ from: '', to: '' }) }} />}
+          </span>
+          {!range && <PeriodMenu yearOnly year={year} onChange={p => { setYear(p.year); setMonth(0) }} years={YEARS} />}
           <Button variant="primary" icon="ti-download" onClick={exportXlsx} disabled={!d} aria-label="Експорт Excel" className="an-export"><span className="an-export-t">Експорт Excel</span></Button></span>
       </div>
-      <CashFlowNew d={d} debt={debt} year={year} month={month} setMonth={setMonth} openDrill={openDrill} />
+      <CashFlowNew d={d} debt={debt} year={year} month={month} setMonth={setMonth} openDrill={openDrill} range={range} />
       {modals}
     </>
   )
