@@ -287,24 +287,73 @@ export async function accrualSalesDocs(from, to) {
   })
 }
 
+// ── Собівартість послуг підрядників: вхідні акти (рішення власника 16.11.2026) ──
+// Стаття «Оплата підрядникам» — рівня «собівартість», тож у P&L за нарахуванням її платежі не йдуть (як і закупівля
+// товару) — а вхідні акти раніше не враховувались ніде. Тепер вхідний акт = собівартість на дату акту, без ПДВ, якщо:
+//   • акт не оприбуткував товар на склад (інакше собівартість іде через FIFO у видаткових);
+//   • стаття контрагента — рівня «собівартість»: default_article контрагента, а якщо її нема — стаття більшості
+//     його платежів. Акти постачальників операційних витрат (доставка, підписки, ЕДО…) — ні: вони вже в OpEx за оплатою.
+// → [{ id, doc_number, date, contractor, net }] (включені) і skipped — пропущені з причиною (для перевірки).
+export async function accrualServiceCosts(from, to) {
+  const isIn = (d) => d.doc_role === 'incoming' || (!d.doc_role && d.direction === 'payable')
+  const acts = (await fetchAll(() => qc('documents').select('id, doc_number, doc_date, contractor_id, amount, vat_amount, doc_role, direction')
+    .eq('type', 'serviceAct').gte('doc_date', from).lte('doc_date', to))).filter(isIn)
+  if (!acts.length) return { rows: [], skipped: [] }
+  const ids = acts.map(a => a.id)
+  const ins = await fetchAllIn(() => qc('stock_movements').select('document_id').eq('type', 'in'), 'document_id', ids).catch(() => [])
+  const stocked = new Set(ins.map(m => m.document_id))
+  const { data: arts } = await supabase.from('articles').select('name, type, pl_level')
+  const lvl = {}; (arts || []).forEach(a => { lvl[(a.name || '').trim().toLowerCase()] = a.pl_level || (a.type === 'income' ? 'revenue' : 'opex') })
+  const lvlOf = (name) => lvl[(name || '').trim().toLowerCase()] || null
+  const cids = [...new Set(acts.map(a => a.contractor_id).filter(Boolean))]
+  const ctrs = cids.length ? await fetchAllIn(() => supabase.from('contractors').select('id, name, default_article'), 'id', cids).catch(() => []) : []
+  const ctrById = {}; ctrs.forEach(c => { ctrById[c.id] = c })
+  const pays = cids.length ? await fetchAllIn(() => qc('bank_transactions').select('contractor_id, amount, article, is_ignored'), 'contractor_id', cids).catch(() => []) : []
+  const byLvl = {}
+  pays.filter(t => !t.is_ignored && Number(t.amount) < 0).forEach(t => {
+    const l = lvlOf(t.article); if (!l) return
+    const m = (byLvl[t.contractor_id] ||= {}); m[l] = (m[l] || 0) + Math.abs(Number(t.amount) || 0)
+  })
+  const ctrLevel = (cid) => {
+    const c = ctrById[cid]
+    const own = c?.default_article ? lvlOf(c.default_article) : null
+    if (own) return { level: own, how: `стаття контрагента «${c.default_article}»` }
+    const m = byLvl[cid]; if (!m) return { level: null, how: 'немає статті контрагента й оплат' }
+    const top = Object.entries(m).sort((a, b) => b[1] - a[1])[0]
+    return { level: top[0], how: 'за статтею оплат' }
+  }
+  const rows = [], skipped = []
+  acts.forEach(a => {
+    const net = r2(Math.abs(Number(a.amount) || 0) - Math.abs(Number(a.vat_amount) || 0))
+    const e = { id: a.id, doc_number: a.doc_number || '—', date: a.doc_date, contractor: ctrById[a.contractor_id]?.name || 'Без контрагента', net }
+    if (stocked.has(a.id)) { skipped.push({ ...e, reason: 'оприбутковано на склад — собівартість через FIFO' }); return }
+    const cl = ctrLevel(a.contractor_id)
+    if (cl.level === 'cogs') rows.push({ ...e, how: cl.how })
+    else skipped.push({ ...e, reason: cl.level ? `витрата іншого рівня (${cl.how}) — вже в P&L за оплатою` : cl.how })
+  })
+  return { rows, skipped }
+}
+
 // ── P&L за нарахуванням у форматі computePLBreakdown (той самий рендер таблиці) ──
 export async function computeAccrualPL(year, month, opts = {}) {
   const range = opts.range || null
   const { from, to } = range || periodRange(year, month)
-  const [cash, sales, writeoffs] = await Promise.all([computePLBreakdown(year, month, { range }), accrualSalesDocs(from, to), accrualWriteoffs(from, to).catch(() => [])])
+  const [cash, sales, writeoffs, svc] = await Promise.all([computePLBreakdown(year, month, { range }), accrualSalesDocs(from, to), accrualWriteoffs(from, to).catch(() => []),
+    accrualServiceCosts(from, to).catch(() => ({ rows: [], skipped: [] }))])
   const cols = cash.cols
   const bucketOf = range ? rangeBucket(from, to) : (d) => month ? String(Number(d.slice(8, 10))) : String(Number(d.slice(5, 7)))
   const zero = () => Object.fromEntries(cols.map(c => [c.key, 0]))
   const sumCells = (c) => Object.values(c).reduce((s, v) => s + v, 0)
 
   // Виручка і собівартість — з документів
-  const revRows = {}, cogsCells = zero()
+  const revRows = {}, cogsCells = zero(), goodsCells = zero(), svcCells = zero()
   sales.forEach(s => {
     const b = bucketOf(s.date)
     const label = DOC_LABEL[s.doc.type] || 'Інші документи реалізації'
     ;(revRows[label] ||= zero())[b] += s.net
-    cogsCells[b] += s.cost
+    cogsCells[b] += s.cost; goodsCells[b] += s.cost
   })
+  svc.rows.forEach(a => { const b = bucketOf(a.date); if (b in svcCells) { svcCells[b] += a.net; cogsCells[b] += a.net } })
   const revenue = Object.entries(revRows).map(([label, cells]) => ({ type: 'row', label, level: 'revenue', cells, total: sumCells(cells) }))
   const revCells = zero(); revenue.forEach(r => cols.forEach(c => { revCells[c.key] += r.cells[c.key] }))
 
@@ -329,6 +378,10 @@ export async function computeAccrualPL(year, month, opts = {}) {
   const subtotal = (label, cells) => rows.push({ type: 'subtotal', label, cells, total: sumCells(cells) })
   if (revenue.length) { header('Виручка (за документами, без ПДВ)', 'revenue', revCells); revenue.forEach(r => rows.push(r)) }
   header('Собівартість відвантаженого', 'cogs', cogsCells)
+  if (svc.rows.length) {
+    rows.push({ type: 'row', label: 'Товари (FIFO, за документами продажу)', level: 'cogs', cells: goodsCells, total: sumCells(goodsCells) })
+    rows.push({ type: 'row', label: 'Послуги підрядників (вхідні акти)', level: 'cogs', cells: svcCells, total: sumCells(svcCells), serviceActs: svc.rows })
+  }
   subtotal('Валовий прибуток (GP)', gp)
   if (keep.opex.length) { header('Операційні витрати (OpEx)', 'opex', opex, keep.opex.flatMap(r => r.articles || [])); keep.opex.forEach(r => rows.push(r)) }
   subtotal('Операційний прибуток (EBIT)', ebit)
@@ -340,7 +393,7 @@ export async function computeAccrualPL(year, month, opts = {}) {
   const missing = sales.filter(s => s.missing.length).map(s => ({ doc: s.doc, date: s.date, items: s.missing, costSource: s.costSource }))
   const estimated = sales.filter(s => s.estimated.length).map(s => ({ doc: s.doc, date: s.date, items: s.estimated }))
   const excludedVat = cash.rows.filter(r => r.type === 'row' && isVatArticle(r.label)).map(r => ({ label: r.label, total: r.total }))
-  return { cols, rows, netTotal: sumCells(net), sales, missing, estimated, writeoffs, excludedVat, from, to }
+  return { cols, rows, netTotal: sumCells(net), sales, missing, estimated, writeoffs, excludedVat, serviceActs: svc.rows, serviceSkipped: svc.skipped, from, to }
 }
 
 // ── Борги і запаси станом на дату (для звірки) ──
