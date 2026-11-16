@@ -80,9 +80,11 @@ export async function computeProfitability(companyId, companyIsVat, from, to) {
     try {
       setReportScope(companyId); clearCompanyCache()
 
+      // видаткові + наші акти наданих послуг (вихідні: doc_role outgoing або напрям «нам винні»)
       const docs = (await fetchAll(() => qc('documents')
-        .select('id, doc_number, doc_date, contractor_id, order_id, amount, vat_amount')
-        .eq('type', 'waybill').gte('doc_date', from).lte('doc_date', to)))
+        .select('id, type, doc_role, direction, doc_number, doc_date, contractor_id, order_id, amount, vat_amount')
+        .in('type', ['waybill', 'serviceAct']).gte('doc_date', from).lte('doc_date', to)))
+        .filter(d => d.type === 'waybill' || isOutgoingAct(d))
         .sort((a, b) => (a.doc_date || '').localeCompare(b.doc_date || '') || String(a.doc_number || '').localeCompare(String(b.doc_number || '')))
       if (!docs?.length) return { invoices: [], totals: emptyTotals() }
 
@@ -118,9 +120,13 @@ export async function computeProfitability(companyId, companyIsVat, from, to) {
 
       const movesByDoc = {}
       moves.forEach(m => { (movesByDoc[m.document_id] ||= []).push(m) })
+      // собівартість актів без складських рухів — вхідні акти підрядників того ж замовлення
+      const actCost = await loadActCosts(docs.filter(d => d.type === 'serviceAct' && !movesByDoc[d.id]?.length), companyIsVat)
 
       const invoices = docs.map(d => {
-        const items = (movesByDoc[d.id] || []).map(m => {
+        const isAct = d.type === 'serviceAct'
+        const ac = isAct && !movesByDoc[d.id]?.length ? actCost[d.id] : null
+        const items = ac ? [ac.item] : (movesByDoc[d.id] || []).map(m => {
           const qty = Number(m.quantity) || 0
           const sellUnit = r2(Number(m.price) || 0)
           // FIFO-собівартість руху; якщо не записана — фолбек на ціну закупки з картки товару (нетто)
@@ -149,7 +155,8 @@ export async function computeProfitability(companyId, companyIsVat, from, to) {
         const percent = fromOrder ? fromOrder.percent : ag ? Number(ag.percent) || 0 : 0
         const { tax, commission, net } = agentCalc(profit, percent, companyIsVat)
         return {
-          id: d.id, companyId, doc_number: d.doc_number || '(без №)', doc_date: d.doc_date,
+          id: d.id, companyId, kind: isAct ? 'act' : 'waybill', costSource: ac ? ac.source : null,
+          doc_number: d.doc_number || '(без №)', doc_date: d.doc_date,
           client: cName[d.contractor_id] || 'Без контрагента', contractorId: d.contractor_id || null,
           items, sellSum, buySum, profit, vatToPay,
           margin: sellSum > 0 ? profit / sellSum : null,
@@ -166,6 +173,42 @@ export async function computeProfitability(companyId, companyIsVat, from, to) {
     }
   }
   return runExclusive(run)
+}
+
+const isOutgoingAct = (d) => d.type === 'serviceAct' && (d.doc_role === 'outgoing' || (!d.doc_role && d.direction === 'receivable'))
+const isIncomingAct = (d) => d.type === 'serviceAct' && (d.doc_role === 'incoming' || (!d.doc_role && d.direction === 'payable'))
+const netOf = (d) => r2(Math.abs(Number(d.amount) || 0) - Math.abs(Number(d.vat_amount) || 0))
+
+// Акт наданих послуг без складу: продаж = сума акту без ПДВ; собівартість = вхідні акти підрядників
+// того ж замовлення (без ПДВ), розподілені між нашими актами замовлення пропорційно продажу.
+// Прихідні накладні сюди не беремо — товар іде через склад (FIFO у видаткових). Немає замовлення / вхідних актів → 0.
+async function loadActCosts(acts, companyIsVat) {
+  const res = {}
+  if (!acts.length) return res
+  const orderIds = [...new Set(acts.map(a => a.order_id).filter(Boolean))]
+  const costByOrder = {}, ourByOrder = {}
+  if (orderIds.length) {
+    const od = await fetchAllIn(() => qc('documents').select('id, type, doc_role, direction, order_id, amount, vat_amount').eq('type', 'serviceAct'), 'order_id', orderIds)
+    od.forEach(x => {
+      if (isIncomingAct(x)) { const c = (costByOrder[x.order_id] ||= { net: 0, vat: 0, n: 0 }); c.net += netOf(x); c.vat += Math.abs(Number(x.vat_amount) || 0); c.n++ }
+      else if (isOutgoingAct(x)) ourByOrder[x.order_id] = (ourByOrder[x.order_id] || 0) + netOf(x)
+    })
+  }
+  acts.forEach(a => {
+    const sell = netOf(a)
+    const c = a.order_id ? costByOrder[a.order_id] : null
+    const share = c && ourByOrder[a.order_id] > 0 ? sell / ourByOrder[a.order_id] : 0
+    const buy = c ? r2(c.net * share) : 0
+    const outVat = companyIsVat ? Math.abs(Number(a.vat_amount) || 0) : 0
+    const inVat = companyIsVat && c ? r2(c.vat * share) : 0
+    const profit = r2(sell - buy)
+    res[a.id] = {
+      source: c ? `вхідні акти замовлення (${c.n})` : null,
+      item: { productId: null, name: 'Послуги за актом', unit: 'посл.', qty: 1, buyUnit: buy, buySum: buy, sellUnit: sell, sellSum: sell,
+        vatToPay: r2(outVat - inVat), profit, margin: sell > 0 ? profit / sell : null },
+    }
+  })
+  return res
 }
 
 // Чи має товар вхідний ПДВ (куплений у платника ПДВ): прихідна з vat_amount>0
