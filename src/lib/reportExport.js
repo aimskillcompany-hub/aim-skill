@@ -15,7 +15,8 @@ const toDate = (v) => isoRe.test(String(v || '')) ? new Date(String(v).slice(0, 
 const DATE_NF = 'dd\\.mm\\.yyyy'
 const safe = (s) => String(s).replace(/[\\/:*?"<>|]+/g, '-')
 
-export function exportReportXlsx({ fileName, sheet = 'Звіт', columns, rows, total }) {
+// sheets — додаткові аркуші: [{ sheet, columns, rows, total? }] (напр. «Товари» з собівартістю кожного товару)
+function buildSheet(columns, rows, total) {
   const val = (c, v) => c.date ? toDate(v) : (v ?? '')
   const aoa = [columns.map(c => c.label), ...rows.map(r => columns.map(c => val(c, r[c.key])))]
   if (total) aoa.push(columns.map(c => val(c, total[c.key])))
@@ -25,7 +26,12 @@ export function exportReportXlsx({ fileName, sheet = 'Звіт', columns, rows, 
     for (let ri = 1; ri < aoa.length; ri++) { const ref = XLSX.utils.encode_cell({ r: ri, c: ci }); if (ws[ref]?.t === 'd') ws[ref].z = DATE_NF }
   })
   ws['!cols'] = columns.map(c => ({ wch: c.num ? 14 : Math.min(48, Math.max(10, c.label.length + 4)) }))
-  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, sheet.slice(0, 31))
+  return ws
+}
+
+export function exportReportXlsx({ fileName, sheet = 'Звіт', columns, rows, total, sheets = [] }) {
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, buildSheet(columns, rows, total), sheet.slice(0, 31))
+  sheets.forEach(x => XLSX.utils.book_append_sheet(wb, buildSheet(x.columns, x.rows, x.total), x.sheet.slice(0, 31)))
   XLSX.writeFile(wb, `${safe(fileName)}.xlsx`)
 }
 

@@ -9,6 +9,7 @@ import { formatAmount, plural } from '../utils/format'
 import { TableSkeleton, EmptyState, Callout, useToast, PeriodMenu, InfoTip } from './ui'
 import '../pages/AnalyticsNew.css'
 
+const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100
 const n0 = (v) => formatAmount(v, { decimals: 0 })
 const pct = (f) => f == null ? '—' : `${f < 0 ? '−' : ''}${Math.abs(f * 100).toFixed(1).replace('.', ',')}%`
 const d2 = (s) => s ? String(s).slice(8, 10) + '.' + String(s).slice(5, 7) : ''
@@ -23,10 +24,17 @@ export default function ProfitabilityNew({ data, loading, err, from, to, setFrom
   useEffect(() => {
     if (!ctl?.registerExport) return
     const spec = { fileName: `Прибутковість ${from} — ${to}`, title: 'Прибутковість реалізації', subtitle: `${from.split('-').reverse().join('.')} — ${to.split('-').reverse().join('.')} · суми без ПДВ`, sheet: 'Прибутковість',
-      columns: [{ key: 'doc', label: 'Накладна' }, { key: 'date', label: 'Дата', date: true }, { key: 'order', label: 'Замовлення' }, { key: 'client', label: 'Клієнт' }, { key: 'cpay', label: 'Оплата клієнта' }, { key: 'sell', label: 'Реалізація', num: true }, { key: 'profit', label: 'Прибуток', num: true }, { key: 'margin', label: 'Маржа, %', num: true }, { key: 'vat', label: 'ПДВ до сплати', num: true }, { key: 'tax', label: 'Податок 18%', num: true }, { key: 'agent', label: 'Агентські', num: true }, { key: 'apaid', label: 'Агентські сплачено' }, { key: 'net', label: 'Чистий', num: true }],
-      rows: invoices.map(i => ({ doc: i.doc_number, date: i.doc_date || '', order: i.orderNumber || '', client: i.client, cpay: payLabel(i.clientPay), apaid: i.commission > 0 ? (i.agentPaid ? 'так' : 'ні') : '', sell: i.sellSum, profit: i.profit, margin: i.margin == null ? '' : Math.round(i.margin * 1000) / 10, vat: i.vatToPay, tax: i.tax, agent: i.commission, net: i.net })),
-      total: t ? { doc: 'Разом', sell: t.sellSum, profit: t.profit, vat: t.vatToPay, tax: t.tax, agent: t.commission, net: t.net } : null }
-    ctl.registerExport(data ? { xlsx: () => exportReportXlsx(spec), pdf: () => exportReportPdf(spec) } : null)
+      columns: [{ key: 'doc', label: 'Накладна' }, { key: 'date', label: 'Дата', date: true }, { key: 'order', label: 'Замовлення' }, { key: 'client', label: 'Клієнт' }, { key: 'cpay', label: 'Оплата клієнта' }, { key: 'sell', label: 'Реалізація', num: true }, { key: 'buy', label: 'Собівартість (FIFO)', num: true }, { key: 'profit', label: 'Прибуток', num: true }, { key: 'margin', label: 'Маржа, %', num: true }, { key: 'vat', label: 'ПДВ до сплати', num: true }, { key: 'tax', label: 'Податок 18%', num: true }, { key: 'agent', label: 'Агентські', num: true }, { key: 'apaid', label: 'Агентські сплачено' }, { key: 'net', label: 'Чистий', num: true }],
+      rows: invoices.map(i => ({ doc: i.doc_number, date: i.doc_date || '', order: i.orderNumber || '', client: i.client, cpay: payLabel(i.clientPay), apaid: i.commission > 0 ? (i.agentPaid ? 'так' : 'ні') : '', sell: i.sellSum, buy: i.buySum, profit: i.profit, margin: i.margin == null ? '' : Math.round(i.margin * 1000) / 10, vat: i.vatToPay, tax: i.tax, agent: i.commission, net: i.net })),
+      total: t ? { doc: 'Разом', sell: t.sellSum, buy: r2(t.sellSum - t.profit), profit: t.profit, vat: t.vatToPay, tax: t.tax, agent: t.commission, net: t.net } : null }
+    // аркуш «Товари»: кожен товар накладної — закупка (FIFO) і продаж
+    const items = { sheet: 'Товари',
+      columns: [{ key: 'doc', label: 'Накладна' }, { key: 'date', label: 'Дата', date: true }, { key: 'order', label: 'Замовлення' }, { key: 'client', label: 'Клієнт' }, { key: 'name', label: 'Товар' }, { key: 'qty', label: 'К-сть', num: true }, { key: 'unit', label: 'Од.' },
+        { key: 'buyUnit', label: 'Собівартість, ціна', num: true }, { key: 'buySum', label: 'Собівартість, сума', num: true }, { key: 'sellUnit', label: 'Продаж, ціна', num: true }, { key: 'sellSum', label: 'Продаж, сума', num: true }, { key: 'vat', label: 'ПДВ до сплати', num: true }, { key: 'profit', label: 'Прибуток', num: true }, { key: 'margin', label: 'Маржа, %', num: true }],
+      rows: invoices.flatMap(i => (i.items || []).map(x => ({ doc: i.doc_number, date: i.doc_date || '', order: i.orderNumber || '', client: i.client, name: x.name, qty: x.qty, unit: x.unit,
+        buyUnit: x.buyUnit, buySum: x.buySum, sellUnit: x.sellUnit, sellSum: x.sellSum, vat: x.vatToPay, profit: x.profit, margin: x.margin == null ? '' : Math.round(x.margin * 1000) / 10 }))),
+      total: t ? { doc: 'Разом', buySum: r2(t.sellSum - t.profit), sellSum: t.sellSum, vat: t.vatToPay, profit: t.profit } : null }
+    ctl.registerExport(data ? { xlsx: () => exportReportXlsx({ ...spec, sheets: [items] }), pdf: () => exportReportPdf(spec) } : null)
   }, [data, showGroup, ctl?.registerExport])
   const noAgents = t && t.count > 0 && invoices.every(i => !(Number(i.percent) > 0))
   // Помилка 12: агентські, ухвалені в протоколах за цей період (рішення 098; для не-адміна RLS віддає порожньо)
