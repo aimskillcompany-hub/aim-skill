@@ -38,7 +38,8 @@ function periodLabel(year, month) {
   return last === 0 ? `${year}, січ` : `${year}, січ–${MONTHS_SHORT[last].toLowerCase()}`
 }
 
-export function CashFlowNew({ d, debt, year, month, setMonth, openDrill }) {
+export function CashFlowNew({ d, debt, year, month, setMonth, openDrill, range = null }) {
+  const rangeLabel = range ? `${range.from.split('-').reverse().join('.')} – ${range.to.split('-').reverse().join('.')}` : null
   const navigate = useNavigate()
   const [heat, setHeat] = useState(true)
   const [closed, setClosed] = useState(() => new Set())
@@ -47,9 +48,9 @@ export function CashFlowNew({ d, debt, year, month, setMonth, openDrill }) {
   // Для поточного року майбутні місяці не показуємо (у них ще немає руху)
   const cols = useMemo(() => {
     if (!d) return []
-    if (month || year !== NOW.getFullYear()) return d.cols
+    if (range || month || year !== NOW.getFullYear()) return d.cols
     return d.cols.filter(c => Number(c.key) <= NOW.getMonth() + 1)
-  }, [d, year, month])
+  }, [d, year, month, range])
 
   if (!d) return <TableSkeleton rows={8} cols={6} label="Рахую рух грошей…" />
 
@@ -69,7 +70,7 @@ export function CashFlowNew({ d, debt, year, month, setMonth, openDrill }) {
   const toggle = (k) => setClosed(s => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n })
   const secMax = (sec) => Math.max(1, ...sec.rows.flatMap(r => cols.map(c => r.cells[c.key] || 0)))
   const heatStyle = (v, max) => heat && v ? { '--heat': `${Math.round(8 + 52 * Math.min(1, v / max))}%` } : undefined
-  const pick = (c) => { if (!month) setMonth(Number(c.key)) }
+  const pick = (c) => { if (!month && !range) setMonth(Number(c.key)) }
 
   const section = (k, label, sec, sign) => {
     const max = secMax(sec), open = !closed.has(k)
@@ -97,7 +98,7 @@ export function CashFlowNew({ d, debt, year, month, setMonth, openDrill }) {
         <section className="cfn-hero" aria-label="Чистий потік">
           <div className="cfn-hero-head">
             <div>
-              <div className="cfn-hero-label">Чистий потік · {periodLabel(year, month)}</div>
+              <div className="cfn-hero-label">Чистий потік · {rangeLabel || periodLabel(year, month)}</div>
               <div className={`cfn-hero-value${d.netTotal < 0 ? ' is-neg' : ''}`}>{signed(d.netTotal)} <small>₴</small></div>
             </div>
             <dl className="cfn-legend">
@@ -109,7 +110,7 @@ export function CashFlowNew({ d, debt, year, month, setMonth, openDrill }) {
             {cols.map(c => {
               const i = d.inflow.totalByCol[c.key] || 0, o = d.outflow.totalByCol[c.key] || 0
               return (
-                <button key={c.key} type="button" role="listitem" className="cfn-bar" disabled={!!month}
+                <button key={c.key} type="button" role="listitem" className="cfn-bar" disabled={!!month || !!range}
                   title={`${c.label}: +${plain(i)} / −${plain(o)}`} aria-label={`${c.label}: надходження ${plain(i)}, витрати ${plain(o)}`} onClick={() => pick(c)}>
                   <span className="cfn-bar-pair">
                     <span className="is-in" style={{ height: `${(i / barMax) * 100}%` }} />
@@ -128,7 +129,7 @@ export function CashFlowNew({ d, debt, year, month, setMonth, openDrill }) {
             {change != null && Math.abs(change) >= 0.001 && <span className={`cfn-pill ${change < 0 ? 'is-neg' : 'is-pos'}`}>{change < 0 ? '−' : '+'}{Math.abs(change * 100).toFixed(1).replace('.', ',')}% за період</span>}
           </div>
           <div className={`cfn-bal-value${d.closingCash < 0 ? ' is-neg' : ''}`}>{formatAmount(d.closingCash, { decimals: 0 })} <small>₴</small></div>
-          <div className="cfn-muted cfn-sm">на кінець: {periodLabel(year, month)}</div>
+          <div className="cfn-muted cfn-sm">на кінець: {rangeLabel ? range.to.split('-').reverse().join('.') : periodLabel(year, month)}</div>
           <svg className="cfn-spark" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
             <path d={area} className="cfn-spark-area" /><path d={line} className="cfn-spark-line" vectorEffect="non-scaling-stroke" />
           </svg>
