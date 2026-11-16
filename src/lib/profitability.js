@@ -144,6 +144,10 @@ export async function computeProfitability(companyId, companyIsVat, from, to) {
           }
         }).sort((a, b) => a.name.localeCompare(b.name))
 
+        // Операція без ПДВ (звільнена — напр. ПРООН, ПЗ): ПДВ у документі 0 → ПДВ до сплати 0 (рішення власника 16.11.2026);
+        // вхідний ПДВ під такий продаж до кредиту не йде. Ставку компанії не нав'язуємо документу.
+        const docVatFree = companyIsVat && Number(d.amount) > 0 && Math.abs(Number(d.vat_amount) || 0) < 0.005
+        if (docVatFree) items.forEach(x => { x.vatToPay = 0 })
         const sellSum = r2(items.reduce((s, x) => s + x.sellSum, 0))
         const buySum = r2(items.reduce((s, x) => s + x.buySum, 0))
         const profit = r2(items.reduce((s, x) => s + x.profit, 0))
@@ -158,7 +162,7 @@ export async function computeProfitability(companyId, companyIsVat, from, to) {
           id: d.id, companyId, kind: isAct ? 'act' : 'waybill', costSource: ac ? ac.source : null,
           doc_number: d.doc_number || '(без №)', doc_date: d.doc_date,
           client: cName[d.contractor_id] || 'Без контрагента', contractorId: d.contractor_id || null,
-          items, sellSum, buySum, profit, vatToPay,
+          items, sellSum, buySum, profit, vatToPay, vatFree: docVatFree,
           margin: sellSum > 0 ? profit / sellSum : null,
           agentName: ag?.agent_name || '', percent, tax, taxOn: !!companyIsVat, commission, net,
           pctSource: fromOrder ? 'order' : ag ? 'manual' : null, orderId: d.order_id || null, orderNumber: ord?.number || null,

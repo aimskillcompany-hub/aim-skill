@@ -74,3 +74,34 @@ describe('Акти наданих послуг у прибутковості', (
     expect(by['АКТ-3'].buySum).toBe(0); expect(by['АКТ-3'].costSource).toBe(null)
   })
 })
+
+describe('Операції без ПДВ', () => {
+  it('документ із ПДВ 0 → ПДВ до сплати 0', async () => {
+    vi.resetModules()
+    const rows = {
+      documents: [{ id: 'w1', type: 'waybill', doc_number: '3', doc_date: '2026-02-24', contractor_id: 'c1', order_id: null, amount: 1000, vat_amount: 0 },
+                  { id: 'w2', type: 'waybill', doc_number: '4', doc_date: '2026-02-25', contractor_id: 'c1', order_id: null, amount: 1200, vat_amount: 200 }],
+      stock_movements: [{ id: 'm1', document_id: 'w1', product_id: 'p', quantity: 1, price: 1000, cost_price: 600, type: 'out' },
+                        { id: 'm2', document_id: 'w2', product_id: 'p', quantity: 1, price: 1000, cost_price: 600, type: 'out' }],
+      products: [{ id: 'p', name: 'Ноутбук', unit: 'шт', buy_price: 600 }],
+    }
+    const q = (table) => {
+      let data = (rows[table] || []).slice()
+      const api = { select: () => api, eq: (k, v) => { data = data.filter(r => r[k] === v); return api }, in: (k, vs) => { data = data.filter(r => vs.includes(r[k])); return api },
+        gte: (k, v) => { data = data.filter(r => (r[k] || '') >= v); return api }, lte: (k, v) => { data = data.filter(r => (r[k] || '') <= v); return api },
+        not: () => api, order: () => api, range: () => api, limit: () => api, then: (res) => res({ data, error: null }) }
+      return api
+    }
+    vi.doMock('./supabase', () => ({ supabase: { from: q } }))
+    vi.doMock('./companyScope', () => ({ qc: q, setReportScope: () => {}, runExclusive: (f) => f() }))
+    vi.doMock('./companyConfig', () => ({ clearCompanyCache: () => {} }))
+    vi.doMock('./fetchAll', () => ({ fetchAll: async (mk) => (await mk()).data || [], fetchAllIn: async (mk, col, ids) => ((await mk()).data || []).filter(r => ids.includes(r[col])) }))
+    vi.doMock('./debts', () => ({ loadDocPayments: async () => [] }))
+    const { computeProfitability } = await import('./profitability')
+    const r = await computeProfitability('co', true, '2026-02-01', '2026-02-28')
+    const by = Object.fromEntries(r.invoices.map(i => [i.doc_number, i]))
+    expect(by['3'].vatFree).toBe(true); expect(by['3'].vatToPay).toBe(0)
+    expect(by['4'].vatFree).toBe(false); expect(by['4'].vatToPay).toBe(200)
+    expect(by['3'].profit).toBe(400)
+  })
+})
