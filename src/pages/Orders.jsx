@@ -4,6 +4,7 @@ import { takeSnapshot, supersedeSnapshot, isMissingSnapTable } from '../lib/snap
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { qc, withCompany } from '../lib/companyScope'
+import { fetchAllIn } from '../lib/fetchAll'
 import { useUser } from '../lib/auth'
 import { nextOrderNumber } from '../lib/orderNumber'
 import { fmt } from '../lib/fmt'
@@ -77,12 +78,24 @@ export default function Orders() {
         if (!g.first || (t.due_at || '9') < (g.first.due_at || '9')) g.first = t
       })
     }
+    // позиції замовлень — у списку видно, що в замовленні, і пошук іде й за товаром
+    const itemsByOrder = {}
+    try {
+      const ids = (ords || []).map(o => o.id)
+      const its = ids.length ? await fetchAllIn(() => supabase.from('order_items').select('order_id, name, qty, sku, created_at'), 'order_id', ids) : []
+      its.sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || ''))).forEach(it => {
+        const nm = String(it.name || '').replace(/\s+/g, ' ').trim()
+        if (nm) (itemsByOrder[it.order_id] ||= []).push({ name: nm, qty: Number(it.qty) || 0, sku: it.sku || '' })
+      })
+    } catch { /* без позицій список працює як раніше */ }
     const enriched = (ords || []).map(o => ({
       ...o,
       clientName: o.contractors?.name || '—',
       managerName: o.manager_id ? (userMap[o.manager_id] || '—') : '—',
       payment: o.paid_transaction_id ? (payMap[o.paid_transaction_id] || null) : null,
       tasks: tasksByOrder[o.id] || null,
+      items: itemsByOrder[o.id] || [],
+      itemsText: (itemsByOrder[o.id] || []).map(i => `${i.name} ${i.sku}`).join(' ').toLowerCase(),
       overdue: proposalOverdue(o, lastSent[o.id]) || paymentOverdue(subsByOrder[o.id]),
     }))
     setOrders(enriched)
@@ -156,7 +169,7 @@ export default function Orders() {
       if (manager && o.managerName !== manager) return false
       if (stage && (o.archived_at || o.status !== stage)) return false
       if (!term) return true
-      return o.clientName.toLowerCase().includes(term) || (o.order_number || '').toLowerCase().includes(term)
+      return o.clientName.toLowerCase().includes(term) || (o.order_number || '').toLowerCase().includes(term) || (o.itemsText || '').includes(term)
     })
   }, [orders, q, filter, manager, stage])
 

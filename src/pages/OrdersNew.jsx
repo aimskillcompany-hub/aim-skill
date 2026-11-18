@@ -47,6 +47,19 @@ function Person({ name }) {
   return <span className="on-person" title={name}><span className="on-av" aria-hidden="true">{initials(name)}</span><span className="on-trunc">{name}</span></span>
 }
 
+// Товари замовлення: перші позиції + «ще N»; повний перелік — у підказці
+function Items({ o, max = 2 }) {
+  const it = o.items || []
+  if (!it.length) return <span className="on-muted on-items is-empty">без позицій</span>
+  const fmtQ = (q) => q && q !== 1 ? ` × ${formatAmount(q, { decimals: 0 })}` : ''
+  return (
+    <span className="on-items" title={it.map(i => `• ${i.name}${fmtQ(i.qty)}`).join('\n')}>
+      {it.slice(0, max).map((i, k) => <span key={k} className="on-item">{i.name}<small>{fmtQ(i.qty)}</small></span>)}
+      {it.length > max && <span className="on-item-more">ще {it.length - max}</span>}
+    </span>
+  )
+}
+
 function TaskChip({ o, navigate }) {
   if (!o.tasks) return <span className="on-muted" aria-label="Задач немає">—</span>
   return (
@@ -148,7 +161,7 @@ export default function OrdersNew({
           <Segmented ariaLabel="Фільтр замовлень" value={filter} onChange={setFilter} options={filters} className="is-chips-sm" />
           <label className="on-search">
             <i className="ti ti-search" aria-hidden="true" />
-            <input type="search" className="form-input" placeholder="№ або клієнт" aria-label="Пошук замовлень" value={q} onChange={e => setQ(e.target.value)} />
+            <input type="search" className="form-input" placeholder="№, клієнт або товар" aria-label="Пошук замовлень" value={q} onChange={e => setQ(e.target.value)} />
           </label>
           {managers.length > 0 && (
             <span className="on-mgr"><Menu align="right"
@@ -188,7 +201,7 @@ export default function OrdersNew({
                   <thead><tr>
                     {sortBtn('order_number', '№')}
                     {sortBtn('client', 'Клієнт')}
-                    {sortBtn('manager', 'Менеджер')}
+                    <th>Товари</th>
                     {sortBtn('stage', 'Етап')}
                     <th>Задачі</th>
                     <th title="Інвестор · Прогноз · Комісію сплачено">Позначки</th>
@@ -200,7 +213,7 @@ export default function OrdersNew({
                         onKeyDown={e => { if (e.key === 'Enter') navigate(`/orders/${o.id}`) }}>
                         <td><span className="on-no">{o.order_number || o.id.slice(0, 6)}</span><span className="on-date">{fmtD(o.created_at)}</span></td>
                         <td><span className="on-client"><span className={`on-av is-${toneOf(o.clientName)}`} aria-hidden="true">{initials(o.clientName)}</span><span className="on-trunc">{o.clientName}</span></span></td>
-                        <td><Person name={o.managerName} /></td>
+                        <td className="on-items-cell"><Items o={o} /></td>
                         <td>
                           <Stage o={o} />
                           {o.paid_transaction_id && o.status !== 'paid' && <span className="on-paid" title="Оплату від клієнта прив'язано"><i className="ti ti-cash" aria-hidden="true" /> оплачено</span>}
@@ -229,6 +242,7 @@ export default function OrdersNew({
                         <Stage o={o} />
                       </span>
                       <span className="on-mcard-client">{o.clientName}</span>
+                      {(o.items || []).length > 0 && <span className="on-mcard-items"><Items o={o} max={2} /></span>}
                       <span className="on-stage-row"><Stage o={o} /></span>
                       <span className="on-mcard-foot">
                         <Person name={o.managerName} />
