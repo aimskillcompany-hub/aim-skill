@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { qc, withCompany } from '../lib/companyScope'
-import { extractDocumentMulti } from '../lib/ai'
+import { extractDocumentMulti, explainAiError } from '../lib/ai'
 import { fetchArticles } from '../lib/articles'
 import { getContractorMatcher } from '../lib/contractorMatch'
 import { resolveProduct, createStockMovement } from '../lib/stockService'
@@ -253,7 +253,7 @@ export default function DocModal({ user, existingDoc, autoOcr = true, orderId, o
       })
     } catch (e) {
       // OCR не спрацював — даємо форму заповнити вручну (не блокуємо збереження)
-      setError('OCR не спрацював — заповніть поля вручну. ' + (e.message || ''))
+      { const x = explainAiError(e.message); setError(`OCR не спрацював — заповніть поля вручну. ${x.text}${x.fix ? ' ' + x.fix : ''}${x.raw && x.raw !== x.text ? ` (${x.raw.slice(0, 160)})` : ''}`) }
       if (!existingDoc) setForm(f => f || defaultForm(arr[0]?.name || '', !orderId))
     }
     setBusy(false)

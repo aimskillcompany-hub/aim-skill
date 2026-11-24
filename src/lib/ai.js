@@ -12,6 +12,21 @@ async function proxyHeaders() {
 }
 const API_KEY = import.meta.env.VITE_ANTHROPIC_KEY
 
+// Зрозумілий текст помилки розпізнавання + що робити (показуємо одразу, без наведення курсора)
+export function explainAiError(raw) {
+  const m = String(raw || '').trim()
+  if (/credit balance|billing|insufficient.*credit|payment/i.test(m)) return { text: 'Закінчились кошти на рахунку Anthropic (Claude).', fix: 'Поповніть баланс: console.anthropic.com → Plans & Billing.', raw: m }
+  if (/x-api-key|authentication|invalid api key|ANTHROPIC_KEY not configured|permission/i.test(m)) return { text: 'Ключ Claude API недійсний або не налаштований.', fix: 'Новий ключ: Vercel → Settings → Environment Variables → VITE_ANTHROPIC_KEY, потім Redeploy.', raw: m }
+  if (/model.*(not.?found|does not exist|deprecat|retired)|not_found_error/i.test(m)) return { text: 'Модель Claude недоступна (знята з підтримки).', fix: 'Потрібно оновити модель у коді — напишіть Claude Code.', raw: m }
+  if (/завеликий|413|too large|request_too_large/i.test(m)) return { text: 'Файл завеликий для розпізнавання.', fix: 'Зменшіть фото або розділіть PDF на сторінки.', raw: m }
+  if (/перевантажен|overload|529/i.test(m)) return { text: 'Сервери Claude перевантажені.', fix: 'Спробуйте ще раз через кілька хвилин.', raw: m }
+  if (/забагато запитів|rate.?limit|429/i.test(m)) return { text: 'Забагато запитів поспіль.', fix: 'Зачекайте хвилину й повторіть (або завантажуйте менше файлів за раз).', raw: m }
+  if (/вхід у систему|401|unauthor/i.test(m)) return { text: 'Сесія завершилась.', fix: 'Оновіть сторінку або вийдіть і увійдіть знову.', raw: m }
+  if (/failed to fetch|network|load failed/i.test(m)) return { text: 'Немає зв\'язку з сервером.', fix: 'Перевірте інтернет і повторіть.', raw: m }
+  if (/json|parse|unexpected token/i.test(m)) return { text: 'Claude повернув відповідь, яку не вдалося прочитати.', fix: 'Спробуйте ще раз або завантажте файл окремо.', raw: m }
+  return { text: m || 'Невідома помилка розпізнавання.', fix: '', raw: m }
+}
+
 // Виклик Claude з авто-повтором на тимчасових помилках (overloaded 529 / rate limit 429 / 503).
 export async function callClaude(requestBody, { retries = 4 } = {}) {
   let lastErr

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { qc, withCompany } from '../lib/companyScope'
-import { extractDocument } from '../lib/ai'
+import { explainAiError, extractDocument } from '../lib/ai'
 import { fetchArticles } from '../lib/articles'
 import { getContractorMatcher } from '../lib/contractorMatch'
 import { DOCUMENT_TYPES, getDocType } from '../lib/docgen'
@@ -213,7 +213,12 @@ export default function BatchDocUploadModal({ user, onClose, onSaved }) {
                           <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>є: №{it.dup.doc_number || '—'}{it.dup.doc_date ? ` від ${it.dup.doc_date.split('-').reverse().join('.')}` : ''}{it.dup.amount != null ? ` · ${fmt(it.dup.amount)}` : ''}{it.dup.contractors?.name ? ` · ${it.dup.contractors.name}` : ''}{it.dup.signed_scan_url ? ' · скан уже є — замінимо' : ''}</div>
                         </>}
                         {it.status === 'done' && it.dup?.where === 'batch' && <span style={{ color: 'var(--amber, #b45309)' }} title="Дубль у цій пачці"><i className="ti ti-copy" /> дубль у пачці</span>}
-                        {it.status === 'error' && <span style={{ color: 'var(--red, #dc2626)' }} title={it.error}><i className="ti ti-alert-triangle" /> OCR не вдалось</span>}
+                        {it.status === 'error' && (() => { const x = explainAiError(it.error); return (
+                          <span style={{ color: 'var(--red, #dc2626)', display: 'block' }} title={x.raw}>
+                            <i className="ti ti-alert-triangle" /> OCR не вдалось
+                            <span style={{ display: 'block', fontSize: 11.5, marginTop: 2, color: 'var(--text2)' }}>{x.text}{x.fix ? <> <b>{x.fix}</b></> : null}</span>
+                            {x.raw && x.raw !== x.text && <span style={{ display: 'block', fontSize: 10.5, marginTop: 2, color: 'var(--text3)', wordBreak: 'break-word' }}>{x.raw.slice(0, 160)}</span>}
+                          </span>) })()}
                       </td>
                     </tr>
                   ))}
